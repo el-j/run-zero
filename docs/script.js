@@ -1,6 +1,6 @@
 function copyQuickstart() {
-  const code = `git clone git@github.com:el-j/local-github-runner-container.git
-cd local-github-runner-container && make env
+  const code = `git clone git@github.com:el-j/run-zero.git
+cd run-zero && make env
 make start
 make logs`;
 

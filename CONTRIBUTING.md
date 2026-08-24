@@ -8,8 +8,8 @@ Thank you for your interest in contributing to **RunZero**! We welcome contribut
 
 1. **Fork and Clone the repository**:
    ```bash
-   git clone https://github.com/el-j/local-github-runner-container.git
-   cd local-github-runner-container
+   git clone https://github.com/el-j/run-zero.git
+   cd run-zero
    ```
 
 2. **Initialize Environment**:

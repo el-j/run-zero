@@ -4,11 +4,11 @@
 
 **Zero Cloud Minutes. Zero K8s Bloat. Zero Idle Waste.**
 
-*An intelligent, autoscaling local GitHub Actions runner fleet for **OrbStack** and **Docker** on macOS (Apple Silicon `arm64` & `amd64`), with built-in **Verdaccio**, **Athens**, and persistent multi-language caching.*
+*An intelligent, autoscaling local GitHub Actions runner fleet for **OrbStack**, **Docker Desktop**, and **Linux Docker** on Apple Silicon (`arm64`) & Intel/AMD (`amd64`), with built-in **Verdaccio**, **Athens**, and persistent multi-language caching.*
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
-[![Docker](https://img.shields.io/badge/Docker-20%2B-blue.svg)](https://www.docker.com/)
-[![OrbStack](https://img.shields.io/badge/OrbStack-Optimized-brightgreen.svg)](https://orbstack.dev/)
+[![Docker](https://img.shields.io/badge/Docker-20%2B%20%2F%20Desktop-blue.svg)](https://www.docker.com/)
+[![OrbStack](https://img.shields.io/badge/OrbStack-Ultra--Fast-brightgreen.svg)](https://orbstack.dev/)
 [![Apple Silicon](https://img.shields.io/badge/Apple%20Silicon-ARM64%20%2B%20x86__64-purple.svg)](https://apple.com)
 [![GitHub Actions](https://img.shields.io/badge/GitHub%20Actions-Runner%20v2.336-blue.svg)](https://github.com/actions/runner)
 [![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)](CONTRIBUTING.md)
@@ -20,6 +20,7 @@
 ## 📖 Table of Contents
 
 - [Why RunZero? (Competitive Landscape)](#-why-runzero)
+- [Docker Engine Compatibility (OrbStack vs. Docker Desktop vs. Linux)](#-docker-engine-compatibility)
 - [Key Features](#-key-features)
 - [Architecture Overview](#-architecture-overview)
 - [Repository Structure](#-repository-structure)
@@ -45,6 +46,19 @@
 | **Multi-Arch (Apple Silicon + x86_64)** |  **Native ARM64 + Rosetta AMD64** | ⚠️ Complex (K8s node taints) | ⚠️ Partial | ❌ Fixed single arch |
 | **Built-in Package Proxies** |  **Verdaccio + Athens + Mirrors** | ❌ None (Requires K8s PVC/NFS) | ❌ None | ❌ None |
 | **Setup Complexity** |  **1 Command (`make start`)** | ❌ Complex Helm / CRDs |  Simple CLI | ⚠️ Moderate |
+
+---
+
+## 🐳 Docker Engine Compatibility
+
+RunZero uses the standard Docker API socket (`/var/run/docker.sock`) and standard Docker Compose v2, making it **100% compatible across all major container engines**:
+
+| Container Engine | macOS (Apple Silicon) | macOS (Intel) | Linux / Homelab | Highlights |
+|---|---|---|---|---|
+| 🪐 **OrbStack** *(Recommended for Mac)* | ⭐ **Native + Rosetta 2** | ⭐ Fast | — | **Fastest x86_64 emulation via Rosetta 2**, instant startup, ~0.1% idle CPU. |
+| 🐳 **Docker Desktop** |  Native + QEMU/Rosetta |  Native |  Native | Standard Docker environment for Mac and Windows. |
+| 🦭 **Colima / Lima** |  Native + QEMU/Rosetta |  Native | — | Lightweight CLI-based container runtime for macOS. |
+| 🐧 **Native Linux Docker Engine** |  Native (ARM64) |  Native (AMD64) | ⭐ **Native (Best for Servers)** | Zero VM layer, runs on Ubuntu, Debian, Arch, Fedora, homelabs. |
 
 ---
 
@@ -108,7 +122,10 @@
 │   └── start.sh                           #    Runner entrypoint with proxy auto-detect
 ├── docs/                                  # 🌐 Documentation & GitHub Pages Website
 │   ├── favicon.svg                        #    RunZero vector icon
-│   └── index.html                         #    Interactive dark-mode landing page
+│   ├── fonts/                             #    Self-hosted local fonts (zero CDN)
+│   ├── index.html                         #    Interactive dark-mode landing page
+│   ├── style.css                          #    Modular styles
+│   └── script.js                          #    Client interactions
 ├── .github/
 │   ├── ISSUE_TEMPLATE/                    # 📋 Community Issue Templates
 │   │   ├── bug_report.md
@@ -151,7 +168,7 @@ make build          # Builds ARM64 + AMD64 + Autoscaler
 
 ### 3. Start the Autoscaler & Proxies:
 ```bash
-make start
+make start          # (or make run)
 ```
 
 ### 4. Open Verdaccio Web UI:
@@ -167,7 +184,7 @@ make logs           # Stream live autoscaler logs
 
 ### 6. Stop the Autoscaler & Proxies:
 ```bash
-make stop
+make stop           # (or make down)
 ```
 
 ---
@@ -229,7 +246,7 @@ jobs:
 
 | Command | Description |
 |---|---|
-| `make start` (or `make up`) | Launch autoscaler, Verdaccio, Athens, and Docker mirror |
+| `make start` (or `make run`, `make up`) | Launch autoscaler, Verdaccio, Athens, and Docker mirror |
 | `make stop` (or `make down`) | Gracefully stop the autoscaler, proxies, and active runners |
 | `make status` (or `make ps`) | Display running autoscaler, proxies & active ephemeral runners |
 | `make verdaccio-ui` | Open Verdaccio Web UI at `http://localhost:4873` |

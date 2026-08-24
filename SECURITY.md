@@ -11,7 +11,7 @@
 
 If you discover a security vulnerability in RunZero, please do **NOT** file a public issue.
 
-Instead, please report the vulnerability privately by opening a [GitHub Security Advisory](https://github.com/el-j/local-github-runner-container/security/advisories/new) or contacting the maintainers directly.
+Instead, please report the vulnerability privately by opening a [GitHub Security Advisory](https://github.com/el-j/run-zero/security/advisories/new) or contacting the maintainers directly.
 
 Please include:
 - A description of the issue.
