@@ -109,7 +109,7 @@ build-autoscaler: ## Build the Autoscaler daemon image
 build: build-arm64 build-amd64 build-autoscaler ## Build all images (ARM64 + AMD64 + Autoscaler)
 build-all: build
 
-.PHONY: start up
+.PHONY: start up run
 start: check-env init-cache ## Start Autoscaler and Proxy services (Verdaccio, Athens, Docker mirror)
 	@echo "$(CYAN)Starting Local GitHub Runner Autoscaler & Proxy stack (OrbStack)...$(RESET)"
 	docker compose up -d
@@ -120,6 +120,7 @@ start: check-env init-cache ## Start Autoscaler and Proxy services (Verdaccio, A
 	@echo "Use $(BOLD)make logs$(RESET) to stream logs or $(BOLD)make status$(RESET) to see active runners."
 
 up: start
+run: start
 
 .PHONY: stop down
 stop: ## Stop Autoscaler, Proxies, and remove active runner containers
