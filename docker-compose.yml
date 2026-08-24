@@ -9,7 +9,7 @@ services:
   # ============================================================================
   autoscaler:
     build:
-      context: .
+      context: ./docker
       dockerfile: Dockerfile.autoscaler
     image: local-runner-autoscaler:latest
     container_name: local-runner-autoscaler
@@ -89,7 +89,7 @@ services:
   # ============================================================================
   github-runner-arm64:
     build:
-      context: .
+      context: ./docker
       dockerfile: Dockerfile
     image: local-github-runner:arm64
     platform: linux/arm64
@@ -119,7 +119,7 @@ services:
 
   github-runner-amd64:
     build:
-      context: .
+      context: ./docker
       dockerfile: Dockerfile
     image: local-github-runner:amd64
     platform: linux/amd64

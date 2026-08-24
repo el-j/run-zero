@@ -1,0 +1,628 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>RunZero ⚡ Zero-Bloat Local GitHub Actions Runner Fleet</title>
+  <meta name="description" content="Autoscaling, multi-architecture GitHub Actions runner fleet for OrbStack & Docker on macOS. Zero cloud minutes. Zero K8s bloat. Zero idle waste." />
+  
+  <!-- Open Graph / Meta -->
+  <meta property="og:type" content="website" />
+  <meta property="og:title" content="RunZero — Zero-Bloat Local GitHub Actions Runner Fleet" />
+  <meta property="og:description" content="Autoscaling, multi-architecture GitHub Actions runner fleet with built-in Verdaccio, Athens & tool caching for macOS." />
+  <meta name="twitter:card" content="summary_large_image" />
+
+  <!-- Favicon -->
+  <link rel="icon" type="image/svg+xml" href="favicon.svg">
+
+  <!-- Fonts -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+
+  <style>
+    :root {
+      --bg-base: #0a0d14;
+      --bg-card: rgba(18, 24, 38, 0.75);
+      --bg-card-hover: rgba(28, 36, 56, 0.9);
+      --border-subtle: rgba(255, 255, 255, 0.08);
+      --border-accent: rgba(99, 102, 241, 0.35);
+      --primary: #6366f1;
+      --primary-glow: rgba(99, 102, 241, 0.45);
+      --cyan: #06b6d4;
+      --cyan-glow: rgba(6, 182, 212, 0.35);
+      --emerald: #10b981;
+      --amber: #f59e0b;
+      --text-main: #f3f4f6;
+      --text-muted: #9ca3af;
+      --text-dim: #6b7280;
+      --radius-lg: 18px;
+      --radius-md: 12px;
+      --radius-sm: 8px;
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    body {
+      background-color: var(--bg-base);
+      color: var(--text-main);
+      font-family: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, sans-serif;
+      line-height: 1.6;
+      overflow-x: hidden;
+    }
+
+    /* Ambient Background Glows */
+    .glow-orb {
+      position: fixed;
+      border-radius: 50%;
+      filter: blur(140px);
+      z-index: 0;
+      pointer-events: none;
+    }
+    .glow-1 {
+      top: -150px;
+      left: 20%;
+      width: 550px;
+      height: 550px;
+      background: radial-gradient(circle, var(--primary-glow) 0%, transparent 70%);
+    }
+    .glow-2 {
+      top: 45%;
+      right: -100px;
+      width: 480px;
+      height: 480px;
+      background: radial-gradient(circle, var(--cyan-glow) 0%, transparent 70%);
+    }
+
+    .container {
+      max-width: 1200px;
+      margin: 0 auto;
+      padding: 0 24px;
+      position: relative;
+      z-index: 1;
+    }
+
+    /* Header / Nav */
+    nav {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 24px 0;
+      border-bottom: 1px solid var(--border-subtle);
+    }
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      font-weight: 800;
+      font-size: 1.35rem;
+      letter-spacing: -0.02em;
+      text-decoration: none;
+      color: var(--text-main);
+    }
+    .brand img {
+      width: 28px;
+      height: 28px;
+    }
+    .brand-badge {
+      font-size: 0.72rem;
+      padding: 3px 9px;
+      background: linear-gradient(135deg, var(--primary), var(--cyan));
+      border-radius: 999px;
+      color: #fff;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+    }
+    .nav-links {
+      display: flex;
+      gap: 24px;
+      align-items: center;
+    }
+    .nav-link {
+      color: var(--text-muted);
+      text-decoration: none;
+      font-size: 0.95rem;
+      font-weight: 500;
+      transition: color 0.2s;
+    }
+    .nav-link:hover {
+      color: var(--text-main);
+    }
+    .btn-github {
+      background: rgba(255, 255, 255, 0.06);
+      border: 1px solid var(--border-subtle);
+      color: var(--text-main);
+      padding: 8px 16px;
+      border-radius: var(--radius-sm);
+      text-decoration: none;
+      font-size: 0.9rem;
+      font-weight: 600;
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      transition: all 0.2s;
+    }
+    .btn-github:hover {
+      background: rgba(255, 255, 255, 0.12);
+      border-color: rgba(255, 255, 255, 0.2);
+      transform: translateY(-1px);
+    }
+
+    /* Hero Section */
+    .hero {
+      padding: 90px 0 60px;
+      text-align: center;
+    }
+    .hero-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 6px 16px;
+      background: rgba(99, 102, 241, 0.12);
+      border: 1px solid var(--border-accent);
+      border-radius: 999px;
+      color: #a5b4fc;
+      font-size: 0.88rem;
+      font-weight: 600;
+      margin-bottom: 24px;
+    }
+    .hero h1 {
+      font-size: 3.8rem;
+      font-weight: 800;
+      letter-spacing: -0.03em;
+      line-height: 1.15;
+      margin-bottom: 24px;
+      background: linear-gradient(180deg, #ffffff 30%, #9ca3af 100%);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+    }
+    .hero h1 span.gradient-text {
+      background: linear-gradient(135deg, #818cf8 0%, #38bdf8 50%, #34d399 100%);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+    }
+    .hero p {
+      font-size: 1.25rem;
+      color: var(--text-muted);
+      max-width: 760px;
+      margin: 0 auto 36px;
+      line-height: 1.6;
+    }
+
+    .hero-cta-group {
+      display: flex;
+      justify-content: center;
+      gap: 16px;
+      margin-bottom: 48px;
+      flex-wrap: wrap;
+    }
+    .btn-primary {
+      background: linear-gradient(135deg, var(--primary), #4f46e5);
+      color: #fff;
+      padding: 14px 28px;
+      border-radius: var(--radius-md);
+      font-size: 1rem;
+      font-weight: 700;
+      text-decoration: none;
+      box-shadow: 0 10px 25px -5px var(--primary-glow);
+      transition: all 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .btn-primary:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 16px 32px -4px var(--primary-glow);
+    }
+    .btn-secondary {
+      background: rgba(255, 255, 255, 0.05);
+      border: 1px solid var(--border-subtle);
+      color: var(--text-main);
+      padding: 14px 24px;
+      border-radius: var(--radius-md);
+      font-size: 1rem;
+      font-weight: 600;
+      text-decoration: none;
+      transition: all 0.2s;
+    }
+    .btn-secondary:hover {
+      background: rgba(255, 255, 255, 0.1);
+      border-color: rgba(255, 255, 255, 0.2);
+    }
+
+    /* Terminal Quickstart */
+    .quickstart-box {
+      max-width: 720px;
+      margin: 0 auto 80px;
+      background: #0d111c;
+      border: 1px solid var(--border-subtle);
+      border-radius: var(--radius-md);
+      overflow: hidden;
+      box-shadow: 0 20px 40px -15px rgba(0, 0, 0, 0.7);
+      text-align: left;
+    }
+    .quickstart-header {
+      background: rgba(255, 255, 255, 0.03);
+      padding: 12px 16px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      border-bottom: 1px solid var(--border-subtle);
+    }
+    .terminal-controls {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .terminal-dot {
+      width: 11px;
+      height: 11px;
+      border-radius: 50%;
+    }
+    .dot-red { background: #ef4444; }
+    .dot-yellow { background: #f59e0b; }
+    .dot-green { background: #10b981; }
+    .terminal-title {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 0.8rem;
+      color: var(--text-dim);
+      margin-left: 8px;
+    }
+    .copy-btn {
+      background: rgba(255, 255, 255, 0.08);
+      border: 1px solid var(--border-subtle);
+      color: var(--text-muted);
+      padding: 4px 10px;
+      border-radius: 6px;
+      font-size: 0.75rem;
+      font-family: 'JetBrains Mono', monospace;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+    .copy-btn:hover {
+      background: rgba(255, 255, 255, 0.15);
+      color: #fff;
+    }
+    .quickstart-body {
+      padding: 20px;
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 0.92rem;
+      line-height: 1.8;
+      color: #e5e7eb;
+    }
+    .quickstart-body span.comment { color: var(--text-dim); }
+    .quickstart-body span.cmd { color: #38bdf8; }
+
+    /* Highlights Grid */
+    .highlights-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+      gap: 24px;
+      margin-bottom: 90px;
+    }
+    .card {
+      background: var(--bg-card);
+      backdrop-filter: blur(16px);
+      border: 1px solid var(--border-subtle);
+      border-radius: var(--radius-lg);
+      padding: 32px;
+      transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+      position: relative;
+      overflow: hidden;
+    }
+    .card:hover {
+      background: var(--bg-card-hover);
+      border-color: var(--border-accent);
+      transform: translateY(-4px);
+    }
+    .card-icon {
+      width: 48px;
+      height: 48px;
+      border-radius: var(--radius-md);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 1.5rem;
+      margin-bottom: 20px;
+      background: rgba(99, 102, 241, 0.12);
+      border: 1px solid rgba(99, 102, 241, 0.25);
+      color: #818cf8;
+    }
+    .card h3 {
+      font-size: 1.25rem;
+      font-weight: 700;
+      margin-bottom: 12px;
+      color: var(--text-main);
+    }
+    .card p {
+      font-size: 0.95rem;
+      color: var(--text-muted);
+      line-height: 1.6;
+    }
+
+    /* Comparison Table Section */
+    .comparison-section {
+      padding: 60px 0 90px;
+    }
+    .section-header {
+      text-align: center;
+      margin-bottom: 48px;
+    }
+    .section-header h2 {
+      font-size: 2.4rem;
+      font-weight: 800;
+      letter-spacing: -0.02em;
+      margin-bottom: 12px;
+    }
+    .section-header p {
+      color: var(--text-muted);
+      font-size: 1.1rem;
+      max-width: 600px;
+      margin: 0 auto;
+    }
+
+    .table-container {
+      background: var(--bg-card);
+      backdrop-filter: blur(20px);
+      border: 1px solid var(--border-subtle);
+      border-radius: var(--radius-lg);
+      overflow-x: auto;
+      box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5);
+    }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      text-align: left;
+    }
+    th, td {
+      padding: 18px 24px;
+      border-bottom: 1px solid var(--border-subtle);
+    }
+    th {
+      font-size: 0.85rem;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      color: var(--text-dim);
+      background: rgba(255, 255, 255, 0.02);
+    }
+    th.highlight-col, td.highlight-col {
+      background: rgba(99, 102, 241, 0.07);
+      font-weight: 600;
+      color: #fff;
+    }
+    th.highlight-col {
+      color: #818cf8;
+      border-top: 2px solid var(--primary);
+    }
+    .check { color: var(--emerald); font-weight: bold; }
+    .cross { color: #ef4444; font-weight: bold; }
+    .warn { color: var(--amber); }
+
+    /* Footer */
+    footer {
+      border-top: 1px solid var(--border-subtle);
+      padding: 48px 0;
+      text-align: center;
+      color: var(--text-dim);
+      font-size: 0.9rem;
+    }
+
+    @media (max-width: 768px) {
+      .hero h1 { font-size: 2.5rem; }
+      .hero p { font-size: 1.05rem; }
+      th, td { padding: 12px 14px; font-size: 0.85rem; }
+    }
+  </style>
+</head>
+<body>
+
+  <div class="glow-orb glow-1"></div>
+  <div class="glow-orb glow-2"></div>
+
+  <div class="container">
+    
+    <!-- Navigation -->
+    <nav>
+      <a href="#" class="brand">
+        <img src="favicon.svg" alt="RunZero Logo" />
+        RunZero
+        <span class="brand-badge">Fleet v2.0</span>
+      </a>
+      <div class="nav-links">
+        <a href="#features" class="nav-link">Features</a>
+        <a href="#comparison" class="nav-link">Why Not ARC?</a>
+        <a href="#quickstart" class="nav-link">Quickstart</a>
+        <a href="https://github.com/el-j/local-github-runner-container" class="btn-github" target="_blank" rel="noopener">
+          <svg height="18" width="18" viewBox="0 0 16 16" fill="currentColor"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"></path></svg>
+          GitHub
+        </a>
+      </div>
+    </nav>
+
+    <!-- Hero Section -->
+    <section class="hero">
+      <div class="hero-badge">
+        🚀 Unlimited CI for Apple Silicon & Docker
+      </div>
+      <h1>
+        Run GitHub Actions Locally.<br>
+        <span class="gradient-text">Zero Cloud Minutes. Zero K8s Bloat.</span>
+      </h1>
+      <p>
+        The lightweight, autoscaling GitHub Actions runner fleet for your Mac. Spins up ephemeral ARM64 & AMD64 runner containers on-demand, with built-in Verdaccio, Athens & tool caching.
+      </p>
+
+      <div class="hero-cta-group">
+        <a href="#quickstart" class="btn-primary">Get Started in 1 Minute</a>
+        <a href="#comparison" class="btn-secondary">Compare with ARC & act</a>
+      </div>
+
+      <!-- Quickstart Command Box -->
+      <div class="quickstart-box" id="quickstart">
+        <div class="quickstart-header">
+          <div class="terminal-controls">
+            <div class="terminal-dot dot-red"></div>
+            <div class="terminal-dot dot-yellow"></div>
+            <div class="terminal-dot dot-green"></div>
+            <span class="terminal-title">quickstart — orbstack / zsh</span>
+          </div>
+          <button class="copy-btn" onclick="copyQuickstart()">Copy</button>
+        </div>
+        <div class="quickstart-body" id="quickstart-code">
+          <span class="comment"># 1. Clone and initialize credentials</span><br>
+          <span class="cmd">git clone</span> git@github.com:el-j/local-github-runner-container.git<br>
+          <span class="cmd">cd</span> local-github-runner-container &amp;&amp; <span class="cmd">make env</span><br><br>
+          <span class="comment"># 2. Start the Autoscaler + Verdaccio &amp; Athens Proxy Stack</span><br>
+          <span class="cmd">make start</span><br><br>
+          <span class="comment"># 3. Stream live runner logs</span><br>
+          <span class="cmd">make logs</span>
+        </div>
+      </div>
+    </section>
+
+    <!-- Highlights Grid -->
+    <section class="features" id="features">
+      <div class="section-header">
+        <h2>Why Developers Love RunZero</h2>
+        <p>Built specifically for local developer machines, homelabs, and private GitHub accounts.</p>
+      </div>
+
+      <div class="highlights-grid">
+        <div class="card">
+          <div class="card-icon">⚡</div>
+          <h3>Dynamic Autoscaling</h3>
+          <p>Watches your repository queue for unclaimed jobs. Spins up ephemeral containers when needed and tears them down immediately when finished (0 MB RAM at idle).</p>
+        </div>
+
+        <div class="card">
+          <div class="card-icon">🍏</div>
+          <h3>Native ARM64 + Rosetta AMD64</h3>
+          <p>Run blazing-fast Apple Silicon builds natively, or execute x86_64 AMD64 Docker containers via OrbStack's Rosetta acceleration on the same MacBook.</p>
+        </div>
+
+        <div class="card">
+          <div class="card-icon">📦</div>
+          <h3>Verdaccio & Athens Caching</h3>
+          <p>Built-in local proxy registries for npm, Go modules, and Docker Hub. Plus persistent volume caching for pip, uv, yarn, pnpm, and <code>actions/setup-*</code>.</p>
+        </div>
+
+        <div class="card">
+          <div class="card-icon">🌐</div>
+          <h3>Owner-Wide Auto-Discovery</h3>
+          <p>Monitors all repositories across your personal GitHub account automatically. No tedious per-repository setup or enterprise org requirements.</p>
+        </div>
+
+        <div class="card">
+          <div class="card-icon">🔒</div>
+          <h3>Zero Kubernetes Overhead</h3>
+          <p>No K8s control plane, no etcd, no Helm charts, and no cert-manager consuming 3GB of your laptop's RAM before a single job runs.</p>
+        </div>
+
+        <div class="card">
+          <div class="card-icon">🛠️</div>
+          <h3>One-Command Makefile</h3>
+          <p>Effortless control with <code>make start</code>, <code>make stop</code>, <code>make verdaccio-ui</code>, and <code>make cache-size</code>.</p>
+        </div>
+      </div>
+    </section>
+
+    <!-- Comparison Table Section -->
+    <section class="comparison-section" id="comparison">
+      <div class="section-header">
+        <h2>The Competitive Landscape</h2>
+        <p>How RunZero compares against Actions Runner Controller (ARC), nektos/act, and static Docker runners.</p>
+      </div>
+
+      <div class="table-container">
+        <table>
+          <thead>
+            <tr>
+              <th>Feature / Metric</th>
+              <th class="highlight-col">⚡ RunZero (Our Stack)</th>
+              <th>🏢 Actions Runner Controller (ARC)</th>
+              <th>🎭 nektos / act</th>
+              <th>📦 Static Runner Dockerfile</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td><strong>Primary Target</strong></td>
+              <td class="highlight-col"><strong>Local Mac / Dev Workstation</strong></td>
+              <td>Enterprise Cloud K8s Fleet</td>
+              <td>Local CLI Scratchpad</td>
+              <td>Single Homelab Server</td>
+            </tr>
+            <tr>
+              <td><strong>Idle RAM Overhead</strong></td>
+              <td class="highlight-col"><span class="check">~20 MB</span> (Zero at idle)</td>
+              <td><span class="cross">1.5 GB – 3.5 GB</span> (Full K8s)</td>
+              <td><span class="check">0 MB</span> (Manual CLI only)</td>
+              <td><span class="warn">~500 MB+</span> (Statically idle)</td>
+            </tr>
+            <tr>
+              <td><strong>Runs Real GitHub Workflows</strong></td>
+              <td class="highlight-col"><span class="check">Yes</span> (Listens to GitHub queue)</td>
+              <td><span class="check">Yes</span></td>
+              <td><span class="cross">No</span> (Local emulation only)</td>
+              <td><span class="check">Yes</span></td>
+            </tr>
+            <tr>
+              <td><strong>Multi-Repo Auto Discovery</strong></td>
+              <td class="highlight-col"><span class="check">Yes</span> (Discovers all user repos)</td>
+              <td><span class="cross">No</span> (Orgs/Enterprise only)</td>
+              <td><span class="cross">N/A</span></td>
+              <td><span class="cross">No</span> (1 repo per container)</td>
+            </tr>
+            <tr>
+              <td><strong>Multi-Arch (Apple Silicon + x86_64)</strong></td>
+              <td class="highlight-col"><span class="check">Yes</span> (OrbStack Rosetta native)</td>
+              <td><span class="warn">Complex</span> (Node taints/specs)</td>
+              <td><span class="warn">Partial</span></td>
+              <td><span class="cross">No</span> (Fixed arch)</td>
+            </tr>
+            <tr>
+              <td><strong>Built-in Caching Proxies</strong></td>
+              <td class="highlight-col"><span class="check">Yes</span> (Verdaccio + Athens + Toolcache)</td>
+              <td><span class="cross">No</span> (Requires K8s PVCs/NFS)</td>
+              <td><span class="cross">No</span></td>
+              <td><span class="cross">No</span></td>
+            </tr>
+            <tr>
+              <td><strong>Setup Complexity</strong></td>
+              <td class="highlight-col"><span class="check">1 Command (<code>make start</code>)</span></td>
+              <td><span class="cross">Heavy Helm / CRD setup</span></td>
+              <td><span class="check">Simple CLI</span></td>
+              <td><span class="warn">Moderate</span></td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <!-- Footer -->
+    <footer>
+      <p>MIT Licensed • Built for high-speed local CI with OrbStack and Docker on macOS.</p>
+    </footer>
+
+  </div>
+
+  <script>
+    function copyQuickstart() {
+      const code = `git clone git@github.com:el-j/local-github-runner-container.git
+cd local-github-runner-container && make env
+make start
+make logs`;
+      navigator.clipboard.writeText(code).then(() => {
+        const btn = document.querySelector('.copy-btn');
+        btn.textContent = 'Copied!';
+        setTimeout(() => { btn.textContent = 'Copy'; }, 2000);
+      });
+    }
+  </script>
+</body>
+</html>

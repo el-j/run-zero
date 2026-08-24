@@ -23,7 +23,7 @@ jobs:
     runs-on: ${{ (inputs.force_runner == 'local' || vars.USE_LOCAL_RUNNER == 'true') && fromJSON('["self-hosted", "local"]') || 'ubuntu-latest' }}
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Display Runner Info
         run: |

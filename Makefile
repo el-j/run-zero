@@ -77,6 +77,11 @@ clean-cache: ## Clear the persistent package and tool cache to reclaim disk spac
 	@rm -rf $(CACHE_DIR)
 	@echo "$(GREEN)Runner cache cleared successfully.$(RESET)"
 
+.PHONY: docs
+docs: ## Open documentation landing page in default browser
+	@echo "$(CYAN)Opening documentation landing page...$(RESET)"
+	@open docs/index.html || echo "Open docs/index.html in your browser."
+
 .PHONY: verdaccio-ui
 verdaccio-ui: ## Open Verdaccio Web UI in default browser (http://localhost:4873)
 	@echo "$(CYAN)Opening Verdaccio Web UI at http://localhost:4873...$(RESET)"
@@ -85,19 +90,19 @@ verdaccio-ui: ## Open Verdaccio Web UI in default browser (http://localhost:4873
 .PHONY: build-arm64
 build-arm64: ## Build native ARM64 runner image (Apple Silicon M-series)
 	@echo "$(CYAN)Building native ARM64 runner image...$(RESET)"
-	docker build --platform linux/arm64 -t local-github-runner:arm64 -t local-github-runner:latest .
+	docker build --platform linux/arm64 -t local-github-runner:arm64 -t local-github-runner:latest ./docker
 	@echo "$(GREEN)ARM64 runner built successfully!$(RESET)"
 
 .PHONY: build-amd64
 build-amd64: ## Build AMD64 / x86_64 runner image (via OrbStack Rosetta)
 	@echo "$(CYAN)Building AMD64 / x86_64 runner image...$(RESET)"
-	docker build --platform linux/amd64 -t local-github-runner:amd64 .
+	docker build --platform linux/amd64 -t local-github-runner:amd64 ./docker
 	@echo "$(GREEN)AMD64 runner built successfully!$(RESET)"
 
 .PHONY: build-autoscaler
 build-autoscaler: ## Build the Autoscaler daemon image
 	@echo "$(CYAN)Building Autoscaler daemon image...$(RESET)"
-	docker build -f Dockerfile.autoscaler -t local-runner-autoscaler:latest .
+	docker build -f docker/Dockerfile.autoscaler -t local-runner-autoscaler:latest ./docker
 	@echo "$(GREEN)Autoscaler built successfully!$(RESET)"
 
 .PHONY: build build-all
