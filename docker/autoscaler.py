@@ -1,8 +1,9 @@
 #!/usr/bin/env python3
 """
-Local GitHub Actions Runner Autoscaler
+Local GitHub Actions Runner Autoscaler (RunZero)
 Supports multi-architecture: Apple Silicon ARM64 (native) and AMD64 / x86_64 (via OrbStack Rosetta).
-Includes persistent multi-language package caching & proxy registries (Verdaccio, Athens, Docker Mirror).
+Includes persistent multi-language package caching, proxy registries (Verdaccio, Athens, Docker Mirror),
+and adaptive GitHub API rate-limit management.
 """
 
 import os
@@ -14,6 +15,7 @@ import urllib.request
 import urllib.error
 import subprocess
 import uuid
+from datetime import datetime, timezone, timedelta
 
 # Configuration from environment variables
 ACCESS_TOKEN = os.getenv("ACCESS_TOKEN") or os.getenv("GITHUB_TOKEN")
@@ -21,6 +23,8 @@ OWNER = os.getenv("OWNER", "").strip()
 ORG = os.getenv("ORG", "").strip()
 REPOS_CONFIG = os.getenv("REPOS") or os.getenv("REPO", "")
 AUTO_DISCOVER = os.getenv("AUTO_DISCOVER_REPOS", "true").lower() in ("true", "1", "yes")
+ACTIVE_DAYS = int(os.getenv("ACTIVE_REPO_DAYS", "60"))  # Only monitor repos pushed in last N days
+DISCOVERY_INTERVAL = int(os.getenv("DISCOVERY_INTERVAL", "900"))  # Refresh repo list every 15 mins
 
 # Architecture configuration: 'arm64', 'amd64', or 'both'
 RUNNER_ARCH = os.getenv("RUNNER_ARCH", "both").lower().strip()
@@ -28,7 +32,7 @@ RUNNER_LABELS_CUSTOM = os.getenv("RUNNER_LABELS", "").strip()
 
 MIN_RUNNERS = int(os.getenv("MIN_RUNNERS", "0"))
 MAX_RUNNERS = int(os.getenv("MAX_RUNNERS", "4"))
-POLL_INTERVAL = int(os.getenv("POLL_INTERVAL", "5"))
+POLL_INTERVAL = int(os.getenv("POLL_INTERVAL", "10"))
 DOCKER_SOCK = os.getenv("DOCKER_SOCK", "/var/run/docker.sock")
 DOCKER_NETWORK = os.getenv("DOCKER_NETWORK", "runner-network")
 
@@ -39,6 +43,10 @@ HOST_CACHE_DIR = os.getenv("HOST_CACHE_DIR") or os.path.expanduser("~/.local-git
 
 API_BASE = "https://api.github.com"
 running = True
+
+# Rate-limiting state
+rate_limit_remaining = 5000
+rate_limit_reset = time.time() + 3600
 
 def signal_handler(signum, frame):
     global running
@@ -75,50 +83,99 @@ def init_cache_dirs():
     return mount_mappings
 
 def github_request(endpoint):
-    """Perform authenticated GitHub REST API GET request."""
+    """Perform authenticated GitHub REST API GET request with rate-limit tracking."""
+    global rate_limit_remaining, rate_limit_reset
+
+    # If quota is exhausted, sleep until reset
+    now = time.time()
+    if rate_limit_remaining < 15 and now < rate_limit_reset:
+        wait_seconds = max(5, int(rate_limit_reset - now) + 2)
+        print(f"[Autoscaler] ⚠️ API rate limit low ({rate_limit_remaining} remaining). Backing off for {wait_seconds}s until reset...", file=sys.stderr)
+        time.sleep(wait_seconds)
+
     url = f"{API_BASE}{endpoint}"
     req = urllib.request.Request(url)
     req.add_header("Authorization", f"Bearer {ACCESS_TOKEN}")
     req.add_header("Accept", "application/vnd.github+json")
     req.add_header("X-GitHub-Api-Version", "2022-11-28")
-    req.add_header("User-Agent", "Local-GitHub-Runner-Autoscaler")
+    req.add_header("User-Agent", "RunZero-Autoscaler")
 
     try:
         with urllib.request.urlopen(req, timeout=10) as resp:
+            headers = resp.headers
+            if "x-ratelimit-remaining" in headers:
+                try:
+                    rate_limit_remaining = int(headers["x-ratelimit-remaining"])
+                    rate_limit_reset = int(headers["x-ratelimit-reset"])
+                except Exception:
+                    pass
             return json.loads(resp.read().decode("utf-8"))
     except urllib.error.HTTPError as e:
-        body = e.read().decode("utf-8") if e.fp else ""
-        print(f"[Autoscaler] API Error ({e.code}) for {endpoint}: {body}", file=sys.stderr)
+        headers = e.headers or {}
+        if "x-ratelimit-remaining" in headers:
+            try:
+                rate_limit_remaining = int(headers["x-ratelimit-remaining"])
+                rate_limit_reset = int(headers["x-ratelimit-reset"])
+            except Exception:
+                pass
+
+        if e.code in (403, 429):
+            wait_seconds = max(10, int(rate_limit_reset - time.time()) + 2) if rate_limit_reset > time.time() else 60
+            print(f"[Autoscaler] ⛔ GitHub API rate limit reached ({e.code}). Pausing calls for {wait_seconds}s...", file=sys.stderr)
+            time.sleep(min(wait_seconds, 300))
+        else:
+            body = e.read().decode("utf-8") if e.fp else ""
+            print(f"[Autoscaler] API Error ({e.code}) for {endpoint}: {body}", file=sys.stderr)
         return None
     except Exception as e:
         print(f"[Autoscaler] Request Error for {endpoint}: {e}", file=sys.stderr)
         return None
 
 def discover_repositories():
-    """Discover list of repositories to monitor."""
+    """Discover list of repositories to monitor, filtering out stale/archived repos to conserve rate limit."""
     repos = set()
 
-    # Explicit list from REPOS / REPO
+    # Explicit list from REPOS / REPO (takes highest priority)
     if REPOS_CONFIG:
         for r in REPOS_CONFIG.split(","):
             r = r.strip()
             if r:
                 repos.add(r)
+        return sorted(list(repos))
 
-    # Auto-discover from authenticated user with pagination
+    # Auto-discover from authenticated user with pagination and active cutoff
     if AUTO_DISCOVER and ACCESS_TOKEN:
+        cutoff_date = datetime.now(timezone.utc) - timedelta(days=ACTIVE_DAYS)
         page = 1
         while True:
-            data = github_request(f"/user/repos?per_page=100&affiliation=owner&page={page}")
+            data = github_request(f"/user/repos?per_page=100&affiliation=owner&sort=pushed&direction=desc&page={page}")
             if not isinstance(data, list) or not data:
                 break
+
+            stop_pagination = False
             for item in data:
-                if isinstance(item, dict) and not item.get("archived", False):
-                    full_name = item.get("full_name", "")
-                    if OWNER and not full_name.startswith(f"{OWNER}/"):
-                        continue
-                    repos.add(full_name)
-            if len(data) < 100:
+                if not isinstance(item, dict) or item.get("archived", False):
+                    continue
+
+                full_name = item.get("full_name", "")
+                if OWNER and not full_name.startswith(f"{OWNER}/"):
+                    continue
+
+                # Filter by last pushed_at date
+                pushed_at_str = item.get("pushed_at")
+                if pushed_at_str:
+                    try:
+                        pushed_at = datetime.fromisoformat(pushed_at_str.replace("Z", "+00:00"))
+                        if pushed_at < cutoff_date:
+                            # Since repos are sorted by pushed descending, all subsequent repos are older
+                            stop_pagination = True
+                            break
+                    except Exception:
+                        pass
+
+                repos.add(full_name)
+
+            if stop_pagination or len(data) < 100:
                 break
             page += 1
 
@@ -251,24 +308,31 @@ def main():
     cache_mounts = init_cache_dirs()
 
     print("=" * 60)
-    print(" Local GitHub Actions Runner Autoscaler (OrbStack)")
-    print(f" Architectures: {', '.join([a.upper() for a in architectures])}")
-    print(f" Cache Directory: {HOST_CACHE_DIR} ({'Enabled' if CACHE_ENABLED else 'Disabled'})")
+    print(" ⚡ RunZero — Local GitHub Actions Runner Autoscaler")
+    print(f" Architectures:    {', '.join([a.upper() for a in architectures])}")
+    print(f" Cache Directory:  {HOST_CACHE_DIR} ({'Enabled' if CACHE_ENABLED else 'Disabled'})")
     print(f" Proxy Registries: {'Enabled (Verdaccio, Athens, Docker Mirror)' if PROXIES_ENABLED else 'Disabled'}")
-    print(f" Max Concurrency: {MAX_RUNNERS} | Min Runners: {MIN_RUNNERS}")
-    print(f" Check Interval:  {POLL_INTERVAL}s")
+    print(f" Max Concurrency:  {MAX_RUNNERS} | Min Runners: {MIN_RUNNERS}")
+    print(f" Active Filter:    Pushed within last {ACTIVE_DAYS} days")
     print("=" * 60)
 
     last_discovery_time = 0
     tracked_repos = []
 
     while running:
-        # Refresh tracked repositories every 60 seconds if auto-discovering
         now = time.time()
-        if not ORG and (now - last_discovery_time > 60 or not tracked_repos):
-            tracked_repos = discover_repositories()
+        # Refresh tracked repositories periodically
+        if not ORG and (now - last_discovery_time > DISCOVERY_INTERVAL or not tracked_repos):
+            discovered = discover_repositories()
             last_discovery_time = now
-            print(f"[Autoscaler] Monitoring {len(tracked_repos)} repository(ies): {', '.join(tracked_repos)}")
+            if discovered:
+                tracked_repos = discovered
+                print(f"[Autoscaler] Monitoring {len(tracked_repos)} active repository(ies) (pushed in last {ACTIVE_DAYS}d):")
+                for r in tracked_repos:
+                    print(f"  • {r}")
+                print(f"[Autoscaler] GitHub API Quota remaining: {rate_limit_remaining}/5000")
+            elif not tracked_repos:
+                print(f"[Autoscaler] No active repositories found pushed in the last {ACTIVE_DAYS} days.")
 
         # Check existing runner containers
         all_containers = get_managed_containers()
@@ -294,6 +358,8 @@ def main():
                 if queued > 0:
                     queued_by_repo[repo] = queued
                     total_queued += queued
+                # Brief sleep between repo checks to smooth out API traffic
+                time.sleep(0.1)
 
             # Check if we need to spawn runners for queued jobs
             if total_queued > 0:
@@ -319,7 +385,9 @@ def main():
                     arch = architectures[i % len(architectures)]
                     spawn_runner(repo=tracked_repos[0], arch=arch, cache_mounts=cache_mounts)
 
-        time.sleep(POLL_INTERVAL)
+        # Adaptive sleep pacing: base poll interval + slight breathing room for many repos
+        sleep_duration = max(POLL_INTERVAL, int(len(tracked_repos) * 0.5))
+        time.sleep(sleep_duration)
 
     # Cleanup remaining containers on stop
     print("[Autoscaler] Stopping managed containers on shutdown...")
