@@ -12,9 +12,11 @@ if [ -d /opt/hostedtoolcache ]; then
 fi
 
 # Ensure package-manager cache mount permissions if mounted — OrbStack presents
-# bind-mounted host dirs as root-owned regardless of the container user, so every
-# path from autoscaler.py's init_cache_dirs() needs the same fixup as toolcache
-# above, or tools writing into them as `runner` fail with EACCES.
+# bind-mounted host dirs as root-owned regardless of the container user. Docker
+# also auto-creates the *ancestor* path components of a bind mount as root (e.g.
+# mounting .../go/pkg/mod still leaves .../go itself root-owned), so a sibling
+# dir a tool tries to mkdir later (like go/bin next to go/pkg/mod) fails too —
+# every ancestor from /home/runner down needs chowning, not just the mount leaf.
 for cache_dir in \
   /home/runner/.npm \
   /home/runner/.cache/yarn \
@@ -25,6 +27,13 @@ for cache_dir in \
   /home/runner/.cache/go-build \
   /home/runner/.cargo/registry; do
   if [ -d "${cache_dir}" ]; then
+    path="/home/runner"
+    rel="${cache_dir#/home/runner/}"
+    IFS='/' read -ra parts <<< "${rel}"
+    for part in "${parts[@]}"; do
+      path="${path}/${part}"
+      sudo chown runner:runner "${path}" 2>/dev/null || true
+    done
     sudo chown -R runner:runner "${cache_dir}" 2>/dev/null || true
   fi
 done

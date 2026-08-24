@@ -6,22 +6,36 @@ ARG TARGETARCH
 # Prevents debconf from prompting during installation
 ENV DEBIAN_FRONTEND=noninteractive
 ENV RUNNER_TOOL_CACHE=/opt/hostedtoolcache
+ENV DOTNET_ROOT=/usr/share/dotnet
+ENV DOTNET_CLI_TELEMETRY_OPTOUT=1
+ENV PATH="/home/runner/.local/bin:/home/runner/go/bin:/usr/share/dotnet:/usr/share/dotnet/tools:${PATH}"
 
-# Update system and install base dependencies
+# 1. Update system and install essential tools & libraries
 RUN apt-get update -y && apt-get upgrade -y && \
     apt-get install -y --no-install-recommends \
     ca-certificates \
     curl \
+    wget \
+    rsync \
     gnupg \
     lsb-release \
     jq \
     git \
+    git-lfs \
     tar \
     unzip \
     zip \
+    bzip2 \
+    zstd \
+    xz-utils \
     build-essential \
+    cmake \
+    pkg-config \
     libssl-dev \
     libffi-dev \
+    libicu-dev \
+    libsqlite3-dev \
+    zlib1g-dev \
     python3 \
     python3-venv \
     python3-dev \
@@ -29,11 +43,20 @@ RUN apt-get update -y && apt-get upgrade -y && \
     sudo \
     iptables \
     software-properties-common \
+    && git lfs install --system \
     && rm -rf /var/lib/apt/lists/*
 
-# Install Docker CLI so workflows can use docker when socket is mounted
-RUN install -m 0755 -d /etc/apt/keyrings && \
-    curl -fsSL https://download.docker.com/linux/ubuntu/gpg -o /etc/apt/keyrings/docker.asc && \
+# 2. Install Node.js LTS (20.x), npm, yarn, and pnpm
+RUN mkdir -p /etc/apt/keyrings && \
+    curl -fsSL https://deb.nodesource.com/gpgkey/nodesource-repo.gpg.key | gpg --dearmor -o /etc/apt/keyrings/nodesource.gpg && \
+    echo "deb [signed-by=/etc/apt/keyrings/nodesource.gpg] https://deb.nodesource.com/node_20.x nodistro main" | tee /etc/apt/sources.list.d/nodesource.list && \
+    apt-get update && \
+    apt-get install -y --no-install-recommends nodejs && \
+    npm install -g yarn pnpm && \
+    rm -rf /var/lib/apt/lists/*
+
+# 3. Install Docker CLI & Compose Plugin
+RUN curl -fsSL https://download.docker.com/linux/ubuntu/gpg -o /etc/apt/keyrings/docker.asc && \
     chmod a+r /etc/apt/keyrings/docker.asc && \
     echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.asc] https://download.docker.com/linux/ubuntu $(. /etc/os-release && echo "$VERSION_CODENAME") stable" | \
     tee /etc/apt/sources.list.d/docker.list > /dev/null && \
@@ -41,9 +64,7 @@ RUN install -m 0755 -d /etc/apt/keyrings && \
     apt-get install -y --no-install-recommends docker-ce-cli docker-compose-plugin && \
     rm -rf /var/lib/apt/lists/*
 
-# .NET SDK — required by gittools/actions/gitversion/setup (GitVersion is a
-# dotnet global tool). GitHub-hosted ubuntu-latest ships this preinstalled;
-# our minimal image doesn't, so workflows using GitVersion need it explicitly.
+# 4. Install .NET SDK 8.0 & Configure Microsoft Repository
 RUN curl -fsSL https://packages.microsoft.com/config/ubuntu/22.04/packages-microsoft-prod.deb -o /tmp/packages-microsoft-prod.deb && \
     dpkg -i /tmp/packages-microsoft-prod.deb && \
     rm /tmp/packages-microsoft-prod.deb && \
@@ -51,7 +72,7 @@ RUN curl -fsSL https://packages.microsoft.com/config/ubuntu/22.04/packages-micro
     apt-get install -y --no-install-recommends dotnet-sdk-8.0 && \
     rm -rf /var/lib/apt/lists/*
 
-# Create runner user with passwordless sudo access & create tool cache directory
+# 5. Create runner user with passwordless sudo access & create tool cache directory
 RUN useradd -m -s /bin/bash runner && \
     usermod -aG sudo runner && \
     echo "runner ALL=(ALL) NOPASSWD:ALL" >> /etc/sudoers && \
@@ -60,7 +81,7 @@ RUN useradd -m -s /bin/bash runner && \
 
 WORKDIR /home/runner
 
-# Download and extract GitHub Actions runner package based on architecture
+# 6. Download and extract GitHub Actions runner package based on architecture
 RUN case "${TARGETARCH:-$(dpkg --print-architecture)}" in \
       "arm64") RUNNER_ARCH="arm64" ;; \
       "amd64"|"x86_64") RUNNER_ARCH="x64" ;; \
