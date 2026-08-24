@@ -98,11 +98,21 @@ def discover_repositories():
     return sorted(list(repos))
 
 def get_queued_runs_for_repo(repo_full_name):
-    """Check number of queued workflow runs for a repository."""
+    """Count actual queued (unclaimed) jobs for a repository, across all its
+    active runs -- NOT the number of queued runs. A single workflow run can
+    contain many independent jobs that GitHub schedules in parallel, and a
+    run's own top-level status can stay 'queued' even after several of its
+    jobs have already started, so counting runs badly undercounts how many
+    runner slots are actually needed."""
     data = github_request(f"/repos/{repo_full_name}/actions/runs?status=queued")
-    if data and "total_count" in data:
-        return data["total_count"]
-    return 0
+    if not data or "workflow_runs" not in data:
+        return 0
+    total_jobs = 0
+    for run in data["workflow_runs"]:
+        jobs_data = github_request(f"/repos/{repo_full_name}/actions/runs/{run['id']}/jobs?filter=latest")
+        if jobs_data and "jobs" in jobs_data:
+            total_jobs += sum(1 for j in jobs_data["jobs"] if j.get("status") == "queued")
+    return total_jobs
 
 def get_managed_containers():
     """Get list of container IDs and their running states created by this autoscaler."""
