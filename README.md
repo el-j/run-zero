@@ -1,6 +1,45 @@
 # Local GitHub Actions Runner & Autoscaler (OrbStack)
 
-A local GitHub Actions runner setup with **multi-architecture support (ARM64 + AMD64/x86_64)**, **intelligent dynamic autoscaling**, and **multi-repo / owner-wide coverage**, built for **OrbStack** on Apple Silicon MacBooks (M1/M2/M3/M4).
+A local GitHub Actions runner setup with **multi-architecture support (ARM64 + AMD64/x86_64)**, **intelligent dynamic autoscaling**, **Verdaccio & Athens caching proxy registries**, **persistent multi-language caching**, and **owner-wide / multi-repo coverage**, optimized for **OrbStack** on Apple Silicon MacBooks (M1/M2/M3/M4).
+
+---
+
+## ⚡ Proxy Registries & Caching Architecture
+
+When running CI jobs on fresh or ephemeral containers, packages are automatically proxied and cached locally on your machine via dedicated proxy sidecars:
+
+```
+   ┌─────────────────────────────────────────────────────────────┐
+   │             Host Machine (OrbStack / Docker)                │
+   │                                                             │
+   │  ┌──────────────────────┐        ┌──────────────────────┐  │
+   │  │ Verdaccio (Port 4873)│        │ Athens (Port 3000)   │  │
+   │  │ Caches NPM Packages  │        │ Caches Go Modules    │  │
+   │  │ (Web UI at :4873)    │        │ (Immutable Go proxy) │  │
+   │  └──────────▲───────────┘        └──────────▲───────────┘  │
+   │             │                               │              │
+   │  ┌──────────┴───────────────────────────────┴───────────┐  │
+   │  │ Docker Registry Mirror (Port 5001 -> 5000)           │  │
+   │  │ Pull-through cache for Docker Hub (Avoids limits)    │  │
+   │  └──────────────────────▲───────────────────────────────┘  │
+   └─────────────────────────┼───────────────────────────────────┘
+                             │ (runner-network)
+          ┌──────────────────┴──────────────────┐
+          ▼                                     ▼
+┌───────────────────────────┐         ┌───────────────────────────┐
+│ Ephemeral Runner (ARM64)  │         │ Ephemeral Runner (AMD64)  │
+│ NPM -> http://verdaccio   │         │ NPM -> http://verdaccio   │
+│ Go  -> http://athens      │         │ Go  -> http://athens      │
+└───────────────────────────┘         └───────────────────────────┘
+```
+
+| Proxy / Cache Service | Host Port | Purpose |
+|---|---|---|
+| **Verdaccio** | [`http://localhost:4873`](http://localhost:4873) | Fast local NPM caching proxy + Web UI to inspect packages |
+| **Athens** | [`http://localhost:3000`](http://localhost:3000) | Local immutable caching proxy for Go modules (`proxy.golang.org`) |
+| **Docker Registry Mirror** | `http://localhost:5001` | Pull-through cache for Docker Hub images to bypass rate limits |
+| **Tool Cache Volume** | `~/.local-github-runner/cache/` | Persistent `/opt/hostedtoolcache` for `actions/setup-*` |
+| **Python / Rust / Yarn** | `~/.local-github-runner/cache/` | Direct volume cache for pip, uv, yarn, pnpm, and cargo |
 
 ---
 
@@ -14,53 +53,7 @@ Thanks to **OrbStack with Rosetta emulation**, you can run **both native ARM64 r
 
 ---
 
-## 🚀 How to Target Specific Architectures in Workflows
-
-### Target AMD64 (x86_64) Specifically:
-```yaml
-jobs:
-  build-amd64:
-    runs-on: [ self-hosted, local, x64 ]
-    steps:
-      - uses: actions/checkout@v4
-      - name: Build for AMD64
-        run: |
-          echo "Architecture: $(uname -m)" # Output: x86_64
-          docker build --platform linux/amd64 -t myapp:x86_64 .
-```
-
-### Target ARM64 (Apple Silicon) Specifically:
-```yaml
-jobs:
-  build-arm64:
-    runs-on: [ self-hosted, local, arm64 ]
-    steps:
-      - uses: actions/checkout@v4
-      - name: Build for ARM64
-        run: |
-          echo "Architecture: $(uname -m)" # Output: aarch64
-```
-
-### Multi-Architecture Matrix Build Locally:
-```yaml
-jobs:
-  build-multiarch:
-    strategy:
-      matrix:
-        arch: [ arm64, x64 ]
-    runs-on: [ self-hosted, local, "${{ matrix.arch }}" ]
-    steps:
-      - uses: actions/checkout@v4
-      - run: |
-          echo "Building on local ${{ matrix.arch }} runner!"
-          uname -m
-```
-
----
-
-## ⚡ Quick Start with `make`
-
-The repository includes a [Makefile](file:///Users/rex-fab-alt/Documents/private/github-runner/Makefile) for simple management:
+## 🚀 Quick Start with `make`
 
 ### 1. Initialize environment:
 ```bash
@@ -72,25 +65,32 @@ ACCESS_TOKEN=ghp_yourPersonalAccessTokenHere
 OWNER=el-j
 AUTO_DISCOVER_REPOS=true
 RUNNER_ARCH=both    # 'both', 'amd64', or 'arm64'
+PROXIES_ENABLED=true # Starts Verdaccio, Athens & Docker Mirror
 ```
 
-### 2. Build the images (one-time or on updates):
+### 2. Build images (one-time or on updates):
 ```bash
 make build          # Builds ARM64 + AMD64 + Autoscaler
 ```
 
-### 3. Start the Autoscaler:
+### 3. Start the Autoscaler & Proxies:
 ```bash
 make start
 ```
 
-### 4. Check status & live logs:
+### 4. Open Verdaccio Web UI:
 ```bash
-make status   # View active autoscaler and dynamic runner containers
-make logs     # Stream live autoscaler logs
+make verdaccio-ui   # Opens http://localhost:4873 in your browser
 ```
 
-### 5. Stop the Autoscaler:
+### 5. Check status & live logs:
+```bash
+make status         # View active autoscaler, proxies, and dynamic runner containers
+make logs           # Stream live autoscaler logs
+make logs-all       # Stream logs from autoscaler + Verdaccio + Athens
+```
+
+### 6. Stop the Autoscaler & Proxies:
 ```bash
 make stop
 ```
@@ -101,14 +101,17 @@ make stop
 
 | Command | Description |
 |---|---|
-| `make start` (or `make up`) | Build & launch the autoscaler in background |
-| `make stop` (or `make down`) | Gracefully stop the autoscaler and running runners |
-| `make status` (or `make ps`) | Display running autoscaler & active ephemeral runners |
+| `make start` (or `make up`) | Launch the autoscaler, Verdaccio, Athens, and Docker mirror |
+| `make stop` (or `make down`) | Gracefully stop the autoscaler, proxies, and active runners |
+| `make status` (or `make ps`) | Display running autoscaler, proxies & active ephemeral runners |
+| `make verdaccio-ui` | Open Verdaccio Web UI at `http://localhost:4873` |
 | `make logs` | Stream live autoscaler logs |
+| `make logs-all` | Stream live logs from all services (autoscaler + proxies) |
+| `make cache-size` | Display disk usage of package and tool caches |
+| `make clean-cache` | Clear all shared package/tool caches |
 | `make build` (or `make build-all`) | Build all images (`arm64` + `amd64` + autoscaler) |
 | `make build-arm64` | Build native Apple Silicon `arm64` runner |
 | `make build-amd64` | Build Intel/AMD `amd64` (x86_64) runner |
-| `make test` | Run in interactive foreground mode for debugging |
 | `make clean` | Force-remove stopped containers and volumes |
 | `make env` | Generate `.env` from template if missing |
 | `make help` | Show all available Makefile commands |
@@ -125,6 +128,8 @@ make stop
 | `ORG` | Target GitHub Organization name | *None* |
 | `AUTO_DISCOVER_REPOS` | Automatically discover and monitor all user repos | `true` |
 | `RUNNER_ARCH` | Runner architectures to spawn (`arm64`, `amd64`, or `both`) | `both` |
+| `PROXIES_ENABLED` | Enable Verdaccio & Athens proxy registries for runners | `true` |
+| `CACHE_ENABLED` | Enable persistent package/tool caching across runners | `true` |
 | `MIN_RUNNERS` | Minimum idle runners on standby | `0` |
 | `MAX_RUNNERS` | Maximum concurrent runner containers | `4` |
 | `POLL_INTERVAL` | Queue check interval in seconds | `5` |

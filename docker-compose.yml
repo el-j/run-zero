@@ -1,7 +1,12 @@
+networks:
+  runner-network:
+    name: runner-network
+    driver: bridge
+
 services:
-  # Mode 1 (Recommended): Dynamic On-Demand Autoscaler
-  # Monitors your repos/org for queued jobs, automatically spins up ephemeral runner
-  # containers (ARM64, AMD64, or both), and deletes them as soon as jobs finish.
+  # ============================================================================
+  # Mode 1: Dynamic On-Demand Runner Autoscaler
+  # ============================================================================
   autoscaler:
     build:
       context: .
@@ -9,6 +14,12 @@ services:
     image: local-runner-autoscaler:latest
     container_name: local-runner-autoscaler
     restart: unless-stopped
+    networks:
+      - runner-network
+    depends_on:
+      - verdaccio
+      - athens
+      - docker-mirror
     environment:
       - ACCESS_TOKEN=${ACCESS_TOKEN:-}
       - OWNER=${OWNER:-}
@@ -19,11 +30,63 @@ services:
       - MIN_RUNNERS=${MIN_RUNNERS:-0}
       - MAX_RUNNERS=${MAX_RUNNERS:-4}
       - POLL_INTERVAL=${POLL_INTERVAL:-5}
+      - CACHE_ENABLED=${CACHE_ENABLED:-true}
+      - PROXIES_ENABLED=${PROXIES_ENABLED:-true}
+      - DOCKER_NETWORK=runner-network
+      - HOST_CACHE_DIR=${HOST_CACHE_DIR:-}
       - RUNNER_LABELS=${RUNNER_LABELS:-}
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
 
-  # Mode 2: Static Fixed Runner Service (Alternative)
+  # ============================================================================
+  # Caching Proxy Services (NPM, Go, Docker Hub)
+  # ============================================================================
+  # Verdaccio: Fast Local Caching NPM Proxy & Private Registry + Web UI
+  verdaccio:
+    image: verdaccio/verdaccio:5
+    container_name: local-runner-verdaccio
+    restart: unless-stopped
+    networks:
+      - runner-network
+    ports:
+      - "4873:4873"
+    environment:
+      - VERDACCIO_PORT=4873
+    volumes:
+      - verdaccio-storage:/verdaccio/storage
+
+  # Athens: Local Caching Proxy for Go Modules
+  athens:
+    image: gomods/athens:latest
+    container_name: local-runner-athens
+    restart: unless-stopped
+    networks:
+      - runner-network
+    ports:
+      - "3000:3000"
+    environment:
+      - ATHENS_DISK_STORAGE_ROOT=/var/lib/athens
+      - ATHENS_STORAGE_TYPE=disk
+    volumes:
+      - athens-storage:/var/lib/athens
+
+  # Docker Registry Mirror: Pull-through cache for Docker Hub images
+  docker-mirror:
+    image: registry:2
+    container_name: local-runner-docker-mirror
+    restart: unless-stopped
+    networks:
+      - runner-network
+    ports:
+      - "5001:5000"
+    environment:
+      - REGISTRY_PROXY_REMOTEURL=https://registry-1.docker.io
+    volumes:
+      - docker-mirror-storage:/var/lib/registry
+
+  # ============================================================================
+  # Mode 2: Static Fixed Runner Services (Alternative profile)
+  # ============================================================================
   github-runner-arm64:
     build:
       context: .
@@ -31,6 +94,8 @@ services:
     image: local-github-runner:arm64
     platform: linux/arm64
     restart: unless-stopped
+    networks:
+      - runner-network
     profiles:
       - static
     environment:
@@ -42,9 +107,15 @@ services:
       - RUNNER_LABELS=${RUNNER_LABELS:-self-hosted,local,arm64}
       - RUNNER_WORKDIR=${RUNNER_WORKDIR:-_work}
       - EPHEMERAL=${EPHEMERAL:-false}
+      - NPM_CONFIG_REGISTRY=http://verdaccio:4873/
+      - GOPROXY=http://athens:3000,https://proxy.golang.org,direct
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
       - runner-work-arm64:/home/runner/actions-runner/_work
+      - runner-cache-npm:/home/runner/.npm
+      - runner-cache-pip:/home/runner/.cache/pip
+      - runner-cache-go:/home/runner/go/pkg/mod
+      - runner-cache-tool:/opt/hostedtoolcache
 
   github-runner-amd64:
     build:
@@ -53,6 +124,8 @@ services:
     image: local-github-runner:amd64
     platform: linux/amd64
     restart: unless-stopped
+    networks:
+      - runner-network
     profiles:
       - static
     environment:
@@ -64,10 +137,23 @@ services:
       - RUNNER_LABELS=${RUNNER_LABELS:-self-hosted,local,x64,amd64}
       - RUNNER_WORKDIR=${RUNNER_WORKDIR:-_work}
       - EPHEMERAL=${EPHEMERAL:-false}
+      - NPM_CONFIG_REGISTRY=http://verdaccio:4873/
+      - GOPROXY=http://athens:3000,https://proxy.golang.org,direct
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
       - runner-work-amd64:/home/runner/actions-runner/_work
+      - runner-cache-npm:/home/runner/.npm
+      - runner-cache-pip:/home/runner/.cache/pip
+      - runner-cache-go:/home/runner/go/pkg/mod
+      - runner-cache-tool:/opt/hostedtoolcache
 
 volumes:
+  verdaccio-storage:
+  athens-storage:
+  docker-mirror-storage:
   runner-work-arm64:
   runner-work-amd64:
+  runner-cache-npm:
+  runner-cache-pip:
+  runner-cache-go:
+  runner-cache-tool:

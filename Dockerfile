@@ -5,6 +5,7 @@ ARG TARGETARCH
 
 # Prevents debconf from prompting during installation
 ENV DEBIAN_FRONTEND=noninteractive
+ENV RUNNER_TOOL_CACHE=/opt/hostedtoolcache
 
 # Update system and install base dependencies
 RUN apt-get update -y && apt-get upgrade -y && \
@@ -40,10 +41,12 @@ RUN install -m 0755 -d /etc/apt/keyrings && \
     apt-get install -y --no-install-recommends docker-ce-cli docker-compose-plugin && \
     rm -rf /var/lib/apt/lists/*
 
-# Create runner user with passwordless sudo access
+# Create runner user with passwordless sudo access & create tool cache directory
 RUN useradd -m -s /bin/bash runner && \
     usermod -aG sudo runner && \
-    echo "runner ALL=(ALL) NOPASSWD:ALL" >> /etc/sudoers
+    echo "runner ALL=(ALL) NOPASSWD:ALL" >> /etc/sudoers && \
+    mkdir -p /opt/hostedtoolcache && \
+    chown -R runner:runner /opt/hostedtoolcache
 
 WORKDIR /home/runner
 

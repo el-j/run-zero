@@ -1,9 +1,12 @@
 # ==============================================================================
 # Local GitHub Actions Runner & Autoscaler - Makefile (OrbStack / Docker)
 # Multi-Architecture Support: Apple Silicon (ARM64) & Intel/AMD (AMD64 / x86_64)
+# Persistent Package Caching + Proxy Registries (Verdaccio, Athens, Docker Mirror)
 # ==============================================================================
 
 .DEFAULT_GOAL := help
+
+CACHE_DIR := $(HOME)/.local-github-runner/cache
 
 # Colors for terminal styling
 CYAN    := \033[36m
@@ -18,7 +21,7 @@ BOLD    := \033[1m
 help: ## Display available commands
 	@echo ""
 	@echo "$(BOLD)$(CYAN)Local GitHub Actions Runner & Autoscaler (OrbStack)$(RESET)"
-	@echo "$(YELLOW)Multi-architecture CI execution (ARM64 Native + AMD64 Rosetta Emulation)$(RESET)"
+	@echo "$(YELLOW)Multi-architecture CI execution with Verdaccio, Athens & Persistent Caching$(RESET)"
 	@echo ""
 	@echo "$(BOLD)Usage:$(RESET) make $(GREEN)<target>$(RESET)"
 	@echo ""
@@ -43,6 +46,42 @@ check-env:
 		exit 1; \
 	fi
 
+.PHONY: init-cache
+init-cache: ## Initialize host cache directories
+	@mkdir -p $(CACHE_DIR)/toolcache \
+	          $(CACHE_DIR)/npm \
+	          $(CACHE_DIR)/yarn \
+	          $(CACHE_DIR)/pnpm \
+	          $(CACHE_DIR)/pip \
+	          $(CACHE_DIR)/uv \
+	          $(CACHE_DIR)/go-mod \
+	          $(CACHE_DIR)/go-build \
+	          $(CACHE_DIR)/cargo-registry
+
+.PHONY: cache-size
+cache-size: ## Show disk usage of local runner caches and proxies
+	@echo ""
+	@echo "$(BOLD)$(CYAN)=== Local Runner Cache Disk Usage ($(CACHE_DIR)) ===$(RESET)"
+	@if [ -d "$(CACHE_DIR)" ]; then \
+		du -sh $(CACHE_DIR)/* 2>/dev/null || echo "Cache directory is currently empty."; \
+		echo ""; \
+		echo "$(BOLD)Total Cache Size:$(RESET) $$(du -sh $(CACHE_DIR) 2>/dev/null | cut -f1)"; \
+	else \
+		echo "Cache directory does not exist yet. It will be created when runners run."; \
+	fi
+	@echo ""
+
+.PHONY: clean-cache
+clean-cache: ## Clear the persistent package and tool cache to reclaim disk space
+	@echo "$(YELLOW)Clearing local runner caches at $(CACHE_DIR)...$(RESET)"
+	@rm -rf $(CACHE_DIR)
+	@echo "$(GREEN)Runner cache cleared successfully.$(RESET)"
+
+.PHONY: verdaccio-ui
+verdaccio-ui: ## Open Verdaccio Web UI in default browser (http://localhost:4873)
+	@echo "$(CYAN)Opening Verdaccio Web UI at http://localhost:4873...$(RESET)"
+	@open http://localhost:4873 || echo "Navigate to http://localhost:4873 in your browser."
+
 .PHONY: build-arm64
 build-arm64: ## Build native ARM64 runner image (Apple Silicon M-series)
 	@echo "$(CYAN)Building native ARM64 runner image...$(RESET)"
@@ -66,33 +105,40 @@ build: build-arm64 build-amd64 build-autoscaler ## Build all images (ARM64 + AMD
 build-all: build
 
 .PHONY: start up
-start: check-env ## Start the multi-arch Autoscaler in background
-	@echo "$(CYAN)Starting Local GitHub Runner Autoscaler (OrbStack)...$(RESET)"
+start: check-env init-cache ## Start Autoscaler and Proxy services (Verdaccio, Athens, Docker mirror)
+	@echo "$(CYAN)Starting Local GitHub Runner Autoscaler & Proxy stack (OrbStack)...$(RESET)"
 	docker compose up -d
-	@echo "$(GREEN)Autoscaler is running in background!$(RESET)"
+	@echo "$(GREEN)Autoscaler and Proxy registries are running in background!$(RESET)"
+	@echo "  • Verdaccio Web UI: $(BOLD)http://localhost:4873$(RESET) (Run $(BOLD)make verdaccio-ui$(RESET))"
+	@echo "  • Athens Go Proxy:  $(BOLD)http://localhost:3000$(RESET)"
+	@echo "  • Docker Mirror:    $(BOLD)http://localhost:5001$(RESET)"
 	@echo "Use $(BOLD)make logs$(RESET) to stream logs or $(BOLD)make status$(RESET) to see active runners."
 
 up: start
 
 .PHONY: stop down
-stop: ## Stop the Autoscaler and remove active runner containers
+stop: ## Stop Autoscaler, Proxies, and remove active runner containers
 	@echo "$(YELLOW)Stopping Autoscaler and unregistering active runners...$(RESET)"
 	docker compose down
-	@echo "$(GREEN)Autoscaler stopped.$(RESET)"
+	@echo "$(GREEN)Autoscaler and proxies stopped.$(RESET)"
 
 down: stop
 
 .PHONY: restart
-restart: stop start ## Restart the Autoscaler
+restart: stop start ## Restart Autoscaler and Proxies
 
 .PHONY: logs
 logs: ## Stream live logs from the Autoscaler
 	@docker compose logs -f autoscaler
 
+.PHONY: logs-all
+logs-all: ## Stream live logs from all services (Autoscaler + Verdaccio + Athens)
+	@docker compose logs -f
+
 .PHONY: status ps
-status: ## Show running Autoscaler and active dynamic runner containers
+status: ## Show running Autoscaler, Proxies, and active dynamic runner containers
 	@echo ""
-	@echo "$(BOLD)$(CYAN)=== Autoscaler Service ===$(RESET)"
+	@echo "$(BOLD)$(CYAN)=== Runner & Proxy Services ===$(RESET)"
 	@docker compose ps
 	@echo ""
 	@echo "$(BOLD)$(CYAN)=== Active Ephemeral Runner Containers ===$(RESET)"
@@ -107,6 +153,6 @@ clean: ## Force clean stopped containers and temporary runner volumes
 	@echo "$(GREEN)Cleaned up successfully.$(RESET)"
 
 .PHONY: test
-test: check-env ## Run local autoscaler in foreground for quick debugging
+test: check-env init-cache ## Run local autoscaler in foreground for quick debugging
 	@echo "$(CYAN)Running Autoscaler in interactive foreground mode...$(RESET)"
 	docker compose up

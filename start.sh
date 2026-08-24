@@ -6,6 +6,11 @@ if [ -S /var/run/docker.sock ]; then
   sudo chmod 666 /var/run/docker.sock 2>/dev/null || true
 fi
 
+# Ensure toolcache permissions if mounted
+if [ -d /opt/hostedtoolcache ]; then
+  sudo chown -R runner:runner /opt/hostedtoolcache 2>/dev/null || true
+fi
+
 # Detect architecture for automatic labels
 ARCH=$(uname -m)
 case "${ARCH}" in
@@ -13,6 +18,18 @@ case "${ARCH}" in
   "x86_64"|"amd64") ARCH_LABEL="x64,amd64" ;;
   *) ARCH_LABEL="${ARCH}" ;;
 esac
+
+# Proxy Registry auto-detection (Verdaccio for NPM & Athens for Go)
+if curl -s --connect-timeout 1 http://verdaccio:4873/ >/dev/null 2>&1; then
+  export NPM_CONFIG_REGISTRY="http://verdaccio:4873/"
+  npm config set registry http://verdaccio:4873/ --global 2>/dev/null || true
+  echo "⚡ Verdaccio NPM proxy connected: http://verdaccio:4873/"
+fi
+
+if curl -s --connect-timeout 1 http://athens:3000/ >/dev/null 2>&1; then
+  export GOPROXY="http://athens:3000,https://proxy.golang.org,direct"
+  echo "⚡ Athens Go proxy connected: http://athens:3000"
+fi
 
 # Fallback/alias for environment variable names
 REPO="${REPO:-${REPOSITORY}}"
@@ -49,6 +66,8 @@ echo "Runner Name:   ${RUNNER_NAME}"
 echo "Architecture:  ${ARCH} (${ARCH_LABEL})"
 echo "Labels:        ${RUNNER_LABELS}"
 echo "Ephemeral:     ${EPHEMERAL}"
+echo "NPM Registry:  ${NPM_CONFIG_REGISTRY:-https://registry.npmjs.org/}"
+echo "Go Proxy:      ${GOPROXY:-https://proxy.golang.org,direct}"
 echo "=========================================="
 
 # Retrieve registration token via Personal Access Token (PAT) if not directly supplied
