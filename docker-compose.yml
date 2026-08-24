@@ -1,0 +1,51 @@
+services:
+  # Mode 1 (Recommended): Dynamic On-Demand Autoscaler
+  # Monitors your repos/org for queued jobs, automatically spins up ephemeral runner
+  # containers, and deletes them as soon as jobs finish.
+  autoscaler:
+    build:
+      context: .
+      dockerfile: Dockerfile.autoscaler
+    image: local-runner-autoscaler:latest
+    container_name: local-runner-autoscaler
+    restart: unless-stopped
+    environment:
+      - ACCESS_TOKEN=${ACCESS_TOKEN:-}
+      - OWNER=${OWNER:-}
+      - REPOS=${REPOS:-${REPO:-}}
+      - ORG=${ORG:-}
+      - AUTO_DISCOVER_REPOS=${AUTO_DISCOVER_REPOS:-true}
+      - MIN_RUNNERS=${MIN_RUNNERS:-0}
+      - MAX_RUNNERS=${MAX_RUNNERS:-4}
+      - POLL_INTERVAL=${POLL_INTERVAL:-5}
+      - RUNNER_IMAGE=local-github-runner:latest
+      - RUNNER_LABELS=${RUNNER_LABELS:-self-hosted,local}
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+
+  # Mode 2: Static Fixed Runner Service (Alternative)
+  # Persistent runner(s) for a specific repo or org.
+  # Can be scaled statically with: docker compose up -d --scale github-runner=3
+  github-runner:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: local-github-runner:latest
+    restart: unless-stopped
+    profiles:
+      - static
+    environment:
+      - REPO=${REPO:-}
+      - ORG=${ORG:-}
+      - ACCESS_TOKEN=${ACCESS_TOKEN:-}
+      - RUNNER_TOKEN=${RUNNER_TOKEN:-}
+      - RUNNER_NAME=${RUNNER_NAME:-local-runner}
+      - RUNNER_LABELS=${RUNNER_LABELS:-self-hosted,local}
+      - RUNNER_WORKDIR=${RUNNER_WORKDIR:-_work}
+      - EPHEMERAL=${EPHEMERAL:-false}
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - runner-work:/home/runner/actions-runner/_work
+
+volumes:
+  runner-work:

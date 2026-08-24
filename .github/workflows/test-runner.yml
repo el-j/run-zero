@@ -1,0 +1,35 @@
+name: Dynamic Failover Workflow Example
+
+on:
+  workflow_dispatch:
+    inputs:
+      force_runner:
+        description: 'Choose runner type'
+        required: false
+        default: 'auto'
+        type: choice
+        options:
+          - auto
+          - local
+          - cloud
+  push:
+    branches: [ main ]
+  pull_request:
+
+# If vars.USE_LOCAL_RUNNER is set to 'true' in repo settings, or if input is 'local',
+# it runs on your local machine; otherwise uses cloud ubuntu-latest.
+jobs:
+  build:
+    runs-on: ${{ (inputs.force_runner == 'local' || vars.USE_LOCAL_RUNNER == 'true') && fromJSON('["self-hosted", "local"]') || 'ubuntu-latest' }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Display Runner Info
+        run: |
+          echo "Running on: ${{ runner.os }} (${{ runner.arch }})"
+          echo "Is self-hosted: ${{ runner.name }}"
+
+      - name: Build and Test
+        run: |
+          echo "Executing CI job..."
