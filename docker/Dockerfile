@@ -8,6 +8,7 @@ ENV DEBIAN_FRONTEND=noninteractive
 ENV RUNNER_TOOL_CACHE=/opt/hostedtoolcache
 ENV DOTNET_ROOT=/usr/share/dotnet
 ENV DOTNET_CLI_TELEMETRY_OPTOUT=1
+ENV NVM_DIR=/home/runner/.nvm
 ENV PATH="/home/runner/.local/bin:/home/runner/go/bin:/usr/share/dotnet:/usr/share/dotnet/tools:${PATH}"
 
 # 1. Update system and install essential tools & libraries
@@ -46,16 +47,7 @@ RUN apt-get update -y && apt-get upgrade -y && \
     && git lfs install --system \
     && rm -rf /var/lib/apt/lists/*
 
-# 2. Install Node.js LTS (20.x), npm, yarn, and pnpm
-RUN mkdir -p /etc/apt/keyrings && \
-    curl -fsSL https://deb.nodesource.com/gpgkey/nodesource-repo.gpg.key | gpg --dearmor -o /etc/apt/keyrings/nodesource.gpg && \
-    echo "deb [signed-by=/etc/apt/keyrings/nodesource.gpg] https://deb.nodesource.com/node_20.x nodistro main" | tee /etc/apt/sources.list.d/nodesource.list && \
-    apt-get update && \
-    apt-get install -y --no-install-recommends nodejs && \
-    npm install -g yarn pnpm && \
-    rm -rf /var/lib/apt/lists/*
-
-# 3. Install Docker CLI & Compose Plugin
+# 2. Install Docker CLI & Compose Plugin
 RUN curl -fsSL https://download.docker.com/linux/ubuntu/gpg -o /etc/apt/keyrings/docker.asc && \
     chmod a+r /etc/apt/keyrings/docker.asc && \
     echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.asc] https://download.docker.com/linux/ubuntu $(. /etc/os-release && echo "$VERSION_CODENAME") stable" | \
@@ -64,7 +56,7 @@ RUN curl -fsSL https://download.docker.com/linux/ubuntu/gpg -o /etc/apt/keyrings
     apt-get install -y --no-install-recommends docker-ce-cli docker-compose-plugin && \
     rm -rf /var/lib/apt/lists/*
 
-# 4. Install .NET SDK 8.0 & Configure Microsoft Repository
+# 3. Install .NET SDK 8.0 & Configure Microsoft Repository
 RUN curl -fsSL https://packages.microsoft.com/config/ubuntu/22.04/packages-microsoft-prod.deb -o /tmp/packages-microsoft-prod.deb && \
     dpkg -i /tmp/packages-microsoft-prod.deb && \
     rm /tmp/packages-microsoft-prod.deb && \
@@ -72,7 +64,7 @@ RUN curl -fsSL https://packages.microsoft.com/config/ubuntu/22.04/packages-micro
     apt-get install -y --no-install-recommends dotnet-sdk-8.0 && \
     rm -rf /var/lib/apt/lists/*
 
-# 5. Create runner user with passwordless sudo access & create tool cache directory
+# 4. Create runner user with passwordless sudo access & create tool cache directory
 RUN useradd -m -s /bin/bash runner && \
     usermod -aG sudo runner && \
     echo "runner ALL=(ALL) NOPASSWD:ALL" >> /etc/sudoers && \
@@ -80,6 +72,30 @@ RUN useradd -m -s /bin/bash runner && \
     chown -R runner:runner /opt/hostedtoolcache
 
 WORKDIR /home/runner
+
+# 5. Install NVM and pre-bake Node.js 20 (LTS), 22 (LTS), and 24 (Current) with yarn & pnpm
+USER runner
+RUN curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.40.1/install.sh | bash && \
+    . $NVM_DIR/nvm.sh && \
+    nvm install 20 && \
+    nvm install 22 && \
+    nvm install 24 && \
+    nvm alias default 20 && \
+    nvm use 20 && \
+    npm install -g yarn pnpm && \
+    nvm use 22 && \
+    npm install -g yarn pnpm && \
+    nvm use 24 && \
+    npm install -g yarn pnpm && \
+    nvm use default
+
+USER root
+
+# Ensure NVM is auto-loaded for all shells
+RUN echo 'export NVM_DIR="/home/runner/.nvm"' >> /etc/profile.d/nvm.sh && \
+    echo '[ -s "$NVM_DIR/nvm.sh" ] && \. "$NVM_DIR/nvm.sh"' >> /etc/profile.d/nvm.sh && \
+    echo '[ -s "$NVM_DIR/bash_completion" ] && \. "$NVM_DIR/bash_completion"' >> /etc/profile.d/nvm.sh && \
+    chmod +x /etc/profile.d/nvm.sh
 
 # 6. Download and extract GitHub Actions runner package based on architecture
 RUN case "${TARGETARCH:-$(dpkg --print-architecture)}" in \
