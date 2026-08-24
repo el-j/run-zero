@@ -41,6 +41,16 @@ RUN install -m 0755 -d /etc/apt/keyrings && \
     apt-get install -y --no-install-recommends docker-ce-cli docker-compose-plugin && \
     rm -rf /var/lib/apt/lists/*
 
+# .NET SDK — required by gittools/actions/gitversion/setup (GitVersion is a
+# dotnet global tool). GitHub-hosted ubuntu-latest ships this preinstalled;
+# our minimal image doesn't, so workflows using GitVersion need it explicitly.
+RUN curl -fsSL https://packages.microsoft.com/config/ubuntu/22.04/packages-microsoft-prod.deb -o /tmp/packages-microsoft-prod.deb && \
+    dpkg -i /tmp/packages-microsoft-prod.deb && \
+    rm /tmp/packages-microsoft-prod.deb && \
+    apt-get update && \
+    apt-get install -y --no-install-recommends dotnet-sdk-8.0 && \
+    rm -rf /var/lib/apt/lists/*
+
 # Create runner user with passwordless sudo access & create tool cache directory
 RUN useradd -m -s /bin/bash runner && \
     usermod -aG sudo runner && \
