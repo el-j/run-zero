@@ -1,5 +1,6 @@
 # ==============================================================================
 # Local GitHub Actions Runner & Autoscaler - Makefile (OrbStack / Docker)
+# Multi-Architecture Support: Apple Silicon (ARM64) & Intel/AMD (AMD64 / x86_64)
 # ==============================================================================
 
 .DEFAULT_GOAL := help
@@ -16,12 +17,12 @@ BOLD    := \033[1m
 .PHONY: help
 help: ## Display available commands
 	@echo ""
-	@echo "$(BOLD)$(CYAN)Local GitHub Actions Runner & Autoscaler$(RESET)"
-	@echo "$(YELLOW)Fast, containerized CI execution powered by OrbStack & Docker$(RESET)"
+	@echo "$(BOLD)$(CYAN)Local GitHub Actions Runner & Autoscaler (OrbStack)$(RESET)"
+	@echo "$(YELLOW)Multi-architecture CI execution (ARM64 Native + AMD64 Rosetta Emulation)$(RESET)"
 	@echo ""
 	@echo "$(BOLD)Usage:$(RESET) make $(GREEN)<target>$(RESET)"
 	@echo ""
-	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | sort | awk 'BEGIN {FS = ":.*?## "}; {printf "  $(GREEN)%-15s$(RESET) %s\n", $$1, $$2}'
+	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | sort | awk 'BEGIN {FS = ":.*?## "}; {printf "  $(GREEN)%-18s$(RESET) %s\n", $$1, $$2}'
 	@echo ""
 
 .PHONY: env
@@ -42,16 +43,32 @@ check-env:
 		exit 1; \
 	fi
 
-.PHONY: build
-build: ## Build both Runner and Autoscaler Docker images
-	@echo "$(CYAN)Building Runner and Autoscaler images...$(RESET)"
-	docker compose build
-	@echo "$(GREEN)Images built successfully!$(RESET)"
+.PHONY: build-arm64
+build-arm64: ## Build native ARM64 runner image (Apple Silicon M-series)
+	@echo "$(CYAN)Building native ARM64 runner image...$(RESET)"
+	docker build --platform linux/arm64 -t local-github-runner:arm64 -t local-github-runner:latest .
+	@echo "$(GREEN)ARM64 runner built successfully!$(RESET)"
+
+.PHONY: build-amd64
+build-amd64: ## Build AMD64 / x86_64 runner image (via OrbStack Rosetta)
+	@echo "$(CYAN)Building AMD64 / x86_64 runner image...$(RESET)"
+	docker build --platform linux/amd64 -t local-github-runner:amd64 .
+	@echo "$(GREEN)AMD64 runner built successfully!$(RESET)"
+
+.PHONY: build-autoscaler
+build-autoscaler: ## Build the Autoscaler daemon image
+	@echo "$(CYAN)Building Autoscaler daemon image...$(RESET)"
+	docker build -f Dockerfile.autoscaler -t local-runner-autoscaler:latest .
+	@echo "$(GREEN)Autoscaler built successfully!$(RESET)"
+
+.PHONY: build build-all
+build: build-arm64 build-amd64 build-autoscaler ## Build all images (ARM64 + AMD64 + Autoscaler)
+build-all: build
 
 .PHONY: start up
-start: check-env ## Start the Runner Autoscaler in background
+start: check-env ## Start the multi-arch Autoscaler in background
 	@echo "$(CYAN)Starting Local GitHub Runner Autoscaler (OrbStack)...$(RESET)"
-	docker compose up -d --build
+	docker compose up -d
 	@echo "$(GREEN)Autoscaler is running in background!$(RESET)"
 	@echo "Use $(BOLD)make logs$(RESET) to stream logs or $(BOLD)make status$(RESET) to see active runners."
 
@@ -92,4 +109,4 @@ clean: ## Force clean stopped containers and temporary runner volumes
 .PHONY: test
 test: check-env ## Run local autoscaler in foreground for quick debugging
 	@echo "$(CYAN)Running Autoscaler in interactive foreground mode...$(RESET)"
-	docker compose up --build
+	docker compose up

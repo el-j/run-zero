@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 """
 Local GitHub Actions Runner Autoscaler
+Supports multi-architecture: Apple Silicon ARM64 (native) and AMD64 / x86_64 (via OrbStack Rosetta).
 Dynamically spins up ephemeral runner containers when jobs are queued,
-and cleans them up when finished. Supports single repo, multiple repos,
-all repos owned by a user, or an organization.
+and cleans them up when finished.
 """
 
 import os
@@ -23,8 +23,10 @@ ORG = os.getenv("ORG", "").strip()
 REPOS_CONFIG = os.getenv("REPOS") or os.getenv("REPO", "")
 AUTO_DISCOVER = os.getenv("AUTO_DISCOVER_REPOS", "true").lower() in ("true", "1", "yes")
 
-RUNNER_IMAGE = os.getenv("RUNNER_IMAGE", "local-github-runner:latest")
-RUNNER_LABELS = os.getenv("RUNNER_LABELS", "self-hosted,local")
+# Architecture configuration: 'arm64', 'amd64', or 'both'
+RUNNER_ARCH = os.getenv("RUNNER_ARCH", "arm64").lower().strip()
+RUNNER_LABELS_CUSTOM = os.getenv("RUNNER_LABELS", "").strip()
+
 MIN_RUNNERS = int(os.getenv("MIN_RUNNERS", "0"))
 MAX_RUNNERS = int(os.getenv("MAX_RUNNERS", "4"))
 POLL_INTERVAL = int(os.getenv("POLL_INTERVAL", "5"))
@@ -109,7 +111,7 @@ def get_managed_containers():
             [
                 "docker", "ps", "-a",
                 "--filter", "label=managed-by=local-autoscaler",
-                "--format", "{{.ID}}|{{.Status}}|{{.Names}}|{{.State}}|{{.Label \"target-repo\"}}"
+                "--format", "{{.ID}}|{{.Status}}|{{.Names}}|{{.State}}|{{.Label \"target-repo\"}}|{{.Label \"target-arch\"}}"
             ],
             capture_output=True,
             text=True,
@@ -120,13 +122,14 @@ def get_managed_containers():
             if not line.strip():
                 continue
             parts = line.split("|")
-            if len(parts) >= 5:
+            if len(parts) >= 6:
                 containers.append({
                     "id": parts[0],
                     "status": parts[1],
                     "name": parts[2],
-                    "state": parts[3], # "running", "exited", etc.
-                    "target_repo": parts[4]
+                    "state": parts[3],
+                    "target_repo": parts[4],
+                    "target_arch": parts[5]
                 })
         return containers
     except Exception as e:
@@ -140,20 +143,30 @@ def prune_exited_containers(containers):
             print(f"[Autoscaler] Removing finished runner container: {c['name']} ({c['id']})")
             subprocess.run(["docker", "rm", "-f", c["id"]], capture_output=True)
 
-def spawn_runner(repo=None, org=None):
-    """Spawn a new ephemeral runner container."""
+def spawn_runner(repo=None, org=None, arch="arm64"):
+    """Spawn a new ephemeral runner container for the given architecture."""
     unique_id = uuid.uuid4().hex[:6]
     name_suffix = f"-{repo.replace('/', '-')}" if repo else (f"-{org}" if org else "")
-    container_name = f"local-runner{name_suffix}-{unique_id}"
+    container_name = f"local-runner-{arch}{name_suffix}-{unique_id}"
+    image_tag = f"local-github-runner:{arch}"
+    platform_flag = f"linux/{arch}"
+
+    default_labels = f"self-hosted,local,{arch}"
+    if arch == "amd64":
+        default_labels = "self-hosted,local,x64,amd64"
+
+    labels = RUNNER_LABELS_CUSTOM if RUNNER_LABELS_CUSTOM else default_labels
 
     cmd = [
         "docker", "run", "-d",
         "--name", container_name,
+        "--platform", platform_flag,
         "--label", "managed-by=local-autoscaler",
         "--label", f"target-repo={repo or ''}",
+        "--label", f"target-arch={arch}",
         "-e", f"ACCESS_TOKEN={ACCESS_TOKEN}",
         "-e", f"RUNNER_NAME={container_name}",
-        "-e", f"RUNNER_LABELS={RUNNER_LABELS}",
+        "-e", f"RUNNER_LABELS={labels}",
         "-e", "EPHEMERAL=true",
         "-e", "RUNNER_WORKDIR=_work",
         "-v", f"{DOCKER_SOCK}:/var/run/docker.sock"
@@ -164,9 +177,9 @@ def spawn_runner(repo=None, org=None):
     elif org:
         cmd.extend(["-e", f"ORG={org}"])
 
-    cmd.append(RUNNER_IMAGE)
+    cmd.append(image_tag)
 
-    print(f"[Autoscaler] 🚀 Spawning ephemeral runner {container_name} for {repo or org}...")
+    print(f"[Autoscaler] 🚀 Spawning ephemeral [{arch.upper()}] runner {container_name} for {repo or org}...")
     try:
         subprocess.run(cmd, check=True, capture_output=True)
         return container_name
@@ -174,15 +187,27 @@ def spawn_runner(repo=None, org=None):
         print(f"[Autoscaler] Error launching container: {e.stderr.decode()}", file=sys.stderr)
         return None
 
+def get_target_architectures():
+    """Return list of architectures to spin up."""
+    if RUNNER_ARCH in ("both", "all", "dual"):
+        return ["arm64", "amd64"]
+    elif RUNNER_ARCH in ("amd64", "x86_64", "x64"):
+        return ["amd64"]
+    else:
+        return ["arm64"]
+
 def main():
     if not ACCESS_TOKEN:
         print("[Autoscaler] Error: ACCESS_TOKEN is required for autoscaling.", file=sys.stderr)
         sys.exit(1)
 
+    architectures = get_target_architectures()
+
     print("=" * 60)
-    print(" Local GitHub Actions Runner Autoscaler")
+    print(" Local GitHub Actions Runner Autoscaler (OrbStack)")
+    print(f" Architectures Supported: {', '.join([a.upper() for a in architectures])}")
     print(f" Max Concurrency: {MAX_RUNNERS} | Min Runners: {MIN_RUNNERS}")
-    print(f" Check Interval: {POLL_INTERVAL}s")
+    print(f" Check Interval:  {POLL_INTERVAL}s")
     print("=" * 60)
 
     last_discovery_time = 0
@@ -204,11 +229,12 @@ def main():
         active_count = len(active_containers)
 
         if ORG:
-            # For organizations, runners can be registered at org level
+            # For organizations
             if active_count < MIN_RUNNERS and active_count < MAX_RUNNERS:
                 needed = min(MIN_RUNNERS - active_count, MAX_RUNNERS - active_count)
-                for _ in range(needed):
-                    spawn_runner(org=ORG)
+                for i in range(needed):
+                    arch = architectures[i % len(architectures)]
+                    spawn_runner(org=ORG, arch=arch)
         else:
             # For repositories: check queued runs per repository
             queued_by_repo = {}
@@ -225,23 +251,24 @@ def main():
                 print(f"[Autoscaler] Detected {total_queued} queued job(s) across repos: {queued_by_repo}")
 
             for repo, count in queued_by_repo.items():
-                # Count active runners already dedicated to this repo
                 active_for_repo = sum(1 for c in active_containers if c["target_repo"] == repo)
                 needed = count - active_for_repo
 
                 while needed > 0 and len(active_containers) < MAX_RUNNERS:
-                    spawned = spawn_runner(repo=repo)
-                    if spawned:
-                        active_containers.append({"name": spawned, "target_repo": repo, "state": "running"})
-                        needed -= 1
-                    else:
-                        break
+                    for arch in architectures:
+                        if len(active_containers) >= MAX_RUNNERS or needed <= 0:
+                            break
+                        spawned = spawn_runner(repo=repo, arch=arch)
+                        if spawned:
+                            active_containers.append({"name": spawned, "target_repo": repo, "state": "running", "target_arch": arch})
+                            needed -= 1
 
-            # Maintain MIN_RUNNERS if configured (spawn for first tracked repo if idle)
+            # Maintain MIN_RUNNERS if configured
             if active_count < MIN_RUNNERS and active_count < MAX_RUNNERS and tracked_repos:
                 needed = min(MIN_RUNNERS - active_count, MAX_RUNNERS - active_count)
-                for _ in range(needed):
-                    spawn_runner(repo=tracked_repos[0])
+                for i in range(needed):
+                    arch = architectures[i % len(architectures)]
+                    spawn_runner(repo=tracked_repos[0], arch=arch)
 
         time.sleep(POLL_INTERVAL)
 

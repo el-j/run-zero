@@ -6,15 +6,23 @@ if [ -S /var/run/docker.sock ]; then
   sudo chmod 666 /var/run/docker.sock 2>/dev/null || true
 fi
 
+# Detect architecture for automatic labels
+ARCH=$(uname -m)
+case "${ARCH}" in
+  "aarch64"|"arm64") ARCH_LABEL="arm64" ;;
+  "x86_64"|"amd64") ARCH_LABEL="x64,amd64" ;;
+  *) ARCH_LABEL="${ARCH}" ;;
+esac
+
 # Fallback/alias for environment variable names
 REPO="${REPO:-${REPOSITORY}}"
 ORG="${ORG:-${ORGANIZATION}}"
 ACCESS_TOKEN="${ACCESS_TOKEN:-${TOKEN:-${PAT_TOKEN:-${GITHUB_TOKEN}}}}"
 RUNNER_TOKEN="${RUNNER_TOKEN:-${REGISTRATION_TOKEN}}"
-BASE_RUNNER_NAME="${RUNNER_NAME:-runner}"
+BASE_RUNNER_NAME="${RUNNER_NAME:-runner-${ARCH_LABEL%%,*}}"
 RUNNER_WORKDIR="${RUNNER_WORKDIR:-_work}"
 RUNNER_GROUP="${RUNNER_GROUP:-}"
-RUNNER_LABELS="${RUNNER_LABELS:-self-hosted,local}"
+RUNNER_LABELS="${RUNNER_LABELS:-self-hosted,local,${ARCH_LABEL}}"
 EPHEMERAL="${EPHEMERAL:-false}"
 DISABLE_AUTO_UPDATE="${DISABLE_AUTO_UPDATE:-true}"
 
@@ -35,10 +43,13 @@ elif [ -n "${ORG}" ]; then
   API_URL="https://api.github.com/orgs/${ORG}/actions/runners"
 fi
 
-echo "Target URL: ${RUNNER_URL}"
-echo "Runner Name: ${RUNNER_NAME}"
-echo "Runner Labels: ${RUNNER_LABELS}"
-echo "Ephemeral: ${EPHEMERAL}"
+echo "=========================================="
+echo "Target URL:    ${RUNNER_URL}"
+echo "Runner Name:   ${RUNNER_NAME}"
+echo "Architecture:  ${ARCH} (${ARCH_LABEL})"
+echo "Labels:        ${RUNNER_LABELS}"
+echo "Ephemeral:     ${EPHEMERAL}"
+echo "=========================================="
 
 # Retrieve registration token via Personal Access Token (PAT) if not directly supplied
 if [ -z "${RUNNER_TOKEN}" ]; then
@@ -54,7 +65,7 @@ if [ -z "${RUNNER_TOKEN}" ]; then
     -H "X-GitHub-Api-Version: 2022-11-28" \
     "${API_URL}/registration-token")
 
-  REG_TOKEN=$(echo "${TOKEN_RESPONSE}" | jq -r .token // empty)
+  REG_TOKEN=$(echo "${TOKEN_RESPONSE}" | jq -r '.token // empty')
 
   if [ -z "${REG_TOKEN}" ] || [ "${REG_TOKEN}" = "null" ]; then
     echo "Error: Failed to obtain registration token. GitHub response was:"
@@ -107,7 +118,7 @@ cleanup() {
       -H "Accept: application/vnd.github+json" \
       -H "X-GitHub-Api-Version: 2022-11-28" \
       "${API_URL}/remove-token" 2>/dev/null || true)
-    REMOVE_TOKEN=$(echo "${REMOVE_TOKEN_RESPONSE}" | jq -r .token // empty)
+    REMOVE_TOKEN=$(echo "${REMOVE_TOKEN_RESPONSE}" | jq -r '.token // empty')
   fi
 
   if [ -z "${REMOVE_TOKEN}" ] || [ "${REMOVE_TOKEN}" = "null" ]; then

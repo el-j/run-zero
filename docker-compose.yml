@@ -1,7 +1,7 @@
 services:
   # Mode 1 (Recommended): Dynamic On-Demand Autoscaler
   # Monitors your repos/org for queued jobs, automatically spins up ephemeral runner
-  # containers, and deletes them as soon as jobs finish.
+  # containers (ARM64, AMD64, or both), and deletes them as soon as jobs finish.
   autoscaler:
     build:
       context: .
@@ -15,22 +15,21 @@ services:
       - REPOS=${REPOS:-${REPO:-}}
       - ORG=${ORG:-}
       - AUTO_DISCOVER_REPOS=${AUTO_DISCOVER_REPOS:-true}
+      - RUNNER_ARCH=${RUNNER_ARCH:-both}
       - MIN_RUNNERS=${MIN_RUNNERS:-0}
       - MAX_RUNNERS=${MAX_RUNNERS:-4}
       - POLL_INTERVAL=${POLL_INTERVAL:-5}
-      - RUNNER_IMAGE=local-github-runner:latest
-      - RUNNER_LABELS=${RUNNER_LABELS:-self-hosted,local}
+      - RUNNER_LABELS=${RUNNER_LABELS:-}
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
 
   # Mode 2: Static Fixed Runner Service (Alternative)
-  # Persistent runner(s) for a specific repo or org.
-  # Can be scaled statically with: docker compose up -d --scale github-runner=3
-  github-runner:
+  github-runner-arm64:
     build:
       context: .
       dockerfile: Dockerfile
-    image: local-github-runner:latest
+    image: local-github-runner:arm64
+    platform: linux/arm64
     restart: unless-stopped
     profiles:
       - static
@@ -39,13 +38,36 @@ services:
       - ORG=${ORG:-}
       - ACCESS_TOKEN=${ACCESS_TOKEN:-}
       - RUNNER_TOKEN=${RUNNER_TOKEN:-}
-      - RUNNER_NAME=${RUNNER_NAME:-local-runner}
-      - RUNNER_LABELS=${RUNNER_LABELS:-self-hosted,local}
+      - RUNNER_NAME=${RUNNER_NAME:-local-runner-arm64}
+      - RUNNER_LABELS=${RUNNER_LABELS:-self-hosted,local,arm64}
       - RUNNER_WORKDIR=${RUNNER_WORKDIR:-_work}
       - EPHEMERAL=${EPHEMERAL:-false}
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
-      - runner-work:/home/runner/actions-runner/_work
+      - runner-work-arm64:/home/runner/actions-runner/_work
+
+  github-runner-amd64:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: local-github-runner:amd64
+    platform: linux/amd64
+    restart: unless-stopped
+    profiles:
+      - static
+    environment:
+      - REPO=${REPO:-}
+      - ORG=${ORG:-}
+      - ACCESS_TOKEN=${ACCESS_TOKEN:-}
+      - RUNNER_TOKEN=${RUNNER_TOKEN:-}
+      - RUNNER_NAME=${RUNNER_NAME:-local-runner-amd64}
+      - RUNNER_LABELS=${RUNNER_LABELS:-self-hosted,local,x64,amd64}
+      - RUNNER_WORKDIR=${RUNNER_WORKDIR:-_work}
+      - EPHEMERAL=${EPHEMERAL:-false}
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - runner-work-amd64:/home/runner/actions-runner/_work
 
 volumes:
-  runner-work:
+  runner-work-arm64:
+  runner-work-amd64:
