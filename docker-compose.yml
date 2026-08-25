@@ -5,9 +5,22 @@ networks:
 
 services:
   # ============================================================================
-  # Mode 1: Dynamic On-Demand Runner Autoscaler
+  # Mode 1: Dynamic On-Demand Runner Autoscaler (containerized, Docker-only)
   # ============================================================================
+  # Opt-in only (`docker compose --profile container-autoscaler up -d`) -- NOT
+  # started by `make start`/`make up` by default. `make start` now runs the
+  # autoscaler as a native host process instead (see Makefile), because the VM
+  # drivers (orbstack-vm/wsl2/multipass) shell out to host-native tools
+  # (`orbctl`, `wsl.exe`, `multipass`) that cannot exist inside this container
+  # -- running it here means `is_available()` always returns False for every
+  # VM driver regardless of what's installed on the real host, silently
+  # disabling half of the dual-engine feature. This service is kept for hosts
+  # that genuinely only want the Docker driver (e.g. a Linux box with no VM
+  # tooling at all) and are fine trading VM support for a fully containerized
+  # deployment.
   autoscaler:
+    profiles:
+      - container-autoscaler
     build:
       context: .
       dockerfile: docker/Dockerfile.autoscaler

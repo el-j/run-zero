@@ -1,131 +1,248 @@
 ---
-// Hybrid Auto-Routing Code Showcase Component
+// Hybrid Auto-Routing Technical Showcase
 ---
 
-<section class="showcase-section" id="routing">
-  <div class="section-header">
-    <h2>Hybrid Auto-Routing in Action</h2>
-    <p>RunZero automatically inspects workflow labels and executes on the optimal backend without cluster switching.</p>
+<section class="routing-showcase" id="routing">
+  <div class="section-tag">
+    <span class="tag-accent">//</span>
+    <span>DISPATCH_LOGIC</span>
+  </div>
+  
+  <div class="section-heading-group">
+    <h2>Hybrid Auto-Routing Engine</h2>
+    <p>Zero cluster switching. RunZero inspects your job labels and dispatches either to ultra-fast container runtimes or dedicated virtual machines.</p>
   </div>
 
-  <div class="showcase-grid">
-    <!-- Card 1: Fast Docker Container -->
-    <div class="code-preview-card">
-      <div class="code-header">
-        <strong>Standard Builds &amp; Unit Tests</strong>
-        <span class="code-badge-docker">🐳 Ephemeral Docker (~0.3s)</span>
+  <div class="routing-split">
+    <!-- Stream 1: Ephemeral Container -->
+    <div class="split-card container-mode">
+      <div class="card-top-bar">
+        <div class="mode-info">
+          <span class="mode-badge docker">EPHEMERAL_DOCKER</span>
+          <span class="mode-title">Unit Tests &amp; Builds</span>
+        </div>
+        <div class="mode-metrics">
+          <span class="metric-pill">~0.3s BOOT</span>
+          <span class="metric-pill volt">20MB IDLE</span>
+        </div>
       </div>
-      <pre class="code-content"><code><span class="k">jobs:</span>
-  <span class="k">unit-test:</span>
-    <span class="k">runs-on:</span> <span class="highlight-pill">[ self-hosted, local ]</span>
+
+      <div class="code-editor-box">
+        <div class="editor-gutter">
+          <span>1</span><span>2</span><span>3</span><span>4</span><span>5</span><span>6</span>
+        </div>
+        <pre class="editor-code"><code><span class="k">jobs:</span>
+  <span class="k">test-suite:</span>
+    <span class="k">runs-on:</span> <span class="label-match">[ self-hosted, local ]</span>
     <span class="k">steps:</span>
       - <span class="k">uses:</span> <span class="v">actions/checkout@v7</span>
-      - <span class="k">run:</span> <span class="v">npm test</span>
+      - <span class="k">run:</span> <span class="v">npm test</span></code></pre>
+      </div>
 
-<span class="c"># ⚡ Instant ~0.3s start, 20MB RAM idle overhead</span></code></pre>
+      <div class="card-bottom-telemetry">
+        <span>⚡ RUNTIME: CONTAINER // SOCKET: HOST // ISOLATION: CGROUP</span>
+      </div>
     </div>
 
-    <!-- Card 2: Dedicated Linux VM -->
-    <div class="code-preview-card">
-      <div class="code-header">
-        <strong>Browser E2E, Lighthouse &amp; Systemd</strong>
-        <span class="code-badge-vm">💻 Dedicated Linux VM</span>
+    <!-- Stream 2: Dedicated Linux VM -->
+    <div class="split-card vm-mode">
+      <div class="card-top-bar">
+        <div class="mode-info">
+          <span class="mode-badge vm">DEDICATED_LINUX_VM</span>
+          <span class="mode-title">Browser E2E &amp; Systemd</span>
+        </div>
+        <div class="mode-metrics">
+          <span class="metric-pill">FULL OS</span>
+          <span class="metric-pill cyan">SYSTEMD</span>
+        </div>
       </div>
-      <pre class="code-content"><code><span class="k">jobs:</span>
-  <span class="k">lighthouse-audit:</span>
-    <span class="k">runs-on:</span> <span class="highlight-pill">[ self-hosted, local, browser ]</span>
+
+      <div class="code-editor-box">
+        <div class="editor-gutter">
+          <span>1</span><span>2</span><span>3</span><span>4</span><span>5</span><span>6</span>
+        </div>
+        <pre class="editor-code"><code><span class="k">jobs:</span>
+  <span class="k">browser-audit:</span>
+    <span class="k">runs-on:</span> <span class="label-match vm">[ self-hosted, local, browser ]</span>
     <span class="k">steps:</span>
       - <span class="k">uses:</span> <span class="v">actions/checkout@v7</span>
-      - <span class="k">run:</span> <span class="v">npx lhci autorun</span>
+      - <span class="k">run:</span> <span class="v">npx lhci autorun</span></code></pre>
+      </div>
 
-<span class="c"># 🛡️ Full systemd, unconfined Chrome &amp; true OS isolation</span></code></pre>
+      <div class="card-bottom-telemetry">
+        <span>🛡️ RUNTIME: VIRT_FRAMEWORK // SYSTEMD: ACTIVE // CHROME: UNCONFINED</span>
+      </div>
     </div>
   </div>
 </section>
 
 <style>
-  .showcase-section {
-    padding: 60px 0 80px;
-  }
-  .section-header {
-    text-align: center;
-    margin-bottom: 48px;
-  }
-  .section-header h2 {
-    font-size: 2.4rem;
-    font-weight: 800;
-    margin-bottom: 12px;
-  }
-  .section-header p {
-    color: var(--text-muted);
-    font-size: 1.1rem;
-    max-width: 620px;
-    margin: 0 auto;
+  .routing-showcase {
+    padding: 72px 0 96px;
   }
 
-  .showcase-grid {
+  .section-tag {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    font-family: var(--font-mono);
+    font-size: 0.75rem;
+    font-weight: 800;
+    color: var(--volt);
+    letter-spacing: 0.08em;
+    margin-bottom: 12px;
+  }
+  .tag-accent { color: var(--text-dim); }
+
+  .section-heading-group {
+    margin-bottom: 48px;
+  }
+  .section-heading-group h2 {
+    font-size: 2.5rem;
+    letter-spacing: -0.03em;
+    margin-bottom: 12px;
+  }
+  .section-heading-group p {
+    color: var(--text-muted);
+    font-size: 1.1rem;
+    max-width: 680px;
+  }
+
+  .routing-split {
     display: grid;
     grid-template-columns: 1fr 1fr;
     gap: 24px;
   }
-  .code-preview-card {
-    background: var(--bg-code);
+
+  .split-card {
+    background: var(--bg-card);
     border: 1px solid var(--border-subtle);
     border-radius: var(--radius-lg);
     overflow: hidden;
-    box-shadow: 0 20px 40px -15px rgba(0, 0, 0, 0.7);
+    transition: all 0.25s ease;
   }
-  .code-header {
-    padding: 16px 20px;
-    background: var(--bg-code-header);
+  .split-card:hover {
+    border-color: var(--border-card);
+    box-shadow: 0 20px 40px -15px rgba(0, 0, 0, 0.8);
+  }
+  .split-card.container-mode:hover {
+    border-color: var(--border-volt);
+  }
+  .split-card.vm-mode:hover {
+    border-color: var(--border-cyan);
+  }
+
+  .card-top-bar {
+    padding: 14px 18px;
+    background: rgba(255, 255, 255, 0.02);
     border-bottom: 1px solid var(--border-subtle);
     display: flex;
     justify-content: space-between;
     align-items: center;
-    font-size: 0.95rem;
+    flex-wrap: wrap;
+    gap: 10px;
   }
-  .code-badge-docker {
-    background: rgba(6, 182, 212, 0.15);
-    color: var(--cyan-light);
-    border: 1px solid var(--border-cyan);
-    font-size: 0.75rem;
-    font-weight: 700;
-    padding: 4px 10px;
-    border-radius: 999px;
-    text-transform: uppercase;
+
+  .mode-info {
+    display: flex;
+    align-items: center;
+    gap: 10px;
   }
-  .code-badge-vm {
-    background: rgba(168, 85, 247, 0.15);
-    color: #c084fc;
-    border: 1px solid rgba(168, 85, 247, 0.35);
-    font-size: 0.75rem;
-    font-weight: 700;
-    padding: 4px 10px;
-    border-radius: 999px;
-    text-transform: uppercase;
-  }
-  .code-content {
-    padding: 24px;
+  .mode-badge {
     font-family: var(--font-mono);
-    font-size: 0.9rem;
-    line-height: 1.75;
-    color: #cbd5e1;
-    margin: 0;
+    font-size: 0.68rem;
+    font-weight: 800;
+    padding: 3px 7px;
+    border-radius: var(--radius-sm);
+    letter-spacing: 0.04em;
+  }
+  .mode-badge.docker {
+    background: var(--volt-dim);
+    border: 1px solid var(--border-volt);
+    color: var(--volt-light);
+  }
+  .mode-badge.vm {
+    background: rgba(0, 240, 255, 0.1);
+    border: 1px solid var(--border-cyan);
+    color: var(--cyan);
+  }
+
+  .mode-title {
+    font-size: 0.88rem;
+    font-weight: 700;
+    color: var(--text-main);
+  }
+
+  .mode-metrics {
+    display: flex;
+    gap: 6px;
+  }
+  .metric-pill {
+    font-family: var(--font-mono);
+    font-size: 0.68rem;
+    font-weight: 700;
+    padding: 2px 6px;
+    border-radius: 2px;
+    background: rgba(255, 255, 255, 0.04);
+    color: var(--text-muted);
+  }
+  .metric-pill.volt { color: var(--volt); background: var(--volt-dim); }
+  .metric-pill.cyan { color: var(--cyan); background: rgba(0, 240, 255, 0.1); }
+
+  .code-editor-box {
+    display: flex;
+    padding: 20px;
+    background: #06080e;
     overflow-x: auto;
   }
-  .highlight-pill {
-    background: rgba(99, 102, 241, 0.25);
-    border: 1px solid var(--primary);
-    border-radius: 4px;
-    padding: 2px 7px;
-    color: #fff;
+  .editor-gutter {
+    display: flex;
+    flex-direction: column;
+    font-family: var(--font-mono);
+    font-size: 0.82rem;
+    line-height: 1.75;
+    color: #242c3d;
+    padding-right: 14px;
+    border-right: 1px solid rgba(255, 255, 255, 0.05);
+    margin-right: 14px;
+    user-select: none;
+  }
+  .editor-code {
+    margin: 0;
+    font-family: var(--font-mono);
+    font-size: 0.85rem;
+    line-height: 1.75;
+    color: #cbd5e1;
+    flex: 1;
+  }
+  .editor-code .k { color: #f43f5e; }
+  .editor-code .v { color: #10b981; }
+
+  .label-match {
+    background: var(--volt-dim);
+    border: 1px solid var(--volt);
+    color: var(--volt-light);
+    padding: 1px 6px;
+    border-radius: 2px;
     font-weight: 700;
   }
-  .code-content .k { color: #f43f5e; }
-  .code-content .v { color: #34d399; }
-  .code-content .c { color: var(--text-dim); }
+  .label-match.vm {
+    background: rgba(0, 240, 255, 0.15);
+    border-color: var(--cyan);
+    color: #fff;
+  }
+
+  .card-bottom-telemetry {
+    padding: 8px 18px;
+    background: rgba(0, 0, 0, 0.4);
+    border-top: 1px solid var(--border-subtle);
+    font-family: var(--font-mono);
+    font-size: 0.65rem;
+    color: var(--text-dim);
+    letter-spacing: 0.06em;
+  }
 
   @media (max-width: 860px) {
-    .showcase-grid { grid-template-columns: 1fr; }
+    .routing-split { grid-template-columns: 1fr; }
   }
 </style>

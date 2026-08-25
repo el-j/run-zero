@@ -1,45 +1,56 @@
 /* ==========================================================================
-   RunZero — Bespoke Design System & Global Styles
-   Obsidian Glassmorphism, Micro-Animations, Plus Jakarta Sans & JetBrains Mono
+   RunZero — Hyper-Terminal & Carbon Design System
+   Unique Visual Identity: Deep Matte Obsidian, Radioactive Volt Lime,
+   Solar Hyper-Amber, Technical Dot-Matrix Grid & Precision Hardware Aesthetics
    ========================================================================== */
 
 :root {
-  --bg-primary: #07090e;
-  --bg-secondary: #0c101a;
-  --bg-card: rgba(16, 22, 36, 0.75);
-  --bg-card-hover: rgba(24, 33, 54, 0.95);
-  --bg-code: #090d16;
-  --bg-code-header: rgba(255, 255, 255, 0.04);
-  
-  --border-subtle: rgba(255, 255, 255, 0.08);
+  /* Surface Tokens */
+  --bg-primary: #05070a;
+  --bg-secondary: #0a0d14;
+  --bg-surface: #0e121c;
+  --bg-card: rgba(14, 18, 28, 0.85);
+  --bg-card-hover: rgba(20, 26, 40, 0.95);
+  --bg-code: #07090f;
+  --bg-code-header: rgba(212, 255, 0, 0.03);
+
+  /* Borders & Grids */
+  --border-subtle: rgba(255, 255, 255, 0.07);
   --border-card: rgba(255, 255, 255, 0.12);
-  --border-accent: rgba(99, 102, 241, 0.4);
-  --border-cyan: rgba(6, 182, 212, 0.4);
+  --border-volt: rgba(212, 255, 0, 0.35);
+  --border-cyan: rgba(0, 240, 255, 0.3);
+
+  /* Signature RunZero Colorway (Radioactive Volt Lime + Solar Amber + Cobalt Ice) */
+  --volt: #d4ff00;
+  --volt-light: #e6ff66;
+  --volt-glow: rgba(212, 255, 0, 0.25);
+  --volt-dim: rgba(212, 255, 0, 0.1);
   
-  --primary: #6366f1;
-  --primary-light: #818cf8;
-  --primary-glow: rgba(99, 102, 241, 0.35);
-  --cyan: #06b6d4;
-  --cyan-light: #38bdf8;
-  --cyan-glow: rgba(6, 182, 212, 0.3);
+  --amber: #ffb703;
+  --amber-glow: rgba(255, 183, 3, 0.25);
+  
+  --cyan: #00f0ff;
+  --cyan-glow: rgba(0, 240, 255, 0.25);
+
   --emerald: #10b981;
-  --amber: #f59e0b;
-  --rose: #f43f5e;
-  --purple: #a855f7;
-  
+  --rose: #ff3366;
+
+  /* Typography Colors */
   --text-main: #f8fafc;
   --text-muted: #94a3b8;
   --text-dim: #64748b;
-  
-  --radius-xl: 20px;
-  --radius-lg: 14px;
-  --radius-md: 10px;
-  --radius-sm: 6px;
-  
+  --text-volt: #d4ff00;
+
+  /* Sizing & Radii */
+  --radius-xl: 16px;
+  --radius-lg: 12px;
+  --radius-md: 8px;
+  --radius-sm: 4px;
+
   --font-sans: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
   --font-mono: 'JetBrains Mono', SFMono-Regular, Menlo, Monaco, Consolas, monospace;
-  
-  --header-height: 72px;
+
+  --header-height: 68px;
   --sidebar-width: 280px;
 }
 
@@ -56,6 +67,12 @@ html {
 
 body {
   background-color: var(--bg-primary);
+  background-image: 
+    radial-gradient(circle at 50% -20%, rgba(212, 255, 0, 0.08) 0%, transparent 50%),
+    radial-gradient(circle at 100% 60%, rgba(0, 240, 255, 0.05) 0%, transparent 40%),
+    linear-gradient(rgba(255, 255, 255, 0.02) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255, 255, 255, 0.02) 1px, transparent 1px);
+  background-size: 100% 100%, 100% 100%, 48px 48px, 48px 48px;
   color: var(--text-main);
   font-family: var(--font-sans);
   line-height: 1.65;
@@ -63,27 +80,17 @@ body {
   -webkit-font-smoothing: antialiased;
 }
 
-/* Ambient Background Glows */
-.ambient-glow {
+/* Ambient Background Light Elements */
+.ambient-volt {
   position: fixed;
-  border-radius: 50%;
-  filter: blur(140px);
+  top: -150px;
+  left: 20%;
+  width: 500px;
+  height: 500px;
+  background: radial-gradient(circle, var(--volt-glow) 0%, transparent 70%);
+  filter: blur(120px);
   z-index: 0;
   pointer-events: none;
-}
-.glow-primary {
-  top: -120px;
-  left: 25%;
-  width: 600px;
-  height: 600px;
-  background: radial-gradient(circle, var(--primary-glow) 0%, transparent 70%);
-}
-.glow-cyan {
-  top: 50%;
-  right: -100px;
-  width: 520px;
-  height: 520px;
-  background: radial-gradient(circle, var(--cyan-glow) 0%, transparent 70%);
 }
 
 .container {
@@ -94,54 +101,112 @@ body {
   z-index: 1;
 }
 
-/* Typography & Badges */
+/* Typography & Headings */
 h1, h2, h3, h4, h5 {
   color: var(--text-main);
-  letter-spacing: -0.025em;
+  letter-spacing: -0.03em;
+  font-weight: 800;
 }
 
-.gradient-text {
-  background: linear-gradient(135deg, #818cf8 0%, #38bdf8 50%, #34d399 100%);
+.volt-gradient {
+  background: linear-gradient(135deg, #ffffff 20%, #d4ff00 80%, #00f0ff 100%);
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
 }
 
-/* Reusable Buttons */
-.btn-primary {
-  background: linear-gradient(135deg, var(--primary), #4f46e5);
-  color: #fff;
-  padding: 13px 28px;
-  border-radius: var(--radius-md);
-  font-size: 1rem;
-  font-weight: 700;
-  text-decoration: none;
-  box-shadow: 0 10px 25px -5px var(--primary-glow);
-  transition: all 0.25s cubic-bezier(0.16, 1, 0.3, 1);
-  display: inline-flex;
-  align-items: center;
-  gap: 10px;
-}
-.btn-primary:hover {
-  transform: translateY(-2px);
-  box-shadow: 0 16px 32px -4px var(--primary-glow);
+.volt-text {
+  color: var(--volt);
+  text-shadow: 0 0 12px var(--volt-glow);
 }
 
-.btn-secondary {
-  background: rgba(255, 255, 255, 0.05);
+/* Technical Telemetry Badges & Chips */
+.tech-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-family: var(--font-mono);
+  font-size: 0.76rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  padding: 3px 8px;
+  border-radius: var(--radius-sm);
+  background: rgba(255, 255, 255, 0.04);
   border: 1px solid var(--border-subtle);
-  color: var(--text-main);
-  padding: 13px 24px;
+  color: var(--text-muted);
+}
+.tech-chip.volt {
+  background: var(--volt-dim);
+  border-color: var(--border-volt);
+  color: var(--volt-light);
+}
+
+/* Technical Buttons */
+.btn-volt {
+  background: var(--volt);
+  color: #05070a;
+  padding: 12px 24px;
   border-radius: var(--radius-md);
-  font-size: 1rem;
-  font-weight: 600;
+  font-size: 0.95rem;
+  font-weight: 800;
+  font-family: var(--font-mono);
+  letter-spacing: -0.01em;
   text-decoration: none;
-  transition: all 0.2s ease;
   display: inline-flex;
   align-items: center;
   gap: 8px;
+  box-shadow: 0 8px 24px -4px rgba(212, 255, 0, 0.4);
+  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+  border: 1px solid var(--volt-light);
 }
-.btn-secondary:hover {
-  background: rgba(255, 255, 255, 0.1);
-  border-color: var(--border-card);
+.btn-volt:hover {
+  transform: translateY(-2px);
+  background: #e2ff33;
+  box-shadow: 0 12px 30px -2px rgba(212, 255, 0, 0.6);
+}
+
+.btn-ghost {
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid var(--border-card);
+  color: var(--text-main);
+  padding: 12px 22px;
+  border-radius: var(--radius-md);
+  font-size: 0.95rem;
+  font-weight: 600;
+  text-decoration: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  transition: all 0.2s ease;
+}
+.btn-ghost:hover {
+  background: rgba(255, 255, 255, 0.08);
+  border-color: var(--text-muted);
   transform: translateY(-1px);
+}
+
+/* Technical Card with Crosshair Accents */
+.tech-card {
+  background: var(--bg-card);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-lg);
+  padding: 28px;
+  position: relative;
+  transition: all 0.25s ease;
+  backdrop-filter: blur(12px);
+}
+.tech-card:hover {
+  background: var(--bg-card-hover);
+  border-color: var(--border-volt);
+  box-shadow: 0 15px 35px -10px rgba(0, 0, 0, 0.8), 0 0 20px -5px var(--volt-dim);
+  transform: translateY(-3px);
+}
+.tech-card::before {
+  content: '+';
+  position: absolute;
+  top: 8px;
+  right: 10px;
+  font-family: var(--font-mono);
+  font-size: 0.8rem;
+  color: var(--text-dim);
 }

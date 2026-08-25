@@ -7,109 +7,134 @@ import ComparisonTable from '../components/ComparisonTable.astro';
 const baseUrl = import.meta.env.BASE_URL.replace(/\/$/, '');
 ---
 
-<Layout title="RunZero ⚡ Zero-Bloat Local GitHub Actions Runner Fleet" currentPath="/">
+<Layout title="RunZero ⚡ Zero Cloud Minutes. Zero K8s Bloat. Zero Idle Waste." currentPath="/">
   <div class="container">
     
     <!-- Hero Section -->
-    <section class="hero">
-      <div class="hero-tag">
-        <span class="dot-pulse"></span>
-        <span>Dual-Engine: Docker Containers + Dedicated Linux VMs</span>
+    <section class="hero-section">
+      <div class="hero-telemetry-badge">
+        <span class="telemetry-dot"></span>
+        <span class="telemetry-text">ARCHITECTURE // DUAL-ENGINE HYBRID CI</span>
+        <span class="telemetry-pill">v0.0.1</span>
       </div>
 
-      <h1>
-        Run GitHub Actions Locally.<br />
-        <span class="gradient-text">Zero Cloud Minutes. Zero K8s Bloat.</span>
+      <h1 class="hero-title">
+        Zero Cloud Minutes.<br />
+        Zero K8s Bloat.<br />
+        <span class="volt-gradient">Zero Idle Waste.</span>
       </h1>
 
-      <p class="hero-subtitle">
-        The lightweight, autoscaling GitHub Actions runner fleet for your workstation. Choose ultra-fast Docker containers (~0.3s) for rapid unit tests or dedicated Linux Virtual Machines (OrbStack, WSL2, Multipass) for browser E2E, Lighthouse, and full systemd isolation.
+      <p class="hero-lead">
+        The hardware-optimized, autoscaling GitHub Actions runner fleet for developer workstations. 
+        Instantly launches ephemeral Docker containers (<strong>~0.3s</strong>) for rapid builds, or provisions dedicated Linux Virtual Machines with full <code>systemd</code> and unconfined Chrome sandboxing for browser E2E tests.
       </p>
 
-      <div class="hero-cta">
-        <a href="#quickstart" class="btn-primary">Get Started in 1 Minute</a>
-        <a href={`${baseUrl}/docs/`} class="btn-secondary">Explore Documentation →</a>
+      <div class="hero-actions">
+        <a href="#quickstart" class="btn-volt">
+          <span>⚡ INITIALIZE FLEET</span>
+        </a>
+        <a href={`${baseUrl}/docs/`} class="btn-ghost">
+          <span>READ ARCHITECTURE DOCS →</span>
+        </a>
       </div>
 
-      <!-- Interactive Quickstart Terminal -->
+      <!-- Hardware CLI Workbench Terminal -->
       <Terminal />
     </section>
 
-    <!-- 8-Card Features Grid -->
-    <section class="features" id="features">
-      <div class="section-header">
-        <h2>Engineered for High-Performance CI</h2>
-        <p>Built specifically for local developer workstations, Apple Silicon MacBooks, and homelabs.</p>
+    <!-- Technical Architecture Grid -->
+    <section class="features-section" id="features">
+      <div class="section-tag">
+        <span class="tag-accent">//</span>
+        <span>SYSTEM_CAPABILITIES</span>
+      </div>
+      
+      <div class="section-heading-group">
+        <h2>Engineered for High-Performance Workstations</h2>
+        <p>Direct host acceleration with zero Kubernetes control plane overhead and automated registry proxy caching.</p>
       </div>
 
-      <div class="features-grid">
-        <div class="feature-card">
-          <div class="feature-icon">⚡</div>
+      <div class="tech-grid">
+        <div class="tech-card">
+          <div class="card-icon-box">⚡</div>
           <h3>Dual-Engine Fleet</h3>
-          <p>Execute jobs in ultra-fast Docker containers (~0.3s boot, ~20MB RAM) or dedicated Linux VMs (OrbStack / WSL2) with full <code>systemd</code> and unconfined Chrome sandboxing.</p>
+          <p>Execute jobs in ephemeral Docker containers (~0.3s boot, 20MB idle RAM) or dedicated Linux VMs (OrbStack / WSL2) with full <code>systemd</code> and unconfined Chrome sandboxing.</p>
+          <div class="card-footer-meta">DRIVER: DOCKER + VM</div>
         </div>
 
-        <div class="feature-card">
-          <div class="feature-icon">🧠</div>
+        <div class="tech-card">
+          <div class="card-icon-box">🧠</div>
           <h3>Hybrid Auto-Routing</h3>
-          <p>RunZero automatically detects workflow labels like <code>browser</code>, <code>e2e</code>, <code>lighthouse</code>, or <code>systemd</code> and routes them to dedicated VMs while keeping standard unit tests in fast containers.</p>
+          <p>Inspects workflow labels in real time and automatically routes jobs with <code>browser</code>, <code>e2e</code>, <code>lighthouse</code>, or <code>systemd</code> labels to dedicated VMs while keeping unit tests in fast containers.</p>
+          <div class="card-footer-meta">ROUTING: ZERO-CONFIG</div>
         </div>
 
-        <div class="feature-card">
-          <div class="feature-icon">🍏</div>
+        <div class="tech-card">
+          <div class="card-icon-box">🍏</div>
           <h3>Native ARM64 + Rosetta AMD64</h3>
-          <p>Run blazing-fast Apple Silicon builds natively, or execute x86_64 AMD64 Docker containers via OrbStack's Rosetta acceleration on the same MacBook without configuration changes.</p>
+          <p>Run native Apple Silicon ARM64 binaries at bare-metal speed, or run x86_64 AMD64 Docker containers simultaneously using OrbStack's Rosetta 2 acceleration.</p>
+          <div class="card-footer-meta">ARCH: MULTI-PLATFORM</div>
         </div>
 
-        <div class="feature-card">
-          <div class="feature-icon">📦</div>
+        <div class="tech-card">
+          <div class="card-icon-box">📦</div>
           <h3>Verdaccio &amp; Athens Caching</h3>
-          <p>Built-in local proxy registries for npm, Go modules, and Docker Hub. Plus persistent volume caching for pip, uv, yarn, pnpm, and <code>actions/setup-*</code>.</p>
+          <p>Integrated local caching proxy registries for npm (:49501), Go modules (:49500), and Docker Hub. Plus persistent host volume caching for pip, uv, yarn, and pnpm.</p>
+          <div class="card-footer-meta">PROXIES: BUILT-IN</div>
         </div>
 
-        <div class="feature-card">
-          <div class="feature-icon">🌐</div>
+        <div class="tech-card">
+          <div class="card-icon-box">🌐</div>
           <h3>Adaptive Rate-Limiting</h3>
-          <p>Smart discovery filters to active repositories and real-time GitHub API header tracking to guarantee you stay well below the 5,000 req/hr ceiling.</p>
+          <p>Smart discovery filters active repositories pushed within the last N days, monitoring GitHub API quota headers to guarantee zero rate-limit bans.</p>
+          <div class="card-footer-meta">QUOTA: PROTECTED</div>
         </div>
 
-        <div class="feature-card">
-          <div class="feature-icon">🔒</div>
+        <div class="tech-card">
+          <div class="card-icon-box">🔒</div>
           <h3>Zero Kubernetes Overhead</h3>
-          <p>No K8s control plane, no etcd, no Helm charts, and no cert-manager consuming 3GB of your laptop's RAM before a single job runs.</p>
+          <p>No K8s control plane, no etcd, no Helm charts, and no cert-manager consuming 3.5GB of your laptop's RAM before a single job even starts.</p>
+          <div class="card-footer-meta">IDLE RAM: ~20MB</div>
         </div>
 
-        <div class="feature-card">
-          <div class="feature-icon">🛡️</div>
+        <div class="tech-card">
+          <div class="card-icon-box">🛡️</div>
           <h3>100% Mutation &amp; Unit Tested</h3>
-          <p>Rock-solid codebase with 68 comprehensive tests, 0 Flake8 warnings, 100% Mypy static type safety, and Mutmut mutation testing.</p>
+          <p>Verified with 75 unit tests, 0 Flake8 lint warnings, 100% Mypy static type safety, and Mutmut mutation testing across all drivers.</p>
+          <div class="card-footer-meta">QUALITY: 100% VERIFIED</div>
         </div>
 
-        <div class="feature-card">
-          <div class="feature-icon">🟢</div>
+        <div class="tech-card">
+          <div class="card-icon-box">🟢</div>
           <h3>Dynamic NVM &amp; .NET 8 Pre-baked</h3>
           <p>Zero wait time: pre-installed Node.js 20 LTS, 22 LTS, 24 Current, .NET SDK 8.0, Git LFS, PostgreSQL client, and Google Chrome.</p>
+          <div class="card-footer-meta">TOOLCHAIN: READY</div>
         </div>
       </div>
     </section>
 
-    <!-- Hybrid Auto-Routing Code Showcase -->
+    <!-- Hybrid Auto-Routing Showcase -->
     <CodeShowcase />
 
-    <!-- Dual-Engine Compatibility Table -->
-    <section class="comparison-section" id="engines">
-      <div class="section-header">
-        <h2>Container &amp; VM Engine Compatibility</h2>
-        <p>RunZero supports containers and full virtual machines across macOS, Windows, and Linux.</p>
+    <!-- Engine Compatibility Section -->
+    <section class="features-section" id="engines">
+      <div class="section-tag">
+        <span class="tag-accent">//</span>
+        <span>COMPATIBILITY_MATRIX</span>
+      </div>
+
+      <div class="section-heading-group">
+        <h2>Execution Engine Matrix</h2>
+        <p>RunZero adapts to your operating system, supporting containers and full virtual machines across macOS, Windows, and Linux.</p>
       </div>
 
       <div class="table-wrapper">
         <table class="comparison-table">
           <thead>
             <tr>
-              <th>Engine / Driver</th>
-              <th>Supported Host OS</th>
-              <th>Execution Type</th>
+              <th>Engine Driver</th>
+              <th>Host OS</th>
+              <th>Execution Mode</th>
               <th>Key Strengths</th>
             </tr>
           </thead>
@@ -117,31 +142,31 @@ const baseUrl = import.meta.env.BASE_URL.replace(/\/$/, '');
             <tr>
               <td><strong>🪐 OrbStack (Recommended)</strong></td>
               <td>macOS (Apple Silicon &amp; Intel)</td>
-              <td><span class="check-yes">Containers &amp; Linux VMs</span></td>
+              <td><span class="tag-volt">Containers &amp; Linux VMs</span></td>
               <td>Instant boot, Rosetta 2 x86_64 acceleration, full systemd support.</td>
             </tr>
             <tr>
               <td><strong>🐳 Docker Desktop</strong></td>
               <td>macOS, Windows, Linux</td>
-              <td><span class="check-yes">Containers</span></td>
+              <td><span class="tag-volt">Containers</span></td>
               <td>Universal cross-platform container support.</td>
             </tr>
             <tr>
               <td><strong>🪟 Windows WSL2</strong></td>
               <td>Windows 10/11 &amp; Server</td>
-              <td><span class="check-yes">Native Linux VMs</span></td>
+              <td><span class="tag-volt">Native Linux VMs</span></td>
               <td>Native Linux execution without requiring Docker Desktop on Windows.</td>
             </tr>
             <tr>
               <td><strong>🚀 Canonical Multipass</strong></td>
               <td>macOS, Windows, Linux</td>
-              <td><span class="check-yes">Virtual Machines</span></td>
+              <td><span class="tag-volt">Virtual Machines</span></td>
               <td>Universal cross-platform Ubuntu VMs via QEMU / Hyper-V / VirtualBox.</td>
             </tr>
             <tr>
               <td><strong>🐧 Native Linux Docker</strong></td>
               <td>Ubuntu, Debian, Arch, Homelabs</td>
-              <td><span class="check-yes">Native Containers</span></td>
+              <td><span class="tag-volt">Native Containers</span></td>
               <td>Zero VM layer, direct kernel speed for homelab servers.</td>
             </tr>
           </tbody>
@@ -149,18 +174,18 @@ const baseUrl = import.meta.env.BASE_URL.replace(/\/$/, '');
       </div>
     </section>
 
-    <!-- Competitive Landscape -->
+    <!-- Competitive Comparison -->
     <ComparisonTable />
 
-    <!-- Bottom CTA Banner -->
-    <section class="hero" style="padding: 40px 0 80px;">
-      <h2>Ready to Supercharge Your Local CI?</h2>
-      <p class="hero-subtitle" style="margin-bottom: 32px;">
-        Clone the repository and spin up your local runner fleet in 60 seconds.
-      </p>
-      <div class="hero-cta">
-        <a href="#quickstart" class="btn-primary">Launch RunZero</a>
-        <a href={`${baseUrl}/docs/`} class="btn-secondary">Read the Full Docs →</a>
+    <!-- Bottom Launch Banner -->
+    <section class="launch-banner">
+      <div class="banner-inner">
+        <h2>DEPLOY LOCAL RUNNER FLEET NOW</h2>
+        <p>Initialize your workstation fleet in less than 60 seconds with our interactive configuration wizard.</p>
+        <div class="banner-actions">
+          <a href="#quickstart" class="btn-volt">⚡ QUICKSTART NOW</a>
+          <a href={`${baseUrl}/docs/`} class="btn-ghost">BROWSE DOCUMENTATION →</a>
+        </div>
       </div>
     </section>
 
@@ -168,50 +193,61 @@ const baseUrl = import.meta.env.BASE_URL.replace(/\/$/, '');
 </Layout>
 
 <style>
-  .hero {
-    padding: 96px 0 72px;
+  .hero-section {
+    padding: 80px 0 40px;
     text-align: center;
   }
-  .hero-tag {
+
+  .hero-telemetry-badge {
     display: inline-flex;
     align-items: center;
     gap: 8px;
-    padding: 6px 18px;
-    background: rgba(99, 102, 241, 0.1);
-    border: 1px solid var(--border-accent);
-    border-radius: 999px;
-    color: var(--primary-light);
-    font-size: 0.88rem;
-    font-weight: 700;
-    margin-bottom: 28px;
-  }
-  .dot-pulse {
-    width: 8px;
-    height: 8px;
-    border-radius: 50%;
-    background: var(--emerald);
-    box-shadow: 0 0 10px var(--emerald);
-  }
-
-  .hero h1 {
-    font-size: 3.8rem;
-    font-weight: 800;
-    line-height: 1.12;
+    padding: 4px 12px;
+    background: rgba(212, 255, 0, 0.05);
+    border: 1px solid var(--border-volt);
+    border-radius: var(--radius-sm);
     margin-bottom: 24px;
-    background: linear-gradient(180deg, #ffffff 40%, #cbd5e1 100%);
-    -webkit-background-clip: text;
-    -webkit-text-fill-color: transparent;
+  }
+  .telemetry-dot {
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: var(--volt);
+    box-shadow: 0 0 8px var(--volt);
+  }
+  .telemetry-text {
+    font-family: var(--font-mono);
+    font-size: 0.72rem;
+    font-weight: 800;
+    color: var(--volt-light);
+    letter-spacing: 0.08em;
+  }
+  .telemetry-pill {
+    font-family: var(--font-mono);
+    font-size: 0.65rem;
+    font-weight: 800;
+    padding: 1px 5px;
+    background: var(--volt-dim);
+    color: var(--volt);
+    border-radius: 2px;
   }
 
-  .hero-subtitle {
+  .hero-title {
+    font-size: 4.2rem;
+    line-height: 1.08;
+    letter-spacing: -0.04em;
+    margin-bottom: 24px;
+  }
+
+  .hero-lead {
     font-size: 1.25rem;
     color: var(--text-muted);
-    max-width: 780px;
-    margin: 0 auto 40px;
+    max-width: 760px;
+    margin: 0 auto 36px;
     line-height: 1.65;
   }
 
-  .hero-cta {
+  .hero-actions {
     display: flex;
     justify-content: center;
     gap: 16px;
@@ -219,97 +255,135 @@ const baseUrl = import.meta.env.BASE_URL.replace(/\/$/, '');
     flex-wrap: wrap;
   }
 
-  .features-grid {
+  .features-section {
+    padding: 72px 0;
+  }
+
+  .section-tag {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    font-family: var(--font-mono);
+    font-size: 0.75rem;
+    font-weight: 800;
+    color: var(--volt);
+    letter-spacing: 0.08em;
+    margin-bottom: 12px;
+  }
+  .tag-accent { color: var(--text-dim); }
+
+  .section-heading-group {
+    margin-bottom: 48px;
+  }
+  .section-heading-group h2 {
+    font-size: 2.4rem;
+    margin-bottom: 10px;
+  }
+  .section-heading-group p {
+    color: var(--text-muted);
+    font-size: 1.08rem;
+    max-width: 680px;
+  }
+
+  .tech-grid {
     display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
-    gap: 24px;
-    margin-bottom: 80px;
+    grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+    gap: 20px;
   }
-  .feature-card {
-    background: var(--bg-card);
-    backdrop-filter: blur(16px);
-    -webkit-backdrop-filter: blur(16px);
-    border: 1px solid var(--border-subtle);
-    border-radius: var(--radius-lg);
-    padding: 32px;
-    transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1);
-  }
-  .feature-card:hover {
-    background: var(--bg-card-hover);
-    border-color: var(--border-accent);
-    transform: translateY(-4px);
-  }
-  .feature-icon {
-    width: 48px;
-    height: 48px;
-    border-radius: var(--radius-md);
+  .card-icon-box {
+    width: 42px;
+    height: 42px;
+    border-radius: var(--radius-sm);
+    background: rgba(212, 255, 0, 0.08);
+    border: 1px solid var(--border-volt);
     display: flex;
     align-items: center;
     justify-content: center;
-    font-size: 1.5rem;
-    margin-bottom: 20px;
-    background: rgba(99, 102, 241, 0.12);
-    border: 1px solid rgba(99, 102, 241, 0.25);
-    color: var(--primary-light);
+    font-size: 1.3rem;
+    margin-bottom: 18px;
   }
-  .feature-card h3 {
-    font-size: 1.25rem;
-    font-weight: 700;
+  .tech-card h3 {
+    font-size: 1.18rem;
     margin-bottom: 10px;
   }
-  .feature-card p {
-    font-size: 0.95rem;
+  .tech-card p {
     color: var(--text-muted);
-    line-height: 1.65;
+    font-size: 0.92rem;
+    line-height: 1.6;
+    margin-bottom: 20px;
+  }
+  .card-footer-meta {
+    font-family: var(--font-mono);
+    font-size: 0.68rem;
+    font-weight: 800;
+    color: var(--text-dim);
+    letter-spacing: 0.06em;
+    padding-top: 12px;
+    border-top: 1px solid var(--border-subtle);
   }
 
-  .comparison-section {
-    padding: 60px 0 80px;
-  }
-  .section-header {
-    text-align: center;
-    margin-bottom: 48px;
-  }
-  .section-header h2 {
-    font-size: 2.4rem;
-    font-weight: 800;
-    margin-bottom: 12px;
-  }
-  .section-header p {
-    color: var(--text-muted);
-    font-size: 1.1rem;
-    max-width: 620px;
-    margin: 0 auto;
+  .tag-volt {
+    color: var(--volt);
+    font-weight: 700;
   }
 
   .table-wrapper {
     background: var(--bg-card);
-    backdrop-filter: blur(20px);
     border: 1px solid var(--border-subtle);
     border-radius: var(--radius-lg);
     overflow-x: auto;
-    box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.6);
+    box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.8);
   }
   table.comparison-table {
     width: 100%;
     border-collapse: collapse;
-    text-align: left;
+    min-width: 600px;
   }
   table.comparison-table th, table.comparison-table td {
-    padding: 18px 24px;
+    padding: 16px 20px;
     border-bottom: 1px solid var(--border-subtle);
+    font-size: 0.92rem;
   }
   table.comparison-table th {
-    font-size: 0.85rem;
+    background: rgba(255, 255, 255, 0.02);
+    color: var(--text-dim);
+    font-family: var(--font-mono);
+    font-size: 0.76rem;
     text-transform: uppercase;
     letter-spacing: 0.06em;
-    color: var(--text-dim);
-    background: rgba(255, 255, 255, 0.02);
   }
-  .check-yes { color: var(--emerald); font-weight: bold; }
+
+  .launch-banner {
+    padding: 60px 0 96px;
+  }
+  .banner-inner {
+    background: linear-gradient(135deg, rgba(212, 255, 0, 0.08) 0%, rgba(14, 18, 28, 0.9) 100%);
+    border: 1px solid var(--border-volt);
+    border-radius: var(--radius-lg);
+    padding: 48px 32px;
+    text-align: center;
+    box-shadow: 0 20px 50px -10px rgba(0, 0, 0, 0.8), 0 0 30px -10px var(--volt-dim);
+  }
+  .banner-inner h2 {
+    font-size: 2.2rem;
+    letter-spacing: -0.02em;
+    margin-bottom: 12px;
+  }
+  .banner-inner p {
+    color: var(--text-muted);
+    font-size: 1.1rem;
+    max-width: 600px;
+    margin: 0 auto 28px;
+  }
+  .banner-actions {
+    display: flex;
+    justify-content: center;
+    gap: 16px;
+    flex-wrap: wrap;
+  }
 
   @media (max-width: 768px) {
-    .hero h1 { font-size: 2.5rem; }
-    .hero-subtitle { font-size: 1.05rem; }
+    .hero-title { font-size: 2.7rem; }
+    .hero-lead { font-size: 1.05rem; }
   }
 </style>

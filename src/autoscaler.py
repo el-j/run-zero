@@ -7,6 +7,7 @@ Includes persistent multi-language package caching, proxy registries, and adapti
 """
 
 import os
+import re
 import sys
 import time
 import signal
@@ -240,8 +241,21 @@ def select_driver_for_job(
     """Determine whether a job requires a VM driver or a standard container driver."""
     job_labels = job.get("labels", [])
 
-    # Check if job specifically requests a VM or features requiring full OS sandbox
-    needs_vm = any(trigger in job_labels for trigger in VM_TRIGGER_LABELS)
+    # A job opts into VM routing either explicitly via a custom `runs-on:` label
+    # matching VM_TRIGGER_LABELS, or implicitly because GitHub's own job *name*
+    # contains one of those same trigger words (e.g. a job literally named
+    # "Matrix — E2E (mock auth, Desktop Chrome)" or "Lighthouse CI"). Most real
+    # workflows never add a custom runs-on label for this at all -- relying on
+    # labels alone means those jobs silently never route to a VM even when one
+    # is available and would fix exactly the failure they're hitting (Chrome/
+    # Postgres-service jobs racing under the container driver's host networking).
+    # Tokenize rather than substring-match so a 2-char trigger like "vm" can't
+    # false-positive inside an unrelated word.
+    job_name_tokens = set(re.findall(r"[a-z0-9]+", (job.get("name") or "").lower()))
+    needs_vm = (
+        any(trigger in job_labels for trigger in VM_TRIGGER_LABELS)
+        or bool(job_name_tokens & set(VM_TRIGGER_LABELS))
+    )
 
     if needs_vm and AUTO_ROUTE_VM:
         # Prefer VM backends: orbstack-vm -> wsl2 -> multipass

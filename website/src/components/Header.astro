@@ -14,36 +14,41 @@ const baseUrl = import.meta.env.BASE_URL.replace(/\/$/, '');
     <!-- Brand & Version Switcher -->
     <div class="brand-group">
       <a href={`${baseUrl}/`} class="brand">
-        <img src={`${baseUrl}/favicon.svg`} alt="RunZero Logo" width="28" height="28" />
-        <span>RunZero</span>
+        <div class="brand-icon-box">
+          <img src={`${baseUrl}/favicon.svg`} alt="RunZero Logo" width="20" height="20" />
+        </div>
+        <span class="brand-title">RUN<span class="volt-text">ZERO</span></span>
       </a>
       <VersionSwitcher />
     </div>
 
     <!-- Desktop Navigation Menu -->
     <ul class="nav-menu">
-      <li><a href={`${baseUrl}/`} class={`nav-link ${currentPath === '/' || currentPath === '' ? 'active' : ''}`}>Overview</a></li>
-      <li><a href={`${baseUrl}/#features`} class="nav-link">Features</a></li>
-      <li><a href={`${baseUrl}/#routing`} class="nav-link">Auto-Routing</a></li>
-      <li><a href={`${baseUrl}/#comparison`} class="nav-link">Why Not ARC?</a></li>
-      <li><a href={`${baseUrl}/docs/`} class={`nav-link ${currentPath.startsWith('/docs') ? 'active' : ''}`}>Docs</a></li>
-      <li><a href={`${baseUrl}/versions/`} class={`nav-link ${currentPath.startsWith('/versions') ? 'active' : ''}`}>Versions</a></li>
+      <li><a href={`${baseUrl}/`} class={`nav-link ${currentPath === '/' || currentPath === '' ? 'active' : ''}`}>// OVERVIEW</a></li>
+      <li><a href={`${baseUrl}/#features`} class="nav-link">// ARCHITECTURE</a></li>
+      <li><a href={`${baseUrl}/#routing`} class="nav-link">// AUTO-ROUTING</a></li>
+      <li><a href={`${baseUrl}/#comparison`} class="nav-link">// BENCHMARKS</a></li>
+      <li><a href={`${baseUrl}/docs/`} class={`nav-link ${currentPath.startsWith('/docs') ? 'active' : ''}`}>// DOCS</a></li>
+      <li><a href={`${baseUrl}/versions/`} class={`nav-link ${currentPath.startsWith('/versions') ? 'active' : ''}`}>// VERSIONS</a></li>
     </ul>
 
     <!-- Desktop Action Buttons -->
     <div class="nav-actions">
-      <a href={`${baseUrl}/docs/`} class="btn-nav-docs">Documentation</a>
-      <a href="https://github.com/el-j/run-zero" class="btn-github" target="_blank" rel="noopener">
+      <div class="status-indicator">
+        <span class="pulse-dot"></span>
+        <span class="status-text">FLEET READY</span>
+      </div>
+      <a href={`${baseUrl}/docs/`} class="btn-nav-docs">Get Started</a>
+      <a href="https://github.com/el-j/run-zero" class="btn-github" target="_blank" rel="noopener" aria-label="GitHub Repository">
         <svg height="16" width="16" viewBox="0 0 16 16" fill="currentColor">
           <path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"></path>
         </svg>
-        <span>GitHub</span>
       </a>
     </div>
 
     <!-- Mobile Hamburger Toggle -->
     <button class="mobile-toggle" id="mobile-toggle" aria-label="Toggle navigation menu">
-      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
         <line x1="3" y1="12" x2="21" y2="12"></line>
         <line x1="3" y1="6" x2="21" y2="6"></line>
         <line x1="3" y1="18" x2="21" y2="18"></line>
@@ -53,12 +58,12 @@ const baseUrl = import.meta.env.BASE_URL.replace(/\/$/, '');
 
   <!-- Mobile Drawer Overlay -->
   <div class="mobile-drawer" id="mobile-drawer">
-    <a href={`${baseUrl}/`} class="nav-link">Overview</a>
-    <a href={`${baseUrl}/#features`} class="nav-link">Features</a>
-    <a href={`${baseUrl}/#routing`} class="nav-link">Hybrid Auto-Routing</a>
-    <a href={`${baseUrl}/#comparison`} class="nav-link">Why Not ARC?</a>
-    <a href={`${baseUrl}/docs/`} class="nav-link">Full Documentation</a>
-    <a href={`${baseUrl}/versions/`} class="nav-link">All Versions &amp; Archive</a>
+    <a href={`${baseUrl}/`} class="nav-link">// Overview</a>
+    <a href={`${baseUrl}/#features`} class="nav-link">// Architecture</a>
+    <a href={`${baseUrl}/#routing`} class="nav-link">// Auto-Routing</a>
+    <a href={`${baseUrl}/#comparison`} class="nav-link">// Benchmarks</a>
+    <a href={`${baseUrl}/docs/`} class="nav-link">// Full Documentation</a>
+    <a href={`${baseUrl}/versions/`} class="nav-link">// All Versions &amp; Archive</a>
     <a href="https://github.com/el-j/run-zero" class="btn-github" target="_blank" rel="noopener" style="justify-content: center; margin-top: 12px;">GitHub Repository ↗</a>
   </div>
 </header>
@@ -68,7 +73,7 @@ const baseUrl = import.meta.env.BASE_URL.replace(/\/$/, '');
     position: sticky;
     top: 0;
     z-index: 100;
-    background: rgba(7, 9, 14, 0.92);
+    background: rgba(5, 7, 10, 0.9);
     backdrop-filter: blur(20px);
     -webkit-backdrop-filter: blur(20px);
     border-bottom: 1px solid var(--border-subtle);
@@ -101,34 +106,51 @@ const baseUrl = import.meta.env.BASE_URL.replace(/\/$/, '');
     display: flex;
     align-items: center;
     gap: 10px;
-    font-weight: 800;
-    font-size: 1.25rem;
-    letter-spacing: -0.025em;
     text-decoration: none;
     color: var(--text-main);
     white-space: nowrap;
   }
 
+  .brand-icon-box {
+    width: 30px;
+    height: 30px;
+    border-radius: var(--radius-sm);
+    background: rgba(212, 255, 0, 0.1);
+    border: 1px solid var(--border-volt);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  .brand-title {
+    font-family: var(--font-mono);
+    font-weight: 800;
+    font-size: 1.15rem;
+    letter-spacing: -0.04em;
+  }
+
   .nav-menu {
     display: flex;
-    gap: 20px;
+    gap: 18px;
     align-items: center;
     list-style: none;
     margin: 0 12px;
   }
 
   .nav-link {
-    color: var(--text-muted);
+    color: var(--text-dim);
     text-decoration: none;
-    font-size: 0.92rem;
-    font-weight: 600;
+    font-family: var(--font-mono);
+    font-size: 0.8rem;
+    font-weight: 700;
+    letter-spacing: 0.04em;
     transition: color 0.2s ease;
     position: relative;
     padding: 6px 0;
     white-space: nowrap;
   }
   .nav-link:hover, .nav-link.active {
-    color: var(--text-main);
+    color: var(--volt);
   }
   .nav-link.active::after {
     content: '';
@@ -137,53 +159,73 @@ const baseUrl = import.meta.env.BASE_URL.replace(/\/$/, '');
     left: 0;
     width: 100%;
     height: 2px;
-    background: linear-gradient(90deg, var(--primary), var(--cyan));
+    background: var(--volt);
     border-radius: 2px;
+    box-shadow: 0 0 8px var(--volt);
   }
 
   .nav-actions {
     display: flex;
     align-items: center;
-    gap: 12px;
+    gap: 14px;
     flex-shrink: 0;
   }
-  .btn-nav-docs {
-    background: rgba(99, 102, 241, 0.12);
-    border: 1px solid var(--border-accent);
-    color: var(--primary-light);
-    padding: 7px 16px;
+
+  .status-indicator {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 4px 8px;
+    background: rgba(212, 255, 0, 0.06);
+    border: 1px solid var(--border-volt);
     border-radius: var(--radius-sm);
-    font-size: 0.88rem;
-    font-weight: 700;
+  }
+  .pulse-dot {
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: var(--volt);
+    box-shadow: 0 0 8px var(--volt);
+  }
+  .status-text {
+    font-family: var(--font-mono);
+    font-size: 0.68rem;
+    font-weight: 800;
+    letter-spacing: 0.08em;
+    color: var(--volt-light);
+  }
+
+  .btn-nav-docs {
+    background: var(--volt);
+    color: #05070a;
+    padding: 6px 14px;
+    border-radius: var(--radius-sm);
+    font-family: var(--font-mono);
+    font-size: 0.82rem;
+    font-weight: 800;
     text-decoration: none;
     white-space: nowrap;
     transition: all 0.2s ease;
   }
   .btn-nav-docs:hover {
-    background: rgba(99, 102, 241, 0.22);
-    color: #fff;
-    transform: translateY(-1px);
+    background: #e2ff33;
+    box-shadow: 0 0 16px var(--volt-glow);
   }
 
   .btn-github {
-    background: rgba(255, 255, 255, 0.05);
+    background: rgba(255, 255, 255, 0.04);
     border: 1px solid var(--border-subtle);
-    color: var(--text-main);
-    padding: 7px 14px;
+    color: var(--text-muted);
+    padding: 7px 10px;
     border-radius: var(--radius-sm);
-    text-decoration: none;
-    font-size: 0.88rem;
-    font-weight: 600;
-    display: inline-flex;
+    display: flex;
     align-items: center;
-    gap: 8px;
-    white-space: nowrap;
+    justify-content: center;
     transition: all 0.2s ease;
   }
   .btn-github:hover {
-    background: rgba(255, 255, 255, 0.1);
-    border-color: var(--border-card);
-    transform: translateY(-1px);
+    color: #fff;
+    border-color: var(--text-dim);
   }
 
   .mobile-toggle {
@@ -191,14 +233,10 @@ const baseUrl = import.meta.env.BASE_URL.replace(/\/$/, '');
     background: rgba(255, 255, 255, 0.05);
     border: 1px solid var(--border-subtle);
     color: var(--text-main);
-    padding: 7px 10px;
+    padding: 6px 10px;
     border-radius: var(--radius-sm);
     cursor: pointer;
     margin-left: auto;
-    flex-shrink: 0;
-  }
-  .mobile-toggle:hover {
-    background: rgba(255, 255, 255, 0.1);
   }
 
   .mobile-drawer {
@@ -208,7 +246,7 @@ const baseUrl = import.meta.env.BASE_URL.replace(/\/$/, '');
     left: 0;
     width: 100%;
     height: calc(100vh - var(--header-height));
-    background: #0c101a;
+    background: var(--bg-secondary);
     border-bottom: 1px solid var(--border-subtle);
     padding: 24px;
     z-index: 99;
@@ -220,7 +258,7 @@ const baseUrl = import.meta.env.BASE_URL.replace(/\/$/, '');
     display: flex;
   }
   .mobile-drawer .nav-link {
-    font-size: 1.05rem;
+    font-size: 0.95rem;
     padding: 10px 0;
     border-bottom: 1px solid var(--border-subtle);
   }
@@ -247,12 +285,8 @@ const baseUrl = import.meta.env.BASE_URL.replace(/\/$/, '');
     .brand-group {
       gap: 8px;
     }
-    .brand img {
-      width: 24px;
-      height: 24px;
-    }
-    .brand span {
-      font-size: 1.1rem;
+    .brand-title {
+      font-size: 1.05rem;
     }
   }
 </style>
