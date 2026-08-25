@@ -8,7 +8,7 @@ on:
 
 jobs:
   validate-code:
-    name: Lint & Validate Code
+    name: Lint, Type Check & Unit Tests
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repository
@@ -19,10 +19,22 @@ jobs:
         with:
           python-version: '3.11'
 
-      - name: Validate Python Syntax
+      - name: Install Testing & Linting Tools
         run: |
-          python3 -m py_compile docker/autoscaler.py
-          echo "Python syntax is valid!"
+          python -m pip install --upgrade pip
+          pip install flake8 mypy pytest pytest-cov
+
+      - name: Flake8 Code Linting
+        run: |
+          flake8 docker/ tests/ --max-line-length=160 --extend-ignore=E501,W503,E402
+
+      - name: Mypy Static Type Checking
+        run: |
+          MYPYPATH=docker mypy docker/drivers/ docker/autoscaler.py --ignore-missing-imports
+
+      - name: Run Pytest with Code Coverage
+        run: |
+          PYTHONPATH=docker pytest --cov=docker --cov-report=term-missing tests/
 
       - name: Validate Shell Script Syntax
         run: |

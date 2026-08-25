@@ -172,8 +172,23 @@ vm-clean: ## Clean up any orphaned RunZero VMs
 	done
 	@echo "$(GREEN)VM cleanup complete.$(RESET)"
 
+.PHONY: test-suite
+test-suite: ## Run test suite with pytest, mypy type checking, and flake8 linter
+	@echo "$(CYAN)Running Flake8, Mypy, and Pytest coverage suite...$(RESET)"
+	@docker run --rm -v "$$(pwd):/app" -w /app python:3.11-slim bash -c "\
+		pip install --quiet pytest pytest-cov mypy flake8 && \
+		flake8 docker/ tests/ --max-line-length=160 --extend-ignore=E501,W503,E402 && \
+		MYPYPATH=docker mypy docker/drivers/ docker/autoscaler.py --ignore-missing-imports && \
+		PYTHONPATH=docker pytest --cov=docker --cov-report=term-missing tests/"
+	@echo "$(GREEN)All tests passed with 0 warnings!$(RESET)"
+
 .PHONY: test
-test: check-env init-cache ## Run local autoscaler in foreground for quick debugging
+test: ## Run local unit tests directly
+	@python3 -m unittest discover -s tests -p "test_*.py" -v
+
+.PHONY: run-dev
+run-dev: check-env init-cache ## Run local autoscaler in foreground for interactive debugging
 	@echo "$(CYAN)Running Autoscaler in interactive foreground mode...$(RESET)"
 	docker compose up
+
 
