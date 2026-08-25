@@ -1,0 +1,22 @@
+[
+  {
+    "version": "v2.0.0",
+    "name": "v2.0.0 (Latest)",
+    "url": "/run-zero/",
+    "docsUrl": "/run-zero/docs/",
+    "releaseDate": "2026-08-25",
+    "status": "latest",
+    "notes": "Dual-Engine architecture, OrbStack Linux VMs, Hybrid auto-routing, NVM multi-node, Verdaccio & Athens proxy caching.",
+    "changelogUrl": "https://github.com/el-j/run-zero/releases/tag/v2.0.0"
+  },
+  {
+    "version": "v1.0.0",
+    "name": "v1.0.0",
+    "url": "/run-zero/v1.0.0/",
+    "docsUrl": "/run-zero/v1.0.0/docs/",
+    "releaseDate": "2026-08-20",
+    "status": "archived",
+    "notes": "Initial static Docker runner daemon with rate limiting.",
+    "changelogUrl": "https://github.com/el-j/run-zero/releases/tag/v1.0.0"
+  }
+]

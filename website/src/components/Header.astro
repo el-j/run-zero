@@ -1,4 +1,6 @@
 ---
+import VersionSwitcher from './VersionSwitcher.astro';
+
 interface Props {
   currentPath?: string;
 }
@@ -10,11 +12,13 @@ const baseUrl = import.meta.env.BASE_URL.replace(/\/$/, '');
 <header class="site-header">
   <div class="container">
     <nav class="main-nav">
-      <a href={`${baseUrl}/`} class="brand">
-        <img src={`${baseUrl}/favicon.svg`} alt="RunZero Logo" width="32" height="32" />
-        <span>RunZero</span>
-        <span class="brand-pill">v2.0</span>
-      </a>
+      <div class="brand-group">
+        <a href={`${baseUrl}/`} class="brand">
+          <img src={`${baseUrl}/favicon.svg`} alt="RunZero Logo" width="32" height="32" />
+          <span>RunZero</span>
+        </a>
+        <VersionSwitcher />
+      </div>
 
       <ul class="nav-menu">
         <li><a href={`${baseUrl}/`} class={`nav-link ${currentPath === '/' || currentPath === '' ? 'active' : ''}`}>Overview</a></li>
@@ -22,6 +26,7 @@ const baseUrl = import.meta.env.BASE_URL.replace(/\/$/, '');
         <li><a href={`${baseUrl}/#routing`} class="nav-link">Auto-Routing</a></li>
         <li><a href={`${baseUrl}/#comparison`} class="nav-link">Why Not ARC?</a></li>
         <li><a href={`${baseUrl}/docs/`} class={`nav-link ${currentPath.startsWith('/docs') ? 'active' : ''}`}>Docs</a></li>
+        <li><a href={`${baseUrl}/versions/`} class={`nav-link ${currentPath.startsWith('/versions') ? 'active' : ''}`}>Versions</a></li>
       </ul>
 
       <div class="nav-actions">

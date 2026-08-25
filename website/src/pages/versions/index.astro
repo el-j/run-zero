@@ -1,0 +1,164 @@
+---
+import Layout from '../../layouts/Layout.astro';
+import versionsData from '../../../public/versions.json';
+
+const baseUrl = import.meta.env.BASE_URL.replace(/\/$/, '');
+---
+
+<Layout title="Releases & Version Archive — RunZero" description="Archive of all RunZero documentation releases and release notes." currentPath="/versions">
+  <div class="container">
+    <section class="versions-section">
+      <div class="section-header">
+        <h1>Documentation Releases &amp; Version Archive</h1>
+        <p>Browse documentation snapshots for specific releases of RunZero, or jump to GitHub release changelogs.</p>
+      </div>
+
+      <div class="versions-grid">
+        {versionsData.map((v) => (
+          <div class={`version-card ${v.status === 'latest' ? 'highlight-latest' : ''}`}>
+            <div class="card-top">
+              <div class="version-header">
+                <h3>{v.version}</h3>
+                <span class={`status-badge ${v.status}`}>{v.status === 'latest' ? '✨ Latest Release' : 'Archived'}</span>
+              </div>
+              <span class="release-date">Released on {v.releaseDate}</span>
+            </div>
+
+            <p class="version-notes">{v.notes}</p>
+
+            <div class="card-actions">
+              <a href={v.status === 'latest' ? `${baseUrl}/docs/` : `${baseUrl}/${v.version}/docs/`} class="btn-primary">
+                Browse {v.version} Docs →
+              </a>
+              <a href={v.changelogUrl} class="btn-secondary" target="_blank" rel="noopener">
+                Changelog on GitHub ↗
+              </a>
+            </div>
+          </div>
+        ))}
+      </div>
+
+      <div class="callout info" style="margin-top: 48px;">
+        <div class="callout-title">💡 How Multi-Version Documentation Works in RunZero</div>
+        <p>
+          Each official SemVer tag published to <code>main</code> generates a snapshot under <code>/{'{version}'}/</code> on the <code>gh-pages</code> branch. The root of the website always mirrors the newest release.
+        </p>
+      </div>
+    </section>
+  </div>
+</Layout>
+
+<style>
+  .versions-section {
+    padding: 72px 0 96px;
+    max-width: 920px;
+    margin: 0 auto;
+  }
+  .section-header {
+    text-align: center;
+    margin-bottom: 48px;
+  }
+  .section-header h1 {
+    font-size: 2.8rem;
+    font-weight: 800;
+    margin-bottom: 14px;
+  }
+  .section-header p {
+    color: var(--text-muted);
+    font-size: 1.15rem;
+    max-width: 680px;
+    margin: 0 auto;
+  }
+
+  .versions-grid {
+    display: flex;
+    flex-direction: column;
+    gap: 24px;
+  }
+
+  .version-card {
+    background: var(--bg-card);
+    border: 1px solid var(--border-subtle);
+    border-radius: var(--radius-lg);
+    padding: 32px;
+    transition: all 0.2s ease;
+  }
+  .version-card.highlight-latest {
+    border-color: var(--border-accent);
+    background: rgba(16, 22, 36, 0.95);
+    box-shadow: 0 15px 35px -10px var(--primary-glow);
+  }
+
+  .card-top {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 12px;
+    margin-bottom: 14px;
+  }
+  .version-header {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+  }
+  .version-header h3 {
+    font-size: 1.6rem;
+    font-weight: 800;
+    margin: 0;
+  }
+
+  .status-badge {
+    font-size: 0.75rem;
+    font-weight: 700;
+    padding: 4px 10px;
+    border-radius: 999px;
+    text-transform: uppercase;
+  }
+  .status-badge.latest {
+    background: rgba(16, 185, 129, 0.15);
+    color: var(--emerald);
+    border: 1px solid rgba(16, 185, 129, 0.3);
+  }
+  .status-badge.archived {
+    background: rgba(255, 255, 255, 0.08);
+    color: var(--text-dim);
+    border: 1px solid var(--border-subtle);
+  }
+
+  .release-date {
+    font-size: 0.85rem;
+    color: var(--text-dim);
+  }
+
+  .version-notes {
+    color: var(--text-muted);
+    font-size: 1rem;
+    line-height: 1.6;
+    margin-bottom: 24px;
+  }
+
+  .card-actions {
+    display: flex;
+    gap: 14px;
+    flex-wrap: wrap;
+  }
+
+  .callout {
+    padding: 20px 24px;
+    border-radius: var(--radius-md);
+    border-left: 4px solid var(--primary);
+    background: rgba(99, 102, 241, 0.06);
+  }
+  .callout-title {
+    font-weight: 700;
+    margin-bottom: 6px;
+    color: #fff;
+  }
+  .callout p {
+    color: var(--text-muted);
+    font-size: 0.95rem;
+    margin: 0;
+    line-height: 1.6;
+  }
+</style>

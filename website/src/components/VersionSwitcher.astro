@@ -1,0 +1,201 @@
+---
+interface Props {
+  currentVersion?: string;
+}
+
+const { currentVersion = 'v2.0' } = Astro.props;
+const baseUrl = import.meta.env.BASE_URL.replace(/\/$/, '');
+---
+
+<div class="version-switcher" id="version-switcher">
+  <button class="version-btn" id="version-btn" aria-haspopup="true" aria-expanded="false" aria-label="Select documentation version">
+    <span class="version-dot"></span>
+    <span class="version-label">{currentVersion}</span>
+    <span class="version-pill">latest</span>
+    <svg class="chevron-icon" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+      <path d="M6 9l6 6 6-6"></path>
+    </svg>
+  </button>
+
+  <div class="version-dropdown" id="version-dropdown">
+    <div class="dropdown-header">Documentation Versions</div>
+    <a href={`${baseUrl}/`} class="version-item active">
+      <div class="item-title">
+        <span>v2.0.0</span>
+        <span class="badge-pill latest">Latest Release</span>
+      </div>
+      <span class="item-desc">Dual-Engine, Linux VMs, Caching</span>
+    </a>
+    
+    <a href={`${baseUrl}/v1.0.0/`} class="version-item">
+      <div class="item-title">
+        <span>v1.0.0</span>
+        <span class="badge-pill archived">Archived</span>
+      </div>
+      <span class="item-desc">Docker container daemon</span>
+    </a>
+
+    <div class="dropdown-footer">
+      <a href={`${baseUrl}/versions/`} class="all-versions-link">View All Releases &amp; Archive →</a>
+    </div>
+  </div>
+</div>
+
+<style>
+  .version-switcher {
+    position: relative;
+    display: inline-block;
+  }
+
+  .version-btn {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    background: rgba(255, 255, 255, 0.05);
+    border: 1px solid var(--border-subtle);
+    color: var(--text-main);
+    padding: 4px 10px;
+    border-radius: 999px;
+    font-size: 0.78rem;
+    font-weight: 700;
+    cursor: pointer;
+    transition: all 0.2s ease;
+  }
+  .version-btn:hover {
+    background: rgba(255, 255, 255, 0.1);
+    border-color: var(--border-card);
+  }
+
+  .version-dot {
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: var(--emerald);
+  }
+
+  .version-pill {
+    font-size: 0.65rem;
+    padding: 1px 5px;
+    background: rgba(16, 185, 129, 0.2);
+    color: var(--emerald);
+    border-radius: 4px;
+    text-transform: uppercase;
+    font-weight: 800;
+  }
+
+  .chevron-icon {
+    transition: transform 0.2s ease;
+    color: var(--text-muted);
+  }
+  .version-btn.open .chevron-icon {
+    transform: rotate(180deg);
+  }
+
+  .version-dropdown {
+    display: none;
+    position: absolute;
+    top: calc(100% + 8px);
+    left: 0;
+    width: 250px;
+    background: #0c101a;
+    border: 1px solid var(--border-card);
+    border-radius: var(--radius-md);
+    padding: 8px;
+    box-shadow: 0 20px 40px -10px rgba(0, 0, 0, 0.8);
+    z-index: 200;
+  }
+  .version-dropdown.show {
+    display: block;
+  }
+
+  .dropdown-header {
+    font-size: 0.72rem;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: var(--text-dim);
+    font-weight: 700;
+    padding: 6px 8px;
+  }
+
+  .version-item {
+    display: block;
+    padding: 8px;
+    border-radius: var(--radius-sm);
+    text-decoration: none;
+    color: var(--text-main);
+    transition: background 0.2s ease;
+  }
+  .version-item:hover, .version-item.active {
+    background: rgba(255, 255, 255, 0.06);
+  }
+  .version-item.active {
+    border-left: 2px solid var(--primary);
+  }
+
+  .item-title {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    font-weight: 700;
+    font-size: 0.85rem;
+  }
+
+  .badge-pill {
+    font-size: 0.65rem;
+    padding: 2px 6px;
+    border-radius: 999px;
+    font-weight: 700;
+    text-transform: uppercase;
+  }
+  .badge-pill.latest {
+    background: rgba(99, 102, 241, 0.2);
+    color: var(--primary-light);
+  }
+  .badge-pill.archived {
+    background: rgba(255, 255, 255, 0.08);
+    color: var(--text-dim);
+  }
+
+  .item-desc {
+    display: block;
+    font-size: 0.75rem;
+    color: var(--text-dim);
+    margin-top: 2px;
+  }
+
+  .dropdown-footer {
+    border-top: 1px solid var(--border-subtle);
+    margin-top: 6px;
+    padding-top: 6px;
+  }
+  .all-versions-link {
+    display: block;
+    padding: 6px 8px;
+    font-size: 0.78rem;
+    color: var(--cyan-light);
+    text-decoration: none;
+    font-weight: 600;
+    text-align: center;
+  }
+  .all-versions-link:hover {
+    text-decoration: underline;
+  }
+</style>
+
+<script>
+  const btn = document.getElementById('version-btn');
+  const dropdown = document.getElementById('version-dropdown');
+
+  if (btn && dropdown) {
+    btn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      btn.classList.toggle('open');
+      dropdown.classList.toggle('show');
+    });
+
+    document.addEventListener('click', () => {
+      btn.classList.remove('open');
+      dropdown.classList.remove('show');
+    });
+  }
+</script>
