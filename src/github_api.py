@@ -2,11 +2,11 @@
 GitHub REST API client with adaptive rate-limiting and job queue inspection.
 """
 
-import time
 import json
-import urllib.request
+import time
 import urllib.error
-from typing import Optional, Any, List, Dict
+import urllib.request
+from typing import Any, Dict, List, Optional
 
 API_BASE = "https://api.github.com"
 rate_limit_remaining = 5000

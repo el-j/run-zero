@@ -51,13 +51,19 @@ if [ -n "$PY_FILES" ]; then
     echo -e "  • Using ${BOLD}ruff${RESET} to auto-fix Python linting & formatting..."
     echo "$PY_FILES" | xargs ruff check --fix --line-length=160 2>/dev/null || true
     echo "$PY_FILES" | xargs ruff format --line-length=160 2>/dev/null || true
+  elif command -v docker >/dev/null 2>&1 && docker ps >/dev/null 2>&1; then
+    echo -e "  • Using containerized ${BOLD}ruff${RESET} to auto-fix Python code..."
+    docker run --rm -v "$PROJECT_ROOT:/app" -w /app python:3.11-slim bash -c "\
+      pip install --quiet ruff && \
+      ruff check --fix --line-length=160 src/ tests/ && \
+      ruff format --line-length=160 src/ tests/" 2>/dev/null || true
   elif command -v autopep8 >/dev/null 2>&1; then
     echo -e "  • Using ${BOLD}autopep8${RESET} to auto-format Python code..."
     echo "$PY_FILES" | xargs autopep8 --in-place --aggressive --max-line-length=160 2>/dev/null || true
   fi
 
-  # Re-stage any auto-fixed files
-  echo "$PY_FILES" | xargs git add 2>/dev/null || true
+  # Automatically re-stage any auto-fixed files so the commit includes all fixes
+  git diff --name-only | xargs git add 2>/dev/null || true
 fi
 
 # ------------------------------------------------------------------------------

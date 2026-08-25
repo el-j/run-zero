@@ -55,7 +55,7 @@ init-cache: ## Initialize host cache directories
 	          $(CACHE_DIR)/cargo-registry
 
 .PHONY: cache-size
-cache-size: ## Show disk usage of local runner caches and proxies
+cache-size: ## Show disk usage of the host package/tool cache only (subset of `make info`)
 	@echo ""
 	@echo "$(BOLD)$(CYAN)=== Local Runner Cache Disk Usage ($(CACHE_DIR)) ===$(RESET)"
 	@if [ -d "$(CACHE_DIR)" ]; then \
@@ -68,10 +68,105 @@ cache-size: ## Show disk usage of local runner caches and proxies
 	@echo ""
 
 .PHONY: clean-cache
-clean-cache: ## Clear the persistent package and tool cache to reclaim disk space
+clean-cache: ## Clear the persistent package/tool cache dir ($(CACHE_DIR)) only -- see `make clean-caches` to also clear proxy volumes and images
 	@echo "$(YELLOW)Clearing local runner caches at $(CACHE_DIR)...$(RESET)"
 	@rm -rf $(CACHE_DIR)
 	@echo "$(GREEN)Runner cache cleared successfully.$(RESET)"
+
+# ==============================================================================
+# Disk Usage & Cache Management
+# ==============================================================================
+# Named docker volumes are found by their Compose *logical* name (the
+# com.docker.compose.volume label), not a hardcoded "<project>_<name>" string --
+# the project-name prefix Compose derives depends on the checkout directory's
+# name, which isn't fixed.
+define find_volume
+$$(docker volume ls --filter "label=com.docker.compose.volume=$(1)" -q | head -1)
+endef
+
+.PHONY: info
+info: ## Show total disk usage of everything run-zero manages: host cache dir, proxy volumes, runner images, and OrbStack VMs
+	@echo ""
+	@echo "$(BOLD)$(CYAN)=== Host Package/Tool Cache ($(CACHE_DIR)) ===$(RESET)"
+	@if [ -d "$(CACHE_DIR)" ]; then \
+		du -sh $(CACHE_DIR)/* 2>/dev/null | sort -k2 || echo "  (empty)"; \
+		echo "  $(BOLD)Subtotal:$(RESET) $$(du -sh $(CACHE_DIR) 2>/dev/null | cut -f1)"; \
+	else \
+		echo "  (not created yet)"; \
+	fi
+	@echo ""
+	@echo "$(BOLD)$(CYAN)=== Proxy Cache Volumes (Verdaccio/Athens/Docker Mirror/apt-cacher-ng) ===$(RESET)"
+	@for v in verdaccio-storage athens-storage docker-mirror-storage apt-cacher-storage; do \
+		vol=$(call find_volume,$$v); \
+		if [ -n "$$vol" ]; then \
+			size=$$(docker run --rm -v "$$vol":/data:ro alpine du -sh /data 2>/dev/null | cut -f1); \
+			echo "  $$v: $${size:-unknown}"; \
+		else \
+			echo "  $$v: (not created yet)"; \
+		fi; \
+	done
+	@echo ""
+	@echo "$(BOLD)$(CYAN)=== Runner Images ===$(RESET)"
+	@docker images --filter "reference=local-github-runner*" --filter "reference=local-runner-autoscaler*" \
+		--format "  {{.Repository}}:{{.Tag}}\t{{.Size}}" 2>/dev/null || echo "  (none built yet)"
+	@echo ""
+	@echo "$(BOLD)$(CYAN)=== OrbStack VMs (golden base image + any still-active ephemeral runners) ===$(RESET)"
+	@orbctl list 2>/dev/null | grep -i runzero-vm || echo "  (none)"
+	@echo ""
+	@echo "$(BOLD)$(CYAN)=== Ephemeral Runner Containers ===$(RESET)"
+	@docker ps -a --filter "label=managed-by=local-autoscaler" --format "  {{.Names}}\t{{.Status}}" 2>/dev/null || echo "  (none)"
+	@echo ""
+
+.PHONY: clean-caches
+clean-caches: clean-cache clean-verdaccio clean-athens clean-docker-mirror clean-apt-cacher ## Clear EVERY cache run-zero manages: host cache dir + all proxy volumes (does NOT touch runner images or the VM base image -- see clean-images/vm-clean)
+	@echo "$(GREEN)All run-zero caches cleared.$(RESET)"
+
+.PHONY: clean-npm clean-yarn clean-pnpm clean-pip clean-uv clean-go-mod clean-go-build clean-cargo-registry clean-toolcache
+clean-npm: ## Clear only the cached npm packages
+	@rm -rf $(CACHE_DIR)/npm && echo "$(GREEN)npm cache cleared.$(RESET)"
+clean-yarn: ## Clear only the cached yarn packages
+	@rm -rf $(CACHE_DIR)/yarn && echo "$(GREEN)yarn cache cleared.$(RESET)"
+clean-pnpm: ## Clear only the cached pnpm store
+	@rm -rf $(CACHE_DIR)/pnpm && echo "$(GREEN)pnpm cache cleared.$(RESET)"
+clean-pip: ## Clear only the cached pip packages
+	@rm -rf $(CACHE_DIR)/pip && echo "$(GREEN)pip cache cleared.$(RESET)"
+clean-uv: ## Clear only the cached uv packages
+	@rm -rf $(CACHE_DIR)/uv && echo "$(GREEN)uv cache cleared.$(RESET)"
+clean-go-mod: ## Clear only the cached Go module downloads
+	@rm -rf $(CACHE_DIR)/go-mod && echo "$(GREEN)Go module cache cleared.$(RESET)"
+clean-go-build: ## Clear only the cached Go build cache
+	@rm -rf $(CACHE_DIR)/go-build && echo "$(GREEN)Go build cache cleared.$(RESET)"
+clean-cargo-registry: ## Clear only the cached Cargo registry
+	@rm -rf $(CACHE_DIR)/cargo-registry && echo "$(GREEN)Cargo registry cache cleared.$(RESET)"
+clean-toolcache: ## Clear only the cached hosted tool versions (Node/Go/etc SDK installs, per-arch)
+	@rm -rf $(CACHE_DIR)/toolcache && echo "$(GREEN)Tool cache cleared.$(RESET)"
+
+.PHONY: clean-verdaccio clean-athens clean-docker-mirror clean-apt-cacher
+clean-verdaccio: ## Wipe the Verdaccio (npm proxy) cache volume
+	@docker compose stop verdaccio >/dev/null 2>&1 || true
+	@docker compose rm -f verdaccio >/dev/null 2>&1 || true
+	@vol=$(call find_volume,verdaccio-storage); [ -n "$$vol" ] && docker volume rm "$$vol" >/dev/null 2>&1 || true
+	@echo "$(GREEN)Verdaccio cache cleared.$(RESET) Run 'make start' to recreate it."
+clean-athens: ## Wipe the Athens (Go module proxy) cache volume
+	@docker compose stop athens >/dev/null 2>&1 || true
+	@docker compose rm -f athens >/dev/null 2>&1 || true
+	@vol=$(call find_volume,athens-storage); [ -n "$$vol" ] && docker volume rm "$$vol" >/dev/null 2>&1 || true
+	@echo "$(GREEN)Athens cache cleared.$(RESET) Run 'make start' to recreate it."
+clean-docker-mirror: ## Wipe the Docker Hub pull-through mirror cache volume
+	@docker compose stop docker-mirror >/dev/null 2>&1 || true
+	@docker compose rm -f docker-mirror >/dev/null 2>&1 || true
+	@vol=$(call find_volume,docker-mirror-storage); [ -n "$$vol" ] && docker volume rm "$$vol" >/dev/null 2>&1 || true
+	@echo "$(GREEN)Docker mirror cache cleared.$(RESET) Run 'make start' to recreate it."
+clean-apt-cacher: ## Wipe the apt-cacher-ng (.deb package proxy) cache volume
+	@docker compose stop apt-cacher >/dev/null 2>&1 || true
+	@docker compose rm -f apt-cacher >/dev/null 2>&1 || true
+	@vol=$(call find_volume,apt-cacher-storage); [ -n "$$vol" ] && docker volume rm "$$vol" >/dev/null 2>&1 || true
+	@echo "$(GREEN)apt-cacher-ng cache cleared.$(RESET) Run 'make start' to recreate it."
+
+.PHONY: clean-images
+clean-images: ## Remove the built runner/autoscaler images (local-github-runner:*, local-runner-autoscaler:*) -- forces a full rebuild next time
+	@docker rmi -f local-github-runner:arm64 local-github-runner:amd64 local-github-runner:latest local-runner-autoscaler:latest 2>/dev/null || true
+	@echo "$(GREEN)Runner images removed.$(RESET) Run 'make build' to rebuild."
 
 .PHONY: docs
 docs: ## Open documentation landing page in default browser

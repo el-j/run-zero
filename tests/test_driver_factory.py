@@ -4,11 +4,12 @@ Unit tests for Driver Factory and RunnerInfo model.
 
 import unittest
 from unittest.mock import patch
-from drivers import get_driver, get_available_drivers, RunnerInfo
+
+from drivers import RunnerInfo, get_available_drivers, get_driver
 from drivers.docker_driver import DockerDriver
+from drivers.multipass_driver import MultipassDriver
 from drivers.orbstack_vm_driver import OrbStackVMDriver
 from drivers.wsl_driver import WSL2Driver
-from drivers.multipass_driver import MultipassDriver
 
 
 class TestRunnerInfo(unittest.TestCase):

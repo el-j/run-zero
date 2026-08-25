@@ -2,17 +2,14 @@
 Unit tests for OrbStack Linux VM runner driver and templates.
 """
 
-import unittest
-from unittest.mock import patch, MagicMock
 import json
 import subprocess
-from drivers.orbstack_vm_driver import OrbStackVMDriver
-from drivers.orbstack_templates import (
-    docker_engine_snippet,
-    runner_download_snippet,
-    registration_and_run_snippet
-)
+import unittest
+from unittest.mock import MagicMock, patch
+
 from drivers import RunnerInfo
+from drivers.orbstack_templates import docker_engine_snippet, registration_and_run_snippet, runner_download_snippet
+from drivers.orbstack_vm_driver import OrbStackVMDriver
 
 
 class TestOrbStackTemplates(unittest.TestCase):
@@ -80,6 +77,26 @@ class TestOrbStackVMDriver(unittest.TestCase):
         self.assertEqual(runners[1].name, "runzero-vm-amd64-my-org-456")
         self.assertEqual(runners[1].target_arch, "amd64")
         self.assertEqual(runners[1].state, "exited")
+
+    @patch("subprocess.run")
+    def test_list_runners_creating_and_provisioning_are_pending_not_exited(self, mock_run):
+        # Regression test: these are transient startup states, not terminal ones.
+        # Misclassifying them as "exited" undercounts genuinely in-flight VMs in
+        # the autoscaler's active-runner tally, causing a duplicate spawn for the
+        # same job before the first VM finishes booting -- confirmed live: 3
+        # runners registered for one real queued job, the 2 losers left idle
+        # forever since ephemeral runners only self-terminate after completing a
+        # job, never just for being unclaimed.
+        mock_run.return_value = MagicMock(
+            stdout=json.dumps([
+                {"name": "runzero-vm-arm64-el-j-run-zero-aaa111", "state": "creating"},
+                {"name": "runzero-vm-arm64-el-j-run-zero-bbb222", "state": "provisioning"},
+            ]),
+            returncode=0
+        )
+        runners = self.driver.list_runners()
+        self.assertEqual(runners[0].state, "pending")
+        self.assertEqual(runners[1].state, "pending")
 
     @patch("subprocess.run")
     def test_list_runners_exception(self, mock_run):

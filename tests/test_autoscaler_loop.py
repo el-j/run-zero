@@ -2,10 +2,11 @@
 Unit tests for autoscaler main execution loop and signal handling.
 """
 
-import unittest
-from unittest.mock import patch, MagicMock
-import tempfile
 import shutil
+import tempfile
+import unittest
+from unittest.mock import MagicMock, patch
+
 import autoscaler
 
 

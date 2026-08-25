@@ -3,10 +3,11 @@ Unit tests for GitHub REST API client and job queue inspector.
 """
 
 import unittest
-from unittest.mock import patch, MagicMock
 import urllib.error
 from io import BytesIO
-from github_api import github_request, get_queued_job_details
+from unittest.mock import MagicMock, patch
+
+from github_api import get_queued_job_details, github_request
 
 
 class TestGitHubApi(unittest.TestCase):

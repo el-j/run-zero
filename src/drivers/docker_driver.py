@@ -4,11 +4,12 @@ Spawns and manages ephemeral runner containers with host or bridge networking.
 """
 
 import os
-import sys
-import uuid
 import shutil
 import subprocess
-from typing import List, Dict, Optional
+import sys
+import uuid
+from typing import Dict, List, Optional
+
 from . import RunnerDriver, RunnerInfo
 
 
@@ -137,11 +138,23 @@ class DockerDriver(RunnerDriver):
                 parts = line.split("|")
                 if len(parts) >= 6:
                     backend = parts[6] if len(parts) > 6 and parts[6] else "docker"
+                    # Docker's raw state, normalized so main()'s active-runner tally
+                    # (state == "running"/"pending") doesn't undercount a container
+                    # that's created but hasn't flipped to "running" yet -- narrow
+                    # window for Docker (near-instant) but same bug class as the VM
+                    # driver's "creating"/"provisioning" misclassification.
+                    raw_state = parts[3]
+                    if raw_state == "running":
+                        state = "running"
+                    elif raw_state in ("created", "restarting"):
+                        state = "pending"
+                    else:
+                        state = raw_state
                     runners.append(RunnerInfo(
                         id=parts[0],
                         status=parts[1],
                         name=parts[2],
-                        state=parts[3],
+                        state=state,
                         target_repo=parts[4],
                         target_arch=parts[5],
                         backend=backend

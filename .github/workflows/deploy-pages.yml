@@ -4,6 +4,7 @@ on:
   push:
     branches:
       - main
+      - develop
     paths:
       - 'website/**'
       - '.github/workflows/deploy-pages.yml'
@@ -48,7 +49,7 @@ jobs:
           # Fetch latest tag or fallback to v2.0.0
           CURRENT_VERSION=$(git describe --tags --abbrev=0 2>/dev/null || echo "v2.0.0")
           echo "Creating snapshot for version: $CURRENT_VERSION"
-          
+
           # Duplicate build into version subdirectory
           mkdir -p website/dist/${CURRENT_VERSION}
           cp -r website/dist/docs website/dist/${CURRENT_VERSION}/ || true
@@ -56,7 +57,7 @@ jobs:
           cp -r website/dist/fonts website/dist/${CURRENT_VERSION}/ || true
           cp website/dist/index.html website/dist/${CURRENT_VERSION}/ || true
           cp website/dist/favicon.svg website/dist/${CURRENT_VERSION}/ || true
-          
+
           # Ensure .nojekyll is present to prevent GitHub Pages from ignoring _astro
           touch website/dist/.nojekyll
 

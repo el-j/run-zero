@@ -2,10 +2,11 @@
 Unit tests for host cache directory manager.
 """
 
-import unittest
-import tempfile
 import os
 import shutil
+import tempfile
+import unittest
+
 from cache_manager import init_cache_dirs
 
 

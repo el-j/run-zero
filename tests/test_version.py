@@ -2,12 +2,12 @@
 Tests for dynamic Semantic Versioning resolver (src/version.py).
 """
 
-import unittest
-from unittest.mock import patch
 import os
 import subprocess
+import unittest
+from unittest.mock import patch
 
-from version import get_version, BASE_VERSION
+from version import BASE_VERSION, get_version
 
 
 class TestVersion(unittest.TestCase):

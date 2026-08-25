@@ -6,8 +6,8 @@ Automatically determines version based on current git branch, tags, and environm
 - feat/*: 0.0.1-alpha.x (Feature branch snapshot)
 """
 
-import subprocess
 import os
+import subprocess
 
 BASE_VERSION = "0.0.1"
 
@@ -37,9 +37,7 @@ def get_version() -> str:
             return BASE_VERSION
         elif branch == "develop":
             return f"{BASE_VERSION}-beta.1"
-        elif branch.startswith("feat/") or branch.startswith("feature/"):
-            return f"{BASE_VERSION}-alpha.{count}"
-        elif branch.startswith("fix/"):
+        elif branch.startswith("feat/") or branch.startswith("feature/") or branch.startswith("fix/"):
             return f"{BASE_VERSION}-alpha.{count}"
         else:
             return f"{BASE_VERSION}-dev.{count}"

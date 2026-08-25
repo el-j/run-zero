@@ -2,11 +2,12 @@
 Unit tests for Docker container runner driver.
 """
 
-import unittest
-from unittest.mock import patch, MagicMock
 import subprocess
-from drivers.docker_driver import DockerDriver
+import unittest
+from unittest.mock import MagicMock, patch
+
 from drivers import RunnerInfo
+from drivers.docker_driver import DockerDriver
 
 
 class TestDockerDriver(unittest.TestCase):
@@ -48,6 +49,16 @@ class TestDockerDriver(unittest.TestCase):
         self.assertEqual(runners[1].name, "local-runner-amd64-my-org-456")
         self.assertEqual(runners[1].target_arch, "amd64")
         self.assertEqual(runners[1].state, "exited")
+
+    @patch("subprocess.run")
+    def test_list_runners_created_and_restarting_are_pending(self, mock_run):
+        mock_run.return_value = MagicMock(
+            stdout="r1|Created|c1|created|el-j/run-zero|arm64|docker\nr2|Restarting|c2|restarting|el-j/run-zero|arm64|docker\n",
+            returncode=0
+        )
+        runners = self.driver.list_runners()
+        self.assertEqual(runners[0].state, "pending")
+        self.assertEqual(runners[1].state, "pending")
 
     @patch("subprocess.run")
     def test_list_runners_error(self, mock_run):

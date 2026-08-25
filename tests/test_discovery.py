@@ -4,6 +4,7 @@ Unit tests for repository auto-discovery.
 
 import unittest
 from unittest.mock import patch
+
 from discovery import discover_repositories
 
 
