@@ -94,6 +94,10 @@ class DashboardRequestHandler(BaseHTTPRequestHandler):
         elif path == "/dashboard.js":
             self._serve_file("dashboard.js", "application/javascript; charset=utf-8")
             return
+        elif path.startswith("/fonts/"):
+            font_filename = path.replace("/fonts/", "fonts/")
+            self._serve_file(font_filename, "font/woff2")
+            return
 
         # REST Endpoints
         if path in ("/api/status", "/api/fleet"):

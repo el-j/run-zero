@@ -99,6 +99,14 @@ class TestDashboardServer(unittest.TestCase):
             self.assertIn("connectSSE", content)
             self.assertIn("javascript", resp.headers.get("Content-Type", ""))
 
+    def test_serve_font(self):
+        req = urllib.request.Request(f"{self.base_url}/fonts/jetbrains-mono-400.woff2")
+        with urllib.request.urlopen(req, timeout=3.0) as resp:
+            data = resp.read()
+            self.assertEqual(resp.status, 200)
+            self.assertGreater(len(data), 1000)
+            self.assertEqual(resp.headers.get("Content-Type"), "font/woff2")
+
     def test_api_status(self):
         req = urllib.request.Request(f"{self.base_url}/api/status")
         with urllib.request.urlopen(req, timeout=3.0) as resp:
