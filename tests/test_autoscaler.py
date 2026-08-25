@@ -73,6 +73,56 @@ class TestAutoscalerRouting(unittest.TestCase):
         self.assertEqual(driver.name(), "orbstack-vm")
         self.assertEqual(mode, "vm")
 
+    def test_select_driver_job_name_alone_routes_to_vm(self):
+        # No custom runs-on label at all -- only the GitHub-reported job name
+        # itself carries the "e2e" trigger word. Most real workflows never add
+        # a custom runs-on label just for VM routing, so this must work from
+        # the name alone.
+        job = {
+            "id": 105,
+            "name": "Matrix — E2E (mock auth, Desktop Chrome)",
+            "labels": ["self-hosted", "local", "amd64"],
+            "repo": "el-j/herbful"
+        }
+        driver, mode = autoscaler.select_driver_for_job(job, self.docker_driver, self.available_drivers)
+        self.assertEqual(driver.name(), "orbstack-vm")
+        self.assertEqual(mode, "vm")
+
+    def test_select_driver_job_name_lighthouse_routes_to_vm(self):
+        job = {
+            "id": 106,
+            "name": "Lighthouse CI",
+            "labels": ["self-hosted", "local"],
+            "repo": "el-j/herbful"
+        }
+        driver, mode = autoscaler.select_driver_for_job(job, self.docker_driver, self.available_drivers)
+        self.assertEqual(driver.name(), "orbstack-vm")
+        self.assertEqual(mode, "vm")
+
+    def test_select_driver_job_name_substring_does_not_false_positive(self):
+        # "vm" is a VM_TRIGGER_LABELS entry -- tokenizing (not raw substring
+        # matching) the job name must not let it match inside an unrelated
+        # word like "Confirm".
+        job = {
+            "id": 107,
+            "name": "Confirm deployment settings",
+            "labels": ["self-hosted", "local"],
+            "repo": "el-j/run-zero"
+        }
+        driver, mode = autoscaler.select_driver_for_job(job, self.docker_driver, self.available_drivers)
+        self.assertEqual(driver.name(), "docker")
+        self.assertEqual(mode, "container")
+
+    def test_select_driver_no_job_name_does_not_crash(self):
+        job = {
+            "id": 108,
+            "labels": ["self-hosted", "local"],
+            "repo": "el-j/run-zero"
+        }
+        driver, mode = autoscaler.select_driver_for_job(job, self.docker_driver, self.available_drivers)
+        self.assertEqual(driver.name(), "docker")
+        self.assertEqual(mode, "container")
+
 
 class TestAutoscalerDiscovery(unittest.TestCase):
     def setUp(self):

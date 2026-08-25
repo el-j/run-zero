@@ -1,6 +1,7 @@
 .env
 .DS_Store
 *.log
+*.pid
 __pycache__/
 *.pyc
 .coverage

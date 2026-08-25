@@ -7,6 +7,8 @@
 .DEFAULT_GOAL := help
 
 CACHE_DIR := $(HOME)/.local-github-runner/cache
+AUTOSCALER_PID_FILE := .autoscaler.pid
+AUTOSCALER_LOG_FILE := .autoscaler.log
 
 # Colors for terminal styling
 CYAN    := \033[36m
@@ -115,9 +117,17 @@ build: build-arm64 build-amd64 build-autoscaler ## Build all images (ARM64 + AMD
 build-all: build
 
 .PHONY: start up run
-start: check-env init-cache ## Start Autoscaler and Proxy services (Verdaccio, Athens, Docker mirror)
-	@echo "$(CYAN)Starting Local GitHub Runner Autoscaler & Proxy stack (OrbStack)...$(RESET)"
-	docker compose up -d
+start: check-env init-cache ## Start Autoscaler (native host process) + Proxy services (Verdaccio, Athens, Docker mirror)
+	@echo "$(CYAN)Starting caching proxy registries (Verdaccio, Athens, Docker mirror)...$(RESET)"
+	@docker compose up -d
+	@if [ -f $(AUTOSCALER_PID_FILE) ] && kill -0 "$$(cat $(AUTOSCALER_PID_FILE))" 2>/dev/null; then \
+		echo "$(YELLOW)Autoscaler already running (PID $$(cat $(AUTOSCALER_PID_FILE))).$(RESET)"; \
+	else \
+		echo "$(CYAN)Starting Autoscaler as a native host process...$(RESET)"; \
+		set -a; . ./.env; set +a; \
+		PYTHONPATH=src nohup python3 -u src/autoscaler.py > $(AUTOSCALER_LOG_FILE) 2>&1 & \
+		echo $$! > $(AUTOSCALER_PID_FILE); \
+	fi
 	@echo "$(GREEN)Autoscaler and Proxy registries are running in background!$(RESET)"
 	@echo "  • Verdaccio Web UI: $(BOLD)http://localhost:49501$(RESET) (Run $(BOLD)make verdaccio-ui$(RESET))"
 	@echo "  • Athens Go Proxy:  $(BOLD)http://localhost:49500$(RESET)"
@@ -130,6 +140,11 @@ run: start
 .PHONY: stop down
 stop: ## Stop Autoscaler, Proxies, and remove active runner containers
 	@echo "$(YELLOW)Stopping Autoscaler and unregistering active runners...$(RESET)"
+	@if [ -f $(AUTOSCALER_PID_FILE) ]; then \
+		pid=$$(cat $(AUTOSCALER_PID_FILE)); \
+		if kill -0 "$$pid" 2>/dev/null; then kill "$$pid"; fi; \
+		rm -f $(AUTOSCALER_PID_FILE); \
+	fi
 	docker compose down
 	@echo "$(GREEN)Autoscaler and proxies stopped.$(RESET)"
 
@@ -139,22 +154,43 @@ down: stop
 restart: stop start ## Restart Autoscaler and Proxies
 
 .PHONY: logs
-logs: ## Stream live logs from the Autoscaler
-	@docker compose logs -f autoscaler
+logs: ## Stream live logs from the Autoscaler (native host process)
+	@touch $(AUTOSCALER_LOG_FILE) && tail -f $(AUTOSCALER_LOG_FILE)
 
 .PHONY: logs-all
-logs-all: ## Stream live logs from all services (Autoscaler + Verdaccio + Athens)
+logs-all: ## Stream live logs from the Proxy services (Verdaccio + Athens + Docker mirror) -- see `make logs` for the Autoscaler
 	@docker compose logs -f
 
 .PHONY: status ps
-status: ## Show running Autoscaler, Proxies, and active dynamic runner containers
+status: ## Show running Autoscaler, Proxies, and active dynamic runners (containers + VMs)
 	@echo ""
-	@echo "$(BOLD)$(CYAN)=== Runner & Proxy Services ===$(RESET)"
+	@echo "$(BOLD)$(CYAN)=== Autoscaler (native host process) ===$(RESET)"
+	@if [ -f $(AUTOSCALER_PID_FILE) ] && kill -0 "$$(cat $(AUTOSCALER_PID_FILE))" 2>/dev/null; then \
+		echo "Running (PID $$(cat $(AUTOSCALER_PID_FILE)))"; \
+	else \
+		echo "Not running -- run $(BOLD)make start$(RESET)"; \
+	fi
+	@echo ""
+	@echo "$(BOLD)$(CYAN)=== Proxy Services ===$(RESET)"
 	@docker compose ps
 	@echo ""
 	@echo "$(BOLD)$(CYAN)=== Active Ephemeral Runner Containers ===$(RESET)"
 	@docker ps --filter "label=managed-by=local-autoscaler" --format "table {{.ID}}\t{{.Names}}\t{{.Status}}\t{{.Labels}}"
 	@echo ""
+	@echo "$(BOLD)$(CYAN)=== Active Ephemeral Runner VMs ===$(RESET)"
+	@orbctl list 2>/dev/null | grep -i runzero-vm || echo "  (none)"
+	@echo ""
+
+.PHONY: start-container stop-container
+start-container: check-env init-cache ## [Opt-in] Run Autoscaler fully containerized -- Docker driver only, VM drivers cannot work in this mode
+	@echo "$(YELLOW)Starting fully containerized Autoscaler. VM drivers (orbstack-vm/wsl2/multipass) shell out$(RESET)"
+	@echo "$(YELLOW)to host-native tools that cannot exist inside this container, so only the Docker driver$(RESET)"
+	@echo "$(YELLOW)will ever be available in this mode. Use 'make start' instead for full VM support.$(RESET)"
+	docker compose --profile container-autoscaler up -d
+	@echo "$(GREEN)Containerized Autoscaler and Proxy registries are running!$(RESET)"
+
+stop-container: ## [Opt-in] Stop the fully containerized Autoscaler mode
+	docker compose --profile container-autoscaler down
 
 .PHONY: clean
 clean: ## Force clean stopped containers and temporary runner volumes
@@ -200,9 +236,11 @@ test: ## Run local unit tests directly
 	@python3 -m unittest discover -s tests -p "test_*.py" -v
 
 .PHONY: run-dev
-run-dev: check-env init-cache ## Run local autoscaler in foreground for interactive debugging
-	@echo "$(CYAN)Running Autoscaler in interactive foreground mode...$(RESET)"
-	docker compose up
+run-dev: check-env init-cache ## Run local autoscaler in foreground for interactive debugging (native, full VM support)
+	@echo "$(CYAN)Starting caching proxy registries (Verdaccio, Athens, Docker mirror)...$(RESET)"
+	docker compose up -d
+	@echo "$(CYAN)Running Autoscaler in interactive foreground mode (native host process)...$(RESET)"
+	@set -a; . ./.env; set +a; PYTHONPATH=src python3 -u src/autoscaler.py
 
 
 
