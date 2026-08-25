@@ -3,7 +3,6 @@ Unit tests for hybrid runner routing engine.
 """
 
 import unittest
-from unittest.mock import MagicMock
 from router import select_driver_for_job
 from drivers.docker_driver import DockerDriver
 from drivers.orbstack_vm_driver import OrbStackVMDriver

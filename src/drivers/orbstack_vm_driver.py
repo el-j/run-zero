@@ -121,11 +121,12 @@ echo "Base image provisioning complete."
         self,
         repo: Optional[str] = None,
         org: Optional[str] = None,
-        labels: Optional[str] = None,
         arch: str = "arm64",
+        labels: Optional[str] = None,
         access_token: Optional[str] = None,
         cache_mounts: Optional[Dict[str, str]] = None,
-        proxies_enabled: bool = True
+        proxies_enabled: bool = True,
+        extra_env: Optional[Dict[str, str]] = None
     ) -> Optional[str]:
         unique_id = uuid.uuid4().hex[:6]
         name_suffix = f"-{repo.replace('/', '-')}" if repo else (f"-{org}" if org else "")

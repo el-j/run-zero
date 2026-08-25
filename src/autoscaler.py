@@ -12,8 +12,8 @@ import time
 import signal
 from typing import List, Dict, Any
 
-from drivers import get_driver, get_available_drivers, RunnerDriver, RunnerInfo
-from github_api import github_request, get_queued_job_details, rate_limit_remaining
+from drivers import get_driver, get_available_drivers, RunnerInfo
+from github_api import get_queued_job_details, rate_limit_remaining
 from discovery import discover_repositories
 from reconciler import reconcile_zombie_runners
 from router import select_driver_for_job
@@ -23,7 +23,7 @@ from cache_manager import init_cache_dirs
 ACCESS_TOKEN = os.getenv("ACCESS_TOKEN") or os.getenv("GITHUB_TOKEN")
 OWNER = os.getenv("OWNER", "").strip()
 ORG = os.getenv("ORG", "").strip()
-REPOS_CONFIG = os.getenv("REPOS") or os.getenv("REPO", "")
+REPOS_CONFIG = os.getenv("REPOS") or os.getenv("REPO", "") or ""
 AUTO_DISCOVER = os.getenv("AUTO_DISCOVER_REPOS", "true").lower() in ("true", "1", "yes")
 ACTIVE_DAYS = int(os.getenv("ACTIVE_REPO_DAYS", "60"))
 DISCOVERY_INTERVAL = int(os.getenv("DISCOVERY_INTERVAL", "900"))
@@ -184,14 +184,14 @@ def main():
                     if spawned_id:
                         needed -= 1
                         active_runners.append(RunnerInfo(
-                        id=spawned_id,
-                        name=spawned_id,
-                        status="running",
-                        state="running",
-                        target_repo=repo,
-                        target_arch=arch,
-                        backend=driver_to_use.name()
-                    ))
+                            id=spawned_id,
+                            name=spawned_id,
+                            status="running",
+                            state="running",
+                            target_repo=repo,
+                            target_arch=arch,
+                            backend=driver_to_use.name()
+                        ))
 
         # Sleep before next poll loop
         for _ in range(POLL_INTERVAL):

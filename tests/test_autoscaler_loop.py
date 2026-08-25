@@ -7,7 +7,6 @@ from unittest.mock import patch, MagicMock
 import tempfile
 import shutil
 import autoscaler
-from drivers import RunnerInfo
 
 
 class TestAutoscalerLoop(unittest.TestCase):
