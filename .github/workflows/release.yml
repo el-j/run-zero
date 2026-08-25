@@ -40,13 +40,18 @@ jobs:
         run: |
           git fetch --tags
           BRANCH="${GITHUB_REF_NAME}"
-          LATEST_STABLE=$(git tag -l "v[0-9]*.[0-9]*.[0-9]*" --sort=-v:refname | head -n 1)
+          
+          # Strictly match pure stable release tags (v0.0.1, v1.0.0) without hyphens/prerelease suffixes
+          LATEST_STABLE=$(git tag -l | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' | sort -V | tail -n 1 || true)
           
           if [ -z "$LATEST_STABLE" ]; then
             BASE_VERSION="0.0.1"
           else
             BASE_VERSION="${LATEST_STABLE#v}"
           fi
+          
+          # Strip any prerelease suffix if somehow present to guarantee clean major.minor.patch
+          BASE_VERSION=$(echo "$BASE_VERSION" | sed -E 's/-.*//')
           
           COMMIT_COUNT=$(git rev-list --count HEAD)
           
