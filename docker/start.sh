@@ -79,6 +79,18 @@ if curl -s --connect-timeout 1 http://localhost:49500/ >/dev/null 2>&1; then
   echo "⚡ Athens Go proxy connected: http://localhost:49500"
 fi
 
+# apt-cacher-ng only gets wired into the image if it happened to be running at
+# `docker build` time (see provision-toolchain.sh) -- a real container built
+# on a machine where it wasn't up starts with no apt proxy config at all, and
+# even when it WAS baked in, that only sped up the one-time image build, never
+# an actual job's own `sudo apt-get install ...` step, since nothing re-checked
+# at container start. Doing it here, same as npm/Go above, means the proxy
+# works for user workflows too, regardless of build-time luck.
+if curl -fsS --connect-timeout 1 http://localhost:49503/acng-report.html >/dev/null 2>&1; then
+  echo 'Acquire::http::Proxy "http://localhost:49503";' | sudo tee /etc/apt/apt.conf.d/01runzero-proxy > /dev/null
+  echo "⚡ apt-cacher-ng proxy connected: http://localhost:49503"
+fi
+
 # Fallback/alias for environment variable names
 REPO="${REPO:-${REPOSITORY}}"
 ORG="${ORG:-${ORGANIZATION}}"
