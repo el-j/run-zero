@@ -2,11 +2,12 @@
 Unit tests for Windows WSL2 runner driver.
 """
 
-import unittest
-from unittest.mock import patch, MagicMock
 import subprocess
-from drivers.wsl_driver import WSL2Driver
+import unittest
+from unittest.mock import MagicMock, patch
+
 from drivers import RunnerInfo
+from drivers.wsl_driver import WSL2Driver
 
 
 class TestWSL2Driver(unittest.TestCase):

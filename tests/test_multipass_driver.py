@@ -2,12 +2,13 @@
 Unit tests for Canonical Multipass runner driver.
 """
 
-import unittest
-from unittest.mock import patch, MagicMock
 import json
 import subprocess
-from drivers.multipass_driver import MultipassDriver
+import unittest
+from unittest.mock import MagicMock, patch
+
 from drivers import RunnerInfo
+from drivers.multipass_driver import MultipassDriver
 
 
 class TestMultipassDriver(unittest.TestCase):

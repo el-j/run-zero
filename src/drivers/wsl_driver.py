@@ -5,11 +5,12 @@ with automatic integration with local caching proxies (Verdaccio, Athens).
 """
 
 import os
-import sys
-import uuid
 import shutil
 import subprocess
-from typing import List, Dict, Optional
+import sys
+import uuid
+from typing import Dict, List, Optional
+
 from . import RunnerDriver, RunnerInfo
 
 

@@ -2,8 +2,9 @@
 Repository auto-discovery with activity date cutoffs and owner filtering.
 """
 
-from datetime import datetime, timezone, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import List, Optional
+
 from github_api import github_request
 
 

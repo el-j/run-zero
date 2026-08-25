@@ -3,9 +3,10 @@ Unit tests for hybrid runner routing engine.
 """
 
 import unittest
-from router import select_driver_for_job
+
 from drivers.docker_driver import DockerDriver
 from drivers.orbstack_vm_driver import OrbStackVMDriver
+from router import select_driver_for_job
 
 
 class TestRouter(unittest.TestCase):

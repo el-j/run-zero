@@ -2,9 +2,9 @@
 Tests for shell scripts syntax and entrypoint validation.
 """
 
-import unittest
-import subprocess
 import os
+import subprocess
+import unittest
 
 
 class TestShellScripts(unittest.TestCase):

@@ -3,7 +3,8 @@ Hybrid routing engine for dynamically matching workflow jobs to container or VM 
 """
 
 import re
-from typing import Dict, Tuple, Any
+from typing import Any, Dict, Tuple
+
 from drivers import RunnerDriver
 
 VM_TRIGGER_LABELS = {"vm", "orbstack", "wsl", "multipass", "e2e", "browser", "chrome", "lighthouse", "systemd"}

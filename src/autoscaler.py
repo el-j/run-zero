@@ -7,17 +7,17 @@ Includes persistent multi-language package caching, proxy registries, and adapti
 """
 
 import os
+import signal
 import sys
 import time
-import signal
-from typing import List, Dict, Any
+from typing import Any, Dict, List
 
-from drivers import get_driver, get_available_drivers, RunnerInfo
-from github_api import get_queued_job_details, rate_limit_remaining
+from cache_manager import init_cache_dirs
 from discovery import discover_repositories
+from drivers import RunnerInfo, get_available_drivers, get_driver
+from github_api import get_queued_job_details, rate_limit_remaining
 from reconciler import reconcile_zombie_runners
 from router import select_driver_for_job
-from cache_manager import init_cache_dirs
 
 # Configuration from environment variables
 ACCESS_TOKEN = os.getenv("ACCESS_TOKEN") or os.getenv("GITHUB_TOKEN")
@@ -130,7 +130,11 @@ def main():
             d.prune_exited(runners)
             all_runners.extend(d.list_runners())
 
-        active_runners = [r for r in all_runners if r.state == "running"]
+        # "pending" (creating/provisioning/created) counts as active too -- a VM/
+        # container that's still booting hasn't hit GitHub's "claimed" state yet
+        # either, so undercounting it here caused a duplicate spawn for the same
+        # job on the very next poll, every time, before the fix.
+        active_runners = [r for r in all_runners if r.state in ("running", "pending")]
         active_count = len(active_runners)
 
         if ORG:

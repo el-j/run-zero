@@ -5,20 +5,16 @@ Provides full systemd, dedicated kernel, internal Docker daemon, unconfined brow
 and automatic integration with local caching proxies (Verdaccio, Athens, apt-cacher-ng).
 """
 
-import os
-import sys
-import subprocess
-import uuid
 import json
+import os
 import shutil
-from typing import List, Dict, Optional
+import subprocess
+import sys
+import uuid
+from typing import Dict, List, Optional
 
 from . import RunnerDriver, RunnerInfo
-from .orbstack_templates import (
-    docker_engine_snippet,
-    runner_download_snippet,
-    registration_and_run_snippet
-)
+from .orbstack_templates import docker_engine_snippet, registration_and_run_snippet, runner_download_snippet
 
 RUNNER_VERSION = "2.336.0"
 RUNNER_VM_PREFIX = "runzero-vm-"
@@ -213,7 +209,21 @@ set -e
                 if name.startswith(RUNNER_VM_PREFIX) and not name.startswith(BASE_IMAGE_PREFIX):
                     status = vm.get("state", "running")
                     arch = "amd64" if "amd64" in name else "arm64"
-                    state = "running" if status.lower() in ("running", "active") else "exited"
+                    status_lower = status.lower()
+                    if status_lower in ("running", "active"):
+                        state = "running"
+                    elif status_lower in ("creating", "provisioning"):
+                        # Transient startup states, NOT a terminal/prunable state --
+                        # misclassifying these as "exited" undercounts genuinely
+                        # in-flight VMs in main()'s active-runner tally, causing it
+                        # to spawn a duplicate for the same job before the first one
+                        # finishes booting (confirmed live: 3 runners registered for
+                        # one real queued job, the 2 losers idle forever since
+                        # ephemeral runners only self-terminate after completing a
+                        # job, never just for being unclaimed).
+                        state = "pending"
+                    else:
+                        state = "exited"
                     target_repo = ""
                     name_body = name[len(RUNNER_VM_PREFIX):]
                     body_parts = name_body.split("-")
