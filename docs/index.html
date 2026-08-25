@@ -34,6 +34,7 @@
       </a>
       <div class="nav-links">
         <a href="#features" class="nav-link">Features</a>
+        <a href="#routing" class="nav-link">Auto-Routing</a>
         <a href="#engines" class="nav-link">Containers &amp; VMs</a>
         <a href="#comparison" class="nav-link">Why Not ARC?</a>
         <a href="#quickstart" class="nav-link">Quickstart</a>
@@ -127,6 +128,50 @@
           <div class="card-icon">🔒</div>
           <h3>Zero Kubernetes Overhead</h3>
           <p>No K8s control plane, no etcd, no Helm charts, and no cert-manager consuming 3GB of your laptop's RAM before a single job runs.</p>
+        </div>
+      </div>
+    </section>
+
+    <!-- Hybrid Auto-Routing Visual Showcase -->
+    <section class="comparison-section" id="routing">
+      <div class="section-header">
+        <h2>Hybrid Auto-Routing in Action</h2>
+        <p>No cluster switching. RunZero inspects your workflow labels and executes on the best backend automatically.</p>
+      </div>
+
+      <div class="routing-grid">
+        <!-- Card 1: Fast Docker Container -->
+        <div class="code-card">
+          <div class="code-card-header">
+            <strong>Standard Unit Tests &amp; Builds</strong>
+            <span class="code-badge-docker">🐳 Ephemeral Docker (~0.3s)</span>
+          </div>
+          <div class="code-card-body">
+            <span class="key">jobs:</span><br>
+            &nbsp;&nbsp;<span class="key">unit-test:</span><br>
+            &nbsp;&nbsp;&nbsp;&nbsp;<span class="key">runs-on:</span> <span class="highlight-label">[ self-hosted, local ]</span><br>
+            &nbsp;&nbsp;&nbsp;&nbsp;<span class="key">steps:</span><br>
+            &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;- <span class="key">uses:</span> <span class="val">actions/checkout@v7</span><br>
+            &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;- <span class="key">run:</span> <span class="val">npm test</span><br><br>
+            <span class="comment"># ⚡ Instant ~0.3s start, 20MB RAM idle overhead</span>
+          </div>
+        </div>
+
+        <!-- Card 2: Dedicated Linux VM -->
+        <div class="code-card">
+          <div class="code-card-header">
+            <strong>Browser E2E, Lighthouse &amp; Systemd</strong>
+            <span class="code-badge-vm">💻 Dedicated Linux VM</span>
+          </div>
+          <div class="code-card-body">
+            <span class="key">jobs:</span><br>
+            &nbsp;&nbsp;<span class="key">lighthouse-audit:</span><br>
+            &nbsp;&nbsp;&nbsp;&nbsp;<span class="key">runs-on:</span> <span class="highlight-label">[ self-hosted, local, browser ]</span><br>
+            &nbsp;&nbsp;&nbsp;&nbsp;<span class="key">steps:</span><br>
+            &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;- <span class="key">uses:</span> <span class="val">actions/checkout@v7</span><br>
+            &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;- <span class="key">run:</span> <span class="val">npx lhci autorun</span><br><br>
+            <span class="comment"># 🛡️ Full systemd, unconfined Chrome &amp; true OS isolation</span>
+          </div>
         </div>
       </div>
     </section>
