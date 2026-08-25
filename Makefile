@@ -182,6 +182,14 @@ test-suite: ## Run test suite with pytest, mypy type checking, and flake8 linter
 		PYTHONPATH=docker pytest --cov=docker --cov-report=term-missing tests/"
 	@echo "$(GREEN)All tests passed with 0 warnings!$(RESET)"
 
+.PHONY: mutation-test
+mutation-test: ## Run mutation testing suite (mutmut)
+	@echo "$(CYAN)Running Mutmut Mutation Testing Suite...$(RESET)"
+	@docker run --rm -v "$$(pwd):/app" -w /app python:3.11-slim bash -c "\
+		pip install --quiet pytest mutmut && \
+		PYTHONPATH=docker mutmut run || true && \
+		mutmut results"
+
 .PHONY: test
 test: ## Run local unit tests directly
 	@python3 -m unittest discover -s tests -p "test_*.py" -v
@@ -190,5 +198,6 @@ test: ## Run local unit tests directly
 run-dev: check-env init-cache ## Run local autoscaler in foreground for interactive debugging
 	@echo "$(CYAN)Running Autoscaler in interactive foreground mode...$(RESET)"
 	docker compose up
+
 
 
