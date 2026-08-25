@@ -43,6 +43,9 @@ def registration_and_run_snippet(
     return f"""
 sudo systemctl start docker 2>/dev/null || true
 sudo chmod 666 /var/run/docker.sock 2>/dev/null || true
+sudo mkdir -p /home/runner/go/bin /home/runner/go/pkg /opt/hostedtoolcache /home/runner/.cache
+sudo chown -R runner:runner /home/runner /opt/hostedtoolcache 2>/dev/null || true
+sudo chmod -R 777 /home/runner/go /opt/hostedtoolcache /home/runner/.cache 2>/dev/null || true
 {proxy_env_block}
 cd /home/runner/actions-runner
 

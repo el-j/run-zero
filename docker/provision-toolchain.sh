@@ -52,7 +52,7 @@ sudo apt-get install -y --no-install-recommends dotnet-sdk-8.0
 # Google Chrome -- amd64-only, no arm64 build exists (needed by lhci autorun's
 # headless browser audits). Playwright-driven jobs still get their own bundled
 # Chromium per-job via `playwright install`, this only affects Lighthouse CI.
-if [ "$ARCH" = "amd64" ]; then
+if [ "$ARCH" = "amd64" ] && [ "$(dpkg --print-architecture)" = "amd64" ]; then
   echo "==> Installing Google Chrome..."
   sudo install -m 0755 -d /etc/apt/keyrings
   curl -fsSL https://dl.google.com/linux/linux_signing_key.pub -o /tmp/google-chrome.asc
@@ -60,8 +60,8 @@ if [ "$ARCH" = "amd64" ]; then
   rm -f /tmp/google-chrome.asc
   echo "deb [arch=amd64 signed-by=/etc/apt/keyrings/google-chrome.asc] http://dl.google.com/linux/chrome/deb/ stable main" | \
     sudo tee /etc/apt/sources.list.d/google-chrome.list > /dev/null
-  sudo apt-get update -y
-  sudo apt-get install -y --no-install-recommends google-chrome-stable
+  sudo apt-get update -y || true
+  sudo apt-get install -y --no-install-recommends google-chrome-stable || true
 fi
 
 # Node 20/22/24 via nvm, with yarn + pnpm on each
