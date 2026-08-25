@@ -81,9 +81,9 @@ const baseUrl = import.meta.env.BASE_URL.replace(/\/$/, '');
 
         <div class="tech-card">
           <div class="card-icon-box">📦</div>
-          <h3>Verdaccio &amp; Athens Caching</h3>
-          <p>Integrated local caching proxy registries for npm (:49501), Go modules (:49500), and Docker Hub. Plus persistent host volume caching for pip, uv, yarn, and pnpm.</p>
-          <div class="card-footer-meta">PROXIES: BUILT-IN</div>
+          <h3>APT, Verdaccio &amp; Athens Caching</h3>
+          <p>Integrated caching proxies for Debian/Ubuntu (<a href="https://www.unix-ag.uni-kl.de/~bloch/acng/" target="_blank" rel="noopener">apt-cacher-ng</a> :49503), npm (<a href="https://verdaccio.org/" target="_blank" rel="noopener">Verdaccio</a> :49501), Go (<a href="https://github.com/gomods/athens" target="_blank" rel="noopener">Athens</a> :49500), and Docker Hub.</p>
+          <div class="card-footer-meta">PROXIES: APT + NPM + GO + DOCKER</div>
         </div>
 
         <div class="tech-card">
@@ -103,14 +103,14 @@ const baseUrl = import.meta.env.BASE_URL.replace(/\/$/, '');
         <div class="tech-card">
           <div class="card-icon-box">🛡️</div>
           <h3>100% Mutation &amp; Unit Tested</h3>
-          <p>Verified with unit tests, 0 Flake8 lint warnings, 100% Mypy static type safety, and Mutmut mutation testing across all drivers.</p>
+          <p>Verified with 90 unit tests, 0 Flake8 lint warnings, 100% Mypy static type safety, and Mutmut mutation testing across all drivers.</p>
           <div class="card-footer-meta">QUALITY: 100% VERIFIED</div>
         </div>
 
         <div class="tech-card">
           <div class="card-icon-box">🟢</div>
           <h3>Unified CI Toolchain</h3>
-          <p>Single source of truth toolchain script: pre-installed Node.js 20/22/24 LTS via nvm, .NET SDK 8.0, Git LFS, PostgreSQL client, and Playwright OS dependencies.</p>
+          <p>Single source of truth toolchain script: pre-installed Node.js 20/22/24 LTS via <a href="https://github.com/nvm-sh/nvm" target="_blank" rel="noopener">nvm</a>, <a href="https://dotnet.microsoft.com/" target="_blank" rel="noopener">.NET SDK 8.0</a>, Git LFS, PostgreSQL client, and <a href="https://playwright.dev/" target="_blank" rel="noopener">Playwright</a> OS dependencies.</p>
           <div class="card-footer-meta">TOOLCHAIN: READY</div>
         </div>
       </div>
@@ -143,31 +143,31 @@ const baseUrl = import.meta.env.BASE_URL.replace(/\/$/, '');
           </thead>
           <tbody>
             <tr>
-              <td><strong>🪐 OrbStack (Recommended)</strong></td>
+              <td><strong>🪐 <a href="https://orbstack.dev/" target="_blank" rel="noopener">OrbStack</a> (Recommended)</strong></td>
               <td>macOS (Apple Silicon &amp; Intel)</td>
               <td><span class="tag-crimson">Containers &amp; Linux VMs</span></td>
               <td>Instant boot, golden VM cloning, Rosetta 2 x86_64 acceleration, full systemd.</td>
             </tr>
             <tr>
-              <td><strong>🐳 Docker Desktop</strong></td>
+              <td><strong>🐳 <a href="https://www.docker.com/" target="_blank" rel="noopener">Docker Desktop</a></strong></td>
               <td>macOS, Windows, Linux</td>
               <td><span class="tag-crimson">Containers</span></td>
               <td>Universal cross-platform container support.</td>
             </tr>
             <tr>
-              <td><strong>🪟 Windows WSL2</strong></td>
+              <td><strong>🪟 <a href="https://learn.microsoft.com/en-us/windows/wsl/" target="_blank" rel="noopener">Windows WSL2</a></strong></td>
               <td>Windows 10/11 &amp; Server</td>
               <td><span class="tag-crimson">Native Linux VMs</span></td>
               <td>Native Linux execution without requiring Docker Desktop on Windows.</td>
             </tr>
             <tr>
-              <td><strong>🚀 Canonical Multipass</strong></td>
+              <td><strong>🚀 <a href="https://multipass.run/" target="_blank" rel="noopener">Canonical Multipass</a></strong></td>
               <td>macOS, Windows, Linux</td>
               <td><span class="tag-crimson">Virtual Machines</span></td>
               <td>Universal cross-platform Ubuntu VMs via QEMU / Hyper-V / VirtualBox.</td>
             </tr>
             <tr>
-              <td><strong>🐧 Native Linux Docker</strong></td>
+              <td><strong>🐧 <a href="https://docs.docker.com/engine/" target="_blank" rel="noopener">Native Linux Docker</a></strong></td>
               <td>Ubuntu, Debian, Arch, Homelabs</td>
               <td><span class="tag-crimson">Native Containers</span></td>
               <td>Zero VM layer, direct kernel speed for homelab servers.</td>

@@ -21,6 +21,18 @@ set -euo pipefail
 ARCH="${1:?Usage: provision-toolchain.sh <amd64|arm64>}"
 export DEBIAN_FRONTEND=noninteractive
 
+# Route apt through the local apt-cacher-ng proxy (same pattern as Verdaccio/Athens
+# for npm/Go) if it's reachable -- caches .deb packages across BOTH engines and
+# across repeated runs, so rebuilding the Docker image or the golden VM image after
+# an edit here doesn't re-download the same ~3GB of packages from the internet each
+# time. `host.orb.internal` resolves from any OrbStack container/VM AND from a
+# `docker build` RUN step (OrbStack extends that DNS entry universally); harmless
+# no-op if apt-cacher-ng isn't running (`make start` brings it up by default).
+if curl -fsS --connect-timeout 2 "http://host.orb.internal:49503/acng-report.html" >/dev/null 2>&1; then
+  echo "==> Using local apt-cacher-ng proxy"
+  echo 'Acquire::http::Proxy "http://host.orb.internal:49503";' | sudo tee /etc/apt/apt.conf.d/01runzero-proxy > /dev/null
+fi
+
 echo "==> Installing base OS packages..."
 sudo apt-get update -y
 sudo apt-get install -y --no-install-recommends \

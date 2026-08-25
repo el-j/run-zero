@@ -13,10 +13,23 @@ ENV PATH="/home/runner/.local/bin:/home/runner/go/bin:/usr/share/dotnet:/usr/sha
 
 # 1. Minimal bootstrap packages needed before the shared provisioning script can
 # run (sudo for the runner user; iptables for Docker's own networking needs
-# when this container spawns sibling service containers via the host socket)
+# when this container spawns sibling service containers via the host socket).
+# Not proxied through apt-cacher-ng -- curl itself isn't installed yet at this
+# point, so there's nothing to check reachability with (chicken-and-egg); small
+# enough (~few MB) not to matter. Everything downstream of this IS proxied.
 RUN apt-get update -y && apt-get upgrade -y && \
     apt-get install -y --no-install-recommends sudo iptables ca-certificates curl && \
     rm -rf /var/lib/apt/lists/*
+
+# Route apt through the local apt-cacher-ng proxy (docker-compose.yml) if it's
+# reachable during the build -- caches .deb packages across rebuilds of this
+# image AND the OrbStack VM golden image (both run docker/provision-toolchain.sh).
+# host.orb.internal resolves from a `docker build` RUN step under OrbStack;
+# harmless no-op (and the build just falls through to the real mirrors) if
+# apt-cacher-ng isn't running.
+RUN if curl -fsS --connect-timeout 2 "http://host.orb.internal:49503/acng-report.html" >/dev/null 2>&1; then \
+      echo 'Acquire::http::Proxy "http://host.orb.internal:49503";' > /etc/apt/apt.conf.d/01runzero-proxy; \
+    fi
 
 # 2. Install Docker CLI & Compose Plugin. CLI only, NOT the engine -- this
 # container talks to the HOST's docker.sock via a bind mount (docker_driver.py),

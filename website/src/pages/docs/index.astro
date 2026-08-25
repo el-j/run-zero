@@ -56,12 +56,12 @@ const baseUrl = import.meta.env.BASE_URL.replace(/\/$/, '');
         </div>
 
         <div class="sidebar-section">
-          <div class="sidebar-title">Configuration &amp; Healing</div>
+          <div class="sidebar-title">Caching &amp; Dependencies</div>
           <ul class="sidebar-links">
+            <li><a href="#proxy-caching" class="sidebar-link">APT &amp; Package Caching</a></li>
+            <li><a href="#dependencies" class="sidebar-link">First-Level Dependencies</a></li>
             <li><a href="#env-reference" class="sidebar-link">Environment Variables (.env)</a></li>
-            <li><a href="#rate-limiting" class="sidebar-link">Rate Limiting &amp; Quotas</a></li>
             <li><a href="#zombie-healing" class="sidebar-link">Zombie Runner Healing</a></li>
-            <li><a href="#proxy-caching" class="sidebar-link">Package Proxy Caching</a></li>
           </ul>
         </div>
 
@@ -82,13 +82,13 @@ const baseUrl = import.meta.env.BASE_URL.replace(/\/$/, '');
       <main class="docs-content">
         <h1>RunZero Documentation</h1>
         <p class="lead">
-          Everything you need to know about configuring, running, and scaling your local GitHub Actions runner fleet with Docker containers and dedicated Linux Virtual Machines.
+          Everything you need to know about configuring, running, and scaling your local GitHub Actions runner fleet with Docker containers, dedicated Linux Virtual Machines, and intelligent proxy caching.
         </p>
 
         <!-- Section 1: Quickstart -->
         <h2 id="quickstart">Quick Start in 60 Seconds</h2>
         <p>
-          RunZero deploys an autoscaler daemon alongside local caching proxies (Verdaccio for npm, Athens for Go, Docker Hub mirror).
+          RunZero deploys an autoscaler daemon alongside local caching proxies (<a href="https://www.unix-ag.uni-kl.de/~bloch/acng/" target="_blank" rel="noopener">apt-cacher-ng</a> for Debian/Ubuntu, <a href="https://verdaccio.org/" target="_blank" rel="noopener">Verdaccio</a> for npm, <a href="https://github.com/gomods/athens" target="_blank" rel="noopener">Athens</a> for Go, and Docker Hub mirror).
         </p>
         <pre class="code-block"><code># 1. Clone the repository
 git clone git@github.com:el-j/run-zero.git
@@ -113,7 +113,7 @@ make logs</code></pre>
         <h2 id="prerequisites">Prerequisites</h2>
         <p>RunZero runs on macOS, Linux, and Windows with minimal system requirements:</p>
         <ul>
-          <li><strong>Container Runtime</strong>: <a href="https://orbstack.dev" target="_blank" rel="noopener">OrbStack</a> (recommended for macOS), Docker Desktop, or native Linux Docker.</li>
+          <li><strong>Container Runtime</strong>: <a href="https://orbstack.dev" target="_blank" rel="noopener">OrbStack</a> (recommended for macOS), <a href="https://www.docker.com/" target="_blank" rel="noopener">Docker Desktop</a>, or native Linux Docker.</li>
           <li><strong>GitHub Personal Access Token (PAT)</strong>: Classic PAT with <code>repo</code> scope (and <code>admin:org</code> if managing an Organization fleet).</li>
           <li><strong>Hardware</strong>: Apple Silicon (M1/M2/M3/M4) or Intel/AMD x86_64 CPU, 4GB+ RAM.</li>
         </ul>
@@ -136,7 +136,7 @@ make logs</code></pre>
 
         <h3 id="orbstack-driver">🪐 OrbStack Linux VM Driver (<code>RUNNER_BACKEND=orbstack-vm</code>)</h3>
         <p>
-          Spawns dedicated lightweight Linux machines via Apple Virtualization.framework. Provides <strong>full systemd support</strong>, unconfined Google Chrome sandboxing, background daemons, and internal Docker-in-VM capabilities. Automatically connects to host Verdaccio &amp; Athens caching proxies via <code>host.orb.internal</code>.
+          Spawns dedicated lightweight Linux machines via <a href="https://orbstack.dev" target="_blank" rel="noopener">OrbStack</a> and Apple Virtualization.framework. Provides <strong>full systemd support</strong>, unconfined Google Chrome sandboxing, background daemons, and internal Docker-in-VM capabilities. Automatically connects to host Verdaccio, Athens, and apt-cacher proxies via <code>host.orb.internal</code>.
         </p>
 
         <h3 id="golden-vm">🏗️ Golden VM Base Image (<code>make build-vm-base</code>)</h3>
@@ -146,17 +146,17 @@ make logs</code></pre>
 
         <h3 id="docker-driver">🐳 Docker Container Driver (<code>RUNNER_BACKEND=docker</code>)</h3>
         <p>
-          Launches ultra-fast ephemeral containers. Starts in <strong>~0.3 seconds</strong> and consumes zero RAM when idle. Ideal for unit tests, linting, build pipelines, and JavaScript/Python workflows.
+          Launches ultra-fast ephemeral containers powered by <a href="https://docs.docker.com/engine/" target="_blank" rel="noopener">Docker Engine</a>. Starts in <strong>~0.3 seconds</strong> and consumes zero RAM when idle. Ideal for unit tests, linting, build pipelines, and JavaScript/Python workflows.
         </p>
 
         <h3 id="wsl-driver">🪟 Windows WSL2 Driver (<code>RUNNER_BACKEND=wsl2</code>)</h3>
         <p>
-          Runs native Linux runners directly inside Windows Subsystem for Linux 2 (Windows 10/11 and Windows Server) without requiring Docker Desktop.
+          Runs native Linux runners directly inside <a href="https://learn.microsoft.com/en-us/windows/wsl/" target="_blank" rel="noopener">Windows Subsystem for Linux 2</a> (Windows 10/11 and Windows Server) without requiring Docker Desktop.
         </p>
 
         <h3 id="multipass-driver">🚀 Canonical Multipass Driver (<code>RUNNER_BACKEND=multipass</code>)</h3>
         <p>
-          Universal cross-platform virtual machine backend using QEMU, Hyper-V, or VirtualBox.
+          Universal cross-platform virtual machine backend using <a href="https://multipass.run/" target="_blank" rel="noopener">Canonical Multipass</a> via QEMU, Hyper-V, or VirtualBox.
         </p>
 
         <!-- Section 5: Hybrid Routing -->
@@ -178,7 +178,66 @@ jobs:
     steps:
       - run: npx lhci autorun</code></pre>
 
-        <!-- Section 6: Zombie Healing -->
+        <!-- Section 6: Proxy Caching -->
+        <h2 id="proxy-caching">APT &amp; Package Proxy Caching</h2>
+        <p>
+          RunZero runs lightweight background caching proxy services so that neither your container image builds nor your CI runner executions waste bandwidth re-downloading packages from public registries:
+        </p>
+        
+        <div class="table-wrapper">
+          <table class="comparison-table">
+            <thead>
+              <tr>
+                <th>Proxy Service</th>
+                <th>Target Packages</th>
+                <th>Host Port</th>
+                <th>Web UI / Dashboard</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td><strong><a href="https://www.unix-ag.uni-kl.de/~bloch/acng/" target="_blank" rel="noopener">APT Cacher NG</a></strong></td>
+                <td>Ubuntu/Debian <code>.deb</code> packages</td>
+                <td><code>:49503</code></td>
+                <td><a href="http://localhost:49503/acng-report.html" target="_blank" rel="noopener">http://localhost:49503/acng-report.html</a></td>
+              </tr>
+              <tr>
+                <td><strong><a href="https://verdaccio.org/" target="_blank" rel="noopener">Verdaccio</a></strong></td>
+                <td>NPM, Yarn, PNPM JavaScript packages</td>
+                <td><code>:49501</code></td>
+                <td><a href="http://localhost:49501" target="_blank" rel="noopener">http://localhost:49501</a></td>
+              </tr>
+              <tr>
+                <td><strong><a href="https://github.com/gomods/athens" target="_blank" rel="noopener">Athens</a></strong></td>
+                <td>Go language modules</td>
+                <td><code>:49500</code></td>
+                <td><code>http://localhost:49500</code></td>
+              </tr>
+              <tr>
+                <td><strong><a href="https://docs.docker.com/docker-hub/mirror/" target="_blank" rel="noopener">Docker Registry Mirror</a></strong></td>
+                <td>Docker Hub container layers</td>
+                <td><code>:49502</code></td>
+                <td><code>http://localhost:49502</code></td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+        <!-- Section 7: First-Level Dependencies -->
+        <h2 id="dependencies">First-Level Dependencies &amp; Upstream Tools</h2>
+        <p>RunZero builds upon best-of-breed open-source virtualization and runtime platforms:</p>
+        <ul>
+          <li><a href="https://orbstack.dev/" target="_blank" rel="noopener"><strong>OrbStack</strong></a>: Superfast, lightweight container engine and Linux Virtual Machine hypervisor for macOS.</li>
+          <li><a href="https://www.docker.com/" target="_blank" rel="noopener"><strong>Docker Engine &amp; Compose</strong></a>: Industry standard container runtime and service orchestration.</li>
+          <li><a href="https://www.unix-ag.uni-kl.de/~bloch/acng/" target="_blank" rel="noopener"><strong>apt-cacher-ng</strong></a>: High-performance caching proxy for Debian and Ubuntu APT package downloads.</li>
+          <li><a href="https://verdaccio.org/" target="_blank" rel="noopener"><strong>Verdaccio</strong></a>: Lightweight zero-config private npm proxy registry with web interface.</li>
+          <li><a href="https://github.com/gomods/athens" target="_blank" rel="noopener"><strong>Athens</strong></a>: Enterprise-grade Go module caching proxy server.</li>
+          <li><a href="https://github.com/nvm-sh/nvm" target="_blank" rel="noopener"><strong>NVM (Node Version Manager)</strong></a>: Multi-version Node.js environment pre-baking Node 20, 22, and 24.</li>
+          <li><a href="https://dotnet.microsoft.com/" target="_blank" rel="noopener"><strong>Microsoft .NET SDK</strong></a>: Cross-platform .NET 8.0 SDK runtime for C# and F# builds.</li>
+          <li><a href="https://playwright.dev/" target="_blank" rel="noopener"><strong>Playwright</strong></a>: Reliable end-to-end testing for modern web apps with pre-installed OS dependencies.</li>
+        </ul>
+
+        <!-- Section 8: Zombie Healing -->
         <h2 id="zombie-healing">Zombie Runner Healing &amp; Auto-Reconciliation</h2>
         <p>
           If an ephemeral runner machine is stopped abruptly mid-job (e.g. during workstation sleep or <code>make stop</code>), GitHub might mark it as <code>offline</code> but <code>busy: true</code>.
@@ -187,7 +246,7 @@ jobs:
           RunZero's autoscaler automatically reconciles zombie runners by cancelling stranded runs and unsticking GitHub's runner queue so jobs never hang.
         </p>
 
-        <!-- Section 7: Environment Variables Reference -->
+        <!-- Section 9: Environment Variables Reference -->
         <h2 id="env-reference">Environment Variables Reference (<code>.env</code>)</h2>
         <div class="table-wrapper">
           <table class="comparison-table">
@@ -237,27 +296,28 @@ jobs:
               <tr>
                 <td><code>PROXIES_ENABLED</code></td>
                 <td><code>true</code></td>
-                <td>Start Verdaccio (npm), Athens (Go), and Docker Hub caching proxies.</td>
+                <td>Start apt-cacher, Verdaccio, Athens, and Docker Hub caching proxies.</td>
               </tr>
             </tbody>
           </table>
         </div>
 
-        <!-- Section 8: Makefile CLI -->
+        <!-- Section 10: Makefile CLI -->
         <h2 id="makefile-cli">Makefile Command Reference</h2>
-        <pre class="code-block"><code>make start          # Start Autoscaler and Proxy registries in background
+        <pre class="code-block"><code>make start          # Start Autoscaler and Proxy registries (apt-cacher, Verdaccio, Athens)
 make stop           # Stop Autoscaler, Proxies, and cleanup active runners
 make status         # Show status of services and active runner instances
 make logs           # Stream live autoscaler logs
-make test           # Run unit tests directly (1.2s)
+make test           # Run 90 unit tests directly (1.0s)
 make test-suite     # Run Flake8 linter, Mypy type-checker, and Pytest coverage
 make build-vm-base  # Build golden OrbStack VM base image for instant cloning
 make website-dev    # Start Astro documentation website development server
 make website-build  # Build Astro static website and synchronize to docs/
 make verdaccio-ui   # Open Verdaccio NPM registry dashboard (http://localhost:49501)
+make apt-cacher-ui  # Open apt-cacher-ng statistics report (http://localhost:49503/acng-report.html)
 make clean-cache    # Clear shared package caches to reclaim disk space</code></pre>
 
-        <!-- Section 9: FAQ -->
+        <!-- Section 11: FAQ -->
         <h2 id="faq">Troubleshooting &amp; FAQ</h2>
         <h3>How do I test a workflow on Apple Silicon and AMD64?</h3>
         <p>
@@ -266,7 +326,7 @@ make clean-cache    # Clear shared package caches to reclaim disk space</code></
 
         <h3>How does package caching work across containers and VMs?</h3>
         <p>
-          RunZero exposes Verdaccio on port <code>49501</code> and Athens on port <code>49500</code>. Containers on host networking and VMs on virtualized bridges automatically route npm and Go downloads through these local proxies.
+          RunZero exposes <a href="https://www.unix-ag.uni-kl.de/~bloch/acng/" target="_blank" rel="noopener">apt-cacher-ng</a> on port <code>49503</code>, <a href="https://verdaccio.org/" target="_blank" rel="noopener">Verdaccio</a> on port <code>49501</code>, and <a href="https://github.com/gomods/athens" target="_blank" rel="noopener">Athens</a> on port <code>49500</code>. Containers on host networking and VMs on virtualized bridges automatically route package downloads through these local proxies.
         </p>
       </main>
     </div>
@@ -443,6 +503,10 @@ make clean-cache    # Clear shared package caches to reclaim disk space</code></
   .docs-content li {
     margin-bottom: 8px;
   }
+  .docs-content a {
+    color: var(--crimson-light);
+    text-decoration: underline;
+  }
 
   .callout {
     padding: 18px 22px;
@@ -501,6 +565,9 @@ make clean-cache    # Clear shared package caches to reclaim disk space</code></
     text-transform: uppercase;
     font-size: 0.8rem;
     letter-spacing: 0.05em;
+  }
+  table.comparison-table a {
+    color: var(--crimson-light);
   }
 
   /* Responsive Rules for Tablet & Mobile */

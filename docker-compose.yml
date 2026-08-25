@@ -52,8 +52,24 @@ services:
       - /var/run/docker.sock:/var/run/docker.sock
 
   # ============================================================================
-  # Caching Proxy Services (NPM, Go, Docker Hub)
+  # Caching Proxy Services (NPM, Go, Docker Hub, APT)
   # ============================================================================
+  # apt-cacher-ng: Caching proxy for .deb packages, used by docker/provision-toolchain.sh
+  # (the shared toolchain script both the Docker image and the OrbStack VM golden
+  # image run) -- without this, rebuilding either image after an edit to that
+  # script re-downloads ~3GB of apt packages (base OS deps, .NET SDK, Chrome,
+  # Docker engine on the VM side) from the internet every single time.
+  apt-cacher:
+    image: sameersbn/apt-cacher-ng:latest
+    container_name: local-runner-apt-cacher
+    restart: unless-stopped
+    networks:
+      - runner-network
+    ports:
+      - "49503:3142"
+    volumes:
+      - apt-cacher-storage:/var/cache/apt-cacher-ng
+
   # Verdaccio: Fast Local Caching NPM Proxy & Private Registry + Web UI
   verdaccio:
     image: verdaccio/verdaccio:5
@@ -165,6 +181,7 @@ services:
       - runner-cache-tool:/opt/hostedtoolcache
 
 volumes:
+  apt-cacher-storage:
   verdaccio-storage:
   athens-storage:
   docker-mirror-storage:

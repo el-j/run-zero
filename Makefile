@@ -94,6 +94,11 @@ verdaccio-ui: ## Open Verdaccio Web UI in default browser (http://localhost:4950
 	@echo "$(CYAN)Opening Verdaccio Web UI at http://localhost:49501...$(RESET)"
 	@open http://localhost:49501 || echo "Navigate to http://localhost:49501 in your browser."
 
+.PHONY: apt-cacher-ui
+apt-cacher-ui: ## Open apt-cacher-ng statistics report in default browser (http://localhost:49503/acng-report.html)
+	@echo "$(CYAN)Opening apt-cacher-ng report at http://localhost:49503/acng-report.html...$(RESET)"
+	@open http://localhost:49503/acng-report.html || echo "Navigate to http://localhost:49503/acng-report.html in your browser."
+
 .PHONY: build-arm64
 build-arm64: ## Build native ARM64 runner image (Apple Silicon M-series)
 	@echo "$(CYAN)Building native ARM64 runner image...$(RESET)"
@@ -117,8 +122,8 @@ build: build-arm64 build-amd64 build-autoscaler ## Build all images (ARM64 + AMD
 build-all: build
 
 .PHONY: start up run
-start: check-env init-cache ## Start Autoscaler (native host process) + Proxy services (Verdaccio, Athens, Docker mirror)
-	@echo "$(CYAN)Starting caching proxy registries (Verdaccio, Athens, Docker mirror)...$(RESET)"
+start: check-env init-cache ## Start Autoscaler (native host process) + Proxy services (Verdaccio, Athens, Docker mirror, apt-cacher)
+	@echo "$(CYAN)Starting caching proxy registries (Verdaccio, Athens, Docker mirror, apt-cacher)...$(RESET)"
 	@docker compose up -d
 	@if [ -f $(AUTOSCALER_PID_FILE) ] && kill -0 "$$(cat $(AUTOSCALER_PID_FILE))" 2>/dev/null; then \
 		echo "$(YELLOW)Autoscaler already running (PID $$(cat $(AUTOSCALER_PID_FILE))).$(RESET)"; \
@@ -129,9 +134,10 @@ start: check-env init-cache ## Start Autoscaler (native host process) + Proxy se
 		echo $$! > $(AUTOSCALER_PID_FILE); \
 	fi
 	@echo "$(GREEN)Autoscaler and Proxy registries are running in background!$(RESET)"
-	@echo "  • Verdaccio Web UI: $(BOLD)http://localhost:49501$(RESET) (Run $(BOLD)make verdaccio-ui$(RESET))"
-	@echo "  • Athens Go Proxy:  $(BOLD)http://localhost:49500$(RESET)"
-	@echo "  • Docker Mirror:    $(BOLD)http://localhost:49502$(RESET)"
+	@echo "  • Verdaccio Web UI:  $(BOLD)http://localhost:49501$(RESET) (Run $(BOLD)make verdaccio-ui$(RESET))"
+	@echo "  • APT Cacher NG:     $(BOLD)http://localhost:49503/acng-report.html$(RESET) (Run $(BOLD)make apt-cacher-ui$(RESET))"
+	@echo "  • Athens Go Proxy:   $(BOLD)http://localhost:49500$(RESET)"
+	@echo "  • Docker Mirror:     $(BOLD)http://localhost:49502$(RESET)"
 	@echo "Use $(BOLD)make logs$(RESET) to stream logs or $(BOLD)make status$(RESET) to see active runners."
 
 up: start
