@@ -58,6 +58,36 @@ class TestGitHubApi(unittest.TestCase):
         jobs = get_queued_job_details("el-j/run-zero", access_token="token")
         self.assertEqual(jobs, [])
 
+    @patch("github_api.github_request")
+    def test_get_queued_job_details_ignores_github_hosted_jobs(self, mock_gh):
+        # Regression test: a queued job that will never be dispatched to us
+        # (runs-on: ubuntu-latest, no "self-hosted" label) must never trigger a
+        # spawn. Before this filter existed, get_queued_job_details returned
+        # every queued job regardless of labels, so the autoscaler spawned a
+        # local runner for it anyway -- one that then sat registered and idle
+        # forever, since GitHub always dispatches such jobs to its own hosted
+        # fleet instead. This happened for real against el-j/run-zero's own
+        # ubuntu-latest CI jobs.
+        mock_gh.side_effect = [
+            {"workflow_runs": [{"id": 101, "head_branch": "main", "event": "push"}]},
+            {"jobs": [{"id": 201, "name": "Python Lint", "status": "queued", "labels": ["ubuntu-latest"]}]}
+        ]
+        jobs = get_queued_job_details("el-j/run-zero", access_token="token")
+        self.assertEqual(jobs, [])
+
+    @patch("github_api.github_request")
+    def test_get_queued_job_details_mixed_batch_only_returns_self_hosted(self, mock_gh):
+        mock_gh.side_effect = [
+            {"workflow_runs": [{"id": 101, "head_branch": "main", "event": "push"}]},
+            {"jobs": [
+                {"id": 201, "name": "hosted-job", "status": "queued", "labels": ["ubuntu-latest"]},
+                {"id": 202, "name": "local-job", "status": "queued", "labels": ["self-hosted", "local"]},
+            ]}
+        ]
+        jobs = get_queued_job_details("el-j/run-zero", access_token="token")
+        self.assertEqual(len(jobs), 1)
+        self.assertEqual(jobs[0]["id"], 202)
+
 
 if __name__ == "__main__":
     unittest.main()

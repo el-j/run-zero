@@ -14,18 +14,35 @@ fi
 # Ensure package-manager cache mount permissions if mounted — OrbStack presents
 # bind-mounted host dirs as root-owned regardless of the container user. Docker
 # also auto-creates the *ancestor* path components of a bind mount as root (e.g.
-# mounting .../go/pkg/mod still leaves .../go itself root-owned), so a sibling
-# dir a tool tries to mkdir later (like go/bin next to go/pkg/mod) fails too —
-# every ancestor from /home/runner down needs chowning, not just the mount leaf.
-for cache_dir in \
-  /home/runner/.npm \
-  /home/runner/.cache/yarn \
-  /home/runner/.local/share/pnpm/store \
-  /home/runner/.cache/pip \
-  /home/runner/.cache/uv \
-  /home/runner/go/pkg/mod \
-  /home/runner/.cache/go-build \
-  /home/runner/.cargo/registry; do
+# mounting .../go/pkg still leaves .../go itself root-owned), so a sibling dir a
+# tool tries to mkdir later (like go/bin next to go/pkg) fails too — every
+# ancestor from /home/runner down needs chowning, not just the mount leaf.
+#
+# CACHE_MOUNT_DESTS (set by docker_driver.py, colon-separated) carries the exact
+# container-side paths cache_manager.py just mounted with -v — the same source
+# of truth, so this can't silently drift out of sync with the real mounts again
+# the way a second hand-maintained list did (.nuget/packages was missing here
+# entirely, and go/pkg/mod didn't match the actual go/pkg mount so its ancestor
+# was never chowned — see run-zero PR fixing cache-mount-ownership-drift).
+# Falls back to a fixed copy of cache_manager.py's destinations for a manual/
+# standalone `docker run` without the autoscaler.
+if [ -n "${CACHE_MOUNT_DESTS:-}" ]; then
+  IFS=':' read -ra CACHE_DIRS <<< "${CACHE_MOUNT_DESTS}"
+else
+  CACHE_DIRS=(
+    /home/runner/.npm
+    /home/runner/.local/share/pnpm/store
+    /home/runner/.cache/yarn
+    /home/runner/.cache/pip
+    /home/runner/.cache/uv
+    /home/runner/go/pkg
+    /home/runner/.cache/go-build
+    /home/runner/.nuget/packages
+    /home/runner/.cargo/registry
+  )
+fi
+
+for cache_dir in "${CACHE_DIRS[@]}"; do
   if [ -d "${cache_dir}" ]; then
     path="/home/runner"
     rel="${cache_dir#/home/runner/}"

@@ -81,13 +81,23 @@ def get_queued_job_details(repo_full_name: str, access_token: Optional[str] = No
         jobs_data = github_request(f"/repos/{repo_full_name}/actions/runs/{run_id}/jobs", access_token=access_token)
         if jobs_data and "jobs" in jobs_data:
             for job in jobs_data["jobs"]:
-                if job.get("status") == "queued":
-                    detailed_jobs.append({
-                        "id": job.get("id"),
-                        "name": job.get("name", ""),
-                        "run_id": run_id,
-                        "labels": job.get("labels", []),
-                        "head_branch": run.get("head_branch", ""),
-                        "event": run.get("event", "")
-                    })
+                labels = job.get("labels", [])
+                # GitHub only ever dispatches a job to one of our runners if its
+                # `runs-on:` requested the literal "self-hosted" label (every
+                # self-hosted-targeting workflow in this fleet's convention
+                # includes it explicitly, e.g. `["self-hosted", "local"]`) --
+                # without this check, a queued `ubuntu-latest` job (which will
+                # never be assigned to us) still causes a container/VM spawn
+                # that then sits registered and idle forever, since GitHub
+                # dispatches it to its own hosted fleet instead.
+                if job.get("status") != "queued" or "self-hosted" not in labels:
+                    continue
+                detailed_jobs.append({
+                    "id": job.get("id"),
+                    "name": job.get("name", ""),
+                    "run_id": run_id,
+                    "labels": labels,
+                    "head_branch": run.get("head_branch", ""),
+                    "event": run.get("event", "")
+                })
     return detailed_jobs

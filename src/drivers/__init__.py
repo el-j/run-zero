@@ -4,11 +4,21 @@ Defines the abstract RunnerDriver interface and driver discovery/factory mechani
 """
 
 from abc import ABC, abstractmethod
-from typing import Dict, List, Optional
+from typing import Any, Dict, List, Optional
 
 
 class RunnerInfo:
-    def __init__(self, id: str, name: str, status: str, state: str, target_repo: str, target_arch: str, backend: str):
+    def __init__(
+        self,
+        id: str,
+        name: str,
+        status: str,
+        state: str,
+        target_repo: str,
+        target_arch: str,
+        backend: str,
+        created_at: Optional[float] = None
+    ):
         self.id = id
         self.name = name
         self.status = status
@@ -16,8 +26,12 @@ class RunnerInfo:
         self.target_repo = target_repo
         self.target_arch = target_arch
         self.backend = backend
+        # Unix timestamp, when the driver can report it (currently: Docker only).
+        # Lets the reconciler tell "just spawned, GitHub hasn't dispatched to it
+        # yet" apart from "been sitting idle for way too long, orphaned".
+        self.created_at = created_at
 
-    def to_dict(self) -> Dict[str, str]:
+    def to_dict(self) -> Dict[str, Any]:
         return {
             "id": self.id,
             "name": self.name,
@@ -25,7 +39,8 @@ class RunnerInfo:
             "state": self.state,
             "target_repo": self.target_repo,
             "target_arch": self.target_arch,
-            "backend": self.backend
+            "backend": self.backend,
+            "created_at": self.created_at
         }
 
 

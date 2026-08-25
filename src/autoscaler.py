@@ -16,7 +16,7 @@ from cache_manager import init_cache_dirs
 from discovery import discover_repositories
 from drivers import RunnerInfo, get_available_drivers, get_driver
 from github_api import get_queued_job_details, rate_limit_remaining
-from reconciler import reconcile_zombie_runners
+from reconciler import reconcile_idle_orphans, reconcile_zombie_runners
 from router import select_driver_for_job
 
 # Configuration from environment variables
@@ -129,6 +129,11 @@ def main():
             runners = d.list_runners()
             d.prune_exited(runners)
             all_runners.extend(d.list_runners())
+
+        if tracked_repos and not ORG:
+            # No-ops (zero API calls) unless a runner is actually old enough and
+            # still idle to be worth checking -- cheap to call every poll.
+            reconcile_idle_orphans(tracked_repos, all_runners, available_drivers, access_token=ACCESS_TOKEN)
 
         # "pending" (creating/provisioning/created) counts as active too -- a VM/
         # container that's still booting hasn't hit GitHub's "claimed" state yet
