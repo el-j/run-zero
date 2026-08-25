@@ -40,21 +40,21 @@ jobs:
         run: |
           git fetch --tags
           BRANCH="${GITHUB_REF_NAME}"
-          
+
           # Strictly match pure stable release tags (v0.0.1, v1.0.0) without hyphens/prerelease suffixes
           LATEST_STABLE=$(git tag -l | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' | sort -V | tail -n 1 || true)
-          
+
           if [ -z "$LATEST_STABLE" ]; then
             BASE_VERSION="0.0.1"
           else
             BASE_VERSION="${LATEST_STABLE#v}"
           fi
-          
+
           # Strip any prerelease suffix if somehow present to guarantee clean major.minor.patch
           BASE_VERSION=$(echo "$BASE_VERSION" | sed -E 's/-.*//')
-          
+
           COMMIT_COUNT=$(git rev-list --count HEAD)
-          
+
           if [ "$BRANCH" = "main" ]; then
             if [ -z "$LATEST_STABLE" ]; then
               NEW_VERSION="v0.0.1"
@@ -77,7 +77,7 @@ jobs:
             NEW_VERSION="v${BASE_VERSION}-alpha.${COMMIT_COUNT}"
             IS_PRERELEASE="true"
           fi
-          
+
           echo "Calculated release tag: $NEW_VERSION (prerelease: $IS_PRERELEASE)"
           echo "new_tag=$NEW_VERSION" >> $GITHUB_OUTPUT
           echo "is_prerelease=$IS_PRERELEASE" >> $GITHUB_OUTPUT
@@ -88,7 +88,7 @@ jobs:
         run: |
           PREV="${{ steps.semver.outputs.previous_tag }}"
           NEW="${{ steps.semver.outputs.new_tag }}"
-          
+
           echo "## ⚡ RunZero ${NEW} Release Notes" > RELEASE_NOTES.md
           echo "" >> RELEASE_NOTES.md
           echo "### 🚀 Changes in this release:" >> RELEASE_NOTES.md
