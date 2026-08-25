@@ -39,6 +39,19 @@ class OrbStackVMDriver(RunnerDriver):
         # repos keep flowing while the one-time build finishes.
         self._building_lock = threading.Lock()
         self._building_arches: set = set()
+        # Consecutive build_base_image() failures per arch, and the earliest
+        # time (time.monotonic()) the next attempt may start. Without this,
+        # a build failure that ISN'T transient (confirmed live: OrbStack's own
+        # `orbctl create` failing "machine didn't start in 30s (missing IP
+        # address)" for EVERY new VM regardless of arch -- reproduced with a
+        # bare `orbctl create`, no run-zero code involved at all, pointing at
+        # host/OrbStack network-stack state rather than anything this driver
+        # controls) gets retried on every single poll tick (~15-20s) forever:
+        # delete the half-built staging VM, recreate it, fail identically,
+        # repeat -- burning CPU/OrbStack-daemon load with zero chance of
+        # success and no operator-visible signal that this isn't self-healing.
+        self._build_failure_counts: Dict[str, int] = {}
+        self._build_retry_after: Dict[str, float] = {}
 
     def name(self) -> str:
         return "orbstack-vm"
@@ -240,24 +253,66 @@ echo "Base image provisioning complete."
             )
             self._stop_vm(name)
 
+    def _build_cooldown_remaining(self, orb_arch: str) -> float:
+        """Seconds until the next build_base_image() attempt for orb_arch is
+        allowed, or 0.0 if none is in effect. Caller must hold _building_lock."""
+        return max(0.0, self._build_retry_after.get(orb_arch, 0.0) - time.monotonic())
+
     def _build_base_image_async(self, orb_arch: str) -> None:
         """Kick off build_base_image() on a background thread, deduped per-arch.
 
         Called from spawn_runner() instead of building in-line so the main
         autoscaler poll loop is never blocked by a golden-image build -- it
         just gets None back this poll and retries on the next one.
+
+        Gated by a per-arch exponential backoff (see __init__'s comment) after
+        a failure, so a non-transient condition -- confirmed live: bare
+        `orbctl create` failing "machine didn't start in 30s (missing IP
+        address)" for EVERY arch, no run-zero code involved at all, pointing
+        at host/OrbStack network-stack state -- doesn't retry on every single
+        poll tick (~15-20s) forever. Without this, each failed attempt just
+        deletes the half-built staging VM and recreates it identically on the
+        next poll: guaranteed to fail the same way again, with zero chance of
+        self-resolving and no operator-visible signal that it isn't.
         """
         with self._building_lock:
             if orb_arch in self._building_arches:
                 return
+            if self._build_cooldown_remaining(orb_arch) > 0:
+                return
             self._building_arches.add(orb_arch)
 
         def _run() -> None:
+            ok = False
             try:
-                self.build_base_image(orb_arch)
+                ok = self.build_base_image(orb_arch)
             finally:
                 with self._building_lock:
                     self._building_arches.discard(orb_arch)
+                    if ok:
+                        self._build_failure_counts[orb_arch] = 0
+                        self._build_retry_after.pop(orb_arch, None)
+                    else:
+                        failures = self._build_failure_counts.get(orb_arch, 0) + 1
+                        self._build_failure_counts[orb_arch] = failures
+                        cooldown = min(30 * (2 ** (failures - 1)), 900)
+                        self._build_retry_after[orb_arch] = time.monotonic() + cooldown
+                        hint = (
+                            " This many consecutive failures usually isn't transient -- if "
+                            "'orbctl create' is failing with a 'missing IP address' timeout, a "
+                            "plain OrbStack app restart often doesn't clear it, but a full host "
+                            "reboot usually does (stale macOS virtual-network-extension state "
+                            "after long uptime). Verify with a bare `orbctl create -a "
+                            f"{orb_arch} ubuntu:24.04 diag-test` outside run-zero before assuming "
+                            "this is a run-zero bug."
+                            if failures >= 3 else ""
+                        )
+                        print(
+                            f"[Autoscaler:OrbStack-VM] Golden base image build for '{orb_arch}' "
+                            f"has now failed {failures} time(s) in a row. Backing off {cooldown}s "
+                            f"before retrying.{hint}",
+                            file=sys.stderr
+                        )
 
         threading.Thread(target=_run, name=f"runzero-build-base-{orb_arch}", daemon=True).start()
 
@@ -301,7 +356,8 @@ export GOPROXY="http://host.orb.internal:49500,https://proxy.golang.org,direct"
         if not self.base_image_exists(orb_arch):
             with self._building_lock:
                 already_building = orb_arch in self._building_arches
-            if not already_building:
+                cooldown_remaining = self._build_cooldown_remaining(orb_arch)
+            if not already_building and cooldown_remaining <= 0:
                 print(
                     f"[Autoscaler:OrbStack-VM] 🏗️  Golden base image '{base_name}' not found. "
                     f"Building it in the background (one-time setup, ~15-25 min) -- "

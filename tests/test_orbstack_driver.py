@@ -218,6 +218,81 @@ class TestOrbStackVMDriver(unittest.TestCase):
         self.assertEqual(calls, ["amd64"])
         self.assertNotIn("amd64", driver._building_arches)
 
+    def _run_async_build_and_wait(self, driver: OrbStackVMDriver, orb_arch: str) -> None:
+        """Kick off _build_base_image_async and block until its background
+        thread has finished (removed orb_arch from _building_arches)."""
+        driver._build_base_image_async(orb_arch)
+        for _ in range(100):
+            with driver._building_lock:
+                if orb_arch not in driver._building_arches:
+                    return
+            time.sleep(0.02)
+        self.fail("build_base_image_async did not finish in time")
+
+    def test_build_base_image_async_backs_off_after_repeated_failures(self):
+        # Regression test: a non-transient failure (confirmed live -- OrbStack
+        # itself failing every `orbctl create`, no run-zero code involved)
+        # used to retry on every single poll tick forever. A failed build must
+        # now enter a cooldown so an immediate follow-up poll does NOT start
+        # another attempt.
+        driver = OrbStackVMDriver(distro="ubuntu:24.04")
+        calls = []
+
+        def fake_build(arch):
+            calls.append(arch)
+            return False
+
+        with patch.object(driver, "build_base_image", side_effect=fake_build):
+            self._run_async_build_and_wait(driver, "amd64")
+            self.assertEqual(calls, ["amd64"])
+            self.assertEqual(driver._build_failure_counts["amd64"], 1)
+            self.assertGreater(driver._build_cooldown_remaining("amd64"), 0)
+
+            # Immediate follow-up poll (what the real poll loop does every
+            # ~15-20s) must be a no-op while the cooldown is in effect.
+            driver._build_base_image_async("amd64")
+            self.assertEqual(calls, ["amd64"])
+
+    def test_build_base_image_async_cooldown_escalates_and_resets_on_success(self):
+        driver = OrbStackVMDriver(distro="ubuntu:24.04")
+        outcomes = iter([False, False])
+
+        with patch.object(driver, "build_base_image", side_effect=lambda arch: next(outcomes)):
+            self._run_async_build_and_wait(driver, "amd64")
+            first_cooldown = driver._build_cooldown_remaining("amd64")
+
+            # Force the cooldown to have already elapsed so the second
+            # attempt is actually allowed to run.
+            driver._build_retry_after["amd64"] = time.monotonic()
+            self._run_async_build_and_wait(driver, "amd64")
+            second_cooldown = driver._build_cooldown_remaining("amd64")
+
+        self.assertEqual(driver._build_failure_counts["amd64"], 2)
+        self.assertGreater(second_cooldown, first_cooldown)
+
+        # A subsequent success must clear both the failure count and cooldown
+        # -- a build that starts working again shouldn't stay throttled.
+        driver._build_retry_after["amd64"] = time.monotonic()
+        with patch.object(driver, "build_base_image", return_value=True):
+            self._run_async_build_and_wait(driver, "amd64")
+        self.assertEqual(driver._build_failure_counts["amd64"], 0)
+        self.assertEqual(driver._build_cooldown_remaining("amd64"), 0.0)
+
+    @patch("subprocess.Popen")
+    @patch("subprocess.run")
+    def test_spawn_runner_does_not_reannounce_build_during_cooldown(self, mock_run, mock_popen):
+        # spawn_runner()'s "Building it in the background" message implies an
+        # attempt is actually starting -- must not print (or start one) while
+        # a backoff cooldown from a prior failure is still in effect.
+        mock_run.side_effect = [
+            MagicMock(stdout=json.dumps([]), returncode=0),  # list VMs
+        ]
+        self.driver._build_retry_after["amd64"] = time.monotonic() + 60
+        with patch.object(self.driver, "_build_base_image_async") as mock_async_build:
+            name = self.driver.spawn_runner(repo="el-j/run-zero", arch="amd64", access_token="token")
+        self.assertIsNone(name)
+        mock_async_build.assert_not_called()
+
     @patch("subprocess.run")
     def test_build_base_image_missing_script_fails_gracefully(self, mock_run):
         driver = OrbStackVMDriver(distro="ubuntu:24.04")
