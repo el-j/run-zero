@@ -152,17 +152,22 @@ jobs:
 
 ```text
 .
-├── docker/                                # 🐳 Container & VM Driver Definitions
-│   ├── drivers/                           #    Pluggable Execution Drivers
-│   │   ├── __init__.py                    #    RunnerDriver interface & discovery
-│   │   ├── docker_driver.py               #    Docker container engine
-│   │   ├── orbstack_vm_driver.py          #    OrbStack macOS Linux VM engine
-│   │   ├── wsl_driver.py                  #    Windows WSL2 engine
-│   │   └── multipass_driver.py            #    Canonical Multipass engine
-│   ├── autoscaler.py                      #    Dynamic queue monitor & hybrid router
+├── src/                                   # 🐍 Pure Python Application Code
+│   ├── autoscaler.py                      #    Dynamic queue monitor, rate limiter & hybrid router
+│   └── drivers/                           #    Pluggable Execution Drivers
+│       ├── __init__.py                    #    RunnerDriver interface & discovery factory
+│       ├── docker_driver.py               #    Docker container engine
+│       ├── orbstack_vm_driver.py          #    OrbStack macOS Linux VM engine (with proxy caching)
+│       ├── wsl_driver.py                  #    Windows WSL2 engine (with proxy caching)
+│       └── multipass_driver.py            #    Canonical Multipass engine (with proxy caching)
+├── docker/                                # 🐳 Container Build Manifests & Entrypoints
 │   ├── Dockerfile                         #    Multi-arch runner image (ARM64 + AMD64)
 │   ├── Dockerfile.autoscaler              #    Autoscaler daemon container
 │   └── start.sh                           #    Runner entrypoint with proxy auto-detect
+├── tests/                                 # 🧪 Comprehensive Test Suite (66 Tests)
+│   ├── test_autoscaler.py                 #    Autoscaler, rate limiting & hybrid routing tests
+│   ├── test_drivers.py                    #    All driver lifecycle & error branch tests
+│   └── test_shell_scripts.py              #    Shell script syntax & entrypoint tests
 ├── docs/                                  # 🌐 Documentation & GitHub Pages Website
 │   ├── favicon.svg                        #    RunZero vector icon
 │   ├── fonts/                             #    Self-hosted local fonts (zero CDN)
@@ -174,11 +179,12 @@ jobs:
 │   │   ├── bug_report.md
 │   │   └── feature_request.md
 │   ├── workflows/                         # 🤖 GitHub Actions CI/CD
-│   │   ├── ci.yml                         #    Syntax, config & build validation
+│   │   ├── ci.yml                         #    Syntax, Flake8, Mypy, Pytest & build validation
 │   │   └── deploy-pages.yml               #    Auto-deploys docs/ to GitHub Pages
 │   └── PULL_REQUEST_TEMPLATE.md           # 📝 Reviewer checklist
 ├── docker-compose.yml                     # 🚀 Orchestration (Autoscaler + Verdaccio + Athens)
 ├── Makefile                               # 🛠️ Unified management commands
+├── pyproject.toml                         # ⚙️ Python project configuration (Pytest, Mypy, Mutmut)
 ├── .env.example                           # ⚙️ Configuration template
 ├── CONTRIBUTING.md                        # 🤝 Contributor guidelines
 ├── CODE_OF_CONDUCT.md                     # 📜 Community standards
@@ -228,6 +234,18 @@ make stop           # (or make down)
 
 ---
 
+## 🧪 Testing & Quality Suite
+
+RunZero includes a 100% verified test suite with type checking, linting, and mutation testing:
+
+| Command | Description |
+|---|---|
+| `make test` | Run fast local unit tests directly (66 tests in ~1.1s) |
+| `make test-suite` | Run Flake8 linter, Mypy static type checker, and Pytest coverage in container |
+| `make mutation-test` | Run Mutmut mutation testing suite across all drivers and autoscaler |
+
+---
+
 ## 📋 Makefile Commands
 
 | Command | Description |
@@ -235,6 +253,9 @@ make stop           # (or make down)
 | `make start` (or `make run`, `make up`) | Launch autoscaler, Verdaccio, Athens, and Docker mirror |
 | `make stop` (or `make down`) | Gracefully stop the autoscaler, proxies, and active runners |
 | `make status` (or `make ps`) | Display running autoscaler, proxies & active ephemeral runners |
+| `make test` | Run local unit tests directly with `unittest` |
+| `make test-suite` | Run Flake8 linter, Mypy type-checker, and Pytest coverage report |
+| `make mutation-test` | Run Mutmut mutation testing suite |
 | `make vm-list` | Display active OrbStack Linux runner VMs |
 | `make vm-clean` | Clean up any orphaned RunZero VMs |
 | `make verdaccio-ui` | Open Verdaccio Web UI at `http://localhost:49501` |
