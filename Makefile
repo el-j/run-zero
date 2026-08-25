@@ -205,13 +205,24 @@ vm-list: ## List active OrbStack Linux runner VMs
 	@orbctl list || true
 
 .PHONY: vm-clean
-vm-clean: ## Clean up any orphaned RunZero VMs
+vm-clean: ## Clean up any orphaned ephemeral RunZero VMs (does NOT touch the golden base image -- see vm-rebuild-base)
 	@echo "$(YELLOW)Cleaning up any orphaned RunZero VMs...$(RESET)"
-	@for vm in $$(orbctl list -q 2>/dev/null | grep runzero-vm); do \
+	@for vm in $$(orbctl list -q 2>/dev/null | grep '^runzero-vm-' | grep -v '^runzero-vm-base-'); do \
 		echo "Deleting $$vm..."; \
 		orbctl delete -f $$vm || true; \
 	done
 	@echo "$(GREEN)VM cleanup complete.$(RESET)"
+
+.PHONY: build-vm-base
+build-vm-base: ## Build the golden OrbStack VM base image (Docker/Node/nvm/.NET/Chrome/Playwright pre-installed) so ephemeral job VMs clone instantly instead of re-provisioning from scratch every run. Takes several minutes; run it once, and again whenever you change docker/provision-toolchain.sh.
+	@echo "$(CYAN)Building golden OrbStack VM base image(s) -- this takes several minutes...$(RESET)"
+	@for a in $$(if [ "$(RUNNER_ARCH)" = "both" ] || [ -z "$(RUNNER_ARCH)" ]; then echo "arm64 amd64"; else echo "$(RUNNER_ARCH)"; fi); do \
+		python3 -c "import sys; sys.path.insert(0, 'src'); from drivers.orbstack_vm_driver import OrbStackVMDriver; sys.exit(0 if OrbStackVMDriver().build_base_image('$$a') else 1)" || exit 1; \
+	done
+	@echo "$(GREEN)Golden VM base image(s) ready. Ephemeral VM-routed jobs will now clone instantly.$(RESET)"
+
+.PHONY: vm-rebuild-base
+vm-rebuild-base: build-vm-base ## Alias for build-vm-base -- use after changing docker/provision-toolchain.sh to refresh the golden image
 
 .PHONY: test-suite
 test-suite: ## Run test suite with pytest, mypy type checking, and flake8 linter

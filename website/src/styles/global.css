@@ -1,45 +1,48 @@
 /* ==========================================================================
-   RunZero — Hyper-Terminal & Carbon Design System
-   Unique Visual Identity: Deep Matte Obsidian, Radioactive Volt Lime,
-   Solar Hyper-Amber, Technical Dot-Matrix Grid & Precision Hardware Aesthetics
+   RunZero — Martian Redshift & Carbon Design System
+   Unique Visual Identity: Deep Martian Obsidian (#06080d), Laser Crimson (#ff3355),
+   Solar Plasma Amber (#ff9f1c), Technical Grid Matrix & Precision Aerospace Styling
    ========================================================================== */
 
 :root {
   /* Surface Tokens */
-  --bg-primary: #05070a;
-  --bg-secondary: #0a0d14;
-  --bg-surface: #0e121c;
-  --bg-card: rgba(14, 18, 28, 0.85);
-  --bg-card-hover: rgba(20, 26, 40, 0.95);
-  --bg-code: #07090f;
-  --bg-code-header: rgba(212, 255, 0, 0.03);
+  --bg-primary: #06080d;
+  --bg-secondary: #0b0f17;
+  --bg-surface: #101522;
+  --bg-card: rgba(16, 21, 34, 0.85);
+  --bg-card-hover: rgba(22, 29, 46, 0.95);
+  --bg-code: #080a12;
+  --bg-code-header: rgba(255, 51, 85, 0.04);
 
   /* Borders & Grids */
   --border-subtle: rgba(255, 255, 255, 0.07);
   --border-card: rgba(255, 255, 255, 0.12);
-  --border-volt: rgba(212, 255, 0, 0.35);
-  --border-cyan: rgba(0, 240, 255, 0.3);
+  --border-crimson: rgba(255, 51, 85, 0.38);
+  --border-amber: rgba(255, 159, 28, 0.35);
 
-  /* Signature RunZero Colorway (Radioactive Volt Lime + Solar Amber + Cobalt Ice) */
-  --volt: #d4ff00;
-  --volt-light: #e6ff66;
-  --volt-glow: rgba(212, 255, 0, 0.25);
-  --volt-dim: rgba(212, 255, 0, 0.1);
+  /* Martian Redshift Colorway (Laser Crimson + Solar Amber + Plasma Cyan) */
+  --crimson: #ff3355;
+  --crimson-light: #ff6b82;
+  --crimson-glow: rgba(255, 51, 85, 0.3);
+  --crimson-dim: rgba(255, 51, 85, 0.1);
   
-  --amber: #ffb703;
-  --amber-glow: rgba(255, 183, 3, 0.25);
-  
+  --solar: #ff9f1c;
+  --solar-light: #ffb74d;
+  --solar-glow: rgba(255, 159, 28, 0.25);
+  --solar-dim: rgba(255, 159, 28, 0.1);
+
   --cyan: #00f0ff;
   --cyan-glow: rgba(0, 240, 255, 0.25);
 
   --emerald: #10b981;
-  --rose: #ff3366;
+  --rose: #ff2a55;
 
   /* Typography Colors */
   --text-main: #f8fafc;
   --text-muted: #94a3b8;
   --text-dim: #64748b;
-  --text-volt: #d4ff00;
+  --text-crimson: #ff3355;
+  --text-solar: #ff9f1c;
 
   /* Sizing & Radii */
   --radius-xl: 16px;
@@ -68,8 +71,8 @@ html {
 body {
   background-color: var(--bg-primary);
   background-image: 
-    radial-gradient(circle at 50% -20%, rgba(212, 255, 0, 0.08) 0%, transparent 50%),
-    radial-gradient(circle at 100% 60%, rgba(0, 240, 255, 0.05) 0%, transparent 40%),
+    radial-gradient(circle at 50% -15%, rgba(255, 51, 85, 0.1) 0%, transparent 55%),
+    radial-gradient(circle at 90% 50%, rgba(255, 159, 28, 0.06) 0%, transparent 45%),
     linear-gradient(rgba(255, 255, 255, 0.02) 1px, transparent 1px),
     linear-gradient(90deg, rgba(255, 255, 255, 0.02) 1px, transparent 1px);
   background-size: 100% 100%, 100% 100%, 48px 48px, 48px 48px;
@@ -81,14 +84,26 @@ body {
 }
 
 /* Ambient Background Light Elements */
-.ambient-volt {
+.ambient-crimson {
   position: fixed;
   top: -150px;
-  left: 20%;
-  width: 500px;
-  height: 500px;
-  background: radial-gradient(circle, var(--volt-glow) 0%, transparent 70%);
-  filter: blur(120px);
+  left: 25%;
+  width: 550px;
+  height: 550px;
+  background: radial-gradient(circle, var(--crimson-glow) 0%, transparent 70%);
+  filter: blur(140px);
+  z-index: 0;
+  pointer-events: none;
+}
+
+.ambient-solar {
+  position: fixed;
+  top: 45%;
+  right: -100px;
+  width: 480px;
+  height: 480px;
+  background: radial-gradient(circle, var(--solar-glow) 0%, transparent 70%);
+  filter: blur(140px);
   z-index: 0;
   pointer-events: none;
 }
@@ -108,15 +123,20 @@ h1, h2, h3, h4, h5 {
   font-weight: 800;
 }
 
-.volt-gradient {
-  background: linear-gradient(135deg, #ffffff 20%, #d4ff00 80%, #00f0ff 100%);
+.crimson-gradient {
+  background: linear-gradient(135deg, #ffffff 15%, #ff3355 70%, #ff9f1c 100%);
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
 }
 
-.volt-text {
-  color: var(--volt);
-  text-shadow: 0 0 12px var(--volt-glow);
+.crimson-text {
+  color: var(--crimson);
+  text-shadow: 0 0 12px var(--crimson-glow);
+}
+
+.solar-text {
+  color: var(--solar);
+  text-shadow: 0 0 12px var(--solar-glow);
 }
 
 /* Technical Telemetry Badges & Chips */
@@ -135,16 +155,21 @@ h1, h2, h3, h4, h5 {
   border: 1px solid var(--border-subtle);
   color: var(--text-muted);
 }
-.tech-chip.volt {
-  background: var(--volt-dim);
-  border-color: var(--border-volt);
-  color: var(--volt-light);
+.tech-chip.crimson {
+  background: var(--crimson-dim);
+  border-color: var(--border-crimson);
+  color: var(--crimson-light);
+}
+.tech-chip.solar {
+  background: var(--solar-dim);
+  border-color: var(--border-amber);
+  color: var(--solar-light);
 }
 
 /* Technical Buttons */
-.btn-volt {
-  background: var(--volt);
-  color: #05070a;
+.btn-crimson {
+  background: linear-gradient(135deg, #ff3355 0%, #e62b48 100%);
+  color: #ffffff;
   padding: 12px 24px;
   border-radius: var(--radius-md);
   font-size: 0.95rem;
@@ -155,14 +180,14 @@ h1, h2, h3, h4, h5 {
   display: inline-flex;
   align-items: center;
   gap: 8px;
-  box-shadow: 0 8px 24px -4px rgba(212, 255, 0, 0.4);
+  box-shadow: 0 8px 24px -4px var(--crimson-glow);
   transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
-  border: 1px solid var(--volt-light);
+  border: 1px solid rgba(255, 255, 255, 0.15);
 }
-.btn-volt:hover {
+.btn-crimson:hover {
   transform: translateY(-2px);
-  background: #e2ff33;
-  box-shadow: 0 12px 30px -2px rgba(212, 255, 0, 0.6);
+  background: linear-gradient(135deg, #ff4767 0%, #ff2a4b 100%);
+  box-shadow: 0 12px 30px -2px rgba(255, 51, 85, 0.55);
 }
 
 .btn-ghost {
@@ -197,8 +222,8 @@ h1, h2, h3, h4, h5 {
 }
 .tech-card:hover {
   background: var(--bg-card-hover);
-  border-color: var(--border-volt);
-  box-shadow: 0 15px 35px -10px rgba(0, 0, 0, 0.8), 0 0 20px -5px var(--volt-dim);
+  border-color: var(--border-crimson);
+  box-shadow: 0 15px 35px -10px rgba(0, 0, 0, 0.8), 0 0 20px -5px var(--crimson-dim);
   transform: translateY(-3px);
 }
 .tech-card::before {

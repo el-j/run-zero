@@ -115,8 +115,12 @@ def init_cache_dirs(arch: str):
     return mount_mappings
 
 
-def github_request(endpoint):
-    """Perform authenticated GitHub REST API GET request with rate-limit tracking."""
+def github_request(endpoint, method="GET"):
+    """Perform an authenticated GitHub REST API request with rate-limit tracking.
+
+    Returns the parsed JSON body, True for a bodiless success (204/202, e.g.
+    DELETE or POST .../cancel), or None on failure.
+    """
     global rate_limit_remaining, rate_limit_reset
 
     now = time.time()
@@ -126,7 +130,7 @@ def github_request(endpoint):
         time.sleep(wait_seconds)
 
     url = f"{API_BASE}{endpoint}"
-    req = urllib.request.Request(url)
+    req = urllib.request.Request(url, method=method)
     req.add_header("Authorization", f"Bearer {ACCESS_TOKEN}")
     req.add_header("Accept", "application/vnd.github+json")
     req.add_header("X-GitHub-Api-Version", "2022-11-28")
@@ -141,7 +145,8 @@ def github_request(endpoint):
                     rate_limit_reset = int(headers["x-ratelimit-reset"])
                 except Exception:
                     pass
-            return json.loads(resp.read().decode("utf-8"))
+            body = resp.read().decode("utf-8")
+            return json.loads(body) if body else True
     except urllib.error.HTTPError as e:
         headers = e.headers or {}
         if "x-ratelimit-remaining" in headers:
@@ -162,6 +167,59 @@ def github_request(endpoint):
     except Exception as e:
         print(f"[Autoscaler] Request Error for {endpoint}: {e}", file=sys.stderr)
         return None
+
+
+# Prefixes used by docker_driver.py and orbstack_vm_driver.py respectively —
+# only reconcile runners we actually spawned, never touch anyone else's.
+MANAGED_RUNNER_PREFIXES = ("local-runner-", "runzero-vm-")
+
+
+def reconcile_zombie_runners(repos):
+    """Find and unstick runners GitHub still thinks are busy but that are
+    actually dead.
+
+    An ephemeral runner's container/VM can be killed (crash, or a `make
+    stop`/restart while it's mid-job) before its own cleanup trap gets to call
+    GitHub's deregistration endpoint. GitHub then leaves it registered as
+    `offline` but `busy: true` forever, and the job pinned to it hangs
+    indefinitely — cancelling that job or deleting that runner via the API
+    both get rejected while the other side of that state persists, so nothing
+    about it self-resolves. This cancels whatever run is still pinned to a
+    zombie runner, then removes the stale registration so a fresh runner can
+    pick the job back up on retry.
+    """
+    for repo in repos:
+        data = github_request(f"/repos/{repo}/actions/runners")
+        if not data or "runners" not in data:
+            continue
+
+        zombies = [
+            r for r in data["runners"]
+            if r.get("status") == "offline"
+            and r.get("busy")
+            and str(r.get("name", "")).startswith(MANAGED_RUNNER_PREFIXES)
+        ]
+        if not zombies:
+            continue
+
+        runs_data = github_request(f"/repos/{repo}/actions/runs?status=in_progress&per_page=20")
+        in_progress_runs = (runs_data or {}).get("workflow_runs", [])
+
+        for zombie in zombies:
+            print(f"[Autoscaler] ⚠️  Zombie runner detected: {zombie['name']} (offline but marked busy) — reconciling...", file=sys.stderr)
+
+            for run in in_progress_runs:
+                jobs_data = github_request(f"/repos/{repo}/actions/runs/{run['id']}/jobs")
+                jobs = (jobs_data or {}).get("jobs", [])
+                if any(j.get("runner_name") == zombie["name"] for j in jobs):
+                    print(f"[Autoscaler] Cancelling run #{run.get('run_number')} ({run['id']}) pinned to dead runner {zombie['name']}", file=sys.stderr)
+                    github_request(f"/repos/{repo}/actions/runs/{run['id']}/cancel", method="POST")
+                    break
+
+            if github_request(f"/repos/{repo}/actions/runners/{zombie['id']}", method="DELETE"):
+                print(f"[Autoscaler] Removed stale runner registration: {zombie['name']}", file=sys.stderr)
+            else:
+                print(f"[Autoscaler] Could not remove {zombie['name']} yet (run cancellation likely still in flight) — will retry next cycle", file=sys.stderr)
 
 
 def discover_repositories():
@@ -327,6 +385,9 @@ def main():
                 for r in tracked_repos:
                     print(f"  • {r}")
                 print(f"[Autoscaler] GitHub API Quota remaining: {rate_limit_remaining}/5000")
+
+            if tracked_repos:
+                reconcile_zombie_runners(tracked_repos)
 
         # Collect active runners across all drivers
         all_runners: List[RunnerInfo] = []

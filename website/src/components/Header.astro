@@ -15,9 +15,9 @@ const baseUrl = import.meta.env.BASE_URL.replace(/\/$/, '');
     <div class="brand-group">
       <a href={`${baseUrl}/`} class="brand">
         <div class="brand-icon-box">
-          <img src={`${baseUrl}/favicon.svg`} alt="RunZero Logo" width="20" height="20" />
+          <img src={`${baseUrl}/favicon.svg`} alt="RunZero Logo" width="22" height="22" />
         </div>
-        <span class="brand-title">RUN<span class="volt-text">ZERO</span></span>
+        <span class="brand-title">RUN<span class="crimson-text">ZERO</span></span>
       </a>
       <VersionSwitcher />
     </div>
@@ -73,7 +73,7 @@ const baseUrl = import.meta.env.BASE_URL.replace(/\/$/, '');
     position: sticky;
     top: 0;
     z-index: 100;
-    background: rgba(5, 7, 10, 0.9);
+    background: rgba(6, 8, 13, 0.92);
     backdrop-filter: blur(20px);
     -webkit-backdrop-filter: blur(20px);
     border-bottom: 1px solid var(--border-subtle);
@@ -112,11 +112,11 @@ const baseUrl = import.meta.env.BASE_URL.replace(/\/$/, '');
   }
 
   .brand-icon-box {
-    width: 30px;
-    height: 30px;
+    width: 32px;
+    height: 32px;
     border-radius: var(--radius-sm);
-    background: rgba(212, 255, 0, 0.1);
-    border: 1px solid var(--border-volt);
+    background: rgba(255, 51, 85, 0.08);
+    border: 1px solid var(--border-crimson);
     display: flex;
     align-items: center;
     justify-content: center;
@@ -150,7 +150,7 @@ const baseUrl = import.meta.env.BASE_URL.replace(/\/$/, '');
     white-space: nowrap;
   }
   .nav-link:hover, .nav-link.active {
-    color: var(--volt);
+    color: var(--crimson-light);
   }
   .nav-link.active::after {
     content: '';
@@ -159,9 +159,9 @@ const baseUrl = import.meta.env.BASE_URL.replace(/\/$/, '');
     left: 0;
     width: 100%;
     height: 2px;
-    background: var(--volt);
+    background: var(--crimson);
     border-radius: 2px;
-    box-shadow: 0 0 8px var(--volt);
+    box-shadow: 0 0 8px var(--crimson);
   }
 
   .nav-actions {
@@ -176,28 +176,28 @@ const baseUrl = import.meta.env.BASE_URL.replace(/\/$/, '');
     align-items: center;
     gap: 6px;
     padding: 4px 8px;
-    background: rgba(212, 255, 0, 0.06);
-    border: 1px solid var(--border-volt);
+    background: rgba(255, 51, 85, 0.06);
+    border: 1px solid var(--border-crimson);
     border-radius: var(--radius-sm);
   }
   .pulse-dot {
     width: 6px;
     height: 6px;
     border-radius: 50%;
-    background: var(--volt);
-    box-shadow: 0 0 8px var(--volt);
+    background: var(--crimson);
+    box-shadow: 0 0 8px var(--crimson);
   }
   .status-text {
     font-family: var(--font-mono);
     font-size: 0.68rem;
     font-weight: 800;
     letter-spacing: 0.08em;
-    color: var(--volt-light);
+    color: var(--crimson-light);
   }
 
   .btn-nav-docs {
-    background: var(--volt);
-    color: #05070a;
+    background: linear-gradient(135deg, #ff3355 0%, #e62b48 100%);
+    color: #ffffff;
     padding: 6px 14px;
     border-radius: var(--radius-sm);
     font-family: var(--font-mono);
@@ -205,11 +205,12 @@ const baseUrl = import.meta.env.BASE_URL.replace(/\/$/, '');
     font-weight: 800;
     text-decoration: none;
     white-space: nowrap;
+    border: 1px solid rgba(255, 255, 255, 0.15);
     transition: all 0.2s ease;
   }
   .btn-nav-docs:hover {
-    background: #e2ff33;
-    box-shadow: 0 0 16px var(--volt-glow);
+    background: linear-gradient(135deg, #ff4767 0%, #ff2a4b 100%);
+    box-shadow: 0 0 16px var(--crimson-glow);
   }
 
   .btn-github {

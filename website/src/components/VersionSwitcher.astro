@@ -58,23 +58,23 @@ const baseUrl = import.meta.env.BASE_URL.replace(/\/$/, '');
     transition: all 0.2s ease;
   }
   .version-btn:hover {
-    background: rgba(212, 255, 0, 0.08);
-    border-color: var(--border-volt);
+    background: var(--crimson-dim);
+    border-color: var(--border-crimson);
   }
 
   .version-dot {
     width: 6px;
     height: 6px;
     border-radius: 50%;
-    background: var(--volt);
-    box-shadow: 0 0 6px var(--volt);
+    background: var(--crimson);
+    box-shadow: 0 0 6px var(--crimson);
   }
 
   .version-tag {
     font-size: 0.62rem;
     padding: 1px 4px;
-    background: var(--volt-dim);
-    color: var(--volt);
+    background: var(--solar-dim);
+    color: var(--solar-light);
     border-radius: 2px;
     font-weight: 800;
     letter-spacing: 0.05em;
@@ -126,7 +126,7 @@ const baseUrl = import.meta.env.BASE_URL.replace(/\/$/, '');
     background: rgba(255, 255, 255, 0.04);
   }
   .version-item.active {
-    border-left: 2px solid var(--volt);
+    border-left: 2px solid var(--crimson);
   }
 
   .item-title {
@@ -145,8 +145,8 @@ const baseUrl = import.meta.env.BASE_URL.replace(/\/$/, '');
     font-weight: 800;
   }
   .badge-pill.latest {
-    background: var(--volt-dim);
-    color: var(--volt);
+    background: var(--solar-dim);
+    color: var(--solar-light);
   }
 
   .item-desc {
@@ -166,7 +166,7 @@ const baseUrl = import.meta.env.BASE_URL.replace(/\/$/, '');
     padding: 4px 6px;
     font-family: var(--font-mono);
     font-size: 0.75rem;
-    color: var(--volt);
+    color: var(--crimson-light);
     text-decoration: none;
     font-weight: 700;
   }

@@ -5,6 +5,8 @@ const baseUrl = import.meta.env.BASE_URL.replace(/\/$/, '');
 ---
 
 <Layout title="Documentation — RunZero" description="Complete installation, configuration, driver deep dive, and CLI guide for RunZero." currentPath="/docs">
+  <div class="ambient-crimson"></div>
+  
   <div class="container">
     
     <!-- Mobile Table of Contents Bar -->
@@ -45,6 +47,7 @@ const baseUrl = import.meta.env.BASE_URL.replace(/\/$/, '');
           <ul class="sidebar-links">
             <li><a href="#dual-engine" class="sidebar-link">Dual-Engine Fleet</a></li>
             <li><a href="#orbstack-driver" class="sidebar-link">OrbStack Linux VMs</a></li>
+            <li><a href="#golden-vm" class="sidebar-link">Golden VM Base Image</a></li>
             <li><a href="#docker-driver" class="sidebar-link">Docker Container Driver</a></li>
             <li><a href="#wsl-driver" class="sidebar-link">Windows WSL2 Driver</a></li>
             <li><a href="#multipass-driver" class="sidebar-link">Multipass Driver</a></li>
@@ -53,10 +56,11 @@ const baseUrl = import.meta.env.BASE_URL.replace(/\/$/, '');
         </div>
 
         <div class="sidebar-section">
-          <div class="sidebar-title">Configuration</div>
+          <div class="sidebar-title">Configuration &amp; Healing</div>
           <ul class="sidebar-links">
             <li><a href="#env-reference" class="sidebar-link">Environment Variables (.env)</a></li>
-            <li><a href="#rate-limiting" class="sidebar-link">Rate Limiting &amp; Discovery</a></li>
+            <li><a href="#rate-limiting" class="sidebar-link">Rate Limiting &amp; Quotas</a></li>
+            <li><a href="#zombie-healing" class="sidebar-link">Zombie Runner Healing</a></li>
             <li><a href="#proxy-caching" class="sidebar-link">Package Proxy Caching</a></li>
           </ul>
         </div>
@@ -96,10 +100,13 @@ make env
 # 3. Build runner images (ARM64 + AMD64)
 make build
 
-# 4. Start the autoscaler and caching proxies in the background
+# 4. (Optional for VM speeds) Build golden VM base template
+make build-vm-base
+
+# 5. Start the autoscaler and caching proxies in the background
 make start
 
-# 5. Stream live runner logs
+# 6. Stream live runner logs
 make logs</code></pre>
 
         <!-- Section 2: Prerequisites -->
@@ -132,6 +139,11 @@ make logs</code></pre>
           Spawns dedicated lightweight Linux machines via Apple Virtualization.framework. Provides <strong>full systemd support</strong>, unconfined Google Chrome sandboxing, background daemons, and internal Docker-in-VM capabilities. Automatically connects to host Verdaccio &amp; Athens caching proxies via <code>host.orb.internal</code>.
         </p>
 
+        <h3 id="golden-vm">🏗️ Golden VM Base Image (<code>make build-vm-base</code>)</h3>
+        <p>
+          To make VM boot times near-instant, <code>make build-vm-base</code> pre-bakes the shared toolchain into a golden base image (<code>runzero-vm-base-&lt;arch&gt;</code>). Subsequent VM jobs spin up in seconds by cloning the base image!
+        </p>
+
         <h3 id="docker-driver">🐳 Docker Container Driver (<code>RUNNER_BACKEND=docker</code>)</h3>
         <p>
           Launches ultra-fast ephemeral containers. Starts in <strong>~0.3 seconds</strong> and consumes zero RAM when idle. Ideal for unit tests, linting, build pipelines, and JavaScript/Python workflows.
@@ -150,7 +162,7 @@ make logs</code></pre>
         <!-- Section 5: Hybrid Routing -->
         <h2 id="hybrid-routing">Hybrid Auto-Routing</h2>
         <p>
-          With <code>RUNNER_BACKEND=auto</code> and <code>AUTO_ROUTE_VM=true</code>, you don't need to choose a single engine. The autoscaler inspects the labels of each queued GitHub job:
+          With <code>RUNNER_BACKEND=auto</code> and <code>AUTO_ROUTE_VM=true</code>, you don't need to choose a single engine. The autoscaler inspects workflow labels and job names:
         </p>
         <pre class="code-block"><code># Standard unit test runs in ultra-fast Docker container (~0.3s)
 jobs:
@@ -166,7 +178,16 @@ jobs:
     steps:
       - run: npx lhci autorun</code></pre>
 
-        <!-- Section 6: Environment Variables Reference -->
+        <!-- Section 6: Zombie Healing -->
+        <h2 id="zombie-healing">Zombie Runner Healing &amp; Auto-Reconciliation</h2>
+        <p>
+          If an ephemeral runner machine is stopped abruptly mid-job (e.g. during workstation sleep or <code>make stop</code>), GitHub might mark it as <code>offline</code> but <code>busy: true</code>.
+        </p>
+        <p>
+          RunZero's autoscaler automatically reconciles zombie runners by cancelling stranded runs and unsticking GitHub's runner queue so jobs never hang.
+        </p>
+
+        <!-- Section 7: Environment Variables Reference -->
         <h2 id="env-reference">Environment Variables Reference (<code>.env</code>)</h2>
         <div class="table-wrapper">
           <table class="comparison-table">
@@ -222,22 +243,21 @@ jobs:
           </table>
         </div>
 
-        <!-- Section 7: Makefile CLI -->
+        <!-- Section 8: Makefile CLI -->
         <h2 id="makefile-cli">Makefile Command Reference</h2>
         <pre class="code-block"><code>make start          # Start Autoscaler and Proxy registries in background
 make stop           # Stop Autoscaler, Proxies, and cleanup active runners
 make status         # Show status of services and active runner instances
 make logs           # Stream live autoscaler logs
-make test           # Run 68 local unit tests directly (1.1s)
+make test           # Run unit tests directly (1.2s)
 make test-suite     # Run Flake8 linter, Mypy type-checker, and Pytest coverage
-make mutation-test  # Run Mutmut mutation testing suite
+make build-vm-base  # Build golden OrbStack VM base image for instant cloning
 make website-dev    # Start Astro documentation website development server
 make website-build  # Build Astro static website and synchronize to docs/
 make verdaccio-ui   # Open Verdaccio NPM registry dashboard (http://localhost:49501)
-make cache-size     # Show disk usage of persistent package & tool caches
 make clean-cache    # Clear shared package caches to reclaim disk space</code></pre>
 
-        <!-- Section 8: FAQ -->
+        <!-- Section 9: FAQ -->
         <h2 id="faq">Troubleshooting &amp; FAQ</h2>
         <h3>How do I test a workflow on Apple Silicon and AMD64?</h3>
         <p>
@@ -259,7 +279,7 @@ make clean-cache    # Clear shared package caches to reclaim disk space</code></
     position: sticky;
     top: var(--header-height);
     z-index: 90;
-    background: rgba(12, 16, 26, 0.95);
+    background: rgba(6, 8, 13, 0.95);
     backdrop-filter: blur(16px);
     -webkit-backdrop-filter: blur(16px);
     border-bottom: 1px solid var(--border-subtle);
@@ -273,9 +293,9 @@ make clean-cache    # Clear shared package caches to reclaim disk space</code></
     display: flex;
     align-items: center;
     gap: 8px;
-    background: rgba(99, 102, 241, 0.15);
-    border: 1px solid var(--border-accent);
-    color: var(--primary-light);
+    background: var(--crimson-dim);
+    border: 1px solid var(--border-crimson);
+    color: var(--crimson-light);
     padding: 6px 12px;
     border-radius: var(--radius-sm);
     font-size: 0.85rem;
@@ -360,13 +380,13 @@ make clean-cache    # Clear shared package caches to reclaim disk space</code></
     transition: all 0.2s ease;
   }
   .sidebar-link:hover, .sidebar-link.active {
-    background: rgba(255, 255, 255, 0.05);
+    background: rgba(255, 255, 255, 0.04);
     color: var(--text-main);
   }
   .sidebar-link.active {
-    color: var(--primary-light);
+    color: var(--crimson-light);
     font-weight: 700;
-    border-left: 2px solid var(--primary);
+    border-left: 2px solid var(--crimson);
     border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
   }
 
@@ -431,8 +451,8 @@ make clean-cache    # Clear shared package caches to reclaim disk space</code></
     border-left: 4px solid;
   }
   .callout.tip {
-    border-color: var(--emerald);
-    background: rgba(16, 185, 129, 0.06);
+    border-color: var(--crimson);
+    background: var(--crimson-dim);
   }
   .callout-title {
     font-weight: 700;
@@ -476,7 +496,7 @@ make clean-cache    # Clear shared package caches to reclaim disk space</code></
     font-size: 0.9rem;
   }
   table.comparison-table th {
-    background: rgba(255, 255, 255, 0.03);
+    background: rgba(255, 255, 255, 0.02);
     color: var(--text-dim);
     text-transform: uppercase;
     font-size: 0.8rem;
@@ -497,7 +517,7 @@ make clean-cache    # Clear shared package caches to reclaim disk space</code></
       max-width: 320px;
       height: calc(100vh - var(--header-height));
       z-index: 150;
-      background: #0c101a;
+      background: var(--bg-secondary);
       border-right: 1px solid var(--border-card);
       box-shadow: 20px 0 50px rgba(0, 0, 0, 0.8);
       transition: left 0.3s cubic-bezier(0.16, 1, 0.3, 1);

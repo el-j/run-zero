@@ -248,6 +248,99 @@ class TestOrbStackVMDriver(unittest.TestCase):
         self.driver.destroy_runner("runzero-vm-dead")
         self.driver.cleanup_all()
 
+    def test_base_image_name(self):
+        self.assertEqual(self.driver.base_image_name("amd64"), "runzero-vm-base-amd64")
+
+    @patch("subprocess.run")
+    def test_base_image_exists_true(self, mock_run):
+        mock_run.return_value = MagicMock(
+            stdout=json.dumps([{"name": "runzero-vm-base-amd64", "state": "stopped"}]),
+            returncode=0
+        )
+        self.assertTrue(self.driver.base_image_exists("amd64"))
+
+    @patch("subprocess.run")
+    def test_base_image_exists_false(self, mock_run):
+        mock_run.return_value = MagicMock(stdout=json.dumps([]), returncode=0)
+        self.assertFalse(self.driver.base_image_exists("amd64"))
+
+    def test_list_runners_excludes_base_image(self):
+        with patch("subprocess.run") as mock_run:
+            mock_run.return_value = MagicMock(
+                stdout=json.dumps([
+                    {"name": "runzero-vm-base-amd64", "state": "stopped"},
+                    {"name": "runzero-vm-amd64-el-j-abc123", "state": "running"},
+                ]),
+                returncode=0
+            )
+            runners = self.driver.list_runners()
+        # The golden base image is a template, not a runner instance -- must
+        # never be counted, pruned, or destroyed by the normal lifecycle.
+        self.assertEqual(len(runners), 1)
+        self.assertEqual(runners[0].name, "runzero-vm-amd64-el-j-abc123")
+
+    @patch("subprocess.Popen")
+    @patch("subprocess.run")
+    def test_spawn_runner_clones_base_image_when_available(self, mock_run, mock_popen):
+        mock_run.side_effect = [
+            MagicMock(stdout=json.dumps([{"name": "runzero-vm-base-amd64", "state": "stopped"}]), returncode=0),
+            MagicMock(returncode=0),  # orbctl clone
+        ]
+        name = self.driver.spawn_runner(repo="el-j/run-zero", arch="amd64", access_token="token")
+        self.assertIsNotNone(name)
+        clone_call = mock_run.call_args_list[1]
+        self.assertEqual(clone_call[0][0][:2], ["orbctl", "clone"])
+
+    @patch("subprocess.Popen")
+    @patch("subprocess.run")
+    def test_spawn_runner_cold_provisions_when_no_base_image(self, mock_run, mock_popen):
+        mock_run.side_effect = [
+            MagicMock(stdout=json.dumps([]), returncode=0),
+            MagicMock(returncode=0),  # orbctl create
+        ]
+        name = self.driver.spawn_runner(repo="el-j/run-zero", arch="amd64", access_token="token")
+        self.assertIsNotNone(name)
+        create_call = mock_run.call_args_list[1]
+        self.assertEqual(create_call[0][0][:2], ["orbctl", "create"])
+
+    def test_build_base_image_missing_script_fails_gracefully(self):
+        driver = OrbStackVMDriver(distro="ubuntu:22.04")
+        driver._provision_script_path = "/nonexistent/provision-toolchain.sh"
+        with patch("subprocess.run") as mock_run:
+            result = driver.build_base_image("amd64")
+        self.assertFalse(result)
+        mock_run.assert_not_called()
+
+    @patch("subprocess.run")
+    def test_build_base_image_create_failure(self, mock_run):
+        mock_run.side_effect = [
+            MagicMock(returncode=0),  # orbctl delete -f (best-effort cleanup)
+            subprocess.CalledProcessError(1, ["orbctl", "create"], stderr=b"Out of memory"),
+        ]
+        result = self.driver.build_base_image("amd64")
+        self.assertFalse(result)
+
+    @patch("subprocess.run")
+    def test_build_base_image_success(self, mock_run):
+        mock_run.side_effect = [
+            MagicMock(returncode=0),  # orbctl delete -f
+            MagicMock(returncode=0),  # orbctl create
+            MagicMock(returncode=0),  # orb -m ... bash -c <provision script>
+            MagicMock(returncode=0),  # orbctl stop
+        ]
+        result = self.driver.build_base_image("amd64")
+        self.assertTrue(result)
+
+    @patch("subprocess.run")
+    def test_build_base_image_provision_timeout(self, mock_run):
+        mock_run.side_effect = [
+            MagicMock(returncode=0),  # orbctl delete -f
+            MagicMock(returncode=0),  # orbctl create
+            subprocess.TimeoutExpired(cmd="orb", timeout=1800),
+        ]
+        result = self.driver.build_base_image("amd64")
+        self.assertFalse(result)
+
 
 class TestWSL2Driver(unittest.TestCase):
     def setUp(self):

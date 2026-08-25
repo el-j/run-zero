@@ -8,6 +8,9 @@ const baseUrl = import.meta.env.BASE_URL.replace(/\/$/, '');
 ---
 
 <Layout title="RunZero ⚡ Zero Cloud Minutes. Zero K8s Bloat. Zero Idle Waste." currentPath="/">
+  <div class="ambient-crimson"></div>
+  <div class="ambient-solar"></div>
+
   <div class="container">
     
     <!-- Hero Section -->
@@ -21,7 +24,7 @@ const baseUrl = import.meta.env.BASE_URL.replace(/\/$/, '');
       <h1 class="hero-title">
         Zero Cloud Minutes.<br />
         Zero K8s Bloat.<br />
-        <span class="volt-gradient">Zero Idle Waste.</span>
+        <span class="crimson-gradient">Zero Idle Waste.</span>
       </h1>
 
       <p class="hero-lead">
@@ -30,7 +33,7 @@ const baseUrl = import.meta.env.BASE_URL.replace(/\/$/, '');
       </p>
 
       <div class="hero-actions">
-        <a href="#quickstart" class="btn-volt">
+        <a href="#quickstart" class="btn-crimson">
           <span>⚡ INITIALIZE FLEET</span>
         </a>
         <a href={`${baseUrl}/docs/`} class="btn-ghost">
@@ -85,8 +88,8 @@ const baseUrl = import.meta.env.BASE_URL.replace(/\/$/, '');
 
         <div class="tech-card">
           <div class="card-icon-box">🌐</div>
-          <h3>Adaptive Rate-Limiting</h3>
-          <p>Smart discovery filters active repositories pushed within the last N days, monitoring GitHub API quota headers to guarantee zero rate-limit bans.</p>
+          <h3>Adaptive Rate-Limiting &amp; Zombie Healing</h3>
+          <p>Smart discovery filters active repositories, auto-cancels orphaned runs pinned to dead runners, and monitors GitHub API quota headers to guarantee zero rate-limit bans.</p>
           <div class="card-footer-meta">QUOTA: PROTECTED</div>
         </div>
 
@@ -100,14 +103,14 @@ const baseUrl = import.meta.env.BASE_URL.replace(/\/$/, '');
         <div class="tech-card">
           <div class="card-icon-box">🛡️</div>
           <h3>100% Mutation &amp; Unit Tested</h3>
-          <p>Verified with 75 unit tests, 0 Flake8 lint warnings, 100% Mypy static type safety, and Mutmut mutation testing across all drivers.</p>
+          <p>Verified with unit tests, 0 Flake8 lint warnings, 100% Mypy static type safety, and Mutmut mutation testing across all drivers.</p>
           <div class="card-footer-meta">QUALITY: 100% VERIFIED</div>
         </div>
 
         <div class="tech-card">
           <div class="card-icon-box">🟢</div>
-          <h3>Dynamic NVM &amp; .NET 8 Pre-baked</h3>
-          <p>Zero wait time: pre-installed Node.js 20 LTS, 22 LTS, 24 Current, .NET SDK 8.0, Git LFS, PostgreSQL client, and Google Chrome.</p>
+          <h3>Unified CI Toolchain</h3>
+          <p>Single source of truth toolchain script: pre-installed Node.js 20/22/24 LTS via nvm, .NET SDK 8.0, Git LFS, PostgreSQL client, and Playwright OS dependencies.</p>
           <div class="card-footer-meta">TOOLCHAIN: READY</div>
         </div>
       </div>
@@ -142,31 +145,31 @@ const baseUrl = import.meta.env.BASE_URL.replace(/\/$/, '');
             <tr>
               <td><strong>🪐 OrbStack (Recommended)</strong></td>
               <td>macOS (Apple Silicon &amp; Intel)</td>
-              <td><span class="tag-volt">Containers &amp; Linux VMs</span></td>
-              <td>Instant boot, Rosetta 2 x86_64 acceleration, full systemd support.</td>
+              <td><span class="tag-crimson">Containers &amp; Linux VMs</span></td>
+              <td>Instant boot, golden VM cloning, Rosetta 2 x86_64 acceleration, full systemd.</td>
             </tr>
             <tr>
               <td><strong>🐳 Docker Desktop</strong></td>
               <td>macOS, Windows, Linux</td>
-              <td><span class="tag-volt">Containers</span></td>
+              <td><span class="tag-crimson">Containers</span></td>
               <td>Universal cross-platform container support.</td>
             </tr>
             <tr>
               <td><strong>🪟 Windows WSL2</strong></td>
               <td>Windows 10/11 &amp; Server</td>
-              <td><span class="tag-volt">Native Linux VMs</span></td>
+              <td><span class="tag-crimson">Native Linux VMs</span></td>
               <td>Native Linux execution without requiring Docker Desktop on Windows.</td>
             </tr>
             <tr>
               <td><strong>🚀 Canonical Multipass</strong></td>
               <td>macOS, Windows, Linux</td>
-              <td><span class="tag-volt">Virtual Machines</span></td>
+              <td><span class="tag-crimson">Virtual Machines</span></td>
               <td>Universal cross-platform Ubuntu VMs via QEMU / Hyper-V / VirtualBox.</td>
             </tr>
             <tr>
               <td><strong>🐧 Native Linux Docker</strong></td>
               <td>Ubuntu, Debian, Arch, Homelabs</td>
-              <td><span class="tag-volt">Native Containers</span></td>
+              <td><span class="tag-crimson">Native Containers</span></td>
               <td>Zero VM layer, direct kernel speed for homelab servers.</td>
             </tr>
           </tbody>
@@ -183,7 +186,7 @@ const baseUrl = import.meta.env.BASE_URL.replace(/\/$/, '');
         <h2>DEPLOY LOCAL RUNNER FLEET NOW</h2>
         <p>Initialize your workstation fleet in less than 60 seconds with our interactive configuration wizard.</p>
         <div class="banner-actions">
-          <a href="#quickstart" class="btn-volt">⚡ QUICKSTART NOW</a>
+          <a href="#quickstart" class="btn-crimson">⚡ QUICKSTART NOW</a>
           <a href={`${baseUrl}/docs/`} class="btn-ghost">BROWSE DOCUMENTATION →</a>
         </div>
       </div>
@@ -203,8 +206,8 @@ const baseUrl = import.meta.env.BASE_URL.replace(/\/$/, '');
     align-items: center;
     gap: 8px;
     padding: 4px 12px;
-    background: rgba(212, 255, 0, 0.05);
-    border: 1px solid var(--border-volt);
+    background: rgba(255, 51, 85, 0.06);
+    border: 1px solid var(--border-crimson);
     border-radius: var(--radius-sm);
     margin-bottom: 24px;
   }
@@ -212,14 +215,14 @@ const baseUrl = import.meta.env.BASE_URL.replace(/\/$/, '');
     width: 6px;
     height: 6px;
     border-radius: 50%;
-    background: var(--volt);
-    box-shadow: 0 0 8px var(--volt);
+    background: var(--crimson);
+    box-shadow: 0 0 8px var(--crimson);
   }
   .telemetry-text {
     font-family: var(--font-mono);
     font-size: 0.72rem;
     font-weight: 800;
-    color: var(--volt-light);
+    color: var(--crimson-light);
     letter-spacing: 0.08em;
   }
   .telemetry-pill {
@@ -227,8 +230,8 @@ const baseUrl = import.meta.env.BASE_URL.replace(/\/$/, '');
     font-size: 0.65rem;
     font-weight: 800;
     padding: 1px 5px;
-    background: var(--volt-dim);
-    color: var(--volt);
+    background: var(--solar-dim);
+    color: var(--solar-light);
     border-radius: 2px;
   }
 
@@ -266,7 +269,7 @@ const baseUrl = import.meta.env.BASE_URL.replace(/\/$/, '');
     font-family: var(--font-mono);
     font-size: 0.75rem;
     font-weight: 800;
-    color: var(--volt);
+    color: var(--crimson-light);
     letter-spacing: 0.08em;
     margin-bottom: 12px;
   }
@@ -294,8 +297,8 @@ const baseUrl = import.meta.env.BASE_URL.replace(/\/$/, '');
     width: 42px;
     height: 42px;
     border-radius: var(--radius-sm);
-    background: rgba(212, 255, 0, 0.08);
-    border: 1px solid var(--border-volt);
+    background: rgba(255, 51, 85, 0.08);
+    border: 1px solid var(--border-crimson);
     display: flex;
     align-items: center;
     justify-content: center;
@@ -322,8 +325,8 @@ const baseUrl = import.meta.env.BASE_URL.replace(/\/$/, '');
     border-top: 1px solid var(--border-subtle);
   }
 
-  .tag-volt {
-    color: var(--volt);
+  .tag-crimson {
+    color: var(--crimson-light);
     font-weight: 700;
   }
 
@@ -357,12 +360,12 @@ const baseUrl = import.meta.env.BASE_URL.replace(/\/$/, '');
     padding: 60px 0 96px;
   }
   .banner-inner {
-    background: linear-gradient(135deg, rgba(212, 255, 0, 0.08) 0%, rgba(14, 18, 28, 0.9) 100%);
-    border: 1px solid var(--border-volt);
+    background: linear-gradient(135deg, rgba(255, 51, 85, 0.08) 0%, rgba(16, 21, 34, 0.9) 100%);
+    border: 1px solid var(--border-crimson);
     border-radius: var(--radius-lg);
     padding: 48px 32px;
     text-align: center;
-    box-shadow: 0 20px 50px -10px rgba(0, 0, 0, 0.8), 0 0 30px -10px var(--volt-dim);
+    box-shadow: 0 20px 50px -10px rgba(0, 0, 0, 0.8), 0 0 30px -10px var(--crimson-dim);
   }
   .banner-inner h2 {
     font-size: 2.2rem;

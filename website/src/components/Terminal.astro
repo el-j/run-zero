@@ -1,5 +1,5 @@
 ---
-// Hardware CLI Workbench Terminal Component
+// Hardware CLI Workbench Terminal Component (Martian Redshift Edition)
 ---
 
 <div class="terminal-workbench" id="quickstart">
@@ -45,7 +45,7 @@
   </div>
 
   <div class="workbench-footer">
-    <span class="footer-telemetry">⚡ ENGINE: AUTO_DETECT // IDLE_RAM: 20MB // BOOT: 0.3s</span>
+    <span class="footer-telemetry">⚡ COST: $0.00 // ENGINE: AUTO_DETECT // IDLE_RAM: 20MB // BOOT: 0.3s</span>
   </div>
 </div>
 
@@ -57,7 +57,7 @@
     border: 1px solid var(--border-card);
     border-radius: var(--radius-lg);
     overflow: hidden;
-    box-shadow: 0 30px 60px -15px rgba(0, 0, 0, 0.9), 0 0 30px -10px var(--volt-dim);
+    box-shadow: 0 30px 60px -15px rgba(0, 0, 0, 0.9), 0 0 30px -10px var(--crimson-dim);
     text-align: left;
     position: relative;
   }
@@ -68,7 +68,7 @@
     left: 0;
     right: 0;
     height: 1px;
-    background: linear-gradient(90deg, transparent, var(--volt), transparent);
+    background: linear-gradient(90deg, transparent, var(--crimson), var(--solar), transparent);
   }
 
   .workbench-header {
@@ -88,9 +88,9 @@
   .status-box {
     width: 8px;
     height: 8px;
-    background: var(--volt);
+    background: var(--crimson);
     border-radius: 1px;
-    box-shadow: 0 0 8px var(--volt);
+    box-shadow: 0 0 8px var(--crimson);
   }
   .workbench-title {
     font-family: var(--font-mono);
@@ -120,9 +120,9 @@
     color: var(--text-main);
   }
   .wtab-btn.active {
-    background: var(--volt-dim);
-    border-color: var(--border-volt);
-    color: var(--volt);
+    background: var(--crimson-dim);
+    border-color: var(--border-crimson);
+    color: var(--crimson-light);
   }
 
   .btn-copy-code {
@@ -141,15 +141,15 @@
     transition: all 0.2s ease;
   }
   .btn-copy-code:hover {
-    background: var(--volt-dim);
-    border-color: var(--border-volt);
-    color: var(--volt);
+    background: var(--crimson-dim);
+    border-color: var(--border-crimson);
+    color: var(--crimson-light);
   }
 
   .workbench-body {
     display: flex;
     padding: 20px 24px;
-    background: #06080e;
+    background: #070910;
     overflow-x: auto;
   }
 
@@ -159,7 +159,7 @@
     font-family: var(--font-mono);
     font-size: 0.85rem;
     line-height: 1.85;
-    color: #2a3346;
+    color: #2b3346;
     user-select: none;
     padding-right: 18px;
     border-right: 1px solid rgba(255, 255, 255, 0.05);
@@ -176,7 +176,7 @@
     overflow-x: auto;
   }
   .terminal-pre .c { color: #52617a; }
-  .terminal-pre .prompt { color: var(--volt); font-weight: bold; margin-right: 4px; }
+  .terminal-pre .prompt { color: var(--crimson); font-weight: bold; margin-right: 4px; }
   .terminal-pre .cmd { color: #fff; font-weight: 600; }
 
   .workbench-footer {
@@ -214,6 +214,9 @@
 RUNNER_BACKEND=orbstack-vm
 RUNNER_ARCH=both
 AUTO_ROUTE_VM=true
+
+# Build golden base VM image for instant spins:
+❯ make build-vm-base
 
 # Launch runners:
 ❯ make start`,
@@ -258,8 +261,8 @@ RUNNER_BACKEND=multipass
         const textSpan = copyBtn.querySelector('.copy-text');
         if (textSpan) {
           textSpan.textContent = 'COPIED!';
-          copyBtn.style.color = 'var(--volt)';
-          copyBtn.style.borderColor = 'var(--volt)';
+          copyBtn.style.color = 'var(--crimson-light)';
+          copyBtn.style.borderColor = 'var(--border-crimson)';
           setTimeout(() => {
             textSpan.textContent = 'COPY';
             copyBtn.style.color = '';

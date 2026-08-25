@@ -312,7 +312,9 @@ class TestAutoscalerMainLoop(unittest.TestCase):
 
         mock_gh.side_effect = [
             [{"full_name": "el-j/run-zero", "archived": False, "pushed_at": datetime.now(timezone.utc).isoformat()}],
-            {"workflow_runs": [{"id": 1}]},
+            [],  # page 2 of discover_repositories (end of pagination)
+            {"runners": []},  # reconcile_zombie_runners
+            {"workflow_runs": [{"id": 1}]},  # get_queued_job_details
             {"jobs": [{"id": 10, "status": "queued", "labels": ["self-hosted", "local", "amd64"]}]}
         ]
 
@@ -331,6 +333,18 @@ class TestAutoscalerMainLoop(unittest.TestCase):
 
         mock_d.spawn_runner.assert_called()
         mock_d.cleanup_all.assert_called()
+
+    @patch("autoscaler.github_request")
+    def test_reconcile_zombie_runners_heals_offline_busy_runner(self, mock_gh):
+        mock_gh.side_effect = [
+            {"runners": [{"id": 42, "name": "local-runner-arm64-dead", "status": "offline", "busy": True}]},
+            {"workflow_runs": [{"id": 100, "run_number": 5}]},
+            {"jobs": [{"id": 200, "runner_name": "local-runner-arm64-dead"}]},
+            True,  # cancel run
+            True   # delete runner
+        ]
+        autoscaler.reconcile_zombie_runners(["el-j/run-zero"])
+        self.assertEqual(mock_gh.call_count, 5)
 
     @patch("autoscaler.get_driver")
     @patch("autoscaler.get_available_drivers")
