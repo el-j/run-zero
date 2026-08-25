@@ -1,7 +1,8 @@
 """
 OrbStack Linux VM Execution Driver for RunZero
 Spawns and manages dedicated, lightweight Linux Virtual Machines via OrbStack (Apple Virtualization framework).
-Provides full systemd, dedicated kernel, internal Docker daemon, and unconfined browser sandboxes.
+Provides full systemd, dedicated kernel, internal Docker daemon, unconfined browser sandboxes,
+and automatic integration with local caching proxies (Verdaccio, Athens).
 """
 
 import os
@@ -52,7 +53,15 @@ class OrbStackVMDriver(RunnerDriver):
         runner_labels = labels if labels else default_labels
         orb_arch = "arm64" if arch == "arm64" else "amd64"
 
-        print(f"[Autoscaler:OrbStack-VM] 🚀 Spawning ephemeral [{arch.upper()}] Linux VM '{vm_name}' ({self.distro})...")
+        # Proxy cache environment definitions
+        proxy_env_block = ""
+        if proxies_enabled:
+            proxy_env_block = """
+export NPM_CONFIG_REGISTRY="http://host.orb.internal:49501/"
+export GOPROXY="http://host.orb.internal:49500,https://proxy.golang.org,direct"
+"""
+
+        print(f"[Autoscaler:OrbStack-VM] 🚀 Spawning ephemeral [{arch.upper()}] Linux VM '{vm_name}' ({self.distro}) with caching proxies...")
 
         try:
             # 1. Create the VM
@@ -65,12 +74,14 @@ class OrbStackVMDriver(RunnerDriver):
             ]
             subprocess.run(create_cmd, check=True, capture_output=True)
 
-            # 2. Setup runner workspace & runner binary inside the VM asynchronously
+            # 2. Setup runner workspace, proxy caches & runner binary inside the VM asynchronously
             runner_setup_script = f"""
 set -e
 export DEBIAN_FRONTEND=noninteractive
 sudo apt-get update -y && sudo apt-get install -y --no-install-recommends curl jq git git-lfs ca-certificates build-essential
 sudo echo "runner ALL=(ALL) NOPASSWD:ALL" | sudo tee -a /etc/sudoers > /dev/null
+
+{proxy_env_block}
 
 mkdir -p /home/runner/actions-runner && cd /home/runner/actions-runner
 RUNNER_ARCH="{orb_arch}"

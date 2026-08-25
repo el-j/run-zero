@@ -1,6 +1,7 @@
 """
 Canonical Multipass VM Execution Driver for RunZero
-Cross-platform VM execution for macOS, Linux, and Windows using lightweight QEMU/Hyper-V/VirtualBox VMs.
+Cross-platform VM execution for macOS, Linux, and Windows using lightweight QEMU/Hyper-V/VirtualBox VMs,
+with automatic integration with local caching proxies (Verdaccio, Athens).
 """
 
 import os
@@ -45,7 +46,15 @@ class MultipassDriver(RunnerDriver):
         vm_name = f"runzero-mp-{arch}{name_suffix}-{unique_id}"
         runner_labels = labels if labels else f"self-hosted,local,multipass,vm,{arch}"
 
-        print(f"[Autoscaler:Multipass] 🚀 Launching ephemeral VM '{vm_name}'...")
+        proxy_env_block = ""
+        if proxies_enabled:
+            proxy_env_block = """
+HOST_IP=$(ip route | awk '/default/ { print $3 }' || echo "192.168.64.1")
+export NPM_CONFIG_REGISTRY="http://${HOST_IP}:49501/"
+export GOPROXY="http://${HOST_IP}:49500,https://proxy.golang.org,direct"
+"""
+
+        print(f"[Autoscaler:Multipass] 🚀 Launching ephemeral VM '{vm_name}' with caching proxies...")
 
         try:
             # 1. Launch the VM
@@ -62,6 +71,7 @@ class MultipassDriver(RunnerDriver):
             setup_script = f"""
 export DEBIAN_FRONTEND=noninteractive
 sudo apt-get update -y && sudo apt-get install -y curl jq git git-lfs ca-certificates build-essential
+{proxy_env_block}
 mkdir -p /home/ubuntu/actions-runner && cd /home/ubuntu/actions-runner
 curl -O -L https://github.com/actions/runner/releases/download/v2.336.0/actions-runner-linux-arm64-2.336.0.tar.gz
 tar xzf ./actions-runner-linux-arm64-2.336.0.tar.gz

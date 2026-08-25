@@ -1,6 +1,7 @@
 """
 Windows WSL2 Virtual Machine Driver for RunZero
-Enables native lightweight Linux VM execution for GitHub Actions on Windows 10/11 & Windows Server.
+Enables native lightweight Linux VM execution for GitHub Actions on Windows 10/11 & Windows Server,
+with automatic integration with local caching proxies (Verdaccio, Athens).
 """
 
 import os
@@ -44,10 +45,19 @@ class WSL2Driver(RunnerDriver):
         instance_name = f"runzero-wsl{name_suffix}-{unique_id}"
         runner_labels = labels if labels else "self-hosted,local,wsl,x64,windows-host"
 
-        print(f"[Autoscaler:WSL2] 🚀 Spawning ephemeral WSL2 runner '{instance_name}' for {repo or org}...")
+        proxy_env_block = ""
+        if proxies_enabled:
+            proxy_env_block = """
+HOST_IP=$(ip route show default 2>/dev/null | awk '{print $3}' || echo "localhost")
+export NPM_CONFIG_REGISTRY="http://${HOST_IP}:49501/"
+export GOPROXY="http://${HOST_IP}:49500,https://proxy.golang.org,direct"
+"""
+
+        print(f"[Autoscaler:WSL2] 🚀 Spawning ephemeral WSL2 runner '{instance_name}' for {repo or org} with caching proxies...")
 
         try:
             cmd = ["wsl", "-d", self.distro_base, "-u", "runner", "--", "bash", "-c", f"""
+{proxy_env_block}
 export ACCESS_TOKEN="{access_token}"
 export RUNNER_NAME="{instance_name}"
 export RUNNER_LABELS="{runner_labels}"

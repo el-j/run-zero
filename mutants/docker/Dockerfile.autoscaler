@@ -15,8 +15,8 @@ RUN apt-get update && \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
-COPY src/drivers /app/drivers
-COPY src/autoscaler.py /app/autoscaler.py
+COPY drivers /app/drivers
+COPY autoscaler.py /app/autoscaler.py
 RUN chmod +x /app/autoscaler.py
 
 ENTRYPOINT ["python3", "-u", "/app/autoscaler.py"]

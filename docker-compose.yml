@@ -9,8 +9,8 @@ services:
   # ============================================================================
   autoscaler:
     build:
-      context: ./docker
-      dockerfile: Dockerfile.autoscaler
+      context: .
+      dockerfile: docker/Dockerfile.autoscaler
     image: local-runner-autoscaler:latest
     container_name: local-runner-autoscaler
     restart: unless-stopped

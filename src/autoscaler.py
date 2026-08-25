@@ -265,8 +265,8 @@ def main():
     print(f" Active Filter:    Pushed within last {ACTIVE_DAYS} days")
     print("=" * 65)
 
-    last_discovery_time = 0
-    tracked_repos = []
+    last_discovery_time: float = 0.0
+    tracked_repos: List[str] = []
 
     while running:
         now = time.time()
@@ -282,7 +282,7 @@ def main():
                 print(f"[Autoscaler] GitHub API Quota remaining: {rate_limit_remaining}/5000")
 
         # Collect active runners across all drivers
-        all_runners = []
+        all_runners: List[RunnerInfo] = []
         for d in available_drivers.values():
             runners = d.list_runners()
             d.prune_exited(runners)
@@ -306,7 +306,7 @@ def main():
                     )
         else:
             # For repositories: check queued jobs with hybrid routing
-            queued_jobs_by_repo = {}
+            queued_jobs_by_repo: Dict[str, List[Dict[str, Any]]] = {}
             total_queued = 0
 
             for repo in tracked_repos:

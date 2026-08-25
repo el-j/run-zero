@@ -177,9 +177,9 @@ test-suite: ## Run test suite with pytest, mypy type checking, and flake8 linter
 	@echo "$(CYAN)Running Flake8, Mypy, and Pytest coverage suite...$(RESET)"
 	@docker run --rm -v "$$(pwd):/app" -w /app python:3.11-slim bash -c "\
 		pip install --quiet pytest pytest-cov mypy flake8 && \
-		flake8 docker/ tests/ --max-line-length=160 --extend-ignore=E501,W503,E402 && \
-		MYPYPATH=docker mypy docker/drivers/ docker/autoscaler.py --ignore-missing-imports && \
-		PYTHONPATH=docker pytest --cov=docker --cov-report=term-missing tests/"
+		flake8 src/ tests/ --max-line-length=160 --extend-ignore=E501,W503,E402 && \
+		MYPYPATH=src mypy src/drivers/ src/autoscaler.py --ignore-missing-imports && \
+		PYTHONPATH=src pytest --cov=src --cov-report=term-missing tests/"
 	@echo "$(GREEN)All tests passed with 0 warnings!$(RESET)"
 
 .PHONY: mutation-test
@@ -187,7 +187,7 @@ mutation-test: ## Run mutation testing suite (mutmut)
 	@echo "$(CYAN)Running Mutmut Mutation Testing Suite...$(RESET)"
 	@docker run --rm -v "$$(pwd):/app" -w /app python:3.11-slim bash -c "\
 		pip install --quiet pytest mutmut && \
-		PYTHONPATH=docker mutmut run || true && \
+		PYTHONPATH=src mutmut run || true && \
 		mutmut results"
 
 .PHONY: test

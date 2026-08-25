@@ -12,14 +12,13 @@ requires-python = ">=3.9"
 [tool.pytest.ini_options]
 minversion = "7.0"
 testpaths = ["tests"]
-pythonpath = ["docker"]
-addopts = "-ra -q --cov=docker --cov-report=term-missing"
+pythonpath = ["src"]
+addopts = "-ra -q --cov=src --cov-report=term-missing"
 
 [tool.coverage.run]
-source = ["docker"]
+source = ["src"]
 omit = [
-    "tests/*",
-    "docker/start.sh"
+    "tests/*"
 ]
 
 [tool.coverage.report]
@@ -34,5 +33,5 @@ disallow_untyped_defs = false
 check_untyped_defs = true
 
 [tool.mutmut]
-paths_to_mutate = "docker/"
+paths_to_mutate = "src/"
 runner = "python -m pytest -q"
