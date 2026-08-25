@@ -83,9 +83,9 @@ docs: ## Open documentation landing page in default browser
 	@open docs/index.html || echo "Open docs/index.html in your browser."
 
 .PHONY: verdaccio-ui
-verdaccio-ui: ## Open Verdaccio Web UI in default browser (http://localhost:4873)
-	@echo "$(CYAN)Opening Verdaccio Web UI at http://localhost:4873...$(RESET)"
-	@open http://localhost:4873 || echo "Navigate to http://localhost:4873 in your browser."
+verdaccio-ui: ## Open Verdaccio Web UI in default browser (http://localhost:49501)
+	@echo "$(CYAN)Opening Verdaccio Web UI at http://localhost:49501...$(RESET)"
+	@open http://localhost:49501 || echo "Navigate to http://localhost:49501 in your browser."
 
 .PHONY: build-arm64
 build-arm64: ## Build native ARM64 runner image (Apple Silicon M-series)
@@ -114,9 +114,9 @@ start: check-env init-cache ## Start Autoscaler and Proxy services (Verdaccio, A
 	@echo "$(CYAN)Starting Local GitHub Runner Autoscaler & Proxy stack (OrbStack)...$(RESET)"
 	docker compose up -d
 	@echo "$(GREEN)Autoscaler and Proxy registries are running in background!$(RESET)"
-	@echo "  • Verdaccio Web UI: $(BOLD)http://localhost:4873$(RESET) (Run $(BOLD)make verdaccio-ui$(RESET))"
-	@echo "  • Athens Go Proxy:  $(BOLD)http://localhost:3000$(RESET)"
-	@echo "  • Docker Mirror:    $(BOLD)http://localhost:5001$(RESET)"
+	@echo "  • Verdaccio Web UI: $(BOLD)http://localhost:49501$(RESET) (Run $(BOLD)make verdaccio-ui$(RESET))"
+	@echo "  • Athens Go Proxy:  $(BOLD)http://localhost:49500$(RESET)"
+	@echo "  • Docker Mirror:    $(BOLD)http://localhost:49502$(RESET)"
 	@echo "Use $(BOLD)make logs$(RESET) to stream logs or $(BOLD)make status$(RESET) to see active runners."
 
 up: start
@@ -158,7 +158,22 @@ clean: ## Force clean stopped containers and temporary runner volumes
 	@docker rm -f $$(docker ps -a -q --filter "label=managed-by=local-autoscaler") 2>/dev/null || true
 	@echo "$(GREEN)Cleaned up successfully.$(RESET)"
 
+.PHONY: vm-list
+vm-list: ## List active OrbStack Linux runner VMs
+	@echo "$(CYAN)Listing active RunZero OrbStack VMs...$(RESET)"
+	@orbctl list || true
+
+.PHONY: vm-clean
+vm-clean: ## Clean up any orphaned RunZero VMs
+	@echo "$(YELLOW)Cleaning up any orphaned RunZero VMs...$(RESET)"
+	@for vm in $$(orbctl list -q 2>/dev/null | grep runzero-vm); do \
+		echo "Deleting $$vm..."; \
+		orbctl delete -f $$vm || true; \
+	done
+	@echo "$(GREEN)VM cleanup complete.$(RESET)"
+
 .PHONY: test
 test: check-env init-cache ## Run local autoscaler in foreground for quick debugging
 	@echo "$(CYAN)Running Autoscaler in interactive foreground mode...$(RESET)"
 	docker compose up
+

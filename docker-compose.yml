@@ -48,8 +48,12 @@ services:
     restart: unless-stopped
     networks:
       - runner-network
+    # Published in the IANA dynamic/private range (49152-65535), well clear of
+    # dev-tool conventions (3000s/4000s/5173/8080/9000) — with runners now on
+    # --network host, a common-range port here would collide with whatever a
+    # developer has running locally on this same machine.
     ports:
-      - "4873:4873"
+      - "49501:4873"
     environment:
       - VERDACCIO_PORT=4873
     volumes:
@@ -63,7 +67,7 @@ services:
     networks:
       - runner-network
     ports:
-      - "3000:3000"
+      - "49500:3000"
     environment:
       - ATHENS_DISK_STORAGE_ROOT=/var/lib/athens
       - ATHENS_STORAGE_TYPE=disk
@@ -78,7 +82,7 @@ services:
     networks:
       - runner-network
     ports:
-      - "5001:5000"
+      - "49502:5000"
     environment:
       - REGISTRY_PROXY_REMOTEURL=https://registry-1.docker.io
     volumes:

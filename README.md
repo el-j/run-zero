@@ -4,7 +4,7 @@
 
 **Zero Cloud Minutes. Zero K8s Bloat. Zero Idle Waste.**
 
-*An intelligent, autoscaling local GitHub Actions runner fleet for **OrbStack**, **Docker Desktop**, and **Linux Docker** on Apple Silicon (`arm64`) & Intel/AMD (`amd64`), with built-in **Verdaccio**, **Athens**, and persistent multi-language caching.*
+*An intelligent, autoscaling local GitHub Actions runner fleet with **Dual-Engine execution** (Docker Containers & Dedicated Linux VMs via **OrbStack**, **Windows WSL2**, and **Multipass**), with native Apple Silicon (`arm64`) & Intel/AMD (`amd64`), **Verdaccio**, **Athens**, and persistent multi-language caching.*
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Docker](https://img.shields.io/badge/Docker-20%2B%20%2F%20Desktop-blue.svg)](https://www.docker.com/)
@@ -20,7 +20,9 @@
 ## 📖 Table of Contents
 
 - [Why RunZero? (Competitive Landscape)](#-why-runzero)
-- [Docker Engine Compatibility (OrbStack vs. Docker Desktop vs. Linux)](#-docker-engine-compatibility)
+- [Dual-Engine Execution (Containers vs. Full VMs)](#-dual-engine-execution-containers-vs-full-vms)
+- [Hybrid Auto-Routing for Chrome / Lighthouse / Systemd](#-hybrid-auto-routing)
+- [Docker & VM Engine Compatibility](#-docker--vm-engine-compatibility)
 - [Key Features](#-key-features)
 - [Architecture Overview](#-architecture-overview)
 - [Repository Structure](#-repository-structure)
@@ -39,8 +41,9 @@
 
 | Feature / Metric | ⚡ RunZero | 🏢 Actions Runner Controller (ARC) | 🎭 nektos / act | 📦 Static Docker Runner |
 |---|---|---|---|---|
-| **Target Environment** | **Local Mac / Workstation** | Enterprise Cloud K8s Fleet | Local CLI Scratchpad | Single Homelab Container |
+| **Target Environment** | **Local Mac / Windows / Linux** | Enterprise Cloud K8s Fleet | Local CLI Scratchpad | Single Homelab Container |
 | **Idle RAM Overhead** | **~20 MB (0 MB at idle)** | **1.5 GB – 3.5 GB (Heavy K8s)** | 0 MB (Manual CLI only) | ~500 MB+ (Always running) |
+| **Execution Engines** | **Dual-Engine (Docker + VM)** | Containers Only (K8s Pods) | Containers Only | Container Only |
 | **Runs Real GitHub Queue** |  **Yes** (Pulls live jobs) |  **Yes** | ❌ **No** (Local emulation only) |  **Yes** |
 | **Personal Account Multi-Repo** |  **Automatic Discovery** | ❌ **No** (Org / Enterprise only) | ❌ N/A | ❌ **No** (1 repo per container) |
 | **Multi-Arch (Apple Silicon + x86_64)** |  **Native ARM64 + Rosetta AMD64** | ⚠️ Complex (K8s node taints) | ⚠️ Partial | ❌ Fixed single arch |
@@ -49,16 +52,50 @@
 
 ---
 
-## 🐳 Docker Engine Compatibility
+## 🚀 Dual-Engine Execution (Containers vs. Full VMs)
 
-RunZero uses the standard Docker API socket (`/var/run/docker.sock`) and standard Docker Compose v2, making it **100% compatible across all major container engines**:
+RunZero is the **first local runner fleet that gives you the choice between ultra-lightweight Docker containers and dedicated Linux Virtual Machines**:
 
-| Container Engine | macOS (Apple Silicon) | macOS (Intel) | Linux / Homelab | Highlights |
+| Engine Backend | Technology | Best Used For |
+|---|---|---|
+| 🐳 **Docker Containers** (`RUNNER_BACKEND=docker`) | Docker / OrbStack Containers | Fast unit tests, linting, build pipelines, JS/Node/Python steps (**instant ~0.3s boot, ~20MB RAM**). |
+| 💻 **OrbStack Linux Machines** (`RUNNER_BACKEND=orbstack-vm`) | Apple Virtualization.framework | **Full systemd support**, background daemons, headless Chrome/Lighthouse, unconfined Docker daemon. |
+| 🪟 **Windows WSL2** (`RUNNER_BACKEND=wsl2`) | Windows Subsystem for Linux 2 | Native Linux VM execution on Windows 10/11 & Windows Server. |
+| 🐧 **Canonical Multipass** (`RUNNER_BACKEND=multipass`) | QEMU / Hyper-V / VirtualBox | Universal cross-platform VM backend for macOS, Linux, and Windows. |
+
+---
+
+## 🧠 Hybrid Auto-Routing
+
+You don't have to choose just one! With `RUNNER_BACKEND=auto` and `AUTO_ROUTE_VM=true`, RunZero **automatically inspects queued jobs and routes them intelligently**:
+
+```yaml
+# 1. Standard build job -> Automatically runs in ultra-fast Docker container (~0.3s)
+jobs:
+  unit-tests:
+    runs-on: [ self-hosted, local ]
+    steps:
+      - run: npm test
+
+# 2. Browser / Lighthouse / Systemd job -> Automatically routed to dedicated Linux VM!
+jobs:
+  e2e-lighthouse:
+    runs-on: [ self-hosted, local, browser ]  # or 'vm', 'e2e', 'lighthouse', 'systemd'
+    steps:
+      - run: npx lhci autorun
+```
+
+---
+
+## 🐳 Docker & VM Engine Compatibility
+
+| Engine | macOS (Apple Silicon) | macOS (Intel) | Windows | Linux / Homelab |
 |---|---|---|---|---|
-| 🪐 **OrbStack** *(Recommended for Mac)* | ⭐ **Native + Rosetta 2** | ⭐ Fast | — | **Fastest x86_64 emulation via Rosetta 2**, instant startup, ~0.1% idle CPU. |
-| 🐳 **Docker Desktop** |  Native + QEMU/Rosetta |  Native |  Native | Standard Docker environment for Mac and Windows. |
-| 🦭 **Colima / Lima** |  Native + QEMU/Rosetta |  Native | — | Lightweight CLI-based container runtime for macOS. |
-| 🐧 **Native Linux Docker Engine** |  Native (ARM64) |  Native (AMD64) | ⭐ **Native (Best for Servers)** | Zero VM layer, runs on Ubuntu, Debian, Arch, Fedora, homelabs. |
+| 🪐 **OrbStack** *(Recommended for Mac)* | ⭐ **Containers + Linux VMs** | ⭐ Fast | — | — |
+| 🐳 **Docker Desktop** |  Native Containers |  Native Containers |  Native Containers |  Native Containers |
+| 🪟 **Windows WSL2** | — | — | ⭐ **Native Linux VMs** | — |
+| 🐧 **Native Linux Docker** |  Native (ARM64) |  Native (AMD64) | — | ⭐ **Native (Best for Servers)** |
+| 🚀 **Canonical Multipass** |  Native VMs |  Native VMs |  Native VMs |  Native VMs |
 
 ---
 
@@ -66,18 +103,19 @@ RunZero uses the standard Docker API socket (`/var/run/docker.sock`) and standar
 
 1. **Intelligent Dynamic Autoscaling**:
    - Watches your GitHub queue for unclaimed jobs.
-   - Spins up ephemeral containers (`--ephemeral`) on-demand and tears them down immediately upon job completion (**0 MB RAM consumed when idle**).
+   - Spins up ephemeral instances (`--ephemeral`) on-demand and tears them down immediately upon job completion (**0 MB RAM consumed when idle**).
 2. **Owner-Wide Multi-Repo Auto-Discovery**:
-   - Automatically monitors **all repositories** under your personal GitHub account (`OWNER=your-username`), explicit repo lists, or GitHub Organizations.
-3. **Multi-Architecture on Apple Silicon**:
-   - **Native ARM64** (`local-github-runner:arm64`) for bare-metal M-series speed.
-   - **AMD64 / x86_64** (`local-github-runner:amd64`) via OrbStack's Rosetta 2 emulation.
-4. **Built-in Local Proxy Registries & Caching**:
-   - **Verdaccio** (`:4873`) for instant npm/yarn/pnpm caching + web dashboard.
-   - **Athens** (`:3000`) for immutable Go module caching.
-   - **Docker Registry Mirror** (`:5001`) for Docker Hub pull-through caching.
-   - **Tool Cache Volume** for `actions/setup-node`, `setup-python`, `setup-go` toolchains.
-5. **Zero Cloud Bill**:
+   - Automatically monitors **all active repositories** under your personal GitHub account (`OWNER=your-username`), explicit repo lists, or GitHub Organizations.
+3. **Pluggable Multi-Backend Drivers**:
+   - Easily switch between Docker containers, OrbStack VMs, Windows WSL2, and Canonical Multipass via `RUNNER_BACKEND`.
+4. **Adaptive GitHub API Rate-Limiting**:
+   - Intelligently filters to active repositories and dynamically paces API calls to keep you safely within GitHub's 5,000 req/hr ceiling.
+5. **Built-in Local Proxy Registries & Caching**:
+   - **Verdaccio** (`:49501`) for instant npm/yarn/pnpm caching + web dashboard.
+   - **Athens** (`:49500`) for immutable Go module caching.
+   - **Docker Registry Mirror** (`:49502`) for Docker Hub pull-through caching.
+   - **Tool Cache Volume** for `actions/setup-node`, `setup-python`, `setup-dotnet`, `setup-go` toolchains.
+6. **Zero Cloud Bill**:
    - Self-hosted runners **never** consume GitHub Actions minutes (100% free and unlimited).
 
 ---
@@ -85,28 +123,27 @@ RunZero uses the standard Docker API socket (`/var/run/docker.sock`) and standar
 ## 🏗️ Architecture Overview
 
 ```
-   ┌─────────────────────────────────────────────────────────────┐
-   │             Host Machine (OrbStack / Docker on Mac)         │
-   │                                                             │
-   │  ┌──────────────────────┐        ┌──────────────────────┐  │
-   │  │ Verdaccio (Port 4873)│        │ Athens (Port 3000)   │  │
-   │  │ Caches NPM Packages  │        │ Caches Go Modules    │  │
-   │  │ (Web UI at :4873)    │        │ (Immutable Go proxy) │  │
-   │  └──────────▲───────────┘        └──────────▲───────────┘  │
-   │             │                               │              │
-   │  ┌──────────┴───────────────────────────────┴───────────┐  │
-   │  │ Docker Registry Mirror (Port 5001 -> 5000)           │  │
-   │  │ Pull-through cache for Docker Hub (Avoids limits)    │  │
-   │  └──────────────────────▲───────────────────────────────┘  │
-   └─────────────────────────┼───────────────────────────────────┘
-                             │ (runner-network)
-          ┌──────────────────┴──────────────────┐
-          ▼                                     ▼
-┌───────────────────────────┐         ┌───────────────────────────┐
-│ Ephemeral Runner (ARM64)  │         │ Ephemeral Runner (AMD64)  │
-│ NPM -> http://verdaccio   │         │ NPM -> http://verdaccio   │
-│ Go  -> http://athens      │         │ Go  -> http://athens      │
-└───────────────────────────┘         └───────────────────────────┘
+                          ┌──────────────────────────────────────────────┐
+                          │         RunZero Autoscaler Daemon            │
+                          │   (Queue Monitor, Rate Limiting, Discovery)  │
+                          └──────────────────────┬───────────────────────┘
+                                                 │
+                                     Intelligent Auto-Router
+                                 (Inspects Job Labels & Platform)
+                                                 │
+                       ┌─────────────────────────┴─────────────────────────┐
+                       ▼                                                   ▼
+         ┌───────────────────────────┐                       ┌───────────────────────────┐
+         │     Container Driver      │                       │     Pluggable VM Driver   │
+         │ (runs-on: [self-hosted])  │                       │ (runs-on: [..., vm, e2e]) │
+         └─────────────┬─────────────┘                       └─────────────┬─────────────┘
+                       │                                                   │
+         ┌─────────────┴─────────────┐                       ┌─────────────┴─────────────┐
+         ▼                           ▼                       ▼             ▼             ▼
+   ┌───────────┐               ┌───────────┐           ┌───────────┐ ┌───────────┐ ┌───────────┐
+   │ ARM64 Run │               │ AMD64 Run │           │ OrbStack  │ │ Windows   │ │Multipass  │
+   │ (Docker)  │               │ (Rosetta) │           │ Machine   │ │ WSL2/VM   │ │(Cross-OS) │
+   └───────────┘               └───────────┘           └───────────┘ └───────────┘ └───────────┘
 ```
 
 ---
@@ -115,8 +152,14 @@ RunZero uses the standard Docker API socket (`/var/run/docker.sock`) and standar
 
 ```text
 .
-├── docker/                                # 🐳 Container Definitions & Runner Scripts
-│   ├── autoscaler.py                      #    Dynamic queue monitor & container spawner
+├── docker/                                # 🐳 Container & VM Driver Definitions
+│   ├── drivers/                           #    Pluggable Execution Drivers
+│   │   ├── __init__.py                    #    RunnerDriver interface & discovery
+│   │   ├── docker_driver.py               #    Docker container engine
+│   │   ├── orbstack_vm_driver.py          #    OrbStack macOS Linux VM engine
+│   │   ├── wsl_driver.py                  #    Windows WSL2 engine
+│   │   └── multipass_driver.py            #    Canonical Multipass engine
+│   ├── autoscaler.py                      #    Dynamic queue monitor & hybrid router
 │   ├── Dockerfile                         #    Multi-arch runner image (ARM64 + AMD64)
 │   ├── Dockerfile.autoscaler              #    Autoscaler daemon container
 │   └── start.sh                           #    Runner entrypoint with proxy auto-detect
@@ -157,7 +200,8 @@ Edit `.env` and configure:
 ACCESS_TOKEN=ghp_yourPersonalAccessTokenHere
 OWNER=el-j
 AUTO_DISCOVER_REPOS=true
-RUNNER_ARCH=both    # 'both', 'amd64', or 'arm64'
+RUNNER_BACKEND=auto  # 'auto', 'docker', 'orbstack-vm', 'wsl2', or 'multipass'
+RUNNER_ARCH=both     # 'both', 'amd64', or 'arm64'
 PROXIES_ENABLED=true # Starts Verdaccio, Athens & Docker Mirror
 ```
 
@@ -171,73 +215,15 @@ make build          # Builds ARM64 + AMD64 + Autoscaler
 make start          # (or make run)
 ```
 
-### 4. Open Verdaccio Web UI:
+### 4. Check status & live logs:
 ```bash
-make verdaccio-ui   # Opens http://localhost:4873 in your browser
-```
-
-### 5. Check status & live logs:
-```bash
-make status         # View active autoscaler, proxies, and dynamic runner containers
+make status         # View active autoscaler, proxies, and dynamic runner instances
 make logs           # Stream live autoscaler logs
 ```
 
-### 6. Stop the Autoscaler & Proxies:
+### 5. Stop the Autoscaler & Proxies:
 ```bash
 make stop           # (or make down)
-```
-
----
-
-## 🔄 Automatic Cloud Fallback in Workflows
-
-To make your GitHub Actions automatically switch to the local runner when cloud minutes expire:
-
-```yaml
-jobs:
-  build:
-    runs-on: ${{ vars.USE_LOCAL_RUNNER == 'true' && fromJSON('["self-hosted", "local"]') || 'ubuntu-latest' }}
-    steps:
-      - uses: actions/checkout@v7
-      - run: npm test
-```
-
-Set `USE_LOCAL_RUNNER=true` in GitHub Repository/Organization Variables, and all jobs will immediately route to your local RunZero fleet without touching workflow files!
-
----
-
-## ⚡ Proxy Registries & Caching
-
-| Service / Tool | Host Path / Port | Container Mount | Purpose |
-|---|---|---|---|
-| **Verdaccio** | [`http://localhost:4873`](http://localhost:4873) | `http://verdaccio:4873` | Fast local NPM caching proxy + Web UI |
-| **Athens** | [`http://localhost:3000`](http://localhost:3000) | `http://athens:3000` | Immutable Go module proxy |
-| **Docker Registry Mirror** | `http://localhost:5001` | `http://docker-mirror:5000` | Docker Hub pull-through cache |
-| **Tool Cache** | `~/.local-github-runner/cache/toolcache` | `/opt/hostedtoolcache` | Preserves `actions/setup-*` binaries |
-| **pip / uv / yarn / cargo** | `~/.local-github-runner/cache/` | Direct container caches | Instant package re-use |
-
----
-
-## 🍎 Multi-Architecture Builds
-
-### Target AMD64 (x86_64) Specifically:
-```yaml
-jobs:
-  build-amd64:
-    runs-on: [ self-hosted, local, x64 ]
-    steps:
-      - uses: actions/checkout@v7
-      - run: uname -m # Prints: x86_64
-```
-
-### Target Native ARM64 (Apple Silicon):
-```yaml
-jobs:
-  build-arm64:
-    runs-on: [ self-hosted, local, arm64 ]
-    steps:
-      - uses: actions/checkout@v7
-      - run: uname -m # Prints: aarch64
 ```
 
 ---
@@ -249,7 +235,9 @@ jobs:
 | `make start` (or `make run`, `make up`) | Launch autoscaler, Verdaccio, Athens, and Docker mirror |
 | `make stop` (or `make down`) | Gracefully stop the autoscaler, proxies, and active runners |
 | `make status` (or `make ps`) | Display running autoscaler, proxies & active ephemeral runners |
-| `make verdaccio-ui` | Open Verdaccio Web UI at `http://localhost:4873` |
+| `make vm-list` | Display active OrbStack Linux runner VMs |
+| `make vm-clean` | Clean up any orphaned RunZero VMs |
+| `make verdaccio-ui` | Open Verdaccio Web UI at `http://localhost:49501` |
 | `make docs` | Preview the documentation website locally in your browser |
 | `make logs` | Stream live autoscaler logs |
 | `make logs-all` | Stream live logs from all services (autoscaler + proxies) |
@@ -272,13 +260,16 @@ jobs:
 | `OWNER` | GitHub username to auto-discover all owned repos | *None* |
 | `REPOS` | Comma-separated list of target repos (`owner/repo`) | *None* |
 | `ORG` | Target GitHub Organization name | *None* |
+| `RUNNER_BACKEND` | Execution driver (`auto`, `docker`, `orbstack-vm`, `wsl2`, `multipass`) | `auto` |
+| `AUTO_ROUTE_VM` | Automatically route browser/systemd/e2e jobs to VMs | `true` |
 | `AUTO_DISCOVER_REPOS` | Automatically discover and monitor all user repos | `true` |
+| `ACTIVE_REPO_DAYS` | Only monitor repos pushed in the last N days | `60` |
 | `RUNNER_ARCH` | Runner architectures to spawn (`arm64`, `amd64`, or `both`) | `both` |
 | `PROXIES_ENABLED` | Enable Verdaccio & Athens proxy registries for runners | `true` |
 | `CACHE_ENABLED` | Enable persistent package/tool caching across runners | `true` |
 | `MIN_RUNNERS` | Minimum idle runners on standby | `0` |
-| `MAX_RUNNERS` | Maximum concurrent runner containers | `4` |
-| `POLL_INTERVAL` | Queue check interval in seconds | `5` |
+| `MAX_RUNNERS` | Maximum concurrent runner instances | `4` |
+| `POLL_INTERVAL` | Queue check interval in seconds | `10` |
 
 ---
 

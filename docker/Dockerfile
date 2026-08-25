@@ -111,6 +111,26 @@ RUN case "${TARGETARCH:-$(dpkg --print-architecture)}" in \
     ./bin/installdependencies.sh && \
     chown -R runner:runner /home/runner
 
+# 7. Install PostgreSQL client (`psql`, used by workflows to seed test data)
+# and Google Chrome (needed by lhci autorun's headless browser audits) — both
+# ship on GitHub-hosted ubuntu-latest by default; this image needs them added
+# explicitly to run those steps natively instead of failing on a missing binary.
+# Chrome is amd64-only from Google's own repo (no arm64 build exists), so it's
+# skipped on arm64 builds — Playwright-driven jobs still get their own bundled
+# Chromium per-job via `playwright install`, this only affects Lighthouse CI.
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends postgresql-client && \
+    rm -rf /var/lib/apt/lists/* && \
+    if [ "${TARGETARCH:-$(dpkg --print-architecture)}" = "amd64" ]; then \
+      curl -fsSL https://dl.google.com/linux/linux_signing_key.pub -o /etc/apt/keyrings/google-chrome.asc && \
+      chmod a+r /etc/apt/keyrings/google-chrome.asc && \
+      echo "deb [arch=amd64 signed-by=/etc/apt/keyrings/google-chrome.asc] http://dl.google.com/linux/chrome/deb/ stable main" | \
+        tee /etc/apt/sources.list.d/google-chrome.list > /dev/null && \
+      apt-get update && \
+      apt-get install -y --no-install-recommends google-chrome-stable && \
+      rm -rf /var/lib/apt/lists/*; \
+    fi
+
 WORKDIR /home/runner/actions-runner
 
 COPY start.sh start.sh

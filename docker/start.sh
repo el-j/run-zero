@@ -46,16 +46,20 @@ case "${ARCH}" in
   *) ARCH_LABEL="${ARCH}" ;;
 esac
 
-# Proxy Registry auto-detection (Verdaccio for NPM & Athens for Go)
-if curl -s --connect-timeout 1 http://verdaccio:4873/ >/dev/null 2>&1; then
-  export NPM_CONFIG_REGISTRY="http://verdaccio:4873/"
-  npm config set registry http://verdaccio:4873/ --global 2>/dev/null || true
-  echo "⚡ Verdaccio NPM proxy connected: http://verdaccio:4873/"
+# Proxy Registry auto-detection (Verdaccio for NPM & Athens for Go). Uses
+# localhost, not container names — the runner runs with --network host (needed
+# for GitHub Actions `services:` containers to be reachable at localhost), so
+# there's no container-name DNS between the runner and these proxy containers,
+# only whatever ports they publish to the host.
+if curl -s --connect-timeout 1 http://localhost:49501/ >/dev/null 2>&1; then
+  export NPM_CONFIG_REGISTRY="http://localhost:49501/"
+  npm config set registry http://localhost:49501/ --global 2>/dev/null || true
+  echo "⚡ Verdaccio NPM proxy connected: http://localhost:49501/"
 fi
 
-if curl -s --connect-timeout 1 http://athens:3000/ >/dev/null 2>&1; then
-  export GOPROXY="http://athens:3000,https://proxy.golang.org,direct"
-  echo "⚡ Athens Go proxy connected: http://athens:3000"
+if curl -s --connect-timeout 1 http://localhost:49500/ >/dev/null 2>&1; then
+  export GOPROXY="http://localhost:49500,https://proxy.golang.org,direct"
+  echo "⚡ Athens Go proxy connected: http://localhost:49500"
 fi
 
 # Fallback/alias for environment variable names
