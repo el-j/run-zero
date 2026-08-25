@@ -7,7 +7,11 @@ from typing import Any, Dict, Tuple
 
 from drivers import RunnerDriver
 
-VM_TRIGGER_LABELS = {"vm", "orbstack", "wsl", "multipass", "e2e", "browser", "chrome", "lighthouse", "systemd"}
+VM_TRIGGER_LABELS = {
+    "vm", "orbstack", "wsl", "multipass", "e2e", "browser", "chrome",
+    "lighthouse", "systemd", "postgres", "mysql", "redis", "db",
+    "database", "service", "services", "integration", "dind"
+}
 
 
 def select_driver_for_job(
