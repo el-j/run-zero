@@ -75,15 +75,18 @@ class OrbStackVMDriver(RunnerDriver):
         base_name = self.base_image_name(orb_arch)
         print(f"[Autoscaler:OrbStack-VM] 🏗️  Building golden base image '{base_name}' ({self.distro})...")
 
-        subprocess.run(["orbctl", "delete", "-f", base_name], capture_output=True)
-
         try:
+            subprocess.run(["orbctl", "delete", "-f", base_name], capture_output=True)
             subprocess.run(
                 ["orbctl", "create", "-a", orb_arch, "-u", "runner", self.distro, base_name],
                 check=True, capture_output=True
             )
         except subprocess.CalledProcessError as e:
-            print(f"[Autoscaler:OrbStack-VM] Error creating base image: {e.stderr.decode()}", file=sys.stderr)
+            stderr = e.stderr.decode() if e.stderr else str(e)
+            print(f"[Autoscaler:OrbStack-VM] Error creating base image: {stderr}", file=sys.stderr)
+            return False
+        except Exception as e:
+            print(f"[Autoscaler:OrbStack-VM] Error creating base image: {e}", file=sys.stderr)
             return False
 
         full_script = f"""
@@ -152,43 +155,32 @@ export GOPROXY="http://host.orb.internal:49500,https://proxy.golang.org,direct"
             runner_url = f"https://github.com/{org}"
 
         base_name = self.base_image_name(orb_arch)
-        use_base_image = self.base_image_exists(orb_arch)
+        if not self.base_image_exists(orb_arch):
+            print(
+                f"[Autoscaler:OrbStack-VM] 🏗️  Golden base image '{base_name}' not found. "
+                f"Creating master VM base image first (one-time setup)..."
+            )
+            built = self.build_base_image(orb_arch)
+            if not built:
+                print(
+                    f"[Autoscaler:OrbStack-VM] ❌ Failed to build golden base image '{base_name}'.",
+                    file=sys.stderr
+                )
+                return None
 
         reg_and_run = registration_and_run_snippet(
             api_base, runner_url, access_token or "", vm_name, runner_labels, proxy_env_block
         )
 
-        if use_base_image:
-            print(
-                f"[Autoscaler:OrbStack-VM] 🚀 Spawning ephemeral [{arch.upper()}] Linux VM '{vm_name}' "
-                f"(cloned from golden image '{base_name}')..."
-            )
-            clone_cmd = ["orbctl", "clone", base_name, vm_name]
-            setup_script = f"""
+        print(
+            f"[Autoscaler:OrbStack-VM] 🚀 Spawning ephemeral [{arch.upper()}] Linux VM '{vm_name}' "
+            f"(cloned from golden image '{base_name}')..."
+        )
+        clone_cmd = ["orbctl", "clone", base_name, vm_name]
+        setup_script = f"""
 exec > /home/runner/setup.log 2>&1
 trap 'sudo shutdown -h now' EXIT
 set -e
-{reg_and_run}
-"""
-        else:
-            print(
-                f"[Autoscaler:OrbStack-VM] 🚀 Spawning ephemeral [{arch.upper()}] Linux VM '{vm_name}' "
-                f"({self.distro}) -- no golden base image found, cold-provisioning from scratch (several minutes). "
-                f"Run `make build-vm-base` once for near-instant spins."
-            )
-            script_content = self._read_provision_script()
-            if script_content is None:
-                return None
-            clone_cmd = ["orbctl", "create", "-a", orb_arch, "-u", "runner", self.distro, vm_name]
-            setup_script = f"""
-exec > /home/runner/setup.log 2>&1
-trap 'sudo shutdown -h now' EXIT
-set -e
-export ARCH="{orb_arch}"
-set -- "{orb_arch}"
-{docker_engine_snippet()}
-{script_content}
-{runner_download_snippet(orb_arch, RUNNER_VERSION)}
 {reg_and_run}
 """
 

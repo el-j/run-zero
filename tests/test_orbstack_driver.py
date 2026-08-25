@@ -147,15 +147,25 @@ class TestOrbStackVMDriver(unittest.TestCase):
 
     @patch("subprocess.Popen")
     @patch("subprocess.run")
-    def test_spawn_runner_cold_provisions_when_no_base_image(self, mock_run, mock_popen):
+    def test_spawn_runner_builds_base_image_when_missing(self, mock_run, mock_popen):
+        # 1. base_image_exists check -> []
+        # 2. build_base_image (orbctl delete)
+        # 3. build_base_image (orbctl create)
+        # 4. build_base_image (orb run bash)
+        # 5. build_base_image (orbctl stop)
+        # 6. orbctl clone base_name vm_name
         mock_run.side_effect = [
-            MagicMock(stdout=json.dumps([]), returncode=0),
-            MagicMock(returncode=0),  # orbctl create
+            MagicMock(stdout=json.dumps([]), returncode=0),  # list VMs
+            MagicMock(returncode=0),  # delete base
+            MagicMock(returncode=0),  # create base
+            MagicMock(returncode=0),  # run provision
+            MagicMock(returncode=0),  # stop base
+            MagicMock(returncode=0),  # clone
         ]
         name = self.driver.spawn_runner(repo="el-j/run-zero", arch="amd64", access_token="token")
         self.assertIsNotNone(name)
-        create_call = mock_run.call_args_list[1]
-        self.assertEqual(create_call[0][0][:2], ["orbctl", "create"])
+        clone_call = mock_run.call_args_list[5]
+        self.assertEqual(clone_call[0][0][:2], ["orbctl", "clone"])
 
     def test_build_base_image_missing_script_fails_gracefully(self):
         driver = OrbStackVMDriver(distro="ubuntu:22.04")

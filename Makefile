@@ -314,6 +314,21 @@ vm-clean: ## Clean up any orphaned ephemeral RunZero VMs (does NOT touch the gol
 	done
 	@echo "$(GREEN)VM cleanup complete.$(RESET)"
 
+.PHONY: vm-clean-all
+vm-clean-all: ## Delete ALL RunZero OrbStack VMs including golden base images
+	@echo "$(YELLOW)Deleting all RunZero VMs including base master templates...$(RESET)"
+	@for vm in $$(orbctl list -q 2>/dev/null | grep '^runzero-vm-'); do \
+		echo "Deleting $$vm..."; \
+		orbctl delete -f $$vm || true; \
+	done
+	@echo "$(GREEN)All RunZero VMs deleted.$(RESET)"
+
+.PHONY: clean-all reset-all
+clean-all: stop clean vm-clean-all clean-caches clean-images ## Complete nuclear reset: stop autoscaler, wipe all caches, delete all VMs, and remove images for fresh out-of-the-box test
+	@echo "$(GREEN)RunZero completely reset to fresh out-of-the-box state.$(RESET)"
+
+reset-all: clean-all
+
 .PHONY: build-vm-base
 build-vm-base: ## Build the golden OrbStack VM base image (Docker/Node/nvm/.NET/Chrome/Playwright pre-installed) so ephemeral job VMs clone instantly instead of re-provisioning from scratch every run. Takes several minutes; run it once, and again whenever you change docker/provision-toolchain.sh.
 	@echo "$(CYAN)Building golden OrbStack VM base image(s) -- this takes several minutes...$(RESET)"
