@@ -87,7 +87,8 @@ class RunnerDriver(ABC):
 
 
 def get_available_drivers() -> Dict[str, RunnerDriver]:
-    """Discover and return all drivers available on the host system."""
+    """Discover and return all drivers available on the host system or via Host VM Bridge."""
+    from .bridge_driver import BridgeVMDriver
     from .docker_driver import DockerDriver
     from .multipass_driver import MultipassDriver
     from .orbstack_vm_driver import OrbStackVMDriver
@@ -104,12 +105,18 @@ def get_available_drivers() -> Dict[str, RunnerDriver]:
     for d in candidates:
         if d.is_available():
             drivers[d.name()] = d
+        else:
+            # If native CLI tool is not available (e.g. inside a container), check Host VM Bridge
+            bridge_candidate = BridgeVMDriver(d.name())
+            if bridge_candidate.is_available():
+                drivers[d.name()] = bridge_candidate
 
     return drivers
 
 
 def get_driver(name: str = "auto") -> RunnerDriver:
     """Instantiate and return the requested driver or auto-select best available."""
+    from .bridge_driver import BridgeVMDriver
     from .docker_driver import DockerDriver
     from .multipass_driver import MultipassDriver
     from .orbstack_vm_driver import OrbStackVMDriver
@@ -120,11 +127,29 @@ def get_driver(name: str = "auto") -> RunnerDriver:
     if name in ("docker", "container"):
         return DockerDriver()
     elif name in ("orb", "orbstack", "orbstack-vm", "vm-orb"):
-        return OrbStackVMDriver()
+        orb_native = OrbStackVMDriver()
+        if orb_native.is_available():
+            return orb_native
+        bridge = BridgeVMDriver("orbstack-vm")
+        if bridge.is_available():
+            return bridge
+        return orb_native
     elif name in ("wsl", "wsl2", "windows"):
-        return WSL2Driver()
+        wsl_native = WSL2Driver()
+        if wsl_native.is_available():
+            return wsl_native
+        wsl_bridge = BridgeVMDriver("wsl2")
+        if wsl_bridge.is_available():
+            return wsl_bridge
+        return wsl_native
     elif name in ("multipass", "canonical-multipass"):
-        return MultipassDriver()
+        mp_native = MultipassDriver()
+        if mp_native.is_available():
+            return mp_native
+        mp_bridge = BridgeVMDriver("multipass")
+        if mp_bridge.is_available():
+            return mp_bridge
+        return mp_native
     elif name in ("auto", "hybrid"):
         # Auto-selection priority:
         # 1. Docker (fastest, lightweight baseline)
@@ -136,16 +161,25 @@ def get_driver(name: str = "auto") -> RunnerDriver:
         orb_driver = OrbStackVMDriver()
         if orb_driver.is_available():
             return orb_driver
+        orb_bridge = BridgeVMDriver("orbstack-vm")
+        if orb_bridge.is_available():
+            return orb_bridge
 
         # 3. WSL2 (if on Windows)
         wsl_driver = WSL2Driver()
         if wsl_driver.is_available():
             return wsl_driver
+        wsl_bridge = BridgeVMDriver("wsl2")
+        if wsl_bridge.is_available():
+            return wsl_bridge
 
         # 4. Multipass
         multipass_driver = MultipassDriver()
         if multipass_driver.is_available():
             return multipass_driver
+        mp_bridge = BridgeVMDriver("multipass")
+        if mp_bridge.is_available():
+            return mp_bridge
 
         # Fallback to Docker driver
         return docker_driver

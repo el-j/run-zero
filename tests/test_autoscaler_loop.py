@@ -52,17 +52,15 @@ class TestAutoscalerLoop(unittest.TestCase):
             self.assertEqual(autoscaler.resolve_job_arch([]), "arm64")
 
     @patch("autoscaler.ACCESS_TOKEN", "fake-token")
-    @patch("autoscaler.HOST_CACHE_DIR")
     @patch("autoscaler.CACHE_ENABLED", True)
+    @patch("autoscaler.DASHBOARD_ENABLED", False)
     @patch("autoscaler.discover_repositories", return_value=["el-j/run-zero", "el-j/custom-repo"])
     @patch("autoscaler.reconcile_zombie_runners")
     @patch("autoscaler.get_queued_job_details")
     @patch("autoscaler.time.sleep")
     def test_main_loop_repository_mode(
-        self, mock_sleep, mock_jobs, mock_reconcile, mock_discover, mock_cache_dir
+        self, mock_sleep, mock_jobs, mock_reconcile, mock_discover
     ):
-        mock_cache_dir.return_value = self.temp_cache
-
         # Queue has 1 job for el-j/run-zero
         mock_jobs.side_effect = [
             [{"id": 1, "name": "unit-test", "labels": ["self-hosted"]}],
@@ -74,7 +72,8 @@ class TestAutoscalerLoop(unittest.TestCase):
 
         mock_sleep.side_effect = stop_after_one_loop
 
-        with patch("autoscaler.get_driver") as mock_get_driver, \
+        with patch.object(autoscaler, "HOST_CACHE_DIR", self.temp_cache), \
+             patch("autoscaler.get_driver") as mock_get_driver, \
              patch("autoscaler.get_available_drivers") as mock_avail:
 
             mock_driver = MagicMock()
@@ -95,18 +94,17 @@ class TestAutoscalerLoop(unittest.TestCase):
     @patch("autoscaler.ORG", "my-test-org")
     @patch("autoscaler.MIN_RUNNERS", 2)
     @patch("autoscaler.MAX_RUNNERS", 4)
-    @patch("autoscaler.HOST_CACHE_DIR")
     @patch("autoscaler.CACHE_ENABLED", True)
+    @patch("autoscaler.DASHBOARD_ENABLED", False)
     @patch("autoscaler.time.sleep")
-    def test_main_loop_organization_mode(self, mock_sleep, mock_cache_dir):
-        mock_cache_dir.return_value = self.temp_cache
-
+    def test_main_loop_organization_mode(self, mock_sleep):
         def stop_loop(*args, **kwargs):
             autoscaler.running = False
 
         mock_sleep.side_effect = stop_loop
 
-        with patch("autoscaler.get_driver") as mock_get_driver, \
+        with patch.object(autoscaler, "HOST_CACHE_DIR", self.temp_cache), \
+             patch("autoscaler.get_driver") as mock_get_driver, \
              patch("autoscaler.get_available_drivers") as mock_avail:
 
             mock_driver = MagicMock()

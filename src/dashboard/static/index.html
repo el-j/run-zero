@@ -1,0 +1,318 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>RunZero — Live Fleet Management & Observability Dashboard</title>
+  <link rel="stylesheet" href="/dashboard.css">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&family=Outfit:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+</head>
+<body class="theme-dark">
+  <!-- Top Navigation & Global Header -->
+  <header class="app-header">
+    <div class="header-left">
+      <div class="logo-group">
+        <div class="logo-icon">⚡</div>
+        <div class="logo-text">
+          <span class="brand-title">RunZero</span>
+          <span class="brand-subtitle">FLEET OBSERVABILITY</span>
+        </div>
+      </div>
+      <div id="connection-status-badge" class="badge badge-pulse">
+        <span class="beacon-dot"></span>
+        <span id="connection-status-text">CONNECTING</span>
+      </div>
+    </div>
+
+    <div class="header-right">
+      <div class="header-stat">
+        <span class="stat-label">API Quota</span>
+        <div class="stat-val-group">
+          <span id="stat-rate-limit" class="stat-value font-mono">5000/5000</span>
+          <div class="quota-bar-wrapper">
+            <div id="stat-rate-limit-bar" class="quota-bar" style="width: 100%;"></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="header-stat">
+        <span class="stat-label">Uptime</span>
+        <span id="stat-uptime" class="stat-value font-mono">00:00:00</span>
+      </div>
+
+      <div class="header-stat">
+        <span class="stat-label">Engine</span>
+        <span id="stat-default-engine" class="stat-badge badge-cyan">DOCKER</span>
+      </div>
+
+      <div class="header-stat">
+        <span class="stat-label">Version</span>
+        <span id="stat-version" class="stat-badge badge-neutral font-mono">v0.1.0</span>
+      </div>
+    </div>
+  </header>
+
+  <!-- Main Observability Layout -->
+  <main class="dashboard-container">
+    <!-- Top Level KPI Metrics Bar -->
+    <section class="kpi-grid" aria-label="Key Performance Indicators">
+      <div class="kpi-card" id="kpi-runners-card">
+        <div class="kpi-icon-wrap icon-cyan">🏃</div>
+        <div class="kpi-content">
+          <span class="kpi-title">Active Fleet</span>
+          <div class="kpi-value-row">
+            <span id="kpi-active-runners" class="kpi-num">0</span>
+            <span class="kpi-subnum" id="kpi-max-runners">/ 4 max</span>
+          </div>
+          <span class="kpi-subtext" id="kpi-min-runners-text">0 idle standby</span>
+        </div>
+      </div>
+
+      <div class="kpi-card" id="kpi-queue-card">
+        <div class="kpi-icon-wrap icon-amber">⏳</div>
+        <div class="kpi-content">
+          <span class="kpi-title">Queued Jobs</span>
+          <div class="kpi-value-row">
+            <span id="kpi-queued-jobs" class="kpi-num">0</span>
+          </div>
+          <span class="kpi-subtext" id="kpi-repos-monitored">Across 0 tracked repos</span>
+        </div>
+      </div>
+
+      <div class="kpi-card" id="kpi-routing-card">
+        <div class="kpi-icon-wrap icon-purple">🔀</div>
+        <div class="kpi-content">
+          <span class="kpi-title">Hybrid Routing</span>
+          <div class="kpi-value-row">
+            <span id="kpi-vm-ratio" class="kpi-num">0%</span>
+            <span class="kpi-subnum">VM routed</span>
+          </div>
+          <span class="kpi-subtext" id="kpi-routing-sub">Auto-detect DIND & Services</span>
+        </div>
+      </div>
+
+      <div class="kpi-card" id="kpi-cache-card">
+        <div class="kpi-icon-wrap icon-emerald">⚡</div>
+        <div class="kpi-content">
+          <span class="kpi-title">Host Cache Storage</span>
+          <div class="kpi-value-row">
+            <span id="kpi-cache-size" class="kpi-num">0 B</span>
+          </div>
+          <span class="kpi-subtext">Shared Multi-Language Cache</span>
+        </div>
+      </div>
+    </section>
+
+    <!-- Main Grid: Fleet & Telemetry -->
+    <div class="content-grid">
+      <!-- Left Column: Active Runners & Queue -->
+      <div class="grid-col main-col">
+        <!-- Live Ephemeral Runners Monitor -->
+        <section class="panel" id="panel-runners">
+          <div class="panel-header">
+            <div class="panel-title-group">
+              <h2 class="panel-title">Active Ephemeral Runners</h2>
+              <span id="runners-count-badge" class="panel-badge">0 RUNNING</span>
+            </div>
+            <div class="panel-actions">
+              <button id="btn-prune-runners" class="btn btn-sm btn-ghost" title="Prune exited or orphaned runner containers/VMs">
+                ✂️ Prune Fleet
+              </button>
+            </div>
+          </div>
+          <div class="panel-body">
+            <div id="runners-empty-state" class="empty-state">
+              <div class="empty-icon">💤</div>
+              <h3 class="empty-title">Fleet is on Standby</h3>
+              <p class="empty-desc">No active runner containers or VMs running right now. As soon as a GitHub Actions workflow queues, an ephemeral runner will automatically spawn here.</p>
+            </div>
+            <div id="runners-grid" class="runners-grid hidden"></div>
+          </div>
+        </section>
+
+        <!-- Monitored Repositories & Queue Depth -->
+        <section class="panel" id="panel-queue">
+          <div class="panel-header">
+            <div class="panel-title-group">
+              <h2 class="panel-title">Monitored Repositories & Queue Status</h2>
+              <span id="repos-count-badge" class="panel-badge">0 REPOSITORIES</span>
+            </div>
+          </div>
+          <div class="panel-body">
+            <div id="repos-list" class="repos-list">
+              <div class="empty-substate">Discovering active repositories...</div>
+            </div>
+          </div>
+        </section>
+
+        <!-- Live Streaming Log Console -->
+        <section class="panel" id="panel-logs">
+          <div class="panel-header">
+            <div class="panel-title-group">
+              <h2 class="panel-title">Live Autoscaler Stream</h2>
+              <span class="panel-badge badge-live">LIVE SSE</span>
+            </div>
+            <div class="panel-actions">
+              <label class="toggle-wrap">
+                <input type="checkbox" id="auto-scroll-toggle" checked>
+                <span>Auto-scroll</span>
+              </label>
+              <button id="btn-clear-logs" class="btn btn-sm btn-ghost">Clear</button>
+            </div>
+          </div>
+          <div class="panel-body console-body">
+            <pre id="log-terminal" class="log-terminal font-mono"></pre>
+          </div>
+        </section>
+      </div>
+
+      <!-- Right Column: Telemetry & Controls -->
+      <div class="grid-col side-col">
+        <!-- Hybrid Routing Telemetry Breakdown -->
+        <section class="panel" id="panel-routing-telemetry">
+          <div class="panel-header">
+            <h2 class="panel-title">Hybrid Routing Telemetry</h2>
+          </div>
+          <div class="panel-body">
+            <div class="routing-summary-bar">
+              <div class="routing-seg-docker" id="bar-docker-jobs" style="width: 50%;"></div>
+              <div class="routing-seg-vm" id="bar-vm-jobs" style="width: 50%;"></div>
+            </div>
+            <div class="routing-legend">
+              <div class="legend-item">
+                <span class="legend-dot dot-cyan"></span>
+                <span>Docker Containers: <b id="cnt-docker-jobs">0</b></span>
+              </div>
+              <div class="legend-item">
+                <span class="legend-dot dot-purple"></span>
+                <span>Dedicated VMs: <b id="cnt-vm-jobs">0</b></span>
+              </div>
+            </div>
+
+            <div class="trigger-breakdown">
+              <h4 class="subheading">VM Trigger Detections</h4>
+              <div class="trigger-item">
+                <span>Services & DBs (`postgres`, `redis`)</span>
+                <span class="trigger-val font-mono" id="trig-services">0</span>
+              </div>
+              <div class="trigger-item">
+                <span>Docker-in-Docker (`dind`)</span>
+                <span class="trigger-val font-mono" id="trig-dind">0</span>
+              </div>
+              <div class="trigger-item">
+                <span>Browser & Lighthouse Tests</span>
+                <span class="trigger-val font-mono" id="trig-browser">0</span>
+              </div>
+              <div class="trigger-item">
+                <span>E2E & Integration</span>
+                <span class="trigger-val font-mono" id="trig-e2e">0</span>
+              </div>
+              <div class="trigger-item">
+                <span>Systemd & Daemons</span>
+                <span class="trigger-val font-mono" id="trig-systemd">0</span>
+              </div>
+              <div class="trigger-item">
+                <span>Custom VM Runs-On Label</span>
+                <span class="trigger-val font-mono" id="trig-custom">0</span>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <!-- Proxy Registries & Cache Analytics -->
+        <section class="panel" id="panel-cache-analytics">
+          <div class="panel-header">
+            <div class="panel-title-group">
+              <h2 class="panel-title">Cache Analytics & Purge</h2>
+            </div>
+            <button id="btn-purge-all-caches" class="btn btn-sm btn-danger-ghost">Purge All</button>
+          </div>
+          <div class="panel-body">
+            <div class="cache-list">
+              <div class="cache-row">
+                <div class="cache-info">
+                  <span class="cache-name">npm / Yarn / pnpm</span>
+                  <span class="cache-size font-mono" id="sz-npm">0 B</span>
+                </div>
+                <button class="btn btn-xs btn-outline" onclick="cleanCacheCategory('npm')">Clear</button>
+              </div>
+
+              <div class="cache-row">
+                <div class="cache-info">
+                  <span class="cache-name">Python pip & uv</span>
+                  <span class="cache-size font-mono" id="sz-pip">0 B</span>
+                </div>
+                <button class="btn btn-xs btn-outline" onclick="cleanCacheCategory('pip')">Clear</button>
+              </div>
+
+              <div class="cache-row">
+                <div class="cache-info">
+                  <span class="cache-name">Go Module & Build</span>
+                  <span class="cache-size font-mono" id="sz-go">0 B</span>
+                </div>
+                <button class="btn btn-xs btn-outline" onclick="cleanCacheCategory('go-mod')">Clear</button>
+              </div>
+
+              <div class="cache-row">
+                <div class="cache-info">
+                  <span class="cache-name">Cargo / Rust Registry</span>
+                  <span class="cache-size font-mono" id="sz-cargo">0 B</span>
+                </div>
+                <button class="btn btn-xs btn-outline" onclick="cleanCacheCategory('cargo')">Clear</button>
+              </div>
+
+              <div class="cache-row">
+                <div class="cache-info">
+                  <span class="cache-name">Hosted Tool Cache (.NET/Node)</span>
+                  <span class="cache-size font-mono" id="sz-toolcache">0 B</span>
+                </div>
+                <button class="btn btn-xs btn-outline" onclick="cleanCacheCategory('toolcache')">Clear</button>
+              </div>
+            </div>
+
+            <!-- Proxy Services Status -->
+            <div class="proxy-services-block">
+              <h4 class="subheading">Active Caching Proxies</h4>
+              <div class="proxy-tags">
+                <a href="http://localhost:49501" target="_blank" class="proxy-tag" id="tag-verdaccio">
+                  <span class="tag-status online"></span>
+                  <span>Verdaccio (49501)</span>
+                </a>
+                <a href="http://localhost:49503/acng-report.html" target="_blank" class="proxy-tag" id="tag-apt">
+                  <span class="tag-status online"></span>
+                  <span>APT Cacher (49503)</span>
+                </a>
+                <span class="proxy-tag" id="tag-athens">
+                  <span class="tag-status online"></span>
+                  <span>Athens Go (49500)</span>
+                </span>
+                <span class="proxy-tag" id="tag-mirror">
+                  <span class="tag-status online"></span>
+                  <span>Docker Mirror (49502)</span>
+                </span>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <!-- Driver Runtime Status -->
+        <section class="panel" id="panel-driver-runtimes">
+          <div class="panel-header">
+            <h2 class="panel-title">Runtime Driver Availability</h2>
+          </div>
+          <div class="panel-body">
+            <div id="drivers-status-list" class="drivers-list"></div>
+          </div>
+        </section>
+      </div>
+    </div>
+  </main>
+
+  <!-- Toast Notification Container -->
+  <div id="toast-container" class="toast-container"></div>
+
+  <script src="/dashboard.js"></script>
+</body>
+</html>

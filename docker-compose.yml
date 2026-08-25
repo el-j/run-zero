@@ -5,19 +5,11 @@ networks:
 
 services:
   # ============================================================================
-  # Mode 1: Dynamic On-Demand Runner Autoscaler (containerized, Docker-only)
+  # Mode 1: Dynamic On-Demand Runner Autoscaler (Containerized)
   # ============================================================================
-  # Opt-in only (`docker compose --profile container-autoscaler up -d`) -- NOT
-  # started by `make start`/`make up` by default. `make start` now runs the
-  # autoscaler as a native host process instead (see Makefile), because the VM
-  # drivers (orbstack-vm/wsl2/multipass) shell out to host-native tools
-  # (`orbctl`, `wsl.exe`, `multipass`) that cannot exist inside this container
-  # -- running it here means `is_available()` always returns False for every
-  # VM driver regardless of what's installed on the real host, silently
-  # disabling half of the dual-engine feature. This service is kept for hosts
-  # that genuinely only want the Docker driver (e.g. a Linux box with no VM
-  # tooling at all) and are fine trading VM support for a fully containerized
-  # deployment.
+  # Runs the RunZero autoscaler inside a container with built-in Web UI Dashboard
+  # (http://localhost:49505) and Host VM Bridge support (OrbStack, WSL2, Multipass)
+  # via http://host.docker.internal:49504.
   autoscaler:
     profiles:
       - container-autoscaler
@@ -29,6 +21,10 @@ services:
     restart: unless-stopped
     networks:
       - runner-network
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    ports:
+      - "49505:49505"
     depends_on:
       - verdaccio
       - athens
@@ -48,8 +44,12 @@ services:
       - DOCKER_NETWORK=runner-network
       - HOST_CACHE_DIR=${HOST_CACHE_DIR:-}
       - RUNNER_LABELS=${RUNNER_LABELS:-}
+      - DASHBOARD_ENABLED=${DASHBOARD_ENABLED:-true}
+      - DASHBOARD_PORT=49505
+      - HOST_VM_BRIDGE_URL=${HOST_VM_BRIDGE_URL:-http://host.docker.internal:49504}
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
+
 
   # ============================================================================
   # Caching Proxy Services (NPM, Go, Docker Hub, APT)

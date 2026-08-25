@@ -9,6 +9,8 @@
 CACHE_DIR := $(HOME)/.local-github-runner/cache
 AUTOSCALER_PID_FILE := .autoscaler.pid
 AUTOSCALER_LOG_FILE := .autoscaler.log
+BRIDGE_PID_FILE := .bridge.pid
+BRIDGE_LOG_FILE := .bridge.log
 
 # Colors for terminal styling
 CYAN    := \033[36m
@@ -184,62 +186,69 @@ website-build: ## Build Astro static website and synchronize to docs/
 	@cd website && npm run build && rm -rf ../docs/* && cp -r dist/* ../docs/ && touch ../docs/.nojekyll
 	@echo "$(GREEN)Astro website built and synced to docs/ successfully!$(RESET)"
 
-.PHONY: verdaccio-ui
-verdaccio-ui: ## Open Verdaccio Web UI in default browser (http://localhost:49501)
-	@echo "$(CYAN)Opening Verdaccio Web UI at http://localhost:49501...$(RESET)"
-	@open http://localhost:49501 || echo "Navigate to http://localhost:49501 in your browser."
+.PHONY: dashboard
+dashboard: ## Open RunZero Real-Time Observability Web Dashboard in browser (http://localhost:49505)
+	@echo "$(CYAN)Opening RunZero Observability Dashboard at http://localhost:49505...$(RESET)"
+	@open http://localhost:49505 || echo "Navigate to http://localhost:49505 in your browser."
 
-.PHONY: apt-cacher-ui
-apt-cacher-ui: ## Open apt-cacher-ng statistics report in default browser (http://localhost:49503/acng-report.html)
-	@echo "$(CYAN)Opening apt-cacher-ng report at http://localhost:49503/acng-report.html...$(RESET)"
-	@open http://localhost:49503/acng-report.html || echo "Navigate to http://localhost:49503/acng-report.html in your browser."
+.PHONY: bridge-start bridge-stop bridge-status bridge-logs
+bridge-start: ## Start Host VM Bridge server on host (port 49504)
+	@if [ -f $(BRIDGE_PID_FILE) ] && kill -0 "$$(cat $(BRIDGE_PID_FILE))" 2>/dev/null; then \
+		echo "$(YELLOW)Host VM Bridge already running (PID $$(cat $(BRIDGE_PID_FILE))).$(RESET)"; \
+	else \
+		echo "$(CYAN)Starting Host VM Bridge on http://localhost:49504...$(RESET)"; \
+		set -a; [ -f .env ] && . ./.env; set +a; \
+		PYTHONPATH=src nohup python3 -u src/vm_bridge.py > $(BRIDGE_LOG_FILE) 2>&1 & \
+		echo $$! > $(BRIDGE_PID_FILE); \
+		echo "$(GREEN)Host VM Bridge running in background (PID $$(cat $(BRIDGE_PID_FILE))).$(RESET)"; \
+	fi
 
-.PHONY: build-arm64
-build-arm64: ## Build native ARM64 runner image (Apple Silicon M-series)
-	@echo "$(CYAN)Building native ARM64 runner image...$(RESET)"
-	docker build --platform linux/arm64 -f docker/Dockerfile -t local-github-runner:arm64 -t local-github-runner:latest ./docker
-	@echo "$(GREEN)ARM64 runner built successfully!$(RESET)"
+bridge-stop: ## Stop Host VM Bridge server
+	@echo "$(YELLOW)Stopping Host VM Bridge...$(RESET)"
+	@if [ -f $(BRIDGE_PID_FILE) ]; then \
+		pid=$$(cat $(BRIDGE_PID_FILE)); \
+		if kill -0 "$$pid" 2>/dev/null; then kill "$$pid"; fi; \
+		rm -f $(BRIDGE_PID_FILE); \
+	fi
+	@echo "$(GREEN)Host VM Bridge stopped.$(RESET)"
 
-.PHONY: build-amd64
-build-amd64: ## Build AMD64 / x86_64 runner image (via OrbStack Rosetta)
-	@echo "$(CYAN)Building AMD64 / x86_64 runner image...$(RESET)"
-	docker build --platform linux/amd64 -f docker/Dockerfile -t local-github-runner:amd64 ./docker
-	@echo "$(GREEN)AMD64 runner built successfully!$(RESET)"
+bridge-status: ## Check Host VM Bridge status
+	@echo "$(BOLD)$(CYAN)=== Host VM Bridge (port 49504) ===$(RESET)"
+	@if [ -f $(BRIDGE_PID_FILE) ] && kill -0 "$$(cat $(BRIDGE_PID_FILE))" 2>/dev/null; then \
+		echo "Running (PID $$(cat $(BRIDGE_PID_FILE)))"; \
+	else \
+		echo "Not running"; \
+	fi
 
-.PHONY: build-autoscaler
-build-autoscaler: ## Build the Autoscaler daemon image
-	@echo "$(CYAN)Building Autoscaler daemon image...$(RESET)"
-	docker build -f docker/Dockerfile.autoscaler -t local-runner-autoscaler:latest .
-	@echo "$(GREEN)Autoscaler built successfully!$(RESET)"
-
-.PHONY: build build-all
-build: build-arm64 build-amd64 build-autoscaler ## Build all images (ARM64 + AMD64 + Autoscaler)
-build-all: build
+bridge-logs: ## Stream live logs from the Host VM Bridge
+	@touch $(BRIDGE_LOG_FILE) && tail -f $(BRIDGE_LOG_FILE)
 
 .PHONY: start up run
-start: check-env init-cache ## Start Autoscaler (native host process) + Proxy services (Verdaccio, Athens, Docker mirror, apt-cacher)
+start: check-env init-cache bridge-start ## Start Autoscaler + Host VM Bridge + Proxy services + Web Dashboard
 	@echo "$(CYAN)Starting caching proxy registries (Verdaccio, Athens, Docker mirror, apt-cacher)...$(RESET)"
 	@docker compose up -d
 	@if [ -f $(AUTOSCALER_PID_FILE) ] && kill -0 "$$(cat $(AUTOSCALER_PID_FILE))" 2>/dev/null; then \
 		echo "$(YELLOW)Autoscaler already running (PID $$(cat $(AUTOSCALER_PID_FILE))).$(RESET)"; \
 	else \
-		echo "$(CYAN)Starting Autoscaler as a native host process...$(RESET)"; \
+		echo "$(CYAN)Starting Autoscaler with Web Dashboard...$(RESET)"; \
 		set -a; . ./.env; set +a; \
 		PYTHONPATH=src nohup python3 -u src/autoscaler.py > $(AUTOSCALER_LOG_FILE) 2>&1 & \
 		echo $$! > $(AUTOSCALER_PID_FILE); \
 	fi
-	@echo "$(GREEN)Autoscaler and Proxy registries are running in background!$(RESET)"
-	@echo "  • Verdaccio Web UI:  $(BOLD)http://localhost:49501$(RESET) (Run $(BOLD)make verdaccio-ui$(RESET))"
-	@echo "  • APT Cacher NG:     $(BOLD)http://localhost:49503/acng-report.html$(RESET) (Run $(BOLD)make apt-cacher-ui$(RESET))"
-	@echo "  • Athens Go Proxy:   $(BOLD)http://localhost:49500$(RESET)"
-	@echo "  • Docker Mirror:     $(BOLD)http://localhost:49502$(RESET)"
+	@echo "$(GREEN)RunZero Fleet & Observability Stack is running!$(RESET)"
+	@echo "  • 📊 Web Dashboard:  $(BOLD)http://localhost:49505$(RESET) (Run $(BOLD)make dashboard$(RESET))"
+	@echo "  • 🌉 Host VM Bridge: $(BOLD)http://localhost:49504$(RESET)"
+	@echo "  • 📦 Verdaccio UI:   $(BOLD)http://localhost:49501$(RESET) (Run $(BOLD)make verdaccio-ui$(RESET))"
+	@echo "  • 🐧 APT Cacher:     $(BOLD)http://localhost:49503/acng-report.html$(RESET) (Run $(BOLD)make apt-cacher-ui$(RESET))"
+	@echo "  • 🐹 Athens Go:      $(BOLD)http://localhost:49500$(RESET)"
+	@echo "  • 🐳 Docker Mirror:  $(BOLD)http://localhost:49502$(RESET)"
 	@echo "Use $(BOLD)make logs$(RESET) to stream logs or $(BOLD)make status$(RESET) to see active runners."
 
 up: start
 run: start
 
 .PHONY: stop down
-stop: ## Stop Autoscaler, Proxies, and remove active runner containers
+stop: bridge-stop ## Stop Autoscaler, Host VM Bridge, Proxies, and remove active runner containers
 	@echo "$(YELLOW)Stopping Autoscaler and unregistering active runners...$(RESET)"
 	@if [ -f $(AUTOSCALER_PID_FILE) ]; then \
 		pid=$$(cat $(AUTOSCALER_PID_FILE)); \
@@ -247,7 +256,7 @@ stop: ## Stop Autoscaler, Proxies, and remove active runner containers
 		rm -f $(AUTOSCALER_PID_FILE); \
 	fi
 	docker compose down
-	@echo "$(GREEN)Autoscaler and proxies stopped.$(RESET)"
+	@echo "$(GREEN)Autoscaler, VM bridge, and proxies stopped.$(RESET)"
 
 down: stop
 
@@ -263,9 +272,9 @@ logs-all: ## Stream live logs from the Proxy services (Verdaccio + Athens + Dock
 	@docker compose logs -f
 
 .PHONY: status ps
-status: ## Show running Autoscaler, Proxies, and active dynamic runners (containers + VMs)
+status: bridge-status ## Show running Autoscaler, VM Bridge, Proxies, and active dynamic runners (containers + VMs)
 	@echo ""
-	@echo "$(BOLD)$(CYAN)=== Autoscaler (native host process) ===$(RESET)"
+	@echo "$(BOLD)$(CYAN)=== Autoscaler ===$(RESET)"
 	@if [ -f $(AUTOSCALER_PID_FILE) ] && kill -0 "$$(cat $(AUTOSCALER_PID_FILE))" 2>/dev/null; then \
 		echo "Running (PID $$(cat $(AUTOSCALER_PID_FILE)))"; \
 	else \
@@ -283,14 +292,13 @@ status: ## Show running Autoscaler, Proxies, and active dynamic runners (contain
 	@echo ""
 
 .PHONY: start-container stop-container
-start-container: check-env init-cache ## [Opt-in] Run Autoscaler fully containerized -- Docker driver only, VM drivers cannot work in this mode
-	@echo "$(YELLOW)Starting fully containerized Autoscaler. VM drivers (orbstack-vm/wsl2/multipass) shell out$(RESET)"
-	@echo "$(YELLOW)to host-native tools that cannot exist inside this container, so only the Docker driver$(RESET)"
-	@echo "$(YELLOW)will ever be available in this mode. Use 'make start' instead for full VM support.$(RESET)"
+start-container: check-env init-cache bridge-start ## Start Autoscaler fully containerized with Host VM Bridge & Web Dashboard
+	@echo "$(CYAN)Starting containerized Autoscaler with Host VM Bridge & Web Dashboard...$(RESET)"
 	docker compose --profile container-autoscaler up -d
-	@echo "$(GREEN)Containerized Autoscaler and Proxy registries are running!$(RESET)"
+	@echo "$(GREEN)Containerized Autoscaler, Host VM Bridge, and Proxy registries are running!$(RESET)"
+	@echo "  • 📊 Web Dashboard:  $(BOLD)http://localhost:49505$(RESET) (Run $(BOLD)make dashboard$(RESET))"
 
-stop-container: ## [Opt-in] Stop the fully containerized Autoscaler mode
+stop-container: bridge-stop ## Stop the fully containerized Autoscaler and Host VM Bridge
 	docker compose --profile container-autoscaler down
 
 .PHONY: clean

@@ -15,8 +15,13 @@ RUN apt-get update && \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
-COPY src/drivers /app/drivers
-COPY src/autoscaler.py /app/autoscaler.py
-RUN chmod +x /app/autoscaler.py
+COPY src /app
+ENV PYTHONPATH=/app
+
+EXPOSE 49505
+
+HEALTHCHECK --interval=30s --timeout=5s --start-period=5s --retries=3 \
+    CMD curl -fs http://localhost:49505/api/status || exit 1
 
 ENTRYPOINT ["python3", "-u", "/app/autoscaler.py"]
+
