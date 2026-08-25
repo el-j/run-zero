@@ -90,19 +90,19 @@ verdaccio-ui: ## Open Verdaccio Web UI in default browser (http://localhost:4950
 .PHONY: build-arm64
 build-arm64: ## Build native ARM64 runner image (Apple Silicon M-series)
 	@echo "$(CYAN)Building native ARM64 runner image...$(RESET)"
-	docker build --platform linux/arm64 -t local-github-runner:arm64 -t local-github-runner:latest ./docker
+	docker build --platform linux/arm64 -f docker/Dockerfile -t local-github-runner:arm64 -t local-github-runner:latest ./docker
 	@echo "$(GREEN)ARM64 runner built successfully!$(RESET)"
 
 .PHONY: build-amd64
 build-amd64: ## Build AMD64 / x86_64 runner image (via OrbStack Rosetta)
 	@echo "$(CYAN)Building AMD64 / x86_64 runner image...$(RESET)"
-	docker build --platform linux/amd64 -t local-github-runner:amd64 ./docker
+	docker build --platform linux/amd64 -f docker/Dockerfile -t local-github-runner:amd64 ./docker
 	@echo "$(GREEN)AMD64 runner built successfully!$(RESET)"
 
 .PHONY: build-autoscaler
 build-autoscaler: ## Build the Autoscaler daemon image
 	@echo "$(CYAN)Building Autoscaler daemon image...$(RESET)"
-	docker build -f docker/Dockerfile.autoscaler -t local-runner-autoscaler:latest ./docker
+	docker build -f docker/Dockerfile.autoscaler -t local-runner-autoscaler:latest .
 	@echo "$(GREEN)Autoscaler built successfully!$(RESET)"
 
 .PHONY: build build-all
