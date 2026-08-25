@@ -42,6 +42,39 @@ class TestRouter(unittest.TestCase):
         self.assertEqual(driver.name(), "docker")
         self.assertEqual(mode, "container")
 
+    def test_select_driver_declares_services_true_routes_to_vm(self):
+        # Regression test: a job whose NAME matches nothing in
+        # VM_TRIGGER_LABELS but whose workflow YAML actually declares a
+        # `services:` block (resolved by get_queued_job_details() via
+        # workflow_inspector) must still be VM-routed -- this is exactly
+        # what "API — Tests" (a real herbful CI job with a postgres
+        # services: block) was missing before declares_services existed,
+        # while "User Service — Tests" only worked by naming coincidence.
+        job = {"name": "API — Tests", "labels": ["self-hosted", "local", "amd64"], "declares_services": True}
+        driver, mode = select_driver_for_job(job, self.docker_driver, self.available_drivers, auto_route_vm=True)
+        self.assertEqual(driver.name(), "orbstack-vm")
+        self.assertEqual(mode, "vm")
+
+    def test_select_driver_declares_services_false_no_name_match_stays_container(self):
+        job = {"name": "API — Lint", "labels": ["self-hosted", "local"], "declares_services": False}
+        driver, mode = select_driver_for_job(job, self.docker_driver, self.available_drivers, auto_route_vm=True)
+        self.assertEqual(driver.name(), "docker")
+        self.assertEqual(mode, "container")
+
+    def test_select_driver_declares_services_none_falls_back_to_name_heuristic(self):
+        # None means "workflow file couldn't be resolved/parsed" -- must NOT
+        # be treated as False, only as "defer to the name/label heuristic".
+        job = {"name": "run-lighthouse-audit", "labels": ["self-hosted"], "declares_services": None}
+        driver, mode = select_driver_for_job(job, self.docker_driver, self.available_drivers, auto_route_vm=True)
+        self.assertEqual(driver.name(), "orbstack-vm")
+        self.assertEqual(mode, "vm")
+
+    def test_select_driver_declares_services_true_but_no_vm_driver_falls_back_and_warns(self):
+        job = {"name": "API — Tests", "labels": ["self-hosted"], "declares_services": True}
+        driver, mode = select_driver_for_job(job, self.docker_driver, {"docker": self.docker_driver}, auto_route_vm=True)
+        self.assertEqual(driver.name(), "docker")
+        self.assertEqual(mode, "container")
+
 
 if __name__ == "__main__":
     unittest.main()
