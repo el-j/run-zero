@@ -51,6 +51,18 @@ class TestDockerDriver(unittest.TestCase):
         self.assertEqual(runners[1].state, "exited")
 
     @patch("subprocess.run")
+    def test_list_runners_parses_created_at(self, mock_run):
+        mock_run.return_value = MagicMock(
+            stdout="runner1|Up 2 hours|local-runner-arm64-1|running|el-j/run-zero|arm64|docker|2026-08-25 14:38:53 +0200 CEST\n",
+            returncode=0
+        )
+        runners = self.driver.list_runners()
+        self.assertIsNotNone(runners[0].created_at)
+
+    def test_parse_created_at_invalid_returns_none(self):
+        self.assertIsNone(self.driver._parse_created_at("not a timestamp"))
+
+    @patch("subprocess.run")
     def test_list_runners_created_and_restarting_are_pending(self, mock_run):
         mock_run.return_value = MagicMock(
             stdout="r1|Created|c1|created|el-j/run-zero|arm64|docker\nr2|Restarting|c2|restarting|el-j/run-zero|arm64|docker\n",
@@ -88,6 +100,42 @@ class TestDockerDriver(unittest.TestCase):
             proxies_enabled=False
         )
         self.assertIn("local-runner-amd64-my-org-", name_amd)
+
+    @patch("subprocess.run")
+    def test_spawn_runner_passes_cache_mount_dests_env(self, mock_run):
+        # start.sh fixes ownership of the *container-side* mount destinations
+        # (Docker/OrbStack create their ancestors as root) using this env var as
+        # its source of truth. It must carry exactly the values of cache_mounts,
+        # or the two can silently drift apart again — see the .nuget/packages /
+        # go/pkg vs go/pkg/mod bug this fix addresses.
+        mock_run.return_value = MagicMock(returncode=0)
+        self.driver.spawn_runner(
+            repo="el-j/run-zero",
+            arch="arm64",
+            access_token="secret-pat",
+            cache_mounts={
+                "/host/npm": "/home/runner/.npm",
+                "/host/go-pkg": "/home/runner/go/pkg",
+                "/host/dotnet": "/home/runner/.nuget/packages",
+            },
+        )
+        cmd = mock_run.call_args[0][0]
+        env_pairs = [cmd[i + 1] for i, tok in enumerate(cmd) if tok == "-e"]
+        dest_entries = [p for p in env_pairs if p.startswith("CACHE_MOUNT_DESTS=")]
+        self.assertEqual(len(dest_entries), 1)
+        dests = dest_entries[0][len("CACHE_MOUNT_DESTS="):].split(":")
+        self.assertEqual(
+            set(dests),
+            {"/home/runner/.npm", "/home/runner/go/pkg", "/home/runner/.nuget/packages"},
+        )
+
+    @patch("subprocess.run")
+    def test_spawn_runner_omits_cache_mount_dests_env_when_no_mounts(self, mock_run):
+        mock_run.return_value = MagicMock(returncode=0)
+        self.driver.spawn_runner(repo="el-j/run-zero", arch="arm64", access_token="secret-pat")
+        cmd = mock_run.call_args[0][0]
+        env_pairs = [cmd[i + 1] for i, tok in enumerate(cmd) if tok == "-e"]
+        self.assertFalse(any(p.startswith("CACHE_MOUNT_DESTS=") for p in env_pairs))
 
     @patch("subprocess.run")
     def test_spawn_runner_failure(self, mock_run):
