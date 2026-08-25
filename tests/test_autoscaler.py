@@ -10,6 +10,7 @@ import urllib.error
 import io
 import os
 import sys
+import tempfile
 from datetime import datetime, timezone, timedelta
 
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "src")))
@@ -208,8 +209,11 @@ class TestAutoscalerQueueDetails(unittest.TestCase):
 
 class TestAutoscalerCacheAndArch(unittest.TestCase):
     def test_init_cache_dirs(self):
+        # HOST_CACHE_DIR must be set explicitly on the real host — it is never
+        # silently defaulted (see .env.example).
+        autoscaler.HOST_CACHE_DIR = tempfile.mkdtemp()
         autoscaler.CACHE_ENABLED = True
-        mounts = autoscaler.init_cache_dirs()
+        mounts = autoscaler.init_cache_dirs("amd64")
         self.assertIsInstance(mounts, dict)
         container_paths = list(mounts.values())
         self.assertIn("/opt/hostedtoolcache", container_paths)
@@ -217,7 +221,7 @@ class TestAutoscalerCacheAndArch(unittest.TestCase):
         self.assertIn("/home/runner/go/pkg/mod", container_paths)
 
         autoscaler.CACHE_ENABLED = False
-        mounts_disabled = autoscaler.init_cache_dirs()
+        mounts_disabled = autoscaler.init_cache_dirs("amd64")
         self.assertEqual(mounts_disabled, {})
         autoscaler.CACHE_ENABLED = True
 
@@ -265,6 +269,7 @@ class TestAutoscalerMainLoop(unittest.TestCase):
         autoscaler.ACCESS_TOKEN = "dummy-token"
         autoscaler.ORG = ""
         autoscaler.MIN_RUNNERS = 1
+        autoscaler.HOST_CACHE_DIR = tempfile.mkdtemp()
         autoscaler.running = True
 
         def stop_after_one_loop(*args, **kwargs):
@@ -291,6 +296,7 @@ class TestAutoscalerMainLoop(unittest.TestCase):
         autoscaler.ACCESS_TOKEN = "dummy-token"
         autoscaler.ORG = "my-test-org"
         autoscaler.MIN_RUNNERS = 2
+        autoscaler.HOST_CACHE_DIR = tempfile.mkdtemp()
         autoscaler.running = True
 
         def stop_after_one_loop(*args, **kwargs):

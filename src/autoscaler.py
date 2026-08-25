@@ -49,7 +49,7 @@ DOCKER_NETWORK = os.getenv("DOCKER_NETWORK", "host")
 # Persistent Cache & Proxy Configuration
 CACHE_ENABLED = os.getenv("CACHE_ENABLED", "true").lower() in ("true", "1", "yes")
 PROXIES_ENABLED = os.getenv("PROXIES_ENABLED", "true").lower() in ("true", "1", "yes")
-HOST_CACHE_DIR = os.getenv("HOST_CACHE_DIR") or os.path.expanduser("~/.local-github-runner/cache")
+HOST_CACHE_DIR = os.getenv("HOST_CACHE_DIR", "").strip()
 
 API_BASE = "https://api.github.com"
 running = True
@@ -69,13 +69,26 @@ signal.signal(signal.SIGINT, signal_handler)
 signal.signal(signal.SIGTERM, signal_handler)
 
 
-def init_cache_dirs():
-    """Ensure host cache directories exist."""
+def init_cache_dirs(arch: str):
+    """Ensure host cache directories exist.
+
+    `toolcache` gets its own arch-suffixed host directory rather than being
+    shared like the other caches: GitHub Actions' tool-cache format doesn't
+    always segment by architecture on its own (actions/setup-go and setup-node
+    do — they cache under .../<version>/x64 — but gittools/actions/gitversion
+    does not, caching flatly under .../GitVersion.Tool/<version> with no arch
+    component at all). With RUNNER_ARCH=both spawning both arm64 and amd64
+    ephemeral runners against one shared host-mounted /opt/hostedtoolcache, an
+    arm64 run can cache an arm64 binary that a later amd64 run then finds
+    "in cache" and tries to execute — surfacing as a wrong-executable-format /
+    "dynamic loader not found" failure under Rosetta emulation. The other
+    caches here (npm, go modules, etc.) hold source/bytecode, not compiled
+    native binaries, so they're safe to keep shared across architectures.
+    """
     if not CACHE_ENABLED:
         return {}
 
     subdirs = {
-        "toolcache": "/opt/hostedtoolcache",
         "npm": "/home/runner/.npm",
         "yarn": "/home/runner/.cache/yarn",
         "pnpm": "/home/runner/.local/share/pnpm/store",
@@ -88,6 +101,11 @@ def init_cache_dirs():
 
     os.makedirs(HOST_CACHE_DIR, exist_ok=True)
     mount_mappings = {}
+
+    toolcache_host_path = os.path.join(HOST_CACHE_DIR, "toolcache", arch)
+    os.makedirs(toolcache_host_path, exist_ok=True)
+    mount_mappings[toolcache_host_path] = "/opt/hostedtoolcache"
+
     for key, container_path in subdirs.items():
         host_path = os.path.join(HOST_CACHE_DIR, key)
         os.makedirs(host_path, exist_ok=True)
@@ -249,10 +267,20 @@ def main():
         print("[Autoscaler] Error: ACCESS_TOKEN is required for autoscaling.", file=sys.stderr)
         sys.exit(1)
 
+    if CACHE_ENABLED and not HOST_CACHE_DIR:
+        print(
+            "[Autoscaler] Error: CACHE_ENABLED=true but HOST_CACHE_DIR is not set. "
+            "It must be a real path on the Docker HOST (not a path inside this "
+            "container) -- e.g. HOST_CACHE_DIR=/Users/you/.local-github-runner/cache "
+            "on macOS. Set it in .env, or set CACHE_ENABLED=false to run without "
+            "persistent caching.",
+            file=sys.stderr,
+        )
+        sys.exit(1)
+
     available_drivers = get_available_drivers()
     default_driver = get_driver(RUNNER_BACKEND)
     architectures = get_target_architectures()
-    cache_mounts = init_cache_dirs()
 
     print("=" * 65)
     print(" ⚡ RunZero — Dual-Engine Local GitHub Runner Autoscaler")
@@ -301,7 +329,7 @@ def main():
                         org=ORG,
                         arch=arch,
                         access_token=ACCESS_TOKEN,
-                        cache_mounts=cache_mounts,
+                        cache_mounts=init_cache_dirs(arch),
                         proxies_enabled=PROXIES_ENABLED
                     )
         else:
@@ -336,7 +364,7 @@ def main():
                         repo=repo,
                         arch=arch,
                         access_token=ACCESS_TOKEN,
-                        cache_mounts=cache_mounts,
+                        cache_mounts=init_cache_dirs(arch),
                         proxies_enabled=PROXIES_ENABLED
                     )
                     if spawned_id:
@@ -360,7 +388,7 @@ def main():
                         repo=tracked_repos[0],
                         arch=arch,
                         access_token=ACCESS_TOKEN,
-                        cache_mounts=cache_mounts,
+                        cache_mounts=init_cache_dirs(arch),
                         proxies_enabled=PROXIES_ENABLED
                     )
 

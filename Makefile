@@ -76,6 +76,17 @@ docs: ## Open documentation landing page in default browser
 	@echo "$(CYAN)Opening documentation landing page...$(RESET)"
 	@open docs/index.html || echo "Open docs/index.html in your browser."
 
+.PHONY: website-dev
+website-dev: ## Run Astro static website in local dev mode
+	@echo "$(CYAN)Starting Astro website development server...$(RESET)"
+	@cd website && npm run dev
+
+.PHONY: website-build
+website-build: ## Build Astro static website and synchronize to docs/
+	@echo "$(CYAN)Building Astro static documentation website...$(RESET)"
+	@cd website && npm run build && rm -rf ../docs/* && cp -r dist/* ../docs/ && touch ../docs/.nojekyll
+	@echo "$(GREEN)Astro website built and synced to docs/ successfully!$(RESET)"
+
 .PHONY: verdaccio-ui
 verdaccio-ui: ## Open Verdaccio Web UI in default browser (http://localhost:49501)
 	@echo "$(CYAN)Opening Verdaccio Web UI at http://localhost:49501...$(RESET)"

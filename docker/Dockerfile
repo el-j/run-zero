@@ -131,6 +131,22 @@ RUN apt-get update && \
       rm -rf /var/lib/apt/lists/*; \
     fi
 
+# 8. Pre-bake Playwright's OS-level dependencies (xvfb, GTK, gstreamer, PulseAudio,
+# etc.) so the per-job `playwright install --with-deps` step only has to fetch the
+# small browser-binary delta, not apt-get ~50 packages from scratch every run.
+# GitHub-hosted ubuntu-latest images ship these system libs pre-baked already —
+# without this, jobs on a fresh/cold local runner regularly blow their
+# timeout-minutes budget on apt work alone before a single test executes.
+# Browsers themselves are intentionally NOT baked here (version-fragile — each
+# repo pins its own @playwright/test version); those are still fetched per-job
+# and should be cached via actions/cache keyed on the lockfile, same as on
+# GitHub-hosted runners.
+USER runner
+RUN . $NVM_DIR/nvm.sh && \
+    npx --yes playwright install-deps chromium webkit firefox
+USER root
+RUN rm -rf /var/lib/apt/lists/*
+
 WORKDIR /home/runner/actions-runner
 
 COPY start.sh start.sh

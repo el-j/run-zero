@@ -1,0 +1,145 @@
+---
+// Competitive Comparison Table Component
+---
+
+<section class="comparison-section" id="comparison">
+  <div class="section-header">
+    <h2>The Competitive Landscape</h2>
+    <p>How RunZero compares against Actions Runner Controller (ARC), nektos/act, and static Docker runners.</p>
+  </div>
+
+  <div class="table-wrapper">
+    <table class="comparison-table">
+      <thead>
+        <tr>
+          <th>Feature / Metric</th>
+          <th class="col-highlight">⚡ RunZero (Our Stack)</th>
+          <th>🏢 Actions Runner Controller (ARC)</th>
+          <th>🎭 nektos / act</th>
+          <th>📦 Static Runner Dockerfile</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><strong>Primary Target</strong></td>
+          <td class="col-highlight"><strong>Local Mac / Dev Workstation</strong></td>
+          <td>Enterprise Cloud K8s Fleet</td>
+          <td>Local CLI Scratchpad</td>
+          <td>Single Homelab Server</td>
+        </tr>
+        <tr>
+          <td><strong>Idle RAM Overhead</strong></td>
+          <td class="col-highlight"><span class="check-yes">~20 MB</span> (0 MB at idle)</td>
+          <td><span class="check-no">1.5 GB – 3.5 GB</span> (Full K8s)</td>
+          <td><span class="check-yes">0 MB</span> (Manual CLI only)</td>
+          <td><span class="check-warn">~500 MB+</span> (Statically idle)</td>
+        </tr>
+        <tr>
+          <td><strong>Execution Modes</strong></td>
+          <td class="col-highlight"><span class="check-yes">Dual-Engine (Docker + VM)</span></td>
+          <td>Containers Only (K8s Pods)</td>
+          <td>Containers Only</td>
+          <td>Container Only</td>
+        </tr>
+        <tr>
+          <td><strong>Runs Real GitHub Workflows</strong></td>
+          <td class="col-highlight"><span class="check-yes">Yes</span> (Listens to GitHub queue)</td>
+          <td><span class="check-yes">Yes</span></td>
+          <td><span class="check-no">No</span> (Local emulation only)</td>
+          <td><span class="check-yes">Yes</span></td>
+        </tr>
+        <tr>
+          <td><strong>Multi-Repo Auto Discovery</strong></td>
+          <td class="col-highlight"><span class="check-yes">Yes</span> (Discovers all user repos)</td>
+          <td><span class="check-no">No</span> (Orgs/Enterprise only)</td>
+          <td><span class="check-no">N/A</span></td>
+          <td><span class="check-no">No</span> (1 repo per container)</td>
+        </tr>
+        <tr>
+          <td><strong>Multi-Arch (Apple Silicon + x86_64)</strong></td>
+          <td class="col-highlight"><span class="check-yes">Yes</span> (OrbStack Rosetta native)</td>
+          <td><span class="check-warn">Complex</span> (Node taints/specs)</td>
+          <td><span class="check-warn">Partial</span></td>
+          <td><span class="check-no">No</span> (Fixed arch)</td>
+        </tr>
+        <tr>
+          <td><strong>Built-in Caching Proxies</strong></td>
+          <td class="col-highlight"><span class="check-yes">Yes</span> (Verdaccio + Athens + Toolcache)</td>
+          <td><span class="check-no">No</span> (Requires K8s PVCs/NFS)</td>
+          <td><span class="check-no">No</span></td>
+          <td><span class="check-no">No</span></td>
+        </tr>
+        <tr>
+          <td><strong>Setup Complexity</strong></td>
+          <td class="col-highlight"><span class="check-yes">1 Command (<code>make start</code>)</span></td>
+          <td><span class="check-no">Heavy Helm / CRD setup</span></td>
+          <td><span class="check-yes">Simple CLI</span></td>
+          <td><span class="check-warn">Moderate</span></td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<style>
+  .comparison-section {
+    padding: 60px 0 80px;
+  }
+  .section-header {
+    text-align: center;
+    margin-bottom: 48px;
+  }
+  .section-header h2 {
+    font-size: 2.4rem;
+    font-weight: 800;
+    margin-bottom: 12px;
+  }
+  .section-header p {
+    color: var(--text-muted);
+    font-size: 1.1rem;
+    max-width: 620px;
+    margin: 0 auto;
+  }
+
+  .table-wrapper {
+    background: var(--bg-card);
+    backdrop-filter: blur(20px);
+    -webkit-backdrop-filter: blur(20px);
+    border: 1px solid var(--border-subtle);
+    border-radius: var(--radius-lg);
+    overflow-x: auto;
+    box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.6);
+  }
+  table.comparison-table {
+    width: 100%;
+    border-collapse: collapse;
+    text-align: left;
+  }
+  table.comparison-table th, table.comparison-table td {
+    padding: 18px 24px;
+    border-bottom: 1px solid var(--border-subtle);
+  }
+  table.comparison-table th {
+    font-size: 0.85rem;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: var(--text-dim);
+    background: rgba(255, 255, 255, 0.02);
+  }
+  table.comparison-table th.col-highlight, table.comparison-table td.col-highlight {
+    background: rgba(99, 102, 241, 0.08);
+    font-weight: 600;
+    color: #fff;
+  }
+  table.comparison-table th.col-highlight {
+    color: var(--primary-light);
+    border-top: 2px solid var(--primary);
+  }
+  .check-yes { color: var(--emerald); font-weight: bold; }
+  .check-no { color: var(--rose); font-weight: bold; }
+  .check-warn { color: var(--amber); }
+
+  @media (max-width: 768px) {
+    th, td { padding: 12px 14px; font-size: 0.85rem; }
+  }
+</style>

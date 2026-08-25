@@ -1,0 +1,224 @@
+---
+interface Props {
+  currentPath?: string;
+}
+
+const { currentPath = '/' } = Astro.props;
+const baseUrl = import.meta.env.BASE_URL.replace(/\/$/, '');
+---
+
+<header class="site-header">
+  <div class="container">
+    <nav class="main-nav">
+      <a href={`${baseUrl}/`} class="brand">
+        <img src={`${baseUrl}/favicon.svg`} alt="RunZero Logo" width="32" height="32" />
+        <span>RunZero</span>
+        <span class="brand-pill">v2.0</span>
+      </a>
+
+      <ul class="nav-menu">
+        <li><a href={`${baseUrl}/`} class={`nav-link ${currentPath === '/' || currentPath === '' ? 'active' : ''}`}>Overview</a></li>
+        <li><a href={`${baseUrl}/#features`} class="nav-link">Features</a></li>
+        <li><a href={`${baseUrl}/#routing`} class="nav-link">Auto-Routing</a></li>
+        <li><a href={`${baseUrl}/#comparison`} class="nav-link">Why Not ARC?</a></li>
+        <li><a href={`${baseUrl}/docs/`} class={`nav-link ${currentPath.startsWith('/docs') ? 'active' : ''}`}>Docs</a></li>
+      </ul>
+
+      <div class="nav-actions">
+        <a href={`${baseUrl}/docs/`} class="btn-nav-docs">Documentation</a>
+        <a href="https://github.com/el-j/run-zero" class="btn-github" target="_blank" rel="noopener">
+          <svg height="18" width="18" viewBox="0 0 16 16" fill="currentColor">
+            <path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"></path>
+          </svg>
+          <span>GitHub</span>
+        </a>
+      </div>
+
+      <!-- Mobile Hamburger Button -->
+      <button class="mobile-toggle" id="mobile-toggle" aria-label="Toggle navigation menu">
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <line x1="3" y1="12" x2="21" y2="12"></line>
+          <line x1="3" y1="6" x2="21" y2="6"></line>
+          <line x1="3" y1="18" x2="21" y2="18"></line>
+        </svg>
+      </button>
+    </nav>
+  </div>
+
+  <!-- Mobile Drawer Overlay -->
+  <div class="mobile-drawer" id="mobile-drawer">
+    <a href={`${baseUrl}/`} class="nav-link">Overview</a>
+    <a href={`${baseUrl}/#features`} class="nav-link">Features</a>
+    <a href={`${baseUrl}/#routing`} class="nav-link">Hybrid Auto-Routing</a>
+    <a href={`${baseUrl}/#comparison`} class="nav-link">Why Not ARC?</a>
+    <a href={`${baseUrl}/docs/`} class="nav-link">Full Documentation</a>
+    <a href="https://github.com/el-j/run-zero" class="btn-github" target="_blank" rel="noopener">GitHub Repository</a>
+  </div>
+</header>
+
+<style>
+  header.site-header {
+    position: sticky;
+    top: 0;
+    z-index: 100;
+    background: rgba(7, 9, 14, 0.85);
+    backdrop-filter: blur(20px);
+    -webkit-backdrop-filter: blur(20px);
+    border-bottom: 1px solid var(--border-subtle);
+    height: var(--header-height);
+    display: flex;
+    align-items: center;
+  }
+
+  nav.main-nav {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    width: 100%;
+  }
+
+  .brand {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    font-weight: 800;
+    font-size: 1.35rem;
+    letter-spacing: -0.025em;
+    text-decoration: none;
+    color: var(--text-main);
+  }
+  .brand-pill {
+    font-size: 0.72rem;
+    padding: 3px 9px;
+    background: linear-gradient(135deg, var(--primary), var(--cyan));
+    border-radius: 999px;
+    color: #ffffff;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+  }
+
+  .nav-menu {
+    display: flex;
+    gap: 28px;
+    align-items: center;
+    list-style: none;
+  }
+  .nav-link {
+    color: var(--text-muted);
+    text-decoration: none;
+    font-size: 0.95rem;
+    font-weight: 600;
+    transition: color 0.2s ease;
+    position: relative;
+  }
+  .nav-link:hover, .nav-link.active {
+    color: var(--text-main);
+  }
+  .nav-link.active::after {
+    content: '';
+    position: absolute;
+    bottom: -6px;
+    left: 0;
+    width: 100%;
+    height: 2px;
+    background: linear-gradient(90deg, var(--primary), var(--cyan));
+    border-radius: 2px;
+  }
+
+  .nav-actions {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+  }
+  .btn-nav-docs {
+    background: rgba(99, 102, 241, 0.12);
+    border: 1px solid var(--border-accent);
+    color: var(--primary-light);
+    padding: 8px 18px;
+    border-radius: var(--radius-sm);
+    font-size: 0.9rem;
+    font-weight: 700;
+    text-decoration: none;
+    transition: all 0.2s ease;
+  }
+  .btn-nav-docs:hover {
+    background: rgba(99, 102, 241, 0.22);
+    color: #fff;
+    transform: translateY(-1px);
+  }
+
+  .btn-github {
+    background: rgba(255, 255, 255, 0.05);
+    border: 1px solid var(--border-subtle);
+    color: var(--text-main);
+    padding: 8px 16px;
+    border-radius: var(--radius-sm);
+    text-decoration: none;
+    font-size: 0.9rem;
+    font-weight: 600;
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    transition: all 0.2s ease;
+  }
+  .btn-github:hover {
+    background: rgba(255, 255, 255, 0.1);
+    border-color: var(--border-card);
+    transform: translateY(-1px);
+  }
+
+  .mobile-toggle {
+    display: none;
+    background: transparent;
+    border: 1px solid var(--border-subtle);
+    color: var(--text-main);
+    padding: 8px 10px;
+    border-radius: var(--radius-sm);
+    cursor: pointer;
+  }
+
+  .mobile-drawer {
+    display: none;
+    position: fixed;
+    top: var(--header-height);
+    left: 0;
+    width: 100%;
+    height: calc(100vh - var(--header-height));
+    background: var(--bg-secondary);
+    border-bottom: 1px solid var(--border-subtle);
+    padding: 24px;
+    z-index: 99;
+    flex-direction: column;
+    gap: 20px;
+  }
+  .mobile-drawer.open {
+    display: flex;
+  }
+  .mobile-drawer .nav-link {
+    font-size: 1.1rem;
+    padding: 10px 0;
+    border-bottom: 1px solid var(--border-subtle);
+  }
+
+  @media (max-width: 860px) {
+    .nav-menu, .nav-actions { display: none; }
+    .mobile-toggle { display: block; }
+  }
+</style>
+
+<script>
+  const toggleBtn = document.getElementById('mobile-toggle');
+  const drawer = document.getElementById('mobile-drawer');
+
+  if (toggleBtn && drawer) {
+    toggleBtn.addEventListener('click', () => {
+      drawer.classList.toggle('open');
+    });
+    drawer.querySelectorAll('a').forEach(link => {
+      link.addEventListener('click', () => {
+        drawer.classList.remove('open');
+      });
+    });
+  }
+</script>

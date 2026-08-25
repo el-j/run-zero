@@ -168,25 +168,32 @@ jobs:
 │   ├── test_autoscaler.py                 #    Autoscaler, rate limiting & hybrid routing tests
 │   ├── test_drivers.py                    #    All driver lifecycle & error branch tests
 │   └── test_shell_scripts.py              #    Shell script syntax & entrypoint tests
-├── docs/                                  # 🌐 Documentation & GitHub Pages Website
-│   ├── favicon.svg                        #    RunZero vector icon
-│   ├── fonts/                             #    Self-hosted local fonts (zero CDN)
-│   ├── index.html                         #    Interactive dark-mode landing page
-│   ├── style.css                          #    Modular styles
-│   └── script.js                          #    Client interactions
+├── website/                               # 🚀 Astro Static Website & Documentation
+│   ├── src/                               #    Astro components, pages (Hero + Docs) & styles
+│   ├── public/                            #    Self-hosted fonts and SVG assets
+│   ├── astro.config.mjs                   #    Astro static SSG configuration
+│   └── package.json                       #    Website dependencies
+├── docs/                                  # 🌐 Compiled GitHub Pages Website
+│   ├── index.html                         #    Compiled Hero Landing Page
+│   └── docs/index.html                    #    Compiled Dedicated Documentation Page
+├── tests/                                 # 🧪 Comprehensive Test Suite (68 Tests)
+│   ├── test_autoscaler.py                 #    Autoscaler, rate limiting & hybrid routing tests
+│   ├── test_drivers.py                    #    All driver lifecycle & error branch tests
+│   └── test_shell_scripts.py              #    Shell script syntax & wizard tests
 ├── .github/
 │   ├── ISSUE_TEMPLATE/                    # 📋 Community Issue Templates
 │   │   ├── bug_report.md
 │   │   └── feature_request.md
 │   ├── workflows/                         # 🤖 GitHub Actions CI/CD
-│   │   ├── ci.yml                         #    Syntax, Flake8, Mypy, Pytest & build validation
-│   │   └── deploy-pages.yml               #    Auto-deploys docs/ to GitHub Pages
+│   │   ├── ci.yml                         #    Syntax, Flake8, Mypy, Pytest & Astro build validation
+│   │   ├── deploy-pages.yml               #    Auto-deploys website to GitHub Pages
+│   │   └── release.yml                    #    Automated SemVer releases & changelogs on main
 │   └── PULL_REQUEST_TEMPLATE.md           # 📝 Reviewer checklist
 ├── docker-compose.yml                     # 🚀 Orchestration (Autoscaler + Verdaccio + Athens)
 ├── Makefile                               # 🛠️ Unified management commands
 ├── pyproject.toml                         # ⚙️ Python project configuration (Pytest, Mypy, Mutmut)
 ├── .env.example                           # ⚙️ Configuration template
-├── CONTRIBUTING.md                        # 🤝 Contributor guidelines
+├── CONTRIBUTING.md                        # 🤝 Contributor guidelines & Git-Flow guide
 ├── CODE_OF_CONDUCT.md                     # 📜 Community standards
 ├── SECURITY.md                            # 🔒 Security policy
 ├── LICENSE                                # 📄 MIT License
@@ -240,7 +247,7 @@ RunZero includes a 100% verified test suite with type checking, linting, and mut
 
 | Command | Description |
 |---|---|
-| `make test` | Run fast local unit tests directly (66 tests in ~1.1s) |
+| `make test` | Run fast local unit tests directly (68 tests in ~0.9s) |
 | `make test-suite` | Run Flake8 linter, Mypy static type checker, and Pytest coverage in container |
 | `make mutation-test` | Run Mutmut mutation testing suite across all drivers and autoscaler |
 
@@ -256,19 +263,19 @@ RunZero includes a 100% verified test suite with type checking, linting, and mut
 | `make test` | Run local unit tests directly with `unittest` |
 | `make test-suite` | Run Flake8 linter, Mypy type-checker, and Pytest coverage report |
 | `make mutation-test` | Run Mutmut mutation testing suite |
+| `make website-dev` | Start Astro documentation website development server |
+| `make website-build` | Build Astro static website and synchronize to `docs/` |
+| `make docs` | Preview the documentation website locally in your browser |
 | `make vm-list` | Display active OrbStack Linux runner VMs |
 | `make vm-clean` | Clean up any orphaned RunZero VMs |
 | `make verdaccio-ui` | Open Verdaccio Web UI at `http://localhost:49501` |
-| `make docs` | Preview the documentation website locally in your browser |
 | `make logs` | Stream live autoscaler logs |
 | `make logs-all` | Stream live logs from all services (autoscaler + proxies) |
 | `make cache-size` | Display disk usage of package and tool caches |
 | `make clean-cache` | Clear all shared package/tool caches |
 | `make build` (or `make build-all`) | Build all images (`arm64` + `amd64` + autoscaler) |
-| `make build-arm64` | Build native Apple Silicon `arm64` runner |
-| `make build-amd64` | Build Intel/AMD `amd64` (x86_64) runner |
 | `make clean` | Force-remove stopped containers and volumes |
-| `make env` | Generate `.env` from template if missing |
+| `make env` | Run interactive `.env` configuration wizard |
 | `make help` | Show all available Makefile commands |
 
 ---

@@ -1,0 +1,197 @@
+---
+// Interactive Terminal Component
+---
+
+<div class="terminal-window" id="quickstart">
+  <div class="terminal-bar">
+    <div class="terminal-dots">
+      <div class="dot red"></div>
+      <div class="dot yellow"></div>
+      <div class="dot green"></div>
+      <span class="terminal-title">quickstart — local runner fleet</span>
+    </div>
+
+    <div class="terminal-tabs">
+      <button class="tab-btn active" data-tab="quickstart">Interactive Setup</button>
+      <button class="tab-btn" data-tab="orbstack">OrbStack VM</button>
+      <button class="tab-btn" data-tab="wsl">Windows WSL2</button>
+      <button class="tab-btn" data-tab="multipass">Multipass</button>
+    </div>
+
+    <button class="btn-copy" id="btn-copy-code" aria-label="Copy terminal commands">Copy</button>
+  </div>
+
+  <pre class="terminal-body"><code id="terminal-code"><span class="comment"># 1. Clone repo &amp; launch interactive setup wizard</span>
+<span class="cmd">git clone</span> git@github.com:el-j/run-zero.git
+<span class="cmd">cd</span> run-zero &amp;&amp; <span class="cmd">make env</span>
+
+<span class="comment"># 2. Start Autoscaler + Verdaccio &amp; Athens Proxies</span>
+<span class="cmd">make start</span>
+
+<span class="comment"># 3. Stream real-time runner logs</span>
+<span class="cmd">make logs</span></code></pre>
+</div>
+
+<style>
+  .terminal-window {
+    max-width: 780px;
+    margin: 0 auto 90px;
+    background: var(--bg-code);
+    border: 1px solid var(--border-card);
+    border-radius: var(--radius-lg);
+    overflow: hidden;
+    box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.8);
+    text-align: left;
+  }
+  .terminal-bar {
+    background: var(--bg-code-header);
+    padding: 12px 18px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    border-bottom: 1px solid var(--border-subtle);
+  }
+  .terminal-dots {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+  }
+  .dot {
+    width: 12px;
+    height: 12px;
+    border-radius: 50%;
+  }
+  .dot.red { background: #ef4444; }
+  .dot.yellow { background: #f59e0b; }
+  .dot.green { background: #10b981; }
+  .terminal-title {
+    font-family: var(--font-mono);
+    font-size: 0.82rem;
+    color: var(--text-dim);
+    margin-left: 8px;
+  }
+
+  .terminal-tabs {
+    display: flex;
+    gap: 6px;
+  }
+  .tab-btn {
+    background: transparent;
+    border: none;
+    color: var(--text-dim);
+    font-family: var(--font-mono);
+    font-size: 0.78rem;
+    padding: 4px 10px;
+    border-radius: 4px;
+    cursor: pointer;
+    transition: all 0.2s ease;
+  }
+  .tab-btn:hover {
+    color: var(--text-main);
+  }
+  .tab-btn.active {
+    background: rgba(255, 255, 255, 0.08);
+    color: var(--text-main);
+    font-weight: 600;
+  }
+
+  .btn-copy {
+    background: rgba(255, 255, 255, 0.07);
+    border: 1px solid var(--border-subtle);
+    color: var(--text-muted);
+    padding: 4px 12px;
+    border-radius: var(--radius-sm);
+    font-size: 0.78rem;
+    font-family: var(--font-mono);
+    cursor: pointer;
+    transition: all 0.2s ease;
+  }
+  .btn-copy:hover {
+    background: rgba(255, 255, 255, 0.15);
+    color: #fff;
+  }
+
+  .terminal-body {
+    padding: 24px;
+    font-family: var(--font-mono);
+    font-size: 0.93rem;
+    line-height: 1.85;
+    color: #e2e8f0;
+    margin: 0;
+    overflow-x: auto;
+  }
+  .terminal-body .comment { color: var(--text-dim); }
+  .terminal-body .cmd { color: var(--cyan-light); font-weight: 600; }
+
+  @media (max-width: 768px) {
+    .terminal-tabs { display: none; }
+  }
+</style>
+
+<script>
+  const snippets = {
+    quickstart: `# 1. Clone repo & launch interactive setup wizard
+git clone git@github.com:el-j/run-zero.git
+cd run-zero && make env
+
+# 2. Start Autoscaler + Verdaccio & Athens Proxies
+make start
+
+# 3. Stream real-time runner logs
+make logs`,
+    orbstack: `# Configure OrbStack VM Execution (macOS Apple Silicon & Intel)
+# Inside your .env file:
+RUNNER_BACKEND=orbstack-vm
+RUNNER_ARCH=both
+AUTO_ROUTE_VM=true
+
+# Launch runner stack:
+make start`,
+    wsl: `# Configure Windows WSL2 Linux VM Execution
+# Inside your .env file:
+RUNNER_BACKEND=wsl2
+RUNNER_ARCH=amd64
+
+# Launch runner stack:
+make start`,
+    multipass: `# Configure Cross-Platform Multipass Ubuntu VMs
+# Inside your .env file:
+RUNNER_BACKEND=multipass
+
+# Launch runner stack:
+make start`
+  };
+
+  const tabs = document.querySelectorAll('.tab-btn');
+  const codeBox = document.getElementById('terminal-code');
+  const copyBtn = document.getElementById('btn-copy-code');
+
+  if (tabs && codeBox) {
+    tabs.forEach(tab => {
+      tab.addEventListener('click', () => {
+        tabs.forEach(t => t.classList.remove('active'));
+        tab.classList.add('active');
+        const target = tab.getAttribute('data-tab');
+        if (target && snippets[target]) {
+          codeBox.textContent = snippets[target];
+        }
+      });
+    });
+  }
+
+  if (copyBtn && codeBox) {
+    copyBtn.addEventListener('click', () => {
+      navigator.clipboard.writeText(codeBox.textContent || '').then(() => {
+        const orig = copyBtn.textContent;
+        copyBtn.textContent = '✔ Copied!';
+        copyBtn.style.borderColor = 'var(--emerald)';
+        copyBtn.style.color = 'var(--emerald)';
+        setTimeout(() => {
+          copyBtn.textContent = orig;
+          copyBtn.style.borderColor = '';
+          copyBtn.style.color = '';
+        }, 2000);
+      });
+    });
+  }
+</script>

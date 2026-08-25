@@ -1,0 +1,78 @@
+---
+const baseUrl = import.meta.env.BASE_URL.replace(/\/$/, '');
+---
+
+<footer class="site-footer">
+  <div class="container">
+    <div class="footer-inner">
+      <div class="footer-brand">
+        <img src={`${baseUrl}/favicon.svg`} alt="RunZero Logo" width="24" height="24" />
+        <strong>RunZero</strong>
+        <span class="footer-dim">• Dual-Engine Fleet</span>
+      </div>
+
+      <div class="footer-links">
+        <a href={`${baseUrl}/`} class="footer-link">Home</a>
+        <a href={`${baseUrl}/docs/`} class="footer-link">Documentation</a>
+        <a href="https://github.com/el-j/run-zero" class="footer-link" target="_blank" rel="noopener">GitHub</a>
+        <a href="https://github.com/el-j/run-zero/releases" class="footer-link" target="_blank" rel="noopener">Releases</a>
+        <a href="https://github.com/el-j/run-zero/issues" class="footer-link" target="_blank" rel="noopener">Report Issue</a>
+      </div>
+    </div>
+
+    <div class="footer-copy">
+      <p>MIT Licensed • Built for ultra-fast local CI with OrbStack, Docker Desktop, Windows WSL2, and Linux.</p>
+    </div>
+  </div>
+</footer>
+
+<style>
+  footer.site-footer {
+    border-top: 1px solid var(--border-subtle);
+    padding: 48px 0;
+    background: var(--bg-secondary);
+    margin-top: 80px;
+  }
+  .footer-inner {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 20px;
+  }
+  .footer-brand {
+    font-weight: 700;
+    color: var(--text-main);
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    font-size: 0.95rem;
+  }
+  .footer-dim {
+    color: var(--text-dim);
+    font-weight: 400;
+  }
+  .footer-links {
+    display: flex;
+    gap: 20px;
+    flex-wrap: wrap;
+  }
+  .footer-link {
+    color: var(--text-muted);
+    text-decoration: none;
+    font-size: 0.9rem;
+    transition: color 0.2s ease;
+  }
+  .footer-link:hover {
+    color: var(--text-main);
+  }
+  .footer-copy {
+    color: var(--text-dim);
+    font-size: 0.85rem;
+    width: 100%;
+    text-align: center;
+    margin-top: 28px;
+    padding-top: 20px;
+    border-top: 1px solid var(--border-subtle);
+  }
+</style>
