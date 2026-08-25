@@ -16,7 +16,7 @@ from . import RunnerDriver, RunnerInfo
 
 
 class MultipassDriver(RunnerDriver):
-    def __init__(self, image: str = "22.04"):
+    def __init__(self, image: str = "24.04"):
         self.image = os.getenv("MULTIPASS_IMAGE", image)
 
     def name(self) -> str:

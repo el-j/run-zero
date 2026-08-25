@@ -36,7 +36,7 @@ class TestOrbStackTemplates(unittest.TestCase):
 
 class TestOrbStackVMDriver(unittest.TestCase):
     def setUp(self):
-        self.driver = OrbStackVMDriver(distro="ubuntu:22.04")
+        self.driver = OrbStackVMDriver(distro="ubuntu:24.04")
 
     def test_name(self):
         self.assertEqual(self.driver.name(), "orbstack-vm")
@@ -168,7 +168,7 @@ class TestOrbStackVMDriver(unittest.TestCase):
         self.assertEqual(clone_call[0][0][:2], ["orbctl", "clone"])
 
     def test_build_base_image_missing_script_fails_gracefully(self):
-        driver = OrbStackVMDriver(distro="ubuntu:22.04")
+        driver = OrbStackVMDriver(distro="ubuntu:24.04")
         driver._provision_script_path = "/nonexistent/provision-toolchain.sh"
         with patch("subprocess.run") as mock_run:
             result = driver.build_base_image("amd64")

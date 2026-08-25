@@ -22,7 +22,7 @@ BASE_IMAGE_PREFIX = "runzero-vm-base-"
 
 
 class OrbStackVMDriver(RunnerDriver):
-    def __init__(self, distro: str = "ubuntu:22.04"):
+    def __init__(self, distro: str = "ubuntu:24.04"):
         self.distro = distro
         self._provision_script_path = os.path.join(
             os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))),

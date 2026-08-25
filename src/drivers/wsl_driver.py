@@ -15,7 +15,7 @@ from . import RunnerDriver, RunnerInfo
 
 
 class WSL2Driver(RunnerDriver):
-    def __init__(self, distro_base: str = "Ubuntu-22.04"):
+    def __init__(self, distro_base: str = "Ubuntu-24.04"):
         self.distro_base = os.getenv("WSL_DISTRO_BASE", distro_base)
 
     def name(self) -> str:
