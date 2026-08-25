@@ -1,0 +1,172 @@
+---
+// DocsSidebar: Sticky sidebar navigation + mobile slide-out drawer
+---
+
+<aside class="docs-sidebar" id="docs-sidebar">
+  <div class="sidebar-header-mobile">
+    <strong>Documentation Sections</strong>
+    <button id="sidebar-close-btn" class="sidebar-close" aria-label="Close sidebar">✕</button>
+  </div>
+
+  <div class="sidebar-section">
+    <div class="sidebar-title">Getting Started</div>
+    <ul class="sidebar-links">
+      <li><a href="#quickstart" class="sidebar-link active">Quick Start</a></li>
+      <li><a href="#prerequisites" class="sidebar-link">Prerequisites</a></li>
+      <li><a href="#interactive-wizard" class="sidebar-link">Setup Wizard (make env)</a></li>
+    </ul>
+  </div>
+
+  <div class="sidebar-section">
+    <div class="sidebar-title">Architecture &amp; Drivers</div>
+    <ul class="sidebar-links">
+      <li><a href="#dual-engine" class="sidebar-link">Dual-Engine Fleet</a></li>
+      <li><a href="#orbstack-driver" class="sidebar-link">OrbStack Linux VMs</a></li>
+      <li><a href="#golden-vm" class="sidebar-link">Golden VM Base Image</a></li>
+      <li><a href="#docker-driver" class="sidebar-link">Docker Container Driver</a></li>
+      <li><a href="#wsl-driver" class="sidebar-link">Windows WSL2 Driver</a></li>
+      <li><a href="#multipass-driver" class="sidebar-link">Multipass Driver</a></li>
+      <li><a href="#hybrid-routing" class="sidebar-link">Hybrid Auto-Routing</a></li>
+    </ul>
+  </div>
+
+  <div class="sidebar-section">
+    <div class="sidebar-title">Caching &amp; Dependencies</div>
+    <ul class="sidebar-links">
+      <li><a href="#proxy-caching" class="sidebar-link">APT &amp; Package Caching</a></li>
+      <li><a href="#dependencies" class="sidebar-link">First-Level Dependencies</a></li>
+      <li><a href="#env-reference" class="sidebar-link">Environment Variables (.env)</a></li>
+      <li><a href="#zombie-healing" class="sidebar-link">Zombie Runner Healing</a></li>
+    </ul>
+  </div>
+
+  <div class="sidebar-section">
+    <div class="sidebar-title">CLI &amp; Testing</div>
+    <ul class="sidebar-links">
+      <li><a href="#makefile-cli" class="sidebar-link">Makefile Command Reference</a></li>
+      <li><a href="#testing-suite" class="sidebar-link">Testing &amp; Mutation Suite</a></li>
+      <li><a href="#faq" class="sidebar-link">Troubleshooting &amp; FAQ</a></li>
+    </ul>
+  </div>
+</aside>
+
+<div class="sidebar-backdrop" id="sidebar-backdrop"></div>
+
+<style>
+  aside.docs-sidebar {
+    width: var(--sidebar-width);
+    height: calc(100vh - var(--header-height));
+    position: sticky;
+    top: var(--header-height);
+    padding: 36px 20px 48px;
+    border-right: 1px solid var(--border-subtle);
+    overflow-y: auto;
+    flex-shrink: 0;
+    background: var(--bg-primary);
+  }
+
+  .sidebar-header-mobile {
+    display: none;
+    justify-content: space-between;
+    align-items: center;
+    padding-bottom: 16px;
+    margin-bottom: 20px;
+    border-bottom: 1px solid var(--border-subtle);
+    font-size: 1rem;
+    color: var(--text-main);
+  }
+
+  .sidebar-close {
+    background: transparent;
+    border: none;
+    color: var(--text-muted);
+    font-size: 1.2rem;
+    cursor: pointer;
+    padding: 4px 8px;
+  }
+
+  .sidebar-section {
+    margin-bottom: 26px;
+  }
+  .sidebar-title {
+    font-family: var(--font-mono);
+    font-size: 0.72rem;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: var(--text-dim);
+    font-weight: 700;
+    margin-bottom: 10px;
+    padding-left: 10px;
+  }
+  .sidebar-links {
+    list-style: none;
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+  }
+  .sidebar-link {
+    display: block;
+    padding: 7px 12px;
+    color: var(--text-muted);
+    text-decoration: none;
+    font-size: 0.9rem;
+    font-weight: 500;
+    border-radius: var(--radius-sm);
+    transition: all 0.2s ease;
+  }
+  .sidebar-link:hover, .sidebar-link.active {
+    background: rgba(255, 255, 255, 0.04);
+    color: var(--text-main);
+  }
+  .sidebar-link.active {
+    color: var(--crimson-light);
+    font-weight: 700;
+    border-left: 2px solid var(--crimson);
+    border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
+  }
+
+  .sidebar-backdrop {
+    display: none;
+  }
+
+  @media (max-width: 1024px) {
+    aside.docs-sidebar {
+      position: fixed;
+      top: var(--header-height);
+      left: -100%;
+      width: 82%;
+      max-width: 320px;
+      height: calc(100vh - var(--header-height));
+      z-index: 150;
+      background: var(--bg-secondary);
+      border-right: 1px solid var(--border-card);
+      box-shadow: 20px 0 50px rgba(0, 0, 0, 0.8);
+      transition: left 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+      display: block;
+      padding: 24px 18px 48px;
+    }
+
+    aside.docs-sidebar.drawer-open {
+      left: 0;
+    }
+
+    .sidebar-header-mobile {
+      display: flex;
+    }
+
+    .sidebar-backdrop {
+      display: none;
+      position: fixed;
+      top: var(--header-height);
+      left: 0;
+      width: 100%;
+      height: calc(100vh - var(--header-height));
+      background: rgba(0, 0, 0, 0.65);
+      backdrop-filter: blur(4px);
+      z-index: 140;
+    }
+    .sidebar-backdrop.show {
+      display: block;
+    }
+  }
+</style>

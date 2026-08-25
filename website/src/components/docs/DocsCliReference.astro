@@ -1,0 +1,17 @@
+---
+// DocsCliReference: Makefile command reference
+---
+
+<h2 id="makefile-cli">Makefile Command Reference</h2>
+<pre class="code-block"><code>make start          # Start Autoscaler and Proxy registries (apt-cacher, Verdaccio, Athens)
+make stop           # Stop Autoscaler, Proxies, and cleanup active runners
+make status         # Show status of services and active runner instances
+make logs           # Stream live autoscaler logs
+make test           # Run 90 unit tests directly (1.0s)
+make test-suite     # Run Flake8 linter, Mypy type-checker, and Pytest coverage
+make build-vm-base  # Build golden OrbStack VM base image for instant cloning
+make website-dev    # Start Astro documentation website development server
+make website-build  # Build Astro static website and synchronize to docs/
+make verdaccio-ui   # Open Verdaccio NPM registry dashboard (http://localhost:49501)
+make apt-cacher-ui  # Open apt-cacher-ng statistics report (http://localhost:49503/acng-report.html)
+make clean-cache    # Clear shared package caches to reclaim disk space</code></pre>

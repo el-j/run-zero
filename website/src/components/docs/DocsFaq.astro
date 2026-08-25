@@ -1,0 +1,14 @@
+---
+// DocsFaq: Troubleshooting & frequently asked questions
+---
+
+<h2 id="faq">Troubleshooting &amp; FAQ</h2>
+<h3>How do I test a workflow on Apple Silicon and AMD64?</h3>
+<p>
+  Set <code>RUNNER_ARCH=both</code> in <code>.env</code> and specify <code>runs-on: [self-hosted, local, arm64]</code> or <code>runs-on: [self-hosted, local, amd64]</code> in your GitHub workflow YAML.
+</p>
+
+<h3>How does package caching work across containers and VMs?</h3>
+<p>
+  RunZero exposes <a href="https://www.unix-ag.uni-kl.de/~bloch/acng/" target="_blank" rel="noopener">apt-cacher-ng</a> on port <code>49503</code>, <a href="https://verdaccio.org/" target="_blank" rel="noopener">Verdaccio</a> on port <code>49501</code>, and <a href="https://github.com/gomods/athens" target="_blank" rel="noopener">Athens</a> on port <code>49500</code>. Containers on host networking and VMs on virtualized bridges automatically route package downloads through these local proxies.
+</p>

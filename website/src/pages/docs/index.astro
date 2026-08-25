@@ -1,14 +1,21 @@
 ---
 import Layout from '../../layouts/Layout.astro';
-
-const baseUrl = import.meta.env.BASE_URL.replace(/\/$/, '');
+import DocsSidebar from '../../components/docs/DocsSidebar.astro';
+import DocsQuickstart from '../../components/docs/DocsQuickstart.astro';
+import DocsDrivers from '../../components/docs/DocsDrivers.astro';
+import DocsHybridRouting from '../../components/docs/DocsHybridRouting.astro';
+import DocsCaching from '../../components/docs/DocsCaching.astro';
+import DocsDependencies from '../../components/docs/DocsDependencies.astro';
+import DocsZombieHealing from '../../components/docs/DocsZombieHealing.astro';
+import DocsEnvReference from '../../components/docs/DocsEnvReference.astro';
+import DocsCliReference from '../../components/docs/DocsCliReference.astro';
+import DocsFaq from '../../components/docs/DocsFaq.astro';
 ---
 
 <Layout title="Documentation — RunZero" description="Complete installation, configuration, driver deep dive, and CLI guide for RunZero." currentPath="/docs">
   <div class="ambient-crimson"></div>
   
   <div class="container">
-    
     <!-- Mobile Table of Contents Bar -->
     <div class="mobile-docs-bar">
       <button id="mobile-docs-toggle" class="btn-mobile-docs" aria-expanded="false" aria-controls="docs-sidebar">
@@ -25,58 +32,8 @@ const baseUrl = import.meta.env.BASE_URL.replace(/\/$/, '');
     </div>
 
     <div class="docs-layout">
-      
       <!-- Sticky Sidebar Navigation -->
-      <aside class="docs-sidebar" id="docs-sidebar">
-        <div class="sidebar-header-mobile">
-          <strong>Documentation Sections</strong>
-          <button id="sidebar-close-btn" class="sidebar-close" aria-label="Close sidebar">✕</button>
-        </div>
-
-        <div class="sidebar-section">
-          <div class="sidebar-title">Getting Started</div>
-          <ul class="sidebar-links">
-            <li><a href="#quickstart" class="sidebar-link active">Quick Start</a></li>
-            <li><a href="#prerequisites" class="sidebar-link">Prerequisites</a></li>
-            <li><a href="#interactive-wizard" class="sidebar-link">Setup Wizard (make env)</a></li>
-          </ul>
-        </div>
-
-        <div class="sidebar-section">
-          <div class="sidebar-title">Architecture &amp; Drivers</div>
-          <ul class="sidebar-links">
-            <li><a href="#dual-engine" class="sidebar-link">Dual-Engine Fleet</a></li>
-            <li><a href="#orbstack-driver" class="sidebar-link">OrbStack Linux VMs</a></li>
-            <li><a href="#golden-vm" class="sidebar-link">Golden VM Base Image</a></li>
-            <li><a href="#docker-driver" class="sidebar-link">Docker Container Driver</a></li>
-            <li><a href="#wsl-driver" class="sidebar-link">Windows WSL2 Driver</a></li>
-            <li><a href="#multipass-driver" class="sidebar-link">Multipass Driver</a></li>
-            <li><a href="#hybrid-routing" class="sidebar-link">Hybrid Auto-Routing</a></li>
-          </ul>
-        </div>
-
-        <div class="sidebar-section">
-          <div class="sidebar-title">Caching &amp; Dependencies</div>
-          <ul class="sidebar-links">
-            <li><a href="#proxy-caching" class="sidebar-link">APT &amp; Package Caching</a></li>
-            <li><a href="#dependencies" class="sidebar-link">First-Level Dependencies</a></li>
-            <li><a href="#env-reference" class="sidebar-link">Environment Variables (.env)</a></li>
-            <li><a href="#zombie-healing" class="sidebar-link">Zombie Runner Healing</a></li>
-          </ul>
-        </div>
-
-        <div class="sidebar-section">
-          <div class="sidebar-title">CLI &amp; Testing</div>
-          <ul class="sidebar-links">
-            <li><a href="#makefile-cli" class="sidebar-link">Makefile Command Reference</a></li>
-            <li><a href="#testing-suite" class="sidebar-link">Testing &amp; Mutation Suite</a></li>
-            <li><a href="#faq" class="sidebar-link">Troubleshooting &amp; FAQ</a></li>
-          </ul>
-        </div>
-      </aside>
-
-      <!-- Sidebar Backdrop for Mobile -->
-      <div class="sidebar-backdrop" id="sidebar-backdrop"></div>
+      <DocsSidebar />
 
       <!-- Main Documentation Content -->
       <main class="docs-content">
@@ -85,249 +42,15 @@ const baseUrl = import.meta.env.BASE_URL.replace(/\/$/, '');
           Everything you need to know about configuring, running, and scaling your local GitHub Actions runner fleet with Docker containers, dedicated Linux Virtual Machines, and intelligent proxy caching.
         </p>
 
-        <!-- Section 1: Quickstart -->
-        <h2 id="quickstart">Quick Start in 60 Seconds</h2>
-        <p>
-          RunZero deploys an autoscaler daemon alongside local caching proxies (<a href="https://www.unix-ag.uni-kl.de/~bloch/acng/" target="_blank" rel="noopener">apt-cacher-ng</a> for Debian/Ubuntu, <a href="https://verdaccio.org/" target="_blank" rel="noopener">Verdaccio</a> for npm, <a href="https://github.com/gomods/athens" target="_blank" rel="noopener">Athens</a> for Go, and Docker Hub mirror).
-        </p>
-        <pre class="code-block"><code># 1. Clone the repository
-git clone git@github.com:el-j/run-zero.git
-cd run-zero
-
-# 2. Launch the interactive configuration wizard
-make env
-
-# 3. Build runner images (ARM64 + AMD64)
-make build
-
-# 4. (Optional for VM speeds) Build golden VM base template
-make build-vm-base
-
-# 5. Start the autoscaler and caching proxies in the background
-make start
-
-# 6. Stream live runner logs
-make logs</code></pre>
-
-        <!-- Section 2: Prerequisites -->
-        <h2 id="prerequisites">Prerequisites</h2>
-        <p>RunZero runs on macOS, Linux, and Windows with minimal system requirements:</p>
-        <ul>
-          <li><strong>Container Runtime</strong>: <a href="https://orbstack.dev" target="_blank" rel="noopener">OrbStack</a> (recommended for macOS), <a href="https://www.docker.com/" target="_blank" rel="noopener">Docker Desktop</a>, or native Linux Docker.</li>
-          <li><strong>GitHub Personal Access Token (PAT)</strong>: Classic PAT with <code>repo</code> scope (and <code>admin:org</code> if managing an Organization fleet).</li>
-          <li><strong>Hardware</strong>: Apple Silicon (M1/M2/M3/M4) or Intel/AMD x86_64 CPU, 4GB+ RAM.</li>
-        </ul>
-
-        <!-- Section 3: Setup Wizard -->
-        <h2 id="interactive-wizard">Interactive Setup Wizard (<code>make env</code>)</h2>
-        <p>
-          Running <code>make env</code> invokes an interactive terminal wizard that asks for your token, account username, desired engine, and concurrency limit:
-        </p>
-        <div class="callout tip">
-          <div class="callout-title">💡 Automated &amp; CI Execution</div>
-          <p>If run non-interactively (e.g. in CI with <code>NON_INTERACTIVE=true</code>), <code>make env</code> automatically copies <code>.env.example</code> to <code>.env</code> without blocking.</p>
-        </div>
-
-        <!-- Section 4: Dual-Engine & Drivers -->
-        <h2 id="dual-engine">Dual-Engine Fleet Architecture</h2>
-        <p>
-          Unlike traditional runner solutions that force you into a single execution model, RunZero offers a pluggable driver architecture:
-        </p>
-
-        <h3 id="orbstack-driver">🪐 OrbStack Linux VM Driver (<code>RUNNER_BACKEND=orbstack-vm</code>)</h3>
-        <p>
-          Spawns dedicated lightweight Linux machines via <a href="https://orbstack.dev" target="_blank" rel="noopener">OrbStack</a> and Apple Virtualization.framework. Provides <strong>full systemd support</strong>, unconfined Google Chrome sandboxing, background daemons, and internal Docker-in-VM capabilities. Automatically connects to host Verdaccio, Athens, and apt-cacher proxies via <code>host.orb.internal</code>.
-        </p>
-
-        <h3 id="golden-vm">🏗️ Golden VM Base Image (<code>make build-vm-base</code>)</h3>
-        <p>
-          To make VM boot times near-instant, <code>make build-vm-base</code> pre-bakes the shared toolchain into a golden base image (<code>runzero-vm-base-&lt;arch&gt;</code>). Subsequent VM jobs spin up in seconds by cloning the base image!
-        </p>
-
-        <h3 id="docker-driver">🐳 Docker Container Driver (<code>RUNNER_BACKEND=docker</code>)</h3>
-        <p>
-          Launches ultra-fast ephemeral containers powered by <a href="https://docs.docker.com/engine/" target="_blank" rel="noopener">Docker Engine</a>. Starts in <strong>~0.3 seconds</strong> and consumes zero RAM when idle. Ideal for unit tests, linting, build pipelines, and JavaScript/Python workflows.
-        </p>
-
-        <h3 id="wsl-driver">🪟 Windows WSL2 Driver (<code>RUNNER_BACKEND=wsl2</code>)</h3>
-        <p>
-          Runs native Linux runners directly inside <a href="https://learn.microsoft.com/en-us/windows/wsl/" target="_blank" rel="noopener">Windows Subsystem for Linux 2</a> (Windows 10/11 and Windows Server) without requiring Docker Desktop.
-        </p>
-
-        <h3 id="multipass-driver">🚀 Canonical Multipass Driver (<code>RUNNER_BACKEND=multipass</code>)</h3>
-        <p>
-          Universal cross-platform virtual machine backend using <a href="https://multipass.run/" target="_blank" rel="noopener">Canonical Multipass</a> via QEMU, Hyper-V, or VirtualBox.
-        </p>
-
-        <!-- Section 5: Hybrid Routing -->
-        <h2 id="hybrid-routing">Hybrid Auto-Routing</h2>
-        <p>
-          With <code>RUNNER_BACKEND=auto</code> and <code>AUTO_ROUTE_VM=true</code>, you don't need to choose a single engine. The autoscaler inspects workflow labels and job names:
-        </p>
-        <pre class="code-block"><code># Standard unit test runs in ultra-fast Docker container (~0.3s)
-jobs:
-  test:
-    runs-on: [ self-hosted, local ]
-    steps:
-      - run: npm test
-
-# Lighthouse / Browser E2E automatically routes to dedicated Linux VM!
-jobs:
-  audit:
-    runs-on: [ self-hosted, local, browser ]  # Triggers: 'browser', 'e2e', 'lighthouse', 'systemd', 'vm'
-    steps:
-      - run: npx lhci autorun</code></pre>
-
-        <!-- Section 6: Proxy Caching -->
-        <h2 id="proxy-caching">APT &amp; Package Proxy Caching</h2>
-        <p>
-          RunZero runs lightweight background caching proxy services so that neither your container image builds nor your CI runner executions waste bandwidth re-downloading packages from public registries:
-        </p>
-        
-        <div class="table-wrapper">
-          <table class="comparison-table">
-            <thead>
-              <tr>
-                <th>Proxy Service</th>
-                <th>Target Packages</th>
-                <th>Host Port</th>
-                <th>Web UI / Dashboard</th>
-              </tr>
-            </thead>
-            <tbody>
-              <tr>
-                <td><strong><a href="https://www.unix-ag.uni-kl.de/~bloch/acng/" target="_blank" rel="noopener">APT Cacher NG</a></strong></td>
-                <td>Ubuntu/Debian <code>.deb</code> packages</td>
-                <td><code>:49503</code></td>
-                <td><a href="http://localhost:49503/acng-report.html" target="_blank" rel="noopener">http://localhost:49503/acng-report.html</a></td>
-              </tr>
-              <tr>
-                <td><strong><a href="https://verdaccio.org/" target="_blank" rel="noopener">Verdaccio</a></strong></td>
-                <td>NPM, Yarn, PNPM JavaScript packages</td>
-                <td><code>:49501</code></td>
-                <td><a href="http://localhost:49501" target="_blank" rel="noopener">http://localhost:49501</a></td>
-              </tr>
-              <tr>
-                <td><strong><a href="https://github.com/gomods/athens" target="_blank" rel="noopener">Athens</a></strong></td>
-                <td>Go language modules</td>
-                <td><code>:49500</code></td>
-                <td><code>http://localhost:49500</code></td>
-              </tr>
-              <tr>
-                <td><strong><a href="https://docs.docker.com/docker-hub/mirror/" target="_blank" rel="noopener">Docker Registry Mirror</a></strong></td>
-                <td>Docker Hub container layers</td>
-                <td><code>:49502</code></td>
-                <td><code>http://localhost:49502</code></td>
-              </tr>
-            </tbody>
-          </table>
-        </div>
-
-        <!-- Section 7: First-Level Dependencies -->
-        <h2 id="dependencies">First-Level Dependencies &amp; Upstream Tools</h2>
-        <p>RunZero builds upon best-of-breed open-source virtualization and runtime platforms:</p>
-        <ul>
-          <li><a href="https://orbstack.dev/" target="_blank" rel="noopener"><strong>OrbStack</strong></a>: Superfast, lightweight container engine and Linux Virtual Machine hypervisor for macOS.</li>
-          <li><a href="https://www.docker.com/" target="_blank" rel="noopener"><strong>Docker Engine &amp; Compose</strong></a>: Industry standard container runtime and service orchestration.</li>
-          <li><a href="https://www.unix-ag.uni-kl.de/~bloch/acng/" target="_blank" rel="noopener"><strong>apt-cacher-ng</strong></a>: High-performance caching proxy for Debian and Ubuntu APT package downloads.</li>
-          <li><a href="https://verdaccio.org/" target="_blank" rel="noopener"><strong>Verdaccio</strong></a>: Lightweight zero-config private npm proxy registry with web interface.</li>
-          <li><a href="https://github.com/gomods/athens" target="_blank" rel="noopener"><strong>Athens</strong></a>: Enterprise-grade Go module caching proxy server.</li>
-          <li><a href="https://github.com/nvm-sh/nvm" target="_blank" rel="noopener"><strong>NVM (Node Version Manager)</strong></a>: Multi-version Node.js environment pre-baking Node 20, 22, and 24.</li>
-          <li><a href="https://dotnet.microsoft.com/" target="_blank" rel="noopener"><strong>Microsoft .NET SDK</strong></a>: Cross-platform .NET 8.0 SDK runtime for C# and F# builds.</li>
-          <li><a href="https://playwright.dev/" target="_blank" rel="noopener"><strong>Playwright</strong></a>: Reliable end-to-end testing for modern web apps with pre-installed OS dependencies.</li>
-        </ul>
-
-        <!-- Section 8: Zombie Healing -->
-        <h2 id="zombie-healing">Zombie Runner Healing &amp; Auto-Reconciliation</h2>
-        <p>
-          If an ephemeral runner machine is stopped abruptly mid-job (e.g. during workstation sleep or <code>make stop</code>), GitHub might mark it as <code>offline</code> but <code>busy: true</code>.
-        </p>
-        <p>
-          RunZero's autoscaler automatically reconciles zombie runners by cancelling stranded runs and unsticking GitHub's runner queue so jobs never hang.
-        </p>
-
-        <!-- Section 9: Environment Variables Reference -->
-        <h2 id="env-reference">Environment Variables Reference (<code>.env</code>)</h2>
-        <div class="table-wrapper">
-          <table class="comparison-table">
-            <thead>
-              <tr>
-                <th>Variable</th>
-                <th>Default</th>
-                <th>Description</th>
-              </tr>
-            </thead>
-            <tbody>
-              <tr>
-                <td><code>ACCESS_TOKEN</code></td>
-                <td><em>Required</em></td>
-                <td>GitHub Personal Access Token (classic with <code>repo</code> scope).</td>
-              </tr>
-              <tr>
-                <td><code>OWNER</code></td>
-                <td><em>Required</em></td>
-                <td>GitHub username to monitor for auto-discovery.</td>
-              </tr>
-              <tr>
-                <td><code>RUNNER_BACKEND</code></td>
-                <td><code>auto</code></td>
-                <td>Execution engine: <code>auto</code>, <code>docker</code>, <code>orbstack-vm</code>, <code>wsl2</code>, <code>multipass</code>.</td>
-              </tr>
-              <tr>
-                <td><code>AUTO_ROUTE_VM</code></td>
-                <td><code>true</code></td>
-                <td>Automatically route jobs with <code>browser</code>/<code>e2e</code>/<code>systemd</code> labels to VMs.</td>
-              </tr>
-              <tr>
-                <td><code>RUNNER_ARCH</code></td>
-                <td><code>both</code></td>
-                <td>Target architecture: <code>both</code> (ARM64 + AMD64), <code>arm64</code>, <code>amd64</code>.</td>
-              </tr>
-              <tr>
-                <td><code>ACTIVE_REPO_DAYS</code></td>
-                <td><code>60</code></td>
-                <td>Only monitor repositories with commits in the last N days.</td>
-              </tr>
-              <tr>
-                <td><code>MAX_RUNNERS</code></td>
-                <td><code>4</code></td>
-                <td>Maximum concurrent runner instances allowed on this workstation.</td>
-              </tr>
-              <tr>
-                <td><code>PROXIES_ENABLED</code></td>
-                <td><code>true</code></td>
-                <td>Start apt-cacher, Verdaccio, Athens, and Docker Hub caching proxies.</td>
-              </tr>
-            </tbody>
-          </table>
-        </div>
-
-        <!-- Section 10: Makefile CLI -->
-        <h2 id="makefile-cli">Makefile Command Reference</h2>
-        <pre class="code-block"><code>make start          # Start Autoscaler and Proxy registries (apt-cacher, Verdaccio, Athens)
-make stop           # Stop Autoscaler, Proxies, and cleanup active runners
-make status         # Show status of services and active runner instances
-make logs           # Stream live autoscaler logs
-make test           # Run 90 unit tests directly (1.0s)
-make test-suite     # Run Flake8 linter, Mypy type-checker, and Pytest coverage
-make build-vm-base  # Build golden OrbStack VM base image for instant cloning
-make website-dev    # Start Astro documentation website development server
-make website-build  # Build Astro static website and synchronize to docs/
-make verdaccio-ui   # Open Verdaccio NPM registry dashboard (http://localhost:49501)
-make apt-cacher-ui  # Open apt-cacher-ng statistics report (http://localhost:49503/acng-report.html)
-make clean-cache    # Clear shared package caches to reclaim disk space</code></pre>
-
-        <!-- Section 11: FAQ -->
-        <h2 id="faq">Troubleshooting &amp; FAQ</h2>
-        <h3>How do I test a workflow on Apple Silicon and AMD64?</h3>
-        <p>
-          Set <code>RUNNER_ARCH=both</code> in <code>.env</code> and specify <code>runs-on: [self-hosted, local, arm64]</code> or <code>runs-on: [self-hosted, local, amd64]</code> in your GitHub workflow YAML.
-        </p>
-
-        <h3>How does package caching work across containers and VMs?</h3>
-        <p>
-          RunZero exposes <a href="https://www.unix-ag.uni-kl.de/~bloch/acng/" target="_blank" rel="noopener">apt-cacher-ng</a> on port <code>49503</code>, <a href="https://verdaccio.org/" target="_blank" rel="noopener">Verdaccio</a> on port <code>49501</code>, and <a href="https://github.com/gomods/athens" target="_blank" rel="noopener">Athens</a> on port <code>49500</code>. Containers on host networking and VMs on virtualized bridges automatically route package downloads through these local proxies.
-        </p>
+        <DocsQuickstart />
+        <DocsDrivers />
+        <DocsHybridRouting />
+        <DocsCaching />
+        <DocsDependencies />
+        <DocsZombieHealing />
+        <DocsEnvReference />
+        <DocsCliReference />
+        <DocsFaq />
       </main>
     </div>
   </div>
@@ -379,81 +102,6 @@ make clean-cache    # Clear shared package caches to reclaim disk space</code></
     position: relative;
   }
 
-  aside.docs-sidebar {
-    width: var(--sidebar-width);
-    height: calc(100vh - var(--header-height));
-    position: sticky;
-    top: var(--header-height);
-    padding: 36px 20px 48px;
-    border-right: 1px solid var(--border-subtle);
-    overflow-y: auto;
-    flex-shrink: 0;
-    background: var(--bg-primary);
-  }
-
-  .sidebar-header-mobile {
-    display: none;
-    justify-content: space-between;
-    align-items: center;
-    padding-bottom: 16px;
-    margin-bottom: 20px;
-    border-bottom: 1px solid var(--border-subtle);
-    font-size: 1rem;
-    color: var(--text-main);
-  }
-
-  .sidebar-close {
-    background: transparent;
-    border: none;
-    color: var(--text-muted);
-    font-size: 1.2rem;
-    cursor: pointer;
-    padding: 4px 8px;
-  }
-
-  .sidebar-section {
-    margin-bottom: 26px;
-  }
-  .sidebar-title {
-    font-size: 0.76rem;
-    text-transform: uppercase;
-    letter-spacing: 0.08em;
-    color: var(--text-dim);
-    font-weight: 700;
-    margin-bottom: 10px;
-    padding-left: 10px;
-  }
-  .sidebar-links {
-    list-style: none;
-    display: flex;
-    flex-direction: column;
-    gap: 3px;
-  }
-  .sidebar-link {
-    display: block;
-    padding: 7px 12px;
-    color: var(--text-muted);
-    text-decoration: none;
-    font-size: 0.9rem;
-    font-weight: 500;
-    border-radius: var(--radius-sm);
-    transition: all 0.2s ease;
-  }
-  .sidebar-link:hover, .sidebar-link.active {
-    background: rgba(255, 255, 255, 0.04);
-    color: var(--text-main);
-  }
-  .sidebar-link.active {
-    color: var(--crimson-light);
-    font-weight: 700;
-    border-left: 2px solid var(--crimson);
-    border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
-  }
-
-  .sidebar-backdrop {
-    display: none;
-  }
-
   main.docs-content {
     flex: 1;
     padding: 40px 48px 96px;
@@ -461,20 +109,20 @@ make clean-cache    # Clear shared package caches to reclaim disk space</code></
     min-width: 0;
     width: 100%;
   }
-  .docs-content h1 {
+  .docs-content :global(h1) {
     font-size: 2.8rem;
     font-weight: 800;
     margin-bottom: 14px;
     line-height: 1.2;
     word-break: break-word;
   }
-  .docs-content .lead {
+  .docs-content :global(.lead) {
     font-size: 1.18rem;
     color: var(--text-muted);
     margin-bottom: 40px;
     line-height: 1.7;
   }
-  .docs-content h2 {
+  .docs-content :global(h2) {
     font-size: 1.8rem;
     font-weight: 800;
     margin: 44px 0 16px;
@@ -482,49 +130,49 @@ make clean-cache    # Clear shared package caches to reclaim disk space</code></
     border-top: 1px solid var(--border-subtle);
     word-break: break-word;
   }
-  .docs-content h3 {
+  .docs-content :global(h3) {
     font-size: 1.25rem;
     font-weight: 700;
     margin: 28px 0 10px;
     color: #f1f5f9;
     word-break: break-word;
   }
-  .docs-content p {
+  .docs-content :global(p) {
     color: var(--text-muted);
     margin-bottom: 18px;
     line-height: 1.7;
   }
-  .docs-content ul {
+  .docs-content :global(ul) {
     color: var(--text-muted);
     margin-left: 20px;
     margin-bottom: 24px;
     line-height: 1.7;
   }
-  .docs-content li {
+  .docs-content :global(li) {
     margin-bottom: 8px;
   }
-  .docs-content a {
+  .docs-content :global(a) {
     color: var(--crimson-light);
     text-decoration: underline;
   }
 
-  .callout {
+  .docs-content :global(.callout) {
     padding: 18px 22px;
     border-radius: var(--radius-md);
     margin: 24px 0;
     border-left: 4px solid;
   }
-  .callout.tip {
+  .docs-content :global(.callout.tip) {
     border-color: var(--crimson);
     background: var(--crimson-dim);
   }
-  .callout-title {
+  .docs-content :global(.callout-title) {
     font-weight: 700;
     margin-bottom: 4px;
     color: #fff;
   }
 
-  pre.code-block {
+  .docs-content :global(pre.code-block) {
     background: var(--bg-code);
     border: 1px solid var(--border-subtle);
     border-radius: var(--radius-md);
@@ -539,7 +187,7 @@ make clean-cache    # Clear shared package caches to reclaim disk space</code></
     -webkit-overflow-scrolling: touch;
   }
 
-  .table-wrapper {
+  .docs-content :global(.table-wrapper) {
     background: var(--bg-card);
     border: 1px solid var(--border-subtle);
     border-radius: var(--radius-lg);
@@ -549,79 +197,36 @@ make clean-cache    # Clear shared package caches to reclaim disk space</code></
     width: 100%;
     -webkit-overflow-scrolling: touch;
   }
-  table.comparison-table {
+  .docs-content :global(table.comparison-table) {
     width: 100%;
     border-collapse: collapse;
     min-width: 540px;
   }
-  table.comparison-table th, table.comparison-table td {
+  .docs-content :global(table.comparison-table th),
+  .docs-content :global(table.comparison-table td) {
     padding: 14px 18px;
     border-bottom: 1px solid var(--border-subtle);
     font-size: 0.9rem;
   }
-  table.comparison-table th {
+  .docs-content :global(table.comparison-table th) {
     background: rgba(255, 255, 255, 0.02);
     color: var(--text-dim);
     text-transform: uppercase;
     font-size: 0.8rem;
     letter-spacing: 0.05em;
   }
-  table.comparison-table a {
-    color: var(--crimson-light);
-  }
 
-  /* Responsive Rules for Tablet & Mobile */
   @media (max-width: 1024px) {
     .mobile-docs-bar {
       display: flex;
     }
-
-    aside.docs-sidebar {
-      position: fixed;
-      top: var(--header-height);
-      left: -100%;
-      width: 82%;
-      max-width: 320px;
-      height: calc(100vh - var(--header-height));
-      z-index: 150;
-      background: var(--bg-secondary);
-      border-right: 1px solid var(--border-card);
-      box-shadow: 20px 0 50px rgba(0, 0, 0, 0.8);
-      transition: left 0.3s cubic-bezier(0.16, 1, 0.3, 1);
-      display: block;
-      padding: 24px 18px 48px;
-    }
-
-    aside.docs-sidebar.drawer-open {
-      left: 0;
-    }
-
-    .sidebar-header-mobile {
-      display: flex;
-    }
-
-    .sidebar-backdrop {
-      display: none;
-      position: fixed;
-      top: var(--header-height);
-      left: 0;
-      width: 100%;
-      height: calc(100vh - var(--header-height));
-      background: rgba(0, 0, 0, 0.65);
-      backdrop-filter: blur(4px);
-      z-index: 140;
-    }
-    .sidebar-backdrop.show {
-      display: block;
-    }
-
     main.docs-content {
       padding: 20px 8px 64px;
     }
-    .docs-content h1 { font-size: 2.2rem; }
-    .docs-content h2 { font-size: 1.5rem; }
-    .docs-content .lead { font-size: 1.05rem; }
-    pre.code-block { font-size: 0.8rem; padding: 14px; }
+    .docs-content :global(h1) { font-size: 2.2rem; }
+    .docs-content :global(h2) { font-size: 1.5rem; }
+    .docs-content :global(.lead) { font-size: 1.05rem; }
+    .docs-content :global(pre.code-block) { font-size: 0.8rem; padding: 14px; }
   }
 </style>
 

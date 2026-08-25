@@ -1,0 +1,21 @@
+---
+// DocsHybridRouting: Hybrid routing logic and YAML workflow examples
+---
+
+<h2 id="hybrid-routing">Hybrid Auto-Routing</h2>
+<p>
+  With <code>RUNNER_BACKEND=auto</code> and <code>AUTO_ROUTE_VM=true</code>, you don't need to choose a single engine. The autoscaler inspects workflow labels and job names:
+</p>
+<pre class="code-block"><code># Standard unit test runs in ultra-fast Docker container (~0.3s)
+jobs:
+  test:
+    runs-on: [ self-hosted, local ]
+    steps:
+      - run: npm test
+
+# Lighthouse / Browser E2E automatically routes to dedicated Linux VM!
+jobs:
+  audit:
+    runs-on: [ self-hosted, local, browser ]  # Triggers: 'browser', 'e2e', 'lighthouse', 'systemd', 'vm'
+    steps:
+      - run: npx lhci autorun</code></pre>

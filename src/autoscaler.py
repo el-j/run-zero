@@ -7,17 +7,17 @@ Includes persistent multi-language package caching, proxy registries, and adapti
 """
 
 import os
-import re
 import sys
 import time
 import signal
-import json
-import urllib.request
-import urllib.error
-from datetime import datetime, timezone, timedelta
-from typing import List, Dict, Tuple, Any
+from typing import List, Dict, Any
 
 from drivers import get_driver, get_available_drivers, RunnerDriver, RunnerInfo
+from github_api import github_request, get_queued_job_details, rate_limit_remaining
+from discovery import discover_repositories
+from reconciler import reconcile_zombie_runners
+from router import select_driver_for_job
+from cache_manager import init_cache_dirs
 
 # Configuration from environment variables
 ACCESS_TOKEN = os.getenv("ACCESS_TOKEN") or os.getenv("GITHUB_TOKEN")
@@ -29,306 +29,26 @@ ACTIVE_DAYS = int(os.getenv("ACTIVE_REPO_DAYS", "60"))
 DISCOVERY_INTERVAL = int(os.getenv("DISCOVERY_INTERVAL", "900"))
 
 # Driver & Architecture configuration
-RUNNER_BACKEND = os.getenv("RUNNER_BACKEND", "auto").lower().strip()
-RUNNER_ARCH = os.getenv("RUNNER_ARCH", "both").lower().strip()
-RUNNER_LABELS_CUSTOM = os.getenv("RUNNER_LABELS", "").strip()
-
-# Hybrid Auto-Routing settings
+RUNNER_BACKEND = os.getenv("RUNNER_BACKEND", "auto").strip().lower()
 AUTO_ROUTE_VM = os.getenv("AUTO_ROUTE_VM", "true").lower() in ("true", "1", "yes")
-VM_TRIGGER_LABELS = [
-    label.strip().lower()
-    for label in os.getenv("VM_TRIGGER_LABELS", "vm,browser,e2e,lighthouse,systemd,gui,unconfined").split(",")
-    if label.strip()
-]
+RUNNER_ARCH = os.getenv("RUNNER_ARCH", "both").strip().lower()
+PROXIES_ENABLED = os.getenv("PROXIES_ENABLED", "true").lower() in ("true", "1", "yes")
 
+# Concurrency & Cache settings
+CACHE_ENABLED = os.getenv("CACHE_ENABLED", "true").lower() in ("true", "1", "yes")
+HOST_CACHE_DIR = os.getenv("HOST_CACHE_DIR", "")
 MIN_RUNNERS = int(os.getenv("MIN_RUNNERS", "0"))
 MAX_RUNNERS = int(os.getenv("MAX_RUNNERS", "4"))
 POLL_INTERVAL = int(os.getenv("POLL_INTERVAL", "10"))
-DOCKER_SOCK = os.getenv("DOCKER_SOCK", "/var/run/docker.sock")
-DOCKER_NETWORK = os.getenv("DOCKER_NETWORK", "host")
 
-# Persistent Cache & Proxy Configuration
-CACHE_ENABLED = os.getenv("CACHE_ENABLED", "true").lower() in ("true", "1", "yes")
-PROXIES_ENABLED = os.getenv("PROXIES_ENABLED", "true").lower() in ("true", "1", "yes")
-HOST_CACHE_DIR = os.getenv("HOST_CACHE_DIR", "").strip()
-
-API_BASE = "https://api.github.com"
 running = True
 
-# Rate-limiting state
-rate_limit_remaining = 5000
-rate_limit_reset = time.time() + 3600
 
-
-def signal_handler(signum, frame):
-    global running
-    print("\n[Autoscaler] Received shutdown signal. Cleaning up...")
-    running = False
-
-
-signal.signal(signal.SIGINT, signal_handler)
-signal.signal(signal.SIGTERM, signal_handler)
-
-
-def init_cache_dirs(arch: str):
-    """Ensure host cache directories exist.
-
-    `toolcache` gets its own arch-suffixed host directory rather than being
-    shared like the other caches: GitHub Actions' tool-cache format doesn't
-    always segment by architecture on its own (actions/setup-go and setup-node
-    do — they cache under .../<version>/x64 — but gittools/actions/gitversion
-    does not, caching flatly under .../GitVersion.Tool/<version> with no arch
-    component at all). With RUNNER_ARCH=both spawning both arm64 and amd64
-    ephemeral runners against one shared host-mounted /opt/hostedtoolcache, an
-    arm64 run can cache an arm64 binary that a later amd64 run then finds
-    "in cache" and tries to execute — surfacing as a wrong-executable-format /
-    "dynamic loader not found" failure under Rosetta emulation. The other
-    caches here (npm, go modules, etc.) hold source/bytecode, not compiled
-    native binaries, so they're safe to keep shared across architectures.
-    """
-    if not CACHE_ENABLED:
-        return {}
-
-    subdirs = {
-        "npm": "/home/runner/.npm",
-        "yarn": "/home/runner/.cache/yarn",
-        "pnpm": "/home/runner/.local/share/pnpm/store",
-        "pip": "/home/runner/.cache/pip",
-        "uv": "/home/runner/.cache/uv",
-        "go-mod": "/home/runner/go/pkg/mod",
-        "go-build": "/home/runner/.cache/go-build",
-        "cargo-registry": "/home/runner/.cargo/registry"
-    }
-
-    os.makedirs(HOST_CACHE_DIR, exist_ok=True)
-    mount_mappings = {}
-
-    toolcache_host_path = os.path.join(HOST_CACHE_DIR, "toolcache", arch)
-    os.makedirs(toolcache_host_path, exist_ok=True)
-    mount_mappings[toolcache_host_path] = "/opt/hostedtoolcache"
-
-    for key, container_path in subdirs.items():
-        host_path = os.path.join(HOST_CACHE_DIR, key)
-        os.makedirs(host_path, exist_ok=True)
-        mount_mappings[host_path] = container_path
-
-    return mount_mappings
-
-
-def github_request(endpoint, method="GET"):
-    """Perform an authenticated GitHub REST API request with rate-limit tracking.
-
-    Returns the parsed JSON body, True for a bodiless success (204/202, e.g.
-    DELETE or POST .../cancel), or None on failure.
-    """
-    global rate_limit_remaining, rate_limit_reset
-
-    now = time.time()
-    if rate_limit_remaining < 15 and now < rate_limit_reset:
-        wait_seconds = max(5, int(rate_limit_reset - now) + 2)
-        print(f"[Autoscaler] ⚠️ API rate limit low ({rate_limit_remaining} remaining). Backing off for {wait_seconds}s...", file=sys.stderr)
-        time.sleep(wait_seconds)
-
-    url = f"{API_BASE}{endpoint}"
-    req = urllib.request.Request(url, method=method)
-    req.add_header("Authorization", f"Bearer {ACCESS_TOKEN}")
-    req.add_header("Accept", "application/vnd.github+json")
-    req.add_header("X-GitHub-Api-Version", "2022-11-28")
-    req.add_header("User-Agent", "RunZero-Autoscaler")
-
-    try:
-        with urllib.request.urlopen(req, timeout=10) as resp:
-            headers = resp.headers
-            if "x-ratelimit-remaining" in headers:
-                try:
-                    rate_limit_remaining = int(headers["x-ratelimit-remaining"])
-                    rate_limit_reset = int(headers["x-ratelimit-reset"])
-                except Exception:
-                    pass
-            body = resp.read().decode("utf-8")
-            return json.loads(body) if body else True
-    except urllib.error.HTTPError as e:
-        headers = e.headers or {}
-        if "x-ratelimit-remaining" in headers:
-            try:
-                rate_limit_remaining = int(headers["x-ratelimit-remaining"])
-                rate_limit_reset = int(headers["x-ratelimit-reset"])
-            except Exception:
-                pass
-
-        if e.code in (403, 429):
-            wait_seconds = max(10, int(rate_limit_reset - time.time()) + 2) if rate_limit_reset > time.time() else 60
-            print(f"[Autoscaler] ⛔ GitHub API rate limit reached ({e.code}). Pausing for {wait_seconds}s...", file=sys.stderr)
-            time.sleep(min(wait_seconds, 300))
-        else:
-            body = e.read().decode("utf-8") if e.fp else ""
-            print(f"[Autoscaler] API Error ({e.code}) for {endpoint}: {body}", file=sys.stderr)
-        return None
-    except Exception as e:
-        print(f"[Autoscaler] Request Error for {endpoint}: {e}", file=sys.stderr)
-        return None
-
-
-# Prefixes used by docker_driver.py and orbstack_vm_driver.py respectively —
-# only reconcile runners we actually spawned, never touch anyone else's.
-MANAGED_RUNNER_PREFIXES = ("local-runner-", "runzero-vm-")
-
-
-def reconcile_zombie_runners(repos):
-    """Find and unstick runners GitHub still thinks are busy but that are
-    actually dead.
-
-    An ephemeral runner's container/VM can be killed (crash, or a `make
-    stop`/restart while it's mid-job) before its own cleanup trap gets to call
-    GitHub's deregistration endpoint. GitHub then leaves it registered as
-    `offline` but `busy: true` forever, and the job pinned to it hangs
-    indefinitely — cancelling that job or deleting that runner via the API
-    both get rejected while the other side of that state persists, so nothing
-    about it self-resolves. This cancels whatever run is still pinned to a
-    zombie runner, then removes the stale registration so a fresh runner can
-    pick the job back up on retry.
-    """
-    for repo in repos:
-        data = github_request(f"/repos/{repo}/actions/runners")
-        if not data or "runners" not in data:
-            continue
-
-        zombies = [
-            r for r in data["runners"]
-            if r.get("status") == "offline"
-            and r.get("busy")
-            and str(r.get("name", "")).startswith(MANAGED_RUNNER_PREFIXES)
-        ]
-        if not zombies:
-            continue
-
-        runs_data = github_request(f"/repos/{repo}/actions/runs?status=in_progress&per_page=20")
-        in_progress_runs = (runs_data or {}).get("workflow_runs", [])
-
-        for zombie in zombies:
-            print(f"[Autoscaler] ⚠️  Zombie runner detected: {zombie['name']} (offline but marked busy) — reconciling...", file=sys.stderr)
-
-            for run in in_progress_runs:
-                jobs_data = github_request(f"/repos/{repo}/actions/runs/{run['id']}/jobs")
-                jobs = (jobs_data or {}).get("jobs", [])
-                if any(j.get("runner_name") == zombie["name"] for j in jobs):
-                    print(f"[Autoscaler] Cancelling run #{run.get('run_number')} ({run['id']}) pinned to dead runner {zombie['name']}", file=sys.stderr)
-                    github_request(f"/repos/{repo}/actions/runs/{run['id']}/cancel", method="POST")
-                    break
-
-            if github_request(f"/repos/{repo}/actions/runners/{zombie['id']}", method="DELETE"):
-                print(f"[Autoscaler] Removed stale runner registration: {zombie['name']}", file=sys.stderr)
-            else:
-                print(f"[Autoscaler] Could not remove {zombie['name']} yet (run cancellation likely still in flight) — will retry next cycle", file=sys.stderr)
-
-
-def discover_repositories():
-    """Discover list of active repositories to monitor."""
-    repos = set()
-
-    if REPOS_CONFIG:
-        for r in REPOS_CONFIG.split(","):
-            r = r.strip()
-            if r:
-                repos.add(r)
-        return sorted(list(repos))
-
-    if AUTO_DISCOVER and ACCESS_TOKEN:
-        cutoff_date = datetime.now(timezone.utc) - timedelta(days=ACTIVE_DAYS)
-        page = 1
-        while True:
-            data = github_request(f"/user/repos?per_page=100&affiliation=owner&sort=pushed&direction=desc&page={page}")
-            if not isinstance(data, list) or not data:
-                break
-
-            stop_pagination = False
-            for item in data:
-                if not isinstance(item, dict) or item.get("archived", False):
-                    continue
-
-                full_name = item.get("full_name", "")
-                if OWNER and not full_name.startswith(f"{OWNER}/"):
-                    continue
-
-                pushed_at_str = item.get("pushed_at")
-                if pushed_at_str:
-                    try:
-                        pushed_at = datetime.fromisoformat(pushed_at_str.replace("Z", "+00:00"))
-                        if pushed_at < cutoff_date:
-                            stop_pagination = True
-                            break
-                    except Exception:
-                        pass
-
-                repos.add(full_name)
-
-            if stop_pagination or len(data) < 100:
-                break
-            page += 1
-
-    return sorted(list(repos))
-
-
-def get_queued_job_details(repo_full_name: str) -> List[Dict[str, Any]]:
-    """Inspect queued workflow runs and extract job labels for hybrid routing."""
-    data = github_request(f"/repos/{repo_full_name}/actions/runs?status=queued")
-    if not data or "workflow_runs" not in data:
-        return []
-
-    queued_jobs = []
-    for run in data["workflow_runs"]:
-        jobs_data = github_request(f"/repos/{repo_full_name}/actions/runs/{run['id']}/jobs?filter=latest")
-        if jobs_data and "jobs" in jobs_data:
-            for job in jobs_data["jobs"]:
-                if job.get("status") == "queued":
-                    labels = [lbl.lower() for lbl in job.get("labels", [])]
-                    queued_jobs.append({
-                        "id": job.get("id"),
-                        "name": job.get("name"),
-                        "labels": labels,
-                        "repo": repo_full_name
-                    })
-    return queued_jobs
-
-
-def select_driver_for_job(
-    job: Dict[str, Any],
-    default_driver: RunnerDriver,
-    available_drivers: Dict[str, RunnerDriver]
-) -> Tuple[RunnerDriver, str]:
-    """Determine whether a job requires a VM driver or a standard container driver."""
-    job_labels = job.get("labels", [])
-
-    # A job opts into VM routing either explicitly via a custom `runs-on:` label
-    # matching VM_TRIGGER_LABELS, or implicitly because GitHub's own job *name*
-    # contains one of those same trigger words (e.g. a job literally named
-    # "Matrix — E2E (mock auth, Desktop Chrome)" or "Lighthouse CI"). Most real
-    # workflows never add a custom runs-on label for this at all -- relying on
-    # labels alone means those jobs silently never route to a VM even when one
-    # is available and would fix exactly the failure they're hitting (Chrome/
-    # Postgres-service jobs racing under the container driver's host networking).
-    # Tokenize rather than substring-match so a 2-char trigger like "vm" can't
-    # false-positive inside an unrelated word.
-    job_name_tokens = set(re.findall(r"[a-z0-9]+", (job.get("name") or "").lower()))
-    needs_vm = (
-        any(trigger in job_labels for trigger in VM_TRIGGER_LABELS)
-        or bool(job_name_tokens & set(VM_TRIGGER_LABELS))
-    )
-
-    if needs_vm and AUTO_ROUTE_VM:
-        # Prefer VM backends: orbstack-vm -> wsl2 -> multipass
-        for vm_name in ("orbstack-vm", "wsl2", "multipass"):
-            if vm_name in available_drivers:
-                return available_drivers[vm_name], "vm"
-
-    return default_driver, "container"
-
-
-def get_target_architectures():
-    """Return list of architectures to spin up."""
-    if RUNNER_ARCH in ("both", "all", "dual"):
+def get_target_architectures() -> List[str]:
+    """Determine list of architectures to rotate through for pool."""
+    if RUNNER_ARCH == "both":
         return ["arm64", "amd64"]
-    elif RUNNER_ARCH in ("amd64", "x86_64", "x64"):
+    elif RUNNER_ARCH in ("amd64", "x64", "x86_64"):
         return ["amd64"]
     else:
         return ["arm64"]
@@ -370,14 +90,28 @@ def main():
     print(f" Active Filter:    Pushed within last {ACTIVE_DAYS} days")
     print("=" * 65)
 
-    last_discovery_time: float = 0.0
+    def signal_handler(signum, frame):
+        global running
+        print("\n[Autoscaler] Received shutdown signal. Cleaning up...")
+        running = False
+
+    signal.signal(signal.SIGINT, signal_handler)
+    signal.signal(signal.SIGTERM, signal_handler)
+
     tracked_repos: List[str] = []
+    last_discovery_time = 0.0
 
     while running:
         now = time.time()
         # Refresh tracked repositories periodically
         if not ORG and (now - last_discovery_time > DISCOVERY_INTERVAL or not tracked_repos):
-            discovered = discover_repositories()
+            discovered = discover_repositories(
+                owner=OWNER,
+                active_days=ACTIVE_DAYS,
+                auto_discover=AUTO_DISCOVER,
+                repos_config=REPOS_CONFIG,
+                access_token=ACCESS_TOKEN
+            )
             last_discovery_time = now
             if discovered:
                 tracked_repos = discovered
@@ -387,7 +121,7 @@ def main():
                 print(f"[Autoscaler] GitHub API Quota remaining: {rate_limit_remaining}/5000")
 
             if tracked_repos:
-                reconcile_zombie_runners(tracked_repos)
+                reconcile_zombie_runners(tracked_repos, access_token=ACCESS_TOKEN)
 
         # Collect active runners across all drivers
         all_runners: List[RunnerInfo] = []
@@ -400,7 +134,7 @@ def main():
         active_count = len(active_runners)
 
         if ORG:
-            # For organizations
+            # For organizations: scale based on MIN_RUNNERS
             if active_count < MIN_RUNNERS and active_count < MAX_RUNNERS:
                 needed = min(MIN_RUNNERS - active_count, MAX_RUNNERS - active_count)
                 for i in range(needed):
@@ -409,7 +143,7 @@ def main():
                         org=ORG,
                         arch=arch,
                         access_token=ACCESS_TOKEN,
-                        cache_mounts=init_cache_dirs(arch),
+                        cache_mounts=init_cache_dirs(HOST_CACHE_DIR, arch, CACHE_ENABLED),
                         proxies_enabled=PROXIES_ENABLED
                     )
         else:
@@ -418,7 +152,7 @@ def main():
             total_queued = 0
 
             for repo in tracked_repos:
-                jobs = get_queued_job_details(repo)
+                jobs = get_queued_job_details(repo, access_token=ACCESS_TOKEN)
                 if jobs:
                     queued_jobs_by_repo[repo] = jobs
                     total_queued += len(jobs)
@@ -435,7 +169,7 @@ def main():
                     if len(active_runners) >= MAX_RUNNERS or needed <= 0:
                         break
 
-                    driver_to_use, mode = select_driver_for_job(job, default_driver, available_drivers)
+                    driver_to_use, mode = select_driver_for_job(job, default_driver, available_drivers, AUTO_ROUTE_VM)
                     arch = architectures[0]
                     if "amd64" in job.get("labels", []) or "x64" in job.get("labels", []):
                         arch = "amd64"
@@ -444,39 +178,27 @@ def main():
                         repo=repo,
                         arch=arch,
                         access_token=ACCESS_TOKEN,
-                        cache_mounts=init_cache_dirs(arch),
+                        cache_mounts=init_cache_dirs(HOST_CACHE_DIR, arch, CACHE_ENABLED),
                         proxies_enabled=PROXIES_ENABLED
                     )
                     if spawned_id:
-                        active_runners.append(RunnerInfo(
-                            id=spawned_id,
-                            name=spawned_id,
-                            status="running",
-                            state="running",
-                            target_repo=repo,
-                            target_arch=arch,
-                            backend=driver_to_use.name()
-                        ))
                         needed -= 1
+                        active_runners.append(RunnerInfo(
+                        id=spawned_id,
+                        name=spawned_id,
+                        status="running",
+                        state="running",
+                        target_repo=repo,
+                        target_arch=arch,
+                        backend=driver_to_use.name()
+                    ))
 
-            # Maintain MIN_RUNNERS if configured
-            if active_count < MIN_RUNNERS and active_count < MAX_RUNNERS and tracked_repos:
-                needed = min(MIN_RUNNERS - active_count, MAX_RUNNERS - active_count)
-                for i in range(needed):
-                    arch = architectures[i % len(architectures)]
-                    default_driver.spawn_runner(
-                        repo=tracked_repos[0],
-                        arch=arch,
-                        access_token=ACCESS_TOKEN,
-                        cache_mounts=init_cache_dirs(arch),
-                        proxies_enabled=PROXIES_ENABLED
-                    )
+        # Sleep before next poll loop
+        for _ in range(POLL_INTERVAL):
+            if not running:
+                break
+            time.sleep(1)
 
-        # Adaptive sleep pacing
-        sleep_duration = max(POLL_INTERVAL, int(len(tracked_repos) * 0.5))
-        time.sleep(sleep_duration)
-
-    # Cleanup remaining runners across all drivers on shutdown
     print("[Autoscaler] Stopping managed runners on shutdown...")
     for d in available_drivers.values():
         d.cleanup_all()

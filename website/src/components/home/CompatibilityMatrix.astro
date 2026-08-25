@@ -1,0 +1,126 @@
+---
+// CompatibilityMatrix: Host OS and Execution Engine support table
+---
+
+<section class="features-section" id="engines">
+  <div class="section-tag">
+    <span class="tag-accent">//</span>
+    <span>COMPATIBILITY_MATRIX</span>
+  </div>
+
+  <div class="section-heading-group">
+    <h2>Execution Engine Matrix</h2>
+    <p>RunZero adapts to your operating system, supporting containers and full virtual machines across macOS, Windows, and Linux.</p>
+  </div>
+
+  <div class="table-wrapper">
+    <table class="comparison-table">
+      <thead>
+        <tr>
+          <th>Engine Driver</th>
+          <th>Host OS</th>
+          <th>Execution Mode</th>
+          <th>Key Strengths</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><strong>🪐 <a href="https://orbstack.dev/" target="_blank" rel="noopener">OrbStack</a> (Recommended)</strong></td>
+          <td>macOS (Apple Silicon &amp; Intel)</td>
+          <td><span class="tag-crimson">Containers &amp; Linux VMs</span></td>
+          <td>Instant boot, golden VM cloning, Rosetta 2 x86_64 acceleration, full systemd.</td>
+        </tr>
+        <tr>
+          <td><strong>🐳 <a href="https://www.docker.com/" target="_blank" rel="noopener">Docker Desktop</a></strong></td>
+          <td>macOS, Windows, Linux</td>
+          <td><span class="tag-crimson">Containers</span></td>
+          <td>Universal cross-platform container support.</td>
+        </tr>
+        <tr>
+          <td><strong>🪟 <a href="https://learn.microsoft.com/en-us/windows/wsl/" target="_blank" rel="noopener">Windows WSL2</a></strong></td>
+          <td>Windows 10/11 &amp; Server</td>
+          <td><span class="tag-crimson">Native Linux VMs</span></td>
+          <td>Native Linux execution without requiring Docker Desktop on Windows.</td>
+        </tr>
+        <tr>
+          <td><strong>🚀 <a href="https://multipass.run/" target="_blank" rel="noopener">Canonical Multipass</a></strong></td>
+          <td>macOS, Windows, Linux</td>
+          <td><span class="tag-crimson">Virtual Machines</span></td>
+          <td>Universal cross-platform Ubuntu VMs via QEMU / Hyper-V / VirtualBox.</td>
+        </tr>
+        <tr>
+          <td><strong>🐧 <a href="https://docs.docker.com/engine/" target="_blank" rel="noopener">Native Linux Docker</a></strong></td>
+          <td>Ubuntu, Debian, Arch, Homelabs</td>
+          <td><span class="tag-crimson">Native Containers</span></td>
+          <td>Zero VM layer, direct kernel speed for homelab servers.</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<style>
+  .features-section {
+    padding: 72px 0;
+  }
+
+  .section-tag {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    font-family: var(--font-mono);
+    font-size: 0.75rem;
+    font-weight: 800;
+    color: var(--crimson-light);
+    letter-spacing: 0.08em;
+    margin-bottom: 12px;
+  }
+  .tag-accent { color: var(--text-dim); }
+
+  .section-heading-group {
+    margin-bottom: 48px;
+  }
+  .section-heading-group h2 {
+    font-size: 2.4rem;
+    margin-bottom: 10px;
+  }
+  .section-heading-group p {
+    color: var(--text-muted);
+    font-size: 1.08rem;
+    max-width: 680px;
+  }
+
+  .tag-crimson {
+    color: var(--crimson-light);
+    font-weight: 700;
+  }
+
+  .table-wrapper {
+    background: var(--bg-card);
+    border: 1px solid var(--border-subtle);
+    border-radius: var(--radius-lg);
+    overflow-x: auto;
+    box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.8);
+  }
+  table.comparison-table {
+    width: 100%;
+    border-collapse: collapse;
+    min-width: 600px;
+  }
+  table.comparison-table th, table.comparison-table td {
+    padding: 16px 20px;
+    border-bottom: 1px solid var(--border-subtle);
+    font-size: 0.92rem;
+  }
+  table.comparison-table th {
+    background: rgba(255, 255, 255, 0.02);
+    color: var(--text-dim);
+    font-family: var(--font-mono);
+    font-size: 0.76rem;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+  }
+  table.comparison-table a {
+    color: var(--crimson-light);
+  }
+</style>

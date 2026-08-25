@@ -250,7 +250,7 @@ mutation-test: ## Run mutation testing suite (mutmut)
 
 .PHONY: test
 test: ## Run local unit tests directly
-	@python3 -m unittest discover -s tests -p "test_*.py" -v
+	@PYTHONPATH=src python3 -m unittest discover -s tests -p "test_*.py" -v
 
 .PHONY: run-dev
 run-dev: check-env init-cache ## Run local autoscaler in foreground for interactive debugging (native, full VM support)
