@@ -6,10 +6,31 @@ const baseUrl = import.meta.env.BASE_URL.replace(/\/$/, '');
 
 <Layout title="Documentation — RunZero" description="Complete installation, configuration, driver deep dive, and CLI guide for RunZero." currentPath="/docs">
   <div class="container">
+    
+    <!-- Mobile Table of Contents Bar -->
+    <div class="mobile-docs-bar">
+      <button id="mobile-docs-toggle" class="btn-mobile-docs" aria-expanded="false" aria-controls="docs-sidebar">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"></path>
+          <path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"></path>
+        </svg>
+        <span>Table of Contents</span>
+        <svg class="chevron" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+          <path d="M6 9l6 6 6-6"></path>
+        </svg>
+      </button>
+      <span class="active-section-label" id="mobile-active-section">Quick Start</span>
+    </div>
+
     <div class="docs-layout">
       
       <!-- Sticky Sidebar Navigation -->
       <aside class="docs-sidebar" id="docs-sidebar">
+        <div class="sidebar-header-mobile">
+          <strong>Documentation Sections</strong>
+          <button id="sidebar-close-btn" class="sidebar-close" aria-label="Close sidebar">✕</button>
+        </div>
+
         <div class="sidebar-section">
           <div class="sidebar-title">Getting Started</div>
           <ul class="sidebar-links">
@@ -49,6 +70,9 @@ const baseUrl = import.meta.env.BASE_URL.replace(/\/$/, '');
           </ul>
         </div>
       </aside>
+
+      <!-- Sidebar Backdrop for Mobile -->
+      <div class="sidebar-backdrop" id="sidebar-backdrop"></div>
 
       <!-- Main Documentation Content -->
       <main class="docs-content">
@@ -207,6 +231,8 @@ make logs           # Stream live autoscaler logs
 make test           # Run 68 local unit tests directly (1.1s)
 make test-suite     # Run Flake8 linter, Mypy type-checker, and Pytest coverage
 make mutation-test  # Run Mutmut mutation testing suite
+make website-dev    # Start Astro documentation website development server
+make website-build  # Build Astro static website and synchronize to docs/
 make verdaccio-ui   # Open Verdaccio NPM registry dashboard (http://localhost:49501)
 make cache-size     # Show disk usage of persistent package & tool caches
 make clean-cache    # Clear shared package caches to reclaim disk space</code></pre>
@@ -228,6 +254,45 @@ make clean-cache    # Clear shared package caches to reclaim disk space</code></
 </Layout>
 
 <style>
+  .mobile-docs-bar {
+    display: none;
+    position: sticky;
+    top: var(--header-height);
+    z-index: 90;
+    background: rgba(12, 16, 26, 0.95);
+    backdrop-filter: blur(16px);
+    -webkit-backdrop-filter: blur(16px);
+    border-bottom: 1px solid var(--border-subtle);
+    padding: 10px 16px;
+    align-items: center;
+    justify-content: space-between;
+    margin: 0 -16px 20px;
+  }
+
+  .btn-mobile-docs {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    background: rgba(99, 102, 241, 0.15);
+    border: 1px solid var(--border-accent);
+    color: var(--primary-light);
+    padding: 6px 12px;
+    border-radius: var(--radius-sm);
+    font-size: 0.85rem;
+    font-weight: 700;
+    cursor: pointer;
+  }
+
+  .active-section-label {
+    font-size: 0.82rem;
+    color: var(--text-dim);
+    font-weight: 600;
+    max-width: 160px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
   .docs-layout {
     display: flex;
     min-height: calc(100vh - var(--header-height));
@@ -243,7 +308,29 @@ make clean-cache    # Clear shared package caches to reclaim disk space</code></
     border-right: 1px solid var(--border-subtle);
     overflow-y: auto;
     flex-shrink: 0;
+    background: var(--bg-primary);
   }
+
+  .sidebar-header-mobile {
+    display: none;
+    justify-content: space-between;
+    align-items: center;
+    padding-bottom: 16px;
+    margin-bottom: 20px;
+    border-bottom: 1px solid var(--border-subtle);
+    font-size: 1rem;
+    color: var(--text-main);
+  }
+
+  .sidebar-close {
+    background: transparent;
+    border: none;
+    color: var(--text-muted);
+    font-size: 1.2rem;
+    cursor: pointer;
+    padding: 4px 8px;
+  }
+
   .sidebar-section {
     margin-bottom: 26px;
   }
@@ -283,15 +370,23 @@ make clean-cache    # Clear shared package caches to reclaim disk space</code></
     border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
   }
 
+  .sidebar-backdrop {
+    display: none;
+  }
+
   main.docs-content {
     flex: 1;
     padding: 40px 48px 96px;
     max-width: 920px;
+    min-width: 0;
+    width: 100%;
   }
   .docs-content h1 {
     font-size: 2.8rem;
     font-weight: 800;
     margin-bottom: 14px;
+    line-height: 1.2;
+    word-break: break-word;
   }
   .docs-content .lead {
     font-size: 1.18rem;
@@ -305,12 +400,14 @@ make clean-cache    # Clear shared package caches to reclaim disk space</code></
     margin: 44px 0 16px;
     padding-top: 24px;
     border-top: 1px solid var(--border-subtle);
+    word-break: break-word;
   }
   .docs-content h3 {
     font-size: 1.25rem;
     font-weight: 700;
     margin: 28px 0 10px;
     color: #f1f5f9;
+    word-break: break-word;
   }
   .docs-content p {
     color: var(--text-muted);
@@ -319,7 +416,7 @@ make clean-cache    # Clear shared package caches to reclaim disk space</code></
   }
   .docs-content ul {
     color: var(--text-muted);
-    margin-left: 24px;
+    margin-left: 20px;
     margin-bottom: 24px;
     line-height: 1.7;
   }
@@ -347,13 +444,15 @@ make clean-cache    # Clear shared package caches to reclaim disk space</code></
     background: var(--bg-code);
     border: 1px solid var(--border-subtle);
     border-radius: var(--radius-md);
-    padding: 20px;
+    padding: 18px;
     margin: 20px 0;
     overflow-x: auto;
     font-family: var(--font-mono);
     font-size: 0.88rem;
     line-height: 1.7;
     color: #e2e8f0;
+    max-width: 100%;
+    -webkit-overflow-scrolling: touch;
   }
 
   .table-wrapper {
@@ -362,10 +461,14 @@ make clean-cache    # Clear shared package caches to reclaim disk space</code></
     border-radius: var(--radius-lg);
     overflow-x: auto;
     margin: 24px 0 32px;
+    max-width: 100%;
+    width: 100%;
+    -webkit-overflow-scrolling: touch;
   }
   table.comparison-table {
     width: 100%;
     border-collapse: collapse;
+    min-width: 540px;
   }
   table.comparison-table th, table.comparison-table td {
     padding: 14px 18px;
@@ -380,8 +483,116 @@ make clean-cache    # Clear shared package caches to reclaim disk space</code></
     letter-spacing: 0.05em;
   }
 
+  /* Responsive Rules for Tablet & Mobile */
   @media (max-width: 1024px) {
-    aside.docs-sidebar { display: none; }
-    main.docs-content { padding: 32px 16px 64px; }
+    .mobile-docs-bar {
+      display: flex;
+    }
+
+    aside.docs-sidebar {
+      position: fixed;
+      top: var(--header-height);
+      left: -100%;
+      width: 82%;
+      max-width: 320px;
+      height: calc(100vh - var(--header-height));
+      z-index: 150;
+      background: #0c101a;
+      border-right: 1px solid var(--border-card);
+      box-shadow: 20px 0 50px rgba(0, 0, 0, 0.8);
+      transition: left 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+      display: block;
+      padding: 24px 18px 48px;
+    }
+
+    aside.docs-sidebar.drawer-open {
+      left: 0;
+    }
+
+    .sidebar-header-mobile {
+      display: flex;
+    }
+
+    .sidebar-backdrop {
+      display: none;
+      position: fixed;
+      top: var(--header-height);
+      left: 0;
+      width: 100%;
+      height: calc(100vh - var(--header-height));
+      background: rgba(0, 0, 0, 0.65);
+      backdrop-filter: blur(4px);
+      z-index: 140;
+    }
+    .sidebar-backdrop.show {
+      display: block;
+    }
+
+    main.docs-content {
+      padding: 20px 8px 64px;
+    }
+    .docs-content h1 { font-size: 2.2rem; }
+    .docs-content h2 { font-size: 1.5rem; }
+    .docs-content .lead { font-size: 1.05rem; }
+    pre.code-block { font-size: 0.8rem; padding: 14px; }
   }
 </style>
+
+<script>
+  const toggleBtn = document.getElementById('mobile-docs-toggle');
+  const sidebar = document.getElementById('docs-sidebar');
+  const backdrop = document.getElementById('sidebar-backdrop');
+  const closeBtn = document.getElementById('sidebar-close-btn');
+  const activeLabel = document.getElementById('mobile-active-section');
+  const sidebarLinks = document.querySelectorAll('.sidebar-link');
+  const sections = document.querySelectorAll('main.docs-content h2[id]');
+
+  function openSidebar() {
+    if (sidebar) sidebar.classList.add('drawer-open');
+    if (backdrop) backdrop.classList.add('show');
+    if (toggleBtn) toggleBtn.setAttribute('aria-expanded', 'true');
+  }
+
+  function closeSidebar() {
+    if (sidebar) sidebar.classList.remove('drawer-open');
+    if (backdrop) backdrop.classList.remove('show');
+    if (toggleBtn) toggleBtn.setAttribute('aria-expanded', 'false');
+  }
+
+  if (toggleBtn) toggleBtn.addEventListener('click', openSidebar);
+  if (closeBtn) closeBtn.addEventListener('click', closeSidebar);
+  if (backdrop) backdrop.addEventListener('click', closeSidebar);
+
+  sidebarLinks.forEach(link => {
+    link.addEventListener('click', () => {
+      closeSidebar();
+    });
+  });
+
+  // Active section scroll tracking
+  window.addEventListener('scroll', () => {
+    let currentId = '';
+    let currentTitle = '';
+    const scrollPos = window.scrollY + 140;
+
+    sections.forEach(section => {
+      const top = (section as HTMLElement).offsetTop;
+      if (scrollPos >= top) {
+        currentId = section.getAttribute('id') || '';
+        currentTitle = section.textContent || '';
+      }
+    });
+
+    if (currentId) {
+      sidebarLinks.forEach(link => {
+        link.classList.remove('active');
+        if (link.getAttribute('href') === `#${currentId}`) {
+          link.classList.add('active');
+        }
+      });
+      if (activeLabel && currentTitle) {
+        activeLabel.textContent = currentTitle;
+      }
+    }
+  });
+</script>
