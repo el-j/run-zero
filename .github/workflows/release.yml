@@ -4,6 +4,7 @@ on:
   push:
     branches:
       - main
+      - develop
     paths-ignore:
       - 'website/dist/**'
       - 'docs/**'
@@ -26,7 +27,7 @@ permissions:
 
 jobs:
   release:
-    name: Create SemVer Release
+    name: Calculate & Publish SemVer Release
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repository
@@ -34,34 +35,48 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Determine Next SemVer Tag
+      - name: Calculate Accurate SemVer Tag
         id: semver
         run: |
-          # Fetch all git tags
           git fetch --tags
-          LATEST_TAG=$(git describe --tags --abbrev=0 2>/dev/null || echo "v2.0.0")
-          echo "Latest tag found: $LATEST_TAG"
+          BRANCH="${GITHUB_REF_NAME}"
+          LATEST_STABLE=$(git tag -l "v[0-9]*.[0-9]*.[0-9]*" --sort=-v:refname | head -n 1)
           
-          # Strip 'v' prefix
-          VERSION=${LATEST_TAG#v}
-          IFS='.' read -r MAJOR MINOR PATCH <<< "$VERSION"
-          
-          BUMP="${{ github.event.inputs.version_bump || 'patch' }}"
-          
-          if [ "$BUMP" = "major" ]; then
-            NEW_MAJOR=$((MAJOR + 1))
-            NEW_VERSION="v${NEW_MAJOR}.0.0"
-          elif [ "$BUMP" = "minor" ]; then
-            NEW_MINOR=$((MINOR + 1))
-            NEW_VERSION="v${MAJOR}.${NEW_MINOR}.0"
+          if [ -z "$LATEST_STABLE" ]; then
+            BASE_VERSION="0.0.1"
           else
-            NEW_PATCH=$((PATCH + 1))
-            NEW_VERSION="v${MAJOR}.${MINOR}.${NEW_PATCH}"
+            BASE_VERSION="${LATEST_STABLE#v}"
           fi
           
-          echo "Next release version: $NEW_VERSION"
+          COMMIT_COUNT=$(git rev-list --count HEAD)
+          
+          if [ "$BRANCH" = "main" ]; then
+            if [ -z "$LATEST_STABLE" ]; then
+              NEW_VERSION="v0.0.1"
+            else
+              IFS='.' read -r MAJOR MINOR PATCH <<< "$BASE_VERSION"
+              BUMP="${{ github.event.inputs.version_bump || 'patch' }}"
+              if [ "$BUMP" = "major" ]; then
+                NEW_VERSION="v$((MAJOR + 1)).0.0"
+              elif [ "$BUMP" = "minor" ]; then
+                NEW_VERSION="v${MAJOR}.$((MINOR + 1)).0"
+              else
+                NEW_VERSION="v${MAJOR}.${MINOR}.$((PATCH + 1))"
+              fi
+            fi
+            IS_PRERELEASE="false"
+          elif [ "$BRANCH" = "develop" ]; then
+            NEW_VERSION="v${BASE_VERSION}-beta.${COMMIT_COUNT}"
+            IS_PRERELEASE="true"
+          else
+            NEW_VERSION="v${BASE_VERSION}-alpha.${COMMIT_COUNT}"
+            IS_PRERELEASE="true"
+          fi
+          
+          echo "Calculated release tag: $NEW_VERSION (prerelease: $IS_PRERELEASE)"
           echo "new_tag=$NEW_VERSION" >> $GITHUB_OUTPUT
-          echo "previous_tag=$LATEST_TAG" >> $GITHUB_OUTPUT
+          echo "is_prerelease=$IS_PRERELEASE" >> $GITHUB_OUTPUT
+          echo "previous_tag=${LATEST_STABLE:-v0.0.0}" >> $GITHUB_OUTPUT
 
       - name: Generate Release Notes
         id: changelog
@@ -71,23 +86,19 @@ jobs:
           
           echo "## ⚡ RunZero ${NEW} Release Notes" > RELEASE_NOTES.md
           echo "" >> RELEASE_NOTES.md
-          echo "### 🚀 What's Changed" >> RELEASE_NOTES.md
-          if [ "$PREV" != "$NEW" ]; then
-            git log ${PREV}..HEAD --pretty=format:"* %s ([%h](https://github.com/${{ github.repository }}/commit/%H))" --no-merges >> RELEASE_NOTES.md || true
-          else
-            git log -n 15 --pretty=format:"* %s ([%h](https://github.com/${{ github.repository }}/commit/%H))" --no-merges >> RELEASE_NOTES.md
-          fi
+          echo "### 🚀 Changes in this release:" >> RELEASE_NOTES.md
+          git log -n 20 --pretty=format:"* %s ([%h](https://github.com/${{ github.repository }}/commit/%H))" --no-merges >> RELEASE_NOTES.md
           echo "" >> RELEASE_NOTES.md
           echo "---" >> RELEASE_NOTES.md
-          echo "**Full Changelog**: https://github.com/${{ github.repository }}/compare/${PREV}...${NEW}" >> RELEASE_NOTES.md
+          echo "Branch: \`${GITHUB_REF_NAME}\` | Tag: \`${NEW}\`" >> RELEASE_NOTES.md
 
-      - name: Create GitHub Release
+      - name: Publish GitHub Release
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ steps.semver.outputs.new_tag }}
           name: RunZero ${{ steps.semver.outputs.new_tag }}
           body_path: RELEASE_NOTES.md
           draft: false
-          prerelease: false
+          prerelease: ${{ steps.semver.outputs.is_prerelease == 'true' }}
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

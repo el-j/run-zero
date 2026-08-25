@@ -282,8 +282,13 @@ def main():
     default_driver = get_driver(RUNNER_BACKEND)
     architectures = get_target_architectures()
 
+    try:
+        from version import __version__
+    except ImportError:
+        __version__ = "0.0.1"
+
     print("=" * 65)
-    print(" ⚡ RunZero — Dual-Engine Local GitHub Runner Autoscaler")
+    print(f" ⚡ RunZero v{__version__} — Dual-Engine Local GitHub Runner Autoscaler")
     print(f" Default Engine:   {default_driver.name().upper()}")
     print(f" Available Drivers: {', '.join([k.upper() for k in available_drivers.keys()])}")
     print(f" Hybrid Routing:   {'Enabled (Auto-detecting VM vs Container jobs)' if AUTO_ROUTE_VM else 'Disabled'}")
