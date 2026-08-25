@@ -54,6 +54,33 @@ def get_target_architectures() -> List[str]:
         return ["arm64"]
 
 
+ARM_LABELS = ("arm64", "aarch64", "arm")
+
+
+def resolve_job_arch(job_labels: List[str]) -> str:
+    """Pick the architecture for a job, mirroring GitHub-hosted runner defaults.
+
+    GitHub's own hosted Linux runners (ubuntu-latest and friends) are amd64
+    unless the workflow explicitly opts into one of GitHub's ARM-labeled
+    runners. A workflow's `runs-on:` labels are usually written without ever
+    thinking about the host's CPU architecture, on the assumption that "no
+    arch label" means amd64/x64 -- which is only true on GitHub's own runners.
+    Defaulting an unlabeled job to arm64 here just because that's native to
+    this Mac would silently run it on a different architecture than it would
+    get in the cloud, defeating the whole point of local == cloud behavior.
+    So: explicit arm/arm64/aarch64 label -> arm64, everything else -> amd64.
+    RUNNER_ARCH pins the whole fleet to a single arch when set to anything
+    other than "both", overriding any per-job label.
+    """
+    if RUNNER_ARCH in ("amd64", "x64", "x86_64"):
+        return "amd64"
+    if RUNNER_ARCH != "both":
+        return "arm64"
+    if any(label in job_labels for label in ARM_LABELS):
+        return "arm64"
+    return "amd64"
+
+
 def main():
     if not ACCESS_TOKEN:
         print("[Autoscaler] Error: ACCESS_TOKEN is required for autoscaling.", file=sys.stderr)
@@ -129,6 +156,15 @@ def main():
             runners = d.list_runners()
             d.prune_exited(runners)
             all_runners.extend(d.list_runners())
+            # Golden base images (currently only OrbStack VM has this concept)
+            # should only ever run while actively being built -- never idle,
+            # since ephemeral job VMs clone its on-disk snapshot without
+            # needing it powered on. Self-heals regardless of how it ended up
+            # running (a manual `make build-vm-base`, a stop that didn't land,
+            # OrbStack resuming it after a host restart, etc).
+            ensure_stopped = getattr(d, "ensure_base_images_stopped", None)
+            if callable(ensure_stopped):
+                ensure_stopped()
 
         if tracked_repos and not ORG:
             # No-ops (zero API calls) unless a runner is actually old enough and
@@ -179,9 +215,7 @@ def main():
                         break
 
                     driver_to_use, mode = select_driver_for_job(job, default_driver, available_drivers, AUTO_ROUTE_VM)
-                    arch = architectures[0]
-                    if "amd64" in job.get("labels", []) or "x64" in job.get("labels", []):
-                        arch = "amd64"
+                    arch = resolve_job_arch(job.get("labels", []))
 
                     spawned_id = driver_to_use.spawn_runner(
                         repo=repo,

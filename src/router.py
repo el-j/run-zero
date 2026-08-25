@@ -44,7 +44,14 @@ def select_driver_for_job(
     # silently loses VM routing the moment the lookup itself fails (e.g. a
     # transient API error), which is exactly the failure mode this replaces.
     declares_services = job.get("declares_services")
-    needs_vm = name_or_label_match or bool(declares_services)
+    # bool(None) is False, which silently did exactly what the comment above
+    # warns against: an unknown/unresolved lookup was treated as "no services"
+    # and lost VM routing (confirmed live -- a real `services: postgres:` job
+    # landed on the Docker driver's bridge network, whose containers aren't
+    # reachable at the runner's own "localhost", causing every DB-backed test
+    # in that job to fail with connection refused). Unknown must fail safe
+    # toward "needs a VM", not toward "doesn't".
+    needs_vm = name_or_label_match or declares_services in (True, None)
 
     if needs_vm and auto_route_vm:
         for vm_name in ("orbstack-vm", "wsl2", "multipass"):

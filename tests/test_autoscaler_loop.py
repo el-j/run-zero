@@ -25,6 +25,32 @@ class TestAutoscalerLoop(unittest.TestCase):
         with patch.object(autoscaler, "RUNNER_ARCH", "arm64"):
             self.assertEqual(autoscaler.get_target_architectures(), ["arm64"])
 
+    def test_resolve_job_arch_defaults_to_amd64_like_github_hosted(self):
+        # No arch label at all -> must match what GitHub-hosted ubuntu-latest
+        # would use (amd64), not whatever's native to this Mac.
+        with patch.object(autoscaler, "RUNNER_ARCH", "both"):
+            self.assertEqual(autoscaler.resolve_job_arch([]), "amd64")
+            self.assertEqual(autoscaler.resolve_job_arch(["self-hosted", "vm"]), "amd64")
+
+    def test_resolve_job_arch_explicit_arm_label_wins(self):
+        with patch.object(autoscaler, "RUNNER_ARCH", "both"):
+            self.assertEqual(autoscaler.resolve_job_arch(["self-hosted", "arm64"]), "arm64")
+            self.assertEqual(autoscaler.resolve_job_arch(["aarch64"]), "arm64")
+            self.assertEqual(autoscaler.resolve_job_arch(["arm"]), "arm64")
+
+    def test_resolve_job_arch_amd64_label_still_amd64(self):
+        with patch.object(autoscaler, "RUNNER_ARCH", "both"):
+            self.assertEqual(autoscaler.resolve_job_arch(["amd64"]), "amd64")
+            self.assertEqual(autoscaler.resolve_job_arch(["x64"]), "amd64")
+
+    def test_resolve_job_arch_single_arch_override_ignores_labels(self):
+        # Operator pinned the whole fleet to one arch -- that wins regardless
+        # of what an individual job's labels say.
+        with patch.object(autoscaler, "RUNNER_ARCH", "amd64"):
+            self.assertEqual(autoscaler.resolve_job_arch(["arm64"]), "amd64")
+        with patch.object(autoscaler, "RUNNER_ARCH", "arm64"):
+            self.assertEqual(autoscaler.resolve_job_arch([]), "arm64")
+
     @patch("autoscaler.ACCESS_TOKEN", "fake-token")
     @patch("autoscaler.HOST_CACHE_DIR")
     @patch("autoscaler.CACHE_ENABLED", True)
