@@ -13,10 +13,8 @@ import signal
 import json
 import urllib.request
 import urllib.error
-import subprocess
-import uuid
 from datetime import datetime, timezone, timedelta
-from typing import List, Dict, Optional, Tuple
+from typing import List, Dict, Tuple, Any
 
 from drivers import get_driver, get_available_drivers, RunnerDriver, RunnerInfo
 
@@ -37,7 +35,9 @@ RUNNER_LABELS_CUSTOM = os.getenv("RUNNER_LABELS", "").strip()
 # Hybrid Auto-Routing settings
 AUTO_ROUTE_VM = os.getenv("AUTO_ROUTE_VM", "true").lower() in ("true", "1", "yes")
 VM_TRIGGER_LABELS = [
-    l.strip().lower() for l in os.getenv("VM_TRIGGER_LABELS", "vm,browser,e2e,lighthouse,systemd,gui,unconfined").split(",") if l.strip()
+    label.strip().lower()
+    for label in os.getenv("VM_TRIGGER_LABELS", "vm,browser,e2e,lighthouse,systemd,gui,unconfined").split(",")
+    if label.strip()
 ]
 
 MIN_RUNNERS = int(os.getenv("MIN_RUNNERS", "0"))
@@ -58,13 +58,16 @@ running = True
 rate_limit_remaining = 5000
 rate_limit_reset = time.time() + 3600
 
+
 def signal_handler(signum, frame):
     global running
     print("\n[Autoscaler] Received shutdown signal. Cleaning up...")
     running = False
 
+
 signal.signal(signal.SIGINT, signal_handler)
 signal.signal(signal.SIGTERM, signal_handler)
+
 
 def init_cache_dirs():
     """Ensure host cache directories exist."""
@@ -91,6 +94,7 @@ def init_cache_dirs():
         mount_mappings[host_path] = container_path
 
     return mount_mappings
+
 
 def github_request(endpoint):
     """Perform authenticated GitHub REST API GET request with rate-limit tracking."""
@@ -140,6 +144,7 @@ def github_request(endpoint):
         print(f"[Autoscaler] Request Error for {endpoint}: {e}", file=sys.stderr)
         return None
 
+
 def discover_repositories():
     """Discover list of active repositories to monitor."""
     repos = set()
@@ -186,6 +191,7 @@ def discover_repositories():
 
     return sorted(list(repos))
 
+
 def get_queued_job_details(repo_full_name: str) -> List[Dict[str, Any]]:
     """Inspect queued workflow runs and extract job labels for hybrid routing."""
     data = github_request(f"/repos/{repo_full_name}/actions/runs?status=queued")
@@ -198,7 +204,7 @@ def get_queued_job_details(repo_full_name: str) -> List[Dict[str, Any]]:
         if jobs_data and "jobs" in jobs_data:
             for job in jobs_data["jobs"]:
                 if job.get("status") == "queued":
-                    labels = [l.lower() for l in job.get("labels", [])]
+                    labels = [lbl.lower() for lbl in job.get("labels", [])]
                     queued_jobs.append({
                         "id": job.get("id"),
                         "name": job.get("name"),
@@ -206,6 +212,7 @@ def get_queued_job_details(repo_full_name: str) -> List[Dict[str, Any]]:
                         "repo": repo_full_name
                     })
     return queued_jobs
+
 
 def select_driver_for_job(
     job: Dict[str, Any],
@@ -226,6 +233,7 @@ def select_driver_for_job(
 
     return default_driver, "container"
 
+
 def get_target_architectures():
     """Return list of architectures to spin up."""
     if RUNNER_ARCH in ("both", "all", "dual"):
@@ -234,6 +242,7 @@ def get_target_architectures():
         return ["amd64"]
     else:
         return ["arm64"]
+
 
 def main():
     if not ACCESS_TOKEN:
@@ -364,6 +373,7 @@ def main():
     for d in available_drivers.values():
         d.cleanup_all()
     print("[Autoscaler] Shutdown complete.")
+
 
 if __name__ == "__main__":
     main()

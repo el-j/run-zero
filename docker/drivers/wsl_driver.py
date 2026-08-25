@@ -11,6 +11,7 @@ import subprocess
 from typing import List, Dict, Optional
 from . import RunnerDriver, RunnerInfo
 
+
 class WSL2Driver(RunnerDriver):
     def __init__(self, distro_base: str = "Ubuntu-22.04"):
         self.distro_base = os.getenv("WSL_DISTRO_BASE", distro_base)
@@ -40,13 +41,12 @@ class WSL2Driver(RunnerDriver):
     ) -> Optional[str]:
         unique_id = uuid.uuid4().hex[:6]
         name_suffix = f"-{repo.replace('/', '-')}" if repo else (f"-{org}" if org else "")
-        instance_name = f"runzero-wsl-{name_suffix}-{unique_id}"
+        instance_name = f"runzero-wsl{name_suffix}-{unique_id}"
         runner_labels = labels if labels else "self-hosted,local,wsl,x64,windows-host"
 
         print(f"[Autoscaler:WSL2] 🚀 Spawning ephemeral WSL2 runner '{instance_name}' for {repo or org}...")
 
         try:
-            # WSL2 runner command execution
             cmd = ["wsl", "-d", self.distro_base, "-u", "runner", "--", "bash", "-c", f"""
 export ACCESS_TOKEN="{access_token}"
 export RUNNER_NAME="{instance_name}"
@@ -84,13 +84,17 @@ cd /home/runner/actions-runner && ./run.sh --unattended --ephemeral --name "{ins
             return []
 
     def prune_exited(self, runners: List[RunnerInfo]) -> None:
-        pass
+        for r in runners:
+            if r.backend == "wsl2" and r.state in ("exited", "stopped", "dead"):
+                print(f"[Autoscaler:WSL2] Terminating exited runner: {r.name}")
+                self.destroy_runner(r.id)
 
     def destroy_runner(self, runner_id: str) -> bool:
         try:
-            subprocess.run(["wsl", "--terminate", runner_id], capture_output=True)
-            return True
-        except Exception:
+            res = subprocess.run(["wsl", "--terminate", runner_id], capture_output=True, timeout=10)
+            return res.returncode == 0
+        except Exception as e:
+            print(f"[Autoscaler:WSL2] Error destroying runner {runner_id}: {e}", file=sys.stderr)
             return False
 
     def cleanup_all(self) -> None:

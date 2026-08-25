@@ -3,3 +3,7 @@
 *.log
 __pycache__/
 *.pyc
+.coverage
+.pytest_cache
+.mypy_cache
+__pycache__/

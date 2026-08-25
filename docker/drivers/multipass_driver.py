@@ -12,6 +12,7 @@ import subprocess
 from typing import List, Dict, Optional
 from . import RunnerDriver, RunnerInfo
 
+
 class MultipassDriver(RunnerDriver):
     def __init__(self, image: str = "22.04"):
         self.image = os.getenv("MULTIPASS_IMAGE", image)

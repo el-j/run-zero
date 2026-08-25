@@ -13,6 +13,7 @@ import subprocess
 from typing import List, Dict, Optional
 from . import RunnerDriver, RunnerInfo
 
+
 class OrbStackVMDriver(RunnerDriver):
     def __init__(self, distro: str = "ubuntu:22.04"):
         self.distro = os.getenv("ORB_DISTRO", distro)
@@ -65,7 +66,6 @@ class OrbStackVMDriver(RunnerDriver):
             subprocess.run(create_cmd, check=True, capture_output=True)
 
             # 2. Setup runner workspace & runner binary inside the VM asynchronously
-            # We copy start.sh and launch the runner in background inside the VM
             runner_setup_script = f"""
 set -e
 export DEBIAN_FRONTEND=noninteractive
@@ -86,10 +86,8 @@ export EPHEMERAL="true"
 export REPO="{repo or ''}"
 export ORG="{org or ''}"
 
-# Start runner
 nohup ./run.sh --unattended --ephemeral --name "{vm_name}" --labels "{runner_labels}" > /home/runner/runner.log 2>&1 &
 """
-            # Execute bootstrap script inside the VM
             subprocess.Popen(
                 ["orb", "-m", vm_name, "-u", "runner", "bash", "-c", runner_setup_script],
                 stdout=subprocess.DEVNULL,
