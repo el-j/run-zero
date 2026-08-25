@@ -29,14 +29,8 @@ help: ## Display available commands
 	@echo ""
 
 .PHONY: env
-env: ## Create .env from template if missing
-	@if [ ! -f .env ]; then \
-		echo "$(CYAN)Creating .env from .env.example...$(RESET)"; \
-		cp .env.example .env; \
-		echo "$(GREEN)Created .env$(RESET) - Please edit it and set your $(BOLD)ACCESS_TOKEN$(RESET) & $(BOLD)OWNER$(RESET)."; \
-	else \
-		echo "$(YELLOW).env file already exists.$(RESET)"; \
-	fi
+env: ## Run interactive .env configuration wizard
+	@bash scripts/setup_env.sh
 
 .PHONY: check-env
 check-env:

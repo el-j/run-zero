@@ -19,6 +19,30 @@ class TestShellScripts(unittest.TestCase):
         res = subprocess.run(["bash", "-n", script_path], capture_output=True, text=True)
         self.assertEqual(res.returncode, 0, f"Syntax error in start.sh: {res.stderr}")
 
+    def test_setup_env_sh_syntax(self):
+        script_path = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "scripts", "setup_env.sh"))
+        if not os.path.isfile(script_path):
+            script_path = os.path.abspath("scripts/setup_env.sh")
+
+        if not os.path.isfile(script_path):
+            self.skipTest("setup_env.sh not available in temp sandbox directory")
+
+        res = subprocess.run(["bash", "-n", script_path], capture_output=True, text=True)
+        self.assertEqual(res.returncode, 0, f"Syntax error in setup_env.sh: {res.stderr}")
+
+    def test_setup_env_sh_non_interactive(self):
+        script_path = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "scripts", "setup_env.sh"))
+        if not os.path.isfile(script_path):
+            script_path = os.path.abspath("scripts/setup_env.sh")
+
+        if not os.path.isfile(script_path):
+            self.skipTest("setup_env.sh not available in temp sandbox directory")
+
+        env = os.environ.copy()
+        env["NON_INTERACTIVE"] = "true"
+        res = subprocess.run(["bash", script_path], capture_output=True, text=True, env=env)
+        self.assertEqual(res.returncode, 0, f"Error running setup_env.sh: {res.stderr}")
+
 
 if __name__ == "__main__":
     unittest.main()

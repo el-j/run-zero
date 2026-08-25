@@ -204,7 +204,7 @@ make env
 Edit `.env` and configure:
 ```env
 ACCESS_TOKEN=ghp_yourPersonalAccessTokenHere
-OWNER=el-j
+OWNER=your-username
 AUTO_DISCOVER_REPOS=true
 RUNNER_BACKEND=auto  # 'auto', 'docker', 'orbstack-vm', 'wsl2', or 'multipass'
 RUNNER_ARCH=both     # 'both', 'amd64', or 'arm64'
