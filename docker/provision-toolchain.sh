@@ -15,10 +15,11 @@
 # mounted host socket) while the VM engine needs a full local daemon, and that
 # difference is deliberately kept in each caller, not here.
 #
-# Usage: provision-toolchain.sh <amd64|arm64>
-set -euo pipefail
-
-ARCH="${1:?Usage: provision-toolchain.sh <amd64|arm64>}"
+ARCH="${1:-${ARCH:-$(dpkg --print-architecture 2>/dev/null || uname -m)}}"
+case "${ARCH}" in
+  "x86_64") ARCH="amd64" ;;
+  "aarch64") ARCH="arm64" ;;
+esac
 export DEBIAN_FRONTEND=noninteractive
 
 # Route apt through the local apt-cacher-ng proxy (same pattern as Verdaccio/Athens

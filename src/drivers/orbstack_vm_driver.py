@@ -89,6 +89,8 @@ class OrbStackVMDriver(RunnerDriver):
         full_script = f"""
 exec > /home/runner/provision.log 2>&1
 set -e
+export ARCH="{orb_arch}"
+set -- "{orb_arch}"
 {docker_engine_snippet()}
 {script_content}
 {runner_download_snippet(orb_arch, RUNNER_VERSION)}
@@ -182,6 +184,8 @@ set -e
 exec > /home/runner/setup.log 2>&1
 trap 'sudo shutdown -h now' EXIT
 set -e
+export ARCH="{orb_arch}"
+set -- "{orb_arch}"
 {docker_engine_snippet()}
 {script_content}
 {runner_download_snippet(orb_arch, RUNNER_VERSION)}
