@@ -44,14 +44,16 @@ const baseUrl = import.meta.env.BASE_URL.replace(/\/$/, '');
 <style>
   .version-switcher {
     position: relative;
-    display: inline-block;
+    display: inline-flex;
+    align-items: center;
+    flex-shrink: 0;
   }
 
   .version-btn {
-    display: flex;
+    display: inline-flex;
     align-items: center;
     gap: 6px;
-    background: rgba(255, 255, 255, 0.05);
+    background: rgba(255, 255, 255, 0.06);
     border: 1px solid var(--border-subtle);
     color: var(--text-main);
     padding: 4px 10px;
@@ -59,6 +61,7 @@ const baseUrl = import.meta.env.BASE_URL.replace(/\/$/, '');
     font-size: 0.78rem;
     font-weight: 700;
     cursor: pointer;
+    white-space: nowrap;
     transition: all 0.2s ease;
   }
   .version-btn:hover {
