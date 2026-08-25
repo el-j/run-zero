@@ -270,8 +270,12 @@ RunZero includes a 100% verified test suite with type checking, linting, and mut
 | `make start` (or `make run`, `make up`) | Launch autoscaler, apt-cacher, Verdaccio, Athens, and Docker mirror |
 | `make stop` (or `make down`) | Gracefully stop the autoscaler, proxies, and active runners |
 | `make status` (or `make ps`) | Display running autoscaler, proxies & active ephemeral runners |
-| `make test` | Run 90 local unit tests directly with `unittest` |
+| `make test` | Run fast local unit tests directly with `unittest` (85 tests in 0.04s) |
 | `make test-suite` | Run Flake8 linter, Mypy type-checker, and Pytest coverage report |
+| `make install-hooks` | Install RunZero pre-commit quality guard into `.git/hooks/pre-commit` |
+| `make pre-commit` | Run the pre-commit quality guard manually with auto-fixes |
+| `make lint` | Run Flake8 linter and Mypy static type checker |
+| `make lint-fix` | Auto-fix Python code formatting and strip trailing whitespace |
 | `make mutation-test` | Run Mutmut mutation testing suite |
 | `make build-vm-base` | Build golden OrbStack VM base image for near-instant VM spins |
 | `make website-dev` | Start Astro documentation website development server |

@@ -58,8 +58,12 @@ RunZero's autoscaler automatically reconciles zombie runners by cancelling stran
 make stop           # Stop Autoscaler, Proxies, and cleanup active runners
 make status         # Show status of services and active runner instances
 make logs           # Stream live autoscaler logs
-make test           # Run 90 unit tests directly (1.0s)
+make test           # Run 85 unit tests directly (0.04s)
 make test-suite     # Run Flake8 linter, Mypy type-checker, and Pytest coverage
+make install-hooks  # Install pre-commit quality guard into .git/hooks/pre-commit
+make pre-commit     # Run pre-commit quality guard manually with auto-fixes
+make lint           # Run Flake8 linter and Mypy static type checker
+make lint-fix       # Auto-fix Python formatting and strip trailing whitespace
 make build-vm-base  # Build golden OrbStack VM base image for instant cloning
 make website-dev    # Start Astro documentation website development server
 make website-build  # Build Astro static website and synchronize to docs/

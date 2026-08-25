@@ -252,6 +252,37 @@ mutation-test: ## Run mutation testing suite (mutmut)
 test: ## Run local unit tests directly
 	@PYTHONPATH=src python3 -m unittest discover -s tests -p "test_*.py" -v
 
+.PHONY: install-hooks
+install-hooks: ## Install RunZero pre-commit quality guard into .git/hooks/pre-commit
+	@echo "$(CYAN)Installing RunZero pre-commit hook...$(RESET)"
+	@mkdir -p .git/hooks
+	@cp scripts/pre-commit.sh .git/hooks/pre-commit
+	@chmod +x .git/hooks/pre-commit
+	@echo "$(GREEN)Pre-commit hook installed successfully! Every git commit will now be guarded.$(RESET)"
+
+.PHONY: pre-commit
+pre-commit: ## Run the RunZero pre-commit quality guard manually
+	@bash scripts/pre-commit.sh
+
+.PHONY: lint
+lint: ## Run Flake8 linter and Mypy static type checker
+	@echo "$(CYAN)Running Flake8 linter...$(RESET)"
+	@flake8 src/ tests/ --max-line-length=160 --extend-ignore=E501,W503,E402 || echo "Install flake8 for full linting."
+	@echo "$(CYAN)Running Mypy type checker...$(RESET)"
+	@MYPYPATH=src mypy src/ --ignore-missing-imports || echo "Install mypy for full typechecking."
+
+.PHONY: lint-fix
+lint-fix: ## Auto-fix Python formatting and strip trailing whitespace
+	@echo "$(CYAN)Auto-fixing formatting and stripping trailing whitespace...$(RESET)"
+	@find src tests -name "*.py" -exec sed -i '' -E 's/[[:space:]]+$$//' {} + 2>/dev/null || true
+	@if command -v ruff >/dev/null 2>&1; then \
+		ruff check --fix --line-length=160 src/ tests/; \
+		ruff format --line-length=160 src/ tests/; \
+	elif command -v autopep8 >/dev/null 2>&1; then \
+		autopep8 --in-place --recursive --aggressive --max-line-length=160 src/ tests/; \
+	fi
+	@echo "$(GREEN)Auto-fixes applied successfully.$(RESET)"
+
 .PHONY: run-dev
 run-dev: check-env init-cache ## Run local autoscaler in foreground for interactive debugging (native, full VM support)
 	@echo "$(CYAN)Starting caching proxy registries (Verdaccio, Athens, Docker mirror)...$(RESET)"

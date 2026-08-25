@@ -43,6 +43,24 @@ class TestShellScripts(unittest.TestCase):
         res = subprocess.run(["bash", script_path], capture_output=True, text=True, env=env)
         self.assertEqual(res.returncode, 0, f"Error running setup_env.sh: {res.stderr}")
 
+    def test_pre_commit_sh_syntax(self):
+        script_path = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "scripts", "pre-commit.sh"))
+        if not os.path.isfile(script_path):
+            script_path = os.path.abspath("scripts/pre-commit.sh")
+        if not os.path.isfile(script_path):
+            self.skipTest("pre-commit.sh not found")
+        res = subprocess.run(["bash", "-n", script_path], capture_output=True, text=True)
+        self.assertEqual(res.returncode, 0, f"Syntax error in pre-commit.sh: {res.stderr}")
+
+    def test_provision_toolchain_sh_syntax(self):
+        script_path = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "docker", "provision-toolchain.sh"))
+        if not os.path.isfile(script_path):
+            script_path = os.path.abspath("docker/provision-toolchain.sh")
+        if not os.path.isfile(script_path):
+            self.skipTest("provision-toolchain.sh not found")
+        res = subprocess.run(["bash", "-n", script_path], capture_output=True, text=True)
+        self.assertEqual(res.returncode, 0, f"Syntax error in provision-toolchain.sh: {res.stderr}")
+
 
 if __name__ == "__main__":
     unittest.main()
