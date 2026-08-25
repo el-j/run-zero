@@ -164,6 +164,7 @@ export GOPROXY="http://host.orb.internal:49500,https://proxy.golang.org,direct"
             clone_cmd = ["orbctl", "clone", base_name, vm_name]
             setup_script = f"""
 exec > /home/runner/setup.log 2>&1
+trap 'sudo shutdown -h now' EXIT
 set -e
 {reg_and_run}
 """
@@ -179,6 +180,7 @@ set -e
             clone_cmd = ["orbctl", "create", "-a", orb_arch, "-u", "runner", self.distro, vm_name]
             setup_script = f"""
 exec > /home/runner/setup.log 2>&1
+trap 'sudo shutdown -h now' EXIT
 set -e
 {docker_engine_snippet()}
 {script_content}

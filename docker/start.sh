@@ -42,6 +42,11 @@ else
   )
 fi
 
+# Ensure /home/runner and all tool/language directories (Go, Cargo, NVM, Pip) are owned and writable
+sudo mkdir -p /home/runner/go/bin /home/runner/go/pkg /home/runner/.cache /home/runner/.local/bin /opt/hostedtoolcache
+sudo chown -R runner:runner /home/runner /opt/hostedtoolcache 2>/dev/null || true
+sudo chmod -R 777 /home/runner/go /opt/hostedtoolcache /home/runner/.cache 2>/dev/null || true
+
 for cache_dir in "${CACHE_DIRS[@]}"; do
   if [ -d "${cache_dir}" ]; then
     path="/home/runner"
