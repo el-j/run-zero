@@ -3,9 +3,10 @@ import VersionSwitcher from './VersionSwitcher.astro';
 
 interface Props {
   currentPath?: string;
+  currentVersion?: string;
 }
 
-const { currentPath = '/' } = Astro.props;
+const { currentPath = '/', currentVersion = 'main' } = Astro.props;
 const baseUrl = import.meta.env.BASE_URL.replace(/\/$/, '');
 ---
 
@@ -19,7 +20,7 @@ const baseUrl = import.meta.env.BASE_URL.replace(/\/$/, '');
         </div>
         <span class="brand-title">RUN<span class="crimson-text">ZERO</span></span>
       </a>
-      <VersionSwitcher />
+      <VersionSwitcher currentVersion={currentVersion} />
     </div>
 
     <!-- Desktop Navigation Menu -->

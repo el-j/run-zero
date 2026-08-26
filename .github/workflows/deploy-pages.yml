@@ -4,10 +4,13 @@ on:
   push:
     branches:
       - main
-      - develop
     paths:
       - 'website/**'
       - '.github/workflows/deploy-pages.yml'
+      - 'scripts/generate_versions_manifest.py'
+  release:
+    types:
+      - published
   workflow_dispatch:
 
 permissions:
@@ -21,11 +24,16 @@ jobs:
   build-and-deploy:
     name: Build & Deploy to gh-pages Branch
     runs-on: ubuntu-latest
+    env:
+      SITE_BASE: /run-zero
+      SITE_URL: https://el-j.github.io/run-zero
+      REPO_URL: https://github.com/${{ github.repository }}
     steps:
       - name: Checkout repository
         uses: actions/checkout@v7
         with:
           fetch-depth: 0
+          ref: ${{ github.event_name == 'release' && github.event.release.tag_name || github.ref_name }}
 
       - name: Set up Node.js
         uses: actions/setup-node@v6
@@ -39,33 +47,42 @@ jobs:
           cd website
           npm ci
 
-      - name: Build Astro Static Site (Latest Release)
+      - name: Generate versions manifest
         run: |
+          python scripts/generate_versions_manifest.py --output website/public/versions.json --base-path "${SITE_BASE}" --repo-url "${REPO_URL}"
+
+      - name: Build Astro current site
+        run: |
+          rm -rf website/dist website/dist-live website/dist-archive
           cd website
+          DEPLOY_BASE="${SITE_BASE}" \
+          DEPLOY_SITE="${SITE_URL}" \
+          PUBLIC_DOCS_VERSION="main" \
           npm run build
+          mv dist dist-live
 
-      - name: Create Versioned Snapshot Copy
+      - name: Build stable release snapshot
+        if: github.event_name == 'release'
         run: |
-          # Fetch latest tag or fallback to v2.0.0
-          CURRENT_VERSION=$(git describe --tags --abbrev=0 2>/dev/null || echo "v2.0.0")
-          echo "Creating snapshot for version: $CURRENT_VERSION"
+          CURRENT_VERSION="${{ github.event.release.tag_name }}"
+          cd website
+          DEPLOY_BASE="${SITE_BASE}/${CURRENT_VERSION}" \
+          DEPLOY_SITE="${SITE_URL}/${CURRENT_VERSION}" \
+          PUBLIC_DOCS_VERSION="${CURRENT_VERSION}" \
+          npm run build
+          mv dist dist-archive
+          mkdir -p "dist-live/${CURRENT_VERSION}"
+          cp -R dist-archive/. "dist-live/${CURRENT_VERSION}/"
 
-          # Duplicate build into version subdirectory
-          mkdir -p website/dist/${CURRENT_VERSION}
-          cp -r website/dist/docs website/dist/${CURRENT_VERSION}/ || true
-          cp -r website/dist/_astro website/dist/${CURRENT_VERSION}/ || true
-          cp -r website/dist/fonts website/dist/${CURRENT_VERSION}/ || true
-          cp website/dist/index.html website/dist/${CURRENT_VERSION}/ || true
-          cp website/dist/favicon.svg website/dist/${CURRENT_VERSION}/ || true
-
-          # Ensure .nojekyll is present to prevent GitHub Pages from ignoring _astro
-          touch website/dist/.nojekyll
+      - name: Finalize static output
+        run: |
+          touch website/dist-live/.nojekyll
 
       - name: Deploy to gh-pages Branch
         uses: peaceiris/actions-gh-pages@v4
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
-          publish_dir: ./website/dist
+          publish_dir: ./website/dist-live
           publish_branch: gh-pages
           keep_files: true
           cname: ''
