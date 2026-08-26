@@ -32,13 +32,16 @@ class VMBridgeRequestHandler(BaseHTTPRequestHandler):
             sys.stderr.write(f"[VMBridge:HTTP] {format % args}\n")
 
     def _send_json(self, status_code: int, data: Dict[str, Any]) -> None:
-        payload = json.dumps(data).encode("utf-8")
-        self.send_response(status_code)
-        self.send_header("Content-Type", "application/json")
-        self.send_header("Content-Length", str(len(payload)))
-        self.send_header("Access-Control-Allow-Origin", "*")
-        self.end_headers()
-        self.wfile.write(payload)
+        try:
+            payload = json.dumps(data).encode("utf-8")
+            self.send_response(status_code)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Content-Length", str(len(payload)))
+            self.send_header("Access-Control-Allow-Origin", "*")
+            self.end_headers()
+            self.wfile.write(payload)
+        except (BrokenPipeError, ConnectionResetError):
+            pass
 
     def _read_json(self) -> Dict[str, Any]:
         content_length = int(self.headers.get("Content-Length", 0))

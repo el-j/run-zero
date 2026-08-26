@@ -19,17 +19,21 @@ class TestVMBridge(unittest.TestCase):
     def tearDown(self):
         self.server.stop()
 
-    def test_health_endpoint(self):
+    @patch("vm_bridge.get_available_drivers")
+    def test_health_endpoint(self, mock_drivers):
+        mock_drivers.return_value = {"orbstack-vm": MagicMock()}
         req = urllib.request.Request(f"{self.base_url}/health")
-        with urllib.request.urlopen(req, timeout=3.0) as resp:
+        with urllib.request.urlopen(req, timeout=5.0) as resp:
             data = json.loads(resp.read().decode("utf-8"))
             self.assertEqual(data.get("status"), "ok")
             self.assertEqual(data.get("service"), "runzero-vm-bridge")
             self.assertIn("available_vm_drivers", data)
 
-    def test_status_endpoint(self):
+    @patch("vm_bridge.get_available_drivers")
+    def test_status_endpoint(self, mock_drivers):
+        mock_drivers.return_value = {"orbstack-vm": MagicMock()}
         req = urllib.request.Request(f"{self.base_url}/api/status")
-        with urllib.request.urlopen(req, timeout=3.0) as resp:
+        with urllib.request.urlopen(req, timeout=5.0) as resp:
             data = json.loads(resp.read().decode("utf-8"))
             self.assertEqual(data.get("status"), "ok")
             self.assertIn("available_drivers", data)

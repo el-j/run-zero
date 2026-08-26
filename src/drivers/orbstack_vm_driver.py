@@ -62,7 +62,7 @@ class OrbStackVMDriver(RunnerDriver):
         if not shutil.which("orbctl") or not shutil.which("orb"):
             return False
         try:
-            res = subprocess.run(["orbctl", "status"], capture_output=True, text=True, check=True)
+            res = subprocess.run(["orbctl", "status"], capture_output=True, text=True, check=True, timeout=3)
             return "running" in res.stdout.lower()
         except Exception:
             return False
@@ -82,7 +82,7 @@ class OrbStackVMDriver(RunnerDriver):
         for attempt in range(3):
             try:
                 res = subprocess.run(
-                    ["orbctl", "list", "--format", "json"], capture_output=True, text=True, check=True
+                    ["orbctl", "list", "--format", "json"], capture_output=True, text=True, check=True, timeout=5
                 )
                 vms = json.loads(res.stdout or "[]")
                 return [vm.get("name", "") for vm in vms]
@@ -122,7 +122,7 @@ class OrbStackVMDriver(RunnerDriver):
                     "orb", "-m", staging_name, "-u", "runner", "bash", "-c",
                     "test -f /home/runner/actions-runner/run.sh || grep -q 'Base image provisioning complete' /home/runner/provision.log 2>/dev/null"
                 ],
-                capture_output=True, timeout=10
+                capture_output=True, timeout=25
             )
             return res.returncode == 0
         except Exception:

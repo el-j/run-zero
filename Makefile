@@ -72,7 +72,9 @@ cache-size: ## Show disk usage of the host package/tool cache only (subset of `m
 .PHONY: clean-cache
 clean-cache: ## Clear the persistent package/tool cache dir ($(CACHE_DIR)) only -- see `make clean-caches` to also clear proxy volumes and images
 	@echo "$(YELLOW)Clearing local runner caches at $(CACHE_DIR)...$(RESET)"
-	@rm -rf $(CACHE_DIR)
+	@chmod -R u+w $(CACHE_DIR) 2>/dev/null || true
+	@rm -rf $(CACHE_DIR) 2>/dev/null || docker run --rm -v "$(CACHE_DIR):/cache" alpine sh -c "rm -rf /cache/* /cache/.*" 2>/dev/null || true
+	@rm -rf $(CACHE_DIR) 2>/dev/null || true
 	@echo "$(GREEN)Runner cache cleared successfully.$(RESET)"
 
 # ==============================================================================
@@ -135,13 +137,18 @@ clean-pip: ## Clear only the cached pip packages
 clean-uv: ## Clear only the cached uv packages
 	@rm -rf $(CACHE_DIR)/uv && echo "$(GREEN)uv cache cleared.$(RESET)"
 clean-go-mod: ## Clear only the cached Go module downloads
-	@rm -rf $(CACHE_DIR)/go-mod && echo "$(GREEN)Go module cache cleared.$(RESET)"
+	@chmod -R u+w $(CACHE_DIR)/go-mod 2>/dev/null || true
+	@rm -rf $(CACHE_DIR)/go-mod 2>/dev/null || docker run --rm -v "$(CACHE_DIR)/go-mod:/cache" alpine sh -c "rm -rf /cache/* /cache/.*" 2>/dev/null || true
+	@rm -rf $(CACHE_DIR)/go-mod 2>/dev/null || true
+	@echo "$(GREEN)Go module cache cleared.$(RESET)"
 clean-go-build: ## Clear only the cached Go build cache
 	@rm -rf $(CACHE_DIR)/go-build && echo "$(GREEN)Go build cache cleared.$(RESET)"
 clean-cargo-registry: ## Clear only the cached Cargo registry
 	@rm -rf $(CACHE_DIR)/cargo-registry && echo "$(GREEN)Cargo registry cache cleared.$(RESET)"
 clean-toolcache: ## Clear only the cached hosted tool versions (Node/Go/etc SDK installs, per-arch)
-	@rm -rf $(CACHE_DIR)/toolcache && echo "$(GREEN)Tool cache cleared.$(RESET)"
+	@chmod -R u+w $(CACHE_DIR)/toolcache 2>/dev/null || true
+	@rm -rf $(CACHE_DIR)/toolcache 2>/dev/null || true
+	@echo "$(GREEN)Tool cache cleared.$(RESET)"
 
 .PHONY: clean-verdaccio clean-athens clean-docker-mirror clean-apt-cacher
 clean-verdaccio: ## Wipe the Verdaccio (npm proxy) cache volume
@@ -224,17 +231,9 @@ bridge-logs: ## Stream live logs from the Host VM Bridge
 	@touch $(BRIDGE_LOG_FILE) && tail -f $(BRIDGE_LOG_FILE)
 
 .PHONY: start up run
-start: check-env init-cache bridge-start ## Start Autoscaler + Host VM Bridge + Proxy services + Web Dashboard
-	@echo "$(CYAN)Starting caching proxy registries (Verdaccio, Athens, Docker mirror, apt-cacher)...$(RESET)"
+start: check-env init-cache bridge-start ## Start containerized Autoscaler + Host VM Bridge + Proxy services + Web Dashboard
+	@echo "$(CYAN)Starting RunZero containerized stack (Autoscaler, Dashboard, Proxy registries)...$(RESET)"
 	@docker compose up -d
-	@if [ -f $(AUTOSCALER_PID_FILE) ] && kill -0 "$$(cat $(AUTOSCALER_PID_FILE))" 2>/dev/null; then \
-		echo "$(YELLOW)Autoscaler already running (PID $$(cat $(AUTOSCALER_PID_FILE))).$(RESET)"; \
-	else \
-		echo "$(CYAN)Starting Autoscaler with Web Dashboard...$(RESET)"; \
-		set -a; . ./.env; set +a; \
-		PYTHONPATH=src nohup python3 -u src/autoscaler.py > $(AUTOSCALER_LOG_FILE) 2>&1 & \
-		echo $$! > $(AUTOSCALER_PID_FILE); \
-	fi
 	@echo "$(GREEN)RunZero Fleet & Observability Stack is running!$(RESET)"
 	@echo "  • 📊 Web Dashboard:  $(BOLD)http://localhost:49505$(RESET) (Run $(BOLD)make dashboard$(RESET))"
 	@echo "  • 🌉 Host VM Bridge: $(BOLD)http://localhost:49504$(RESET)"
@@ -264,24 +263,17 @@ down: stop
 restart: stop start ## Restart Autoscaler and Proxies
 
 .PHONY: logs
-logs: ## Stream live logs from the Autoscaler (native host process)
-	@touch $(AUTOSCALER_LOG_FILE) && tail -f $(AUTOSCALER_LOG_FILE)
+logs: ## Stream live logs from the Autoscaler container
+	@docker compose logs -f autoscaler 2>/dev/null || (touch $(AUTOSCALER_LOG_FILE) && tail -f $(AUTOSCALER_LOG_FILE))
 
 .PHONY: logs-all
-logs-all: ## Stream live logs from the Proxy services (Verdaccio + Athens + Docker mirror) -- see `make logs` for the Autoscaler
+logs-all: ## Stream live logs from all services (Autoscaler + Proxies)
 	@docker compose logs -f
 
 .PHONY: status ps
 status: bridge-status ## Show running Autoscaler, VM Bridge, Proxies, and active dynamic runners (containers + VMs)
 	@echo ""
-	@echo "$(BOLD)$(CYAN)=== Autoscaler ===$(RESET)"
-	@if [ -f $(AUTOSCALER_PID_FILE) ] && kill -0 "$$(cat $(AUTOSCALER_PID_FILE))" 2>/dev/null; then \
-		echo "Running (PID $$(cat $(AUTOSCALER_PID_FILE)))"; \
-	else \
-		echo "Not running -- run $(BOLD)make start$(RESET)"; \
-	fi
-	@echo ""
-	@echo "$(BOLD)$(CYAN)=== Proxy Services ===$(RESET)"
+	@echo "$(BOLD)$(CYAN)=== RunZero Container Stack (Autoscaler & Proxies) ===$(RESET)"
 	@docker compose ps
 	@echo ""
 	@echo "$(BOLD)$(CYAN)=== Active Ephemeral Runner Containers ===$(RESET)"
@@ -291,15 +283,21 @@ status: bridge-status ## Show running Autoscaler, VM Bridge, Proxies, and active
 	@orbctl list 2>/dev/null | grep -i runzero-vm || echo "  (none)"
 	@echo ""
 
-.PHONY: start-container stop-container
-start-container: check-env init-cache bridge-start ## Start Autoscaler fully containerized with Host VM Bridge & Web Dashboard
-	@echo "$(CYAN)Starting containerized Autoscaler with Host VM Bridge & Web Dashboard...$(RESET)"
-	docker compose --profile container-autoscaler up -d
-	@echo "$(GREEN)Containerized Autoscaler, Host VM Bridge, and Proxy registries are running!$(RESET)"
-	@echo "  • 📊 Web Dashboard:  $(BOLD)http://localhost:49505$(RESET) (Run $(BOLD)make dashboard$(RESET))"
+.PHONY: start-host stop-host
+start-host: check-env init-cache bridge-start ## Start Autoscaler natively on host Python (without containerizing autoscaler)
+	@echo "$(CYAN)Starting caching proxy registries (Verdaccio, Athens, Docker mirror, apt-cacher)...$(RESET)"
+	@docker compose up -d verdaccio athens docker-mirror apt-cacher
+	@if [ -f $(AUTOSCALER_PID_FILE) ] && kill -0 "$$(cat $(AUTOSCALER_PID_FILE))" 2>/dev/null; then \
+		echo "$(YELLOW)Autoscaler already running on host (PID $$(cat $(AUTOSCALER_PID_FILE))).$(RESET)"; \
+	else \
+		echo "$(CYAN)Starting Autoscaler with Web Dashboard on host...$(RESET)"; \
+		set -a; . ./.env; set +a; \
+		PYTHONPATH=src nohup python3 -u src/autoscaler.py > $(AUTOSCALER_LOG_FILE) 2>&1 & \
+		echo $$! > $(AUTOSCALER_PID_FILE); \
+	fi
+	@echo "$(GREEN)Host Autoscaler & Stack is running!$(RESET)"
 
-stop-container: bridge-stop ## Stop the fully containerized Autoscaler and Host VM Bridge
-	docker compose --profile container-autoscaler down
+stop-host: stop ## Stop host Autoscaler and stack
 
 .PHONY: clean
 clean: ## Force clean stopped containers and temporary runner volumes

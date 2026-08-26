@@ -11,8 +11,6 @@ services:
   # (http://localhost:49505) and Host VM Bridge support (OrbStack, WSL2, Multipass)
   # via http://host.docker.internal:49504.
   autoscaler:
-    profiles:
-      - container-autoscaler
     build:
       context: .
       dockerfile: docker/Dockerfile.autoscaler
