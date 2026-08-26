@@ -9,7 +9,12 @@ import unittest
 from unittest.mock import MagicMock, patch
 
 from drivers import RunnerInfo
-from drivers.orbstack_templates import docker_engine_snippet, registration_and_run_snippet, runner_download_snippet
+from drivers.orbstack_templates import (
+    cache_mount_snippet,
+    docker_engine_snippet,
+    registration_and_run_snippet,
+    runner_download_snippet,
+)
 from drivers.orbstack_vm_driver import OrbStackVMDriver
 
 
@@ -68,6 +73,55 @@ class TestOrbStackTemplates(unittest.TestCase):
         self.assertIn("registration-token", reg)
         self.assertIn("./config.sh", reg)
         self.assertIn("./run.sh", reg)
+        # Default cache_mount_block is "" -- no bind-mount lines injected when the
+        # caller (e.g. an existing test) doesn't pass one.
+        self.assertNotIn("mount --bind", reg)
+
+    def test_registration_and_run_snippet_includes_cache_mount_block(self):
+        reg = registration_and_run_snippet(
+            "https://api.github.com/repos/owner/repo/actions/runners",
+            "https://github.com/owner/repo",
+            "pat-token",
+            "vm-test",
+            "self-hosted,local",
+            "export PROXY=1",
+            cache_mount_block="sudo mount --bind /mnt/mac/fake /home/runner/.npm"
+        )
+        # Cache mounts must land before the proxy env vars are exported and before
+        # config.sh/run.sh execute, so the directories are ready before the job's own
+        # tooling (and the proxy-aware env) starts using them.
+        mount_idx = reg.index("mount --bind")
+        proxy_idx = reg.index("export PROXY=1")
+        config_idx = reg.index("./config.sh")
+        self.assertLess(mount_idx, proxy_idx)
+        self.assertLess(proxy_idx, config_idx)
+
+    def test_cache_mount_snippet_empty_when_no_mounts(self):
+        self.assertEqual(cache_mount_snippet(None), "")
+        self.assertEqual(cache_mount_snippet({}), "")
+
+    def test_cache_mount_snippet_generates_bind_mount_via_mac_share(self):
+        snippet = cache_mount_snippet({
+            "/Users/dev/.local-github-runner/cache/npm": "/home/runner/.npm",
+            "/Users/dev/.local-github-runner/cache/pip": "/home/runner/.cache/pip",
+        })
+        # Every host path must be translated to OrbStack's automatic
+        # /mnt/mac<absolute-macOS-path> share, and bind-mounted onto the exact
+        # container-style destination path cache_manager.py expects.
+        self.assertIn('sudo mkdir -p "/home/runner/.npm"', snippet)
+        self.assertIn(
+            'sudo mount --bind "/mnt/mac/Users/dev/.local-github-runner/cache/npm" "/home/runner/.npm"',
+            snippet,
+        )
+        self.assertIn('sudo mkdir -p "/home/runner/.cache/pip"', snippet)
+        self.assertIn(
+            'sudo mount --bind "/mnt/mac/Users/dev/.local-github-runner/cache/pip" "/home/runner/.cache/pip"',
+            snippet,
+        )
+        # Must guard against the mac share not (yet) exposing the path rather than
+        # blowing up the whole provisioning script.
+        self.assertIn("Warning: host cache dir", snippet)
+        self.assertIn("Warning: cache bind mount failed", snippet)
 
 
 class TestOrbStackVMDriver(unittest.TestCase):
@@ -199,6 +253,76 @@ class TestOrbStackVMDriver(unittest.TestCase):
         self.assertIsNotNone(name)
         clone_call = mock_run.call_args_list[1]
         self.assertEqual(clone_call[0][0][:2], ["orbctl", "clone"])
+
+    @patch("subprocess.Popen")
+    @patch("subprocess.run")
+    def test_spawn_runner_wires_cache_mounts_into_setup_script(self, mock_run, mock_popen):
+        # Regression test for issue #10: cache_mounts used to be accepted and silently
+        # discarded by this driver. It must now show up as a real bind-mount in the
+        # script executed inside the cloned VM.
+        mock_run.side_effect = [
+            MagicMock(stdout=json.dumps([{"name": "runzero-vm-base-amd64", "state": "stopped"}]), returncode=0),
+            MagicMock(returncode=0),  # orbctl clone
+        ]
+        name = self.driver.spawn_runner(
+            repo="el-j/run-zero",
+            arch="amd64",
+            access_token="token",
+            cache_mounts={"/Users/dev/.local-github-runner/cache/npm": "/home/runner/.npm"},
+        )
+        self.assertIsNotNone(name)
+        popen_args = mock_popen.call_args[0][0]
+        self.assertEqual(popen_args[:5], ["orb", "-m", name, "-u", "runner"])
+        setup_script = popen_args[-1]
+        self.assertIn(
+            'sudo mount --bind "/mnt/mac/Users/dev/.local-github-runner/cache/npm" "/home/runner/.npm"',
+            setup_script,
+        )
+
+    @patch("subprocess.Popen")
+    @patch("subprocess.run")
+    def test_spawn_runner_omits_cache_mount_lines_when_no_mounts(self, mock_run, mock_popen):
+        mock_run.side_effect = [
+            MagicMock(stdout=json.dumps([{"name": "runzero-vm-base-amd64", "state": "stopped"}]), returncode=0),
+            MagicMock(returncode=0),
+        ]
+        self.driver.spawn_runner(repo="el-j/run-zero", arch="amd64", access_token="token")
+        setup_script = mock_popen.call_args[0][0][-1]
+        self.assertNotIn("mount --bind", setup_script)
+
+    @patch("subprocess.Popen")
+    @patch("subprocess.run")
+    def test_spawn_runner_wires_pip_and_cargo_proxies_when_enabled(self, mock_run, mock_popen):
+        mock_run.side_effect = [
+            MagicMock(stdout=json.dumps([{"name": "runzero-vm-base-amd64", "state": "stopped"}]), returncode=0),
+            MagicMock(returncode=0),
+        ]
+        self.driver.spawn_runner(repo="el-j/run-zero", arch="amd64", access_token="token", proxies_enabled=True)
+        setup_script = mock_popen.call_args[0][0][-1]
+        self.assertIn('export PIP_INDEX_URL="http://host.orb.internal:49507/root/pypi/+simple/"', setup_script)
+        self.assertIn('export UV_INDEX_URL="http://host.orb.internal:49507/root/pypi/+simple/"', setup_script)
+        # pip refuses a plain-HTTP non-localhost index without this (verified live).
+        self.assertIn('export PIP_TRUSTED_HOST="host.orb.internal"', setup_script)
+        # Cargo has no working single-URL env var for a custom [source.*] table
+        # (verified live) -- must write a real ~/.cargo/config.toml instead.
+        self.assertIn("cat > /home/runner/.cargo/config.toml", setup_script)
+        self.assertIn('replace-with = "kellnr-proxy"', setup_script)
+        self.assertIn(
+            'registry = "sparse+http://host.orb.internal:49506/api/v1/cratesio/"',
+            setup_script,
+        )
+
+    @patch("subprocess.Popen")
+    @patch("subprocess.run")
+    def test_spawn_runner_omits_proxy_wiring_when_disabled(self, mock_run, mock_popen):
+        mock_run.side_effect = [
+            MagicMock(stdout=json.dumps([{"name": "runzero-vm-base-amd64", "state": "stopped"}]), returncode=0),
+            MagicMock(returncode=0),
+        ]
+        self.driver.spawn_runner(repo="el-j/run-zero", arch="amd64", access_token="token", proxies_enabled=False)
+        setup_script = mock_popen.call_args[0][0][-1]
+        self.assertNotIn("PIP_INDEX_URL", setup_script)
+        self.assertNotIn("kellnr-proxy", setup_script)
 
     @patch("subprocess.Popen")
     @patch("subprocess.run")

@@ -97,9 +97,35 @@ RunZero runs local caching proxy registries alongside the autoscaler so your run
 | **Verdaccio** | [Verdaccio](https://verdaccio.org/) | `:49501` | [http://localhost:49501](http://localhost:49501) | Private npm/yarn/pnpm caching proxy registry with web UI. |
 | **Athens** | [Athens Go Proxy](https://github.com/gomods/athens) | `:49500` | `http://localhost:49500` | Immutable Go module proxy and download cache. |
 | **Docker Registry Mirror** | [Docker Registry](https://docs.docker.com/docker-hub/mirror/) | `:49502` | `http://localhost:49502` | Pull-through mirror for Docker Hub images. |
+| **devpi** | [devpi-server](https://devpi.net/) | `:49507` | [http://localhost:49507/root/pypi/+simple/](http://localhost:49507/root/pypi/+simple/) | Real pull-through caching proxy for pip/uv (PyPI) via its built-in `root/pypi` mirror index. |
+| **kellnr** | [kellnr](https://kellnr.io/) | `:49506` | `http://localhost:49506` | Real pull-through caching proxy for Cargo/crates.io via kellnr's built-in crates.io proxy. |
 | **Node.js Toolchain** | [NVM](https://github.com/nvm-sh/nvm) & [Node.js](https://nodejs.org/) | Local | Pre-baked | Pre-installed Node.js 20 LTS, 22 LTS, and 24 Current with yarn & pnpm. |
 | **.NET SDK** | [Microsoft .NET 8](https://dotnet.microsoft.com/) | Local | Pre-baked | Pre-installed .NET 8.0 SDK for C#/F# workflow pipelines. |
 | **Browser Testing** | [Playwright](https://playwright.dev/) & [Google Chrome](https://www.google.com/chrome/) | Local | Pre-baked | Pre-installed system dependencies and browser runtimes for E2E testing. |
+
+Cargo has no single "index URL" env var the way pip/uv (`PIP_INDEX_URL`/`UV_INDEX_URL`) and Go (`GOPROXY`) do --
+pointing it at kellnr requires a real `~/.cargo/config.toml` source-replacement block (written automatically by
+`docker/start.sh` for Docker-engine runners, and by `OrbStackVMDriver` for VM-engine runners); `CARGO_SOURCE_*`
+env vars for a custom `[source.*]` table are silently ignored by Cargo. Likewise, pip refuses a plain-HTTP index
+on any host other than `localhost`/`127.0.0.1` unless that host is explicitly trusted via `PIP_TRUSTED_HOST` --
+both runner engines set this automatically alongside `PIP_INDEX_URL` wherever the index isn't reached via
+`localhost`; uv has no equivalent restriction.
+
+### 🪐 OrbStack VM Local Disk Caching
+
+The proxy registries above cache package *downloads* over the network. Package managers also keep a local,
+already-extracted disk cache (`~/.npm`, `~/.cache/pip`, `~/go/pkg`, `~/.cargo/registry`, etc.) so a *second* job
+using the same package doesn't even need the network proxy -- this is what `HOST_CACHE_DIR` and the Cache
+Analytics dashboard panel track. For the Docker engine this is a plain `-v host:container` bind mount. An
+OrbStack VM is a real, separate guest filesystem with no such flag, but every non-isolated OrbStack VM (the kind
+this project creates) automatically virtiofs-shares the entire host macOS filesystem into the guest at a fixed
+path, `/mnt/mac<absolute-macOS-path>` -- confirmed live: a file written from inside a VM under
+`/mnt/mac/Users/...` appears immediately, with matching ownership, at the real `/Users/...` path on the host,
+and vice versa. `OrbStackVMDriver` uses this to `mount --bind` each host-side cache directory onto its
+container-style destination path inside the VM before the job runs, so cache data written by one ephemeral VM
+is really on host disk and visible to the next VM cloned for the same architecture. If a host cache directory
+isn't visible via the mac share for some reason, the mount is skipped with a warning rather than failing the
+job outright.
 
 ---
 
@@ -135,6 +161,11 @@ RunZero runs local caching proxy registries alongside the autoscaler so your run
    - [Verdaccio](https://verdaccio.org/) (`:49501`) for instant npm/yarn/pnpm caching + web dashboard.
    - [Athens](https://github.com/gomods/athens) (`:49500`) for immutable Go module caching.
    - [Docker Registry Mirror](https://docs.docker.com/docker-hub/mirror/) (`:49502`) for Docker Hub pull-through caching.
+   - [devpi](https://devpi.net/) (`:49507`) for pip/uv PyPI pull-through caching.
+   - [kellnr](https://kellnr.io/) (`:49506`) for Cargo/crates.io pull-through caching.
+   - Per-VM local disk caches (`~/.npm`, `~/.cache/pip`, `~/go/pkg`, `~/.cargo/registry`, etc.) are real
+     even for the OrbStack VM engine, bind-mounted from host storage via OrbStack's automatic `/mnt/mac`
+     filesystem share -- see "OrbStack VM Local Disk Caching" below.
 8. **Zero Cloud Bill**:
    - Self-hosted runners **never** consume GitHub Actions minutes (100% free and unlimited).
 
@@ -184,6 +215,7 @@ RunZero runs local caching proxy registries alongside the autoscaler so your run
 ├── docker/                                # 🐳 Container Build Manifests & Entrypoints
 │   ├── Dockerfile                         #    Multi-arch runner image (ARM64 + AMD64)
 │   ├── Dockerfile.autoscaler              #    Autoscaler daemon container
+│   ├── Dockerfile.devpi                   #    devpi pip/uv PyPI proxy image (no maintained multi-arch upstream)
 │   ├── provision-toolchain.sh             #    Unified toolchain script (shared by Docker & VM base images)
 │   └── start.sh                           #    Runner entrypoint with proxy auto-detect
 ├── tests/                                 # 🧪 Comprehensive Test Suite (90 Tests)
@@ -200,7 +232,7 @@ RunZero runs local caching proxy registries alongside the autoscaler so your run
 │   ├── index.html                         #    Compiled Hero Landing Page
 │   ├── docs/index.html                    #    Compiled Dedicated Documentation Page
 │   └── versions/index.html                #    Compiled Release Version Archive Page
-├── docker-compose.yml                     # 🚀 Orchestration (apt-cacher + Verdaccio + Athens + Docker Mirror)
+├── docker-compose.yml                     # 🚀 Orchestration (apt-cacher + Verdaccio + Athens + Docker Mirror + devpi + kellnr)
 ├── Makefile                               # 🛠️ Unified management commands
 ├── pyproject.toml                         # ⚙️ Python project configuration (Pytest, Mypy, Mutmut)
 ├── .env.example                           # ⚙️ Configuration template

@@ -106,6 +106,48 @@ if curl -s --connect-timeout 1 http://localhost:49500/ >/dev/null 2>&1; then
   echo "⚡ Athens Go proxy connected: http://localhost:49500"
 fi
 
+# devpi's default "root/pypi" index is a real pull-through PyPI mirror; both pip and uv
+# honor PIP_INDEX_URL, uv additionally reads UV_INDEX_URL.
+if curl -s --connect-timeout 1 http://localhost:49507/root/pypi/+simple/ >/dev/null 2>&1; then
+  export PIP_INDEX_URL="http://localhost:49507/root/pypi/+simple/"
+  export UV_INDEX_URL="${PIP_INDEX_URL}"
+  pip config set global.index-url "${PIP_INDEX_URL}" 2>/dev/null || true
+  echo "⚡ devpi PyPI proxy connected: ${PIP_INDEX_URL}"
+fi
+
+# kellnr's crates.io proxy is a real sparse-index mirror. Unlike pip/Go, Cargo has no
+# single "index URL" env var for this -- verified live (2026-08-26) that cargo silently
+# ignores CARGO_SOURCE_<name>_* env vars for a dynamic/custom [source.*] table (a real
+# cargo limitation: env-var config only reaches keys cargo statically knows about, not
+# free-form registry-map tables). Only a real ~/.cargo/config.toml source-replacement
+# block works, confirmed by tracing cargo's own network layer: with the env vars alone it
+# fetched straight from https://index.crates.io/config.json; with this file in place it
+# fetched kellnr's config.json instead, and the resulting .crate landed in kellnr's own
+# on-disk cache.
+#
+# Uses host.orb.internal, not localhost -- kellnr bakes its own configured
+# KELLNR_ORIGIN__HOSTNAME (see docker-compose.yml) into the "dl" (download) URL every
+# client gets back from config.json, regardless of which URL that client used to reach
+# it. Confirmed live (2026-08-26) this is a real trap, not a style choice: pointing the
+# registry at "localhost:49506" let the index metadata fetch succeed (reachable from a
+# --network host container) but then broke the actual .crate download, because kellnr's
+# advertised dl URL was itself "localhost:49506" -- unreachable from a context where
+# "localhost" doesn't mean the Mac host (an OrbStack VM, or a Mode 2 bridge-network
+# container). host.orb.internal is OrbStack's universal DNS name for the Mac host and
+# resolves correctly from every context this stack runs runners in -- verified live from
+# a real OrbStack VM, a --network host container, and a plain bridge-network container.
+if curl -fsS --connect-timeout 1 http://host.orb.internal:49506/api/v1/cratesio/config.json >/dev/null 2>&1; then
+  mkdir -p "${HOME}/.cargo"
+  cat > "${HOME}/.cargo/config.toml" <<'CARGOCFG'
+[source.crates-io]
+replace-with = "kellnr-proxy"
+
+[source.kellnr-proxy]
+registry = "sparse+http://host.orb.internal:49506/api/v1/cratesio/"
+CARGOCFG
+  echo "⚡ kellnr Cargo/crates.io proxy connected: ${KELLNR_URL}"
+fi
+
 # apt-cacher-ng only gets wired into the image if it happened to be running at
 # `docker build` time (see provision-toolchain.sh) -- a real container built
 # on a machine where it wasn't up starts with no apt proxy config at all, and
@@ -155,6 +197,12 @@ echo "Labels:        ${RUNNER_LABELS}"
 echo "Ephemeral:     ${EPHEMERAL}"
 echo "NPM Registry:  ${NPM_CONFIG_REGISTRY:-https://registry.npmjs.org/}"
 echo "Go Proxy:      ${GOPROXY:-https://proxy.golang.org,direct}"
+echo "Pip Index:     ${PIP_INDEX_URL:-https://pypi.org/simple/}"
+if [ -f "${HOME}/.cargo/config.toml" ] && grep -q "kellnr-proxy" "${HOME}/.cargo/config.toml" 2>/dev/null; then
+  echo "Cargo Source:  kellnr proxy (http://localhost:49506)"
+else
+  echo "Cargo Source:  crates.io (default)"
+fi
 echo "=========================================="
 
 # Retrieve registration token via Personal Access Token (PAT) if not directly supplied

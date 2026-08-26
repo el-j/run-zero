@@ -2,7 +2,9 @@
 🪐 OrbStack Virtual Machine Runner Driver
 Spawns and manages dedicated, lightweight Linux Virtual Machines via OrbStack (Apple Virtualization framework).
 Provides full systemd, dedicated kernel, internal Docker daemon, unconfined browser sandboxes,
-and automatic integration with local caching proxies (Verdaccio, Athens, apt-cacher-ng).
+automatic integration with local caching proxies (Verdaccio, Athens, apt-cacher-ng, devpi, kellnr),
+and real host-backed local disk caches via OrbStack's automatic /mnt/mac filesystem share
+(see `orbstack_templates.cache_mount_snippet()`).
 """
 
 import json
@@ -16,7 +18,12 @@ import uuid
 from typing import Dict, List, Optional
 
 from . import RunnerDriver, RunnerInfo
-from .orbstack_templates import docker_engine_snippet, registration_and_run_snippet, runner_download_snippet
+from .orbstack_templates import (
+    cache_mount_snippet,
+    docker_engine_snippet,
+    registration_and_run_snippet,
+    runner_download_snippet,
+)
 
 RUNNER_VERSION = "2.336.0"
 RUNNER_VM_PREFIX = "runzero-vm-"
@@ -442,6 +449,11 @@ echo "Base image provisioning complete."
         as "not ready this poll, try again later," not a hard failure. Also returns None if the
         `orbctl clone` step itself fails. The clone is synchronous; registration/run/shutdown inside
         the VM happens via a detached `orb exec` (Popen), so this call doesn't block on job execution.
+
+        `cache_mounts` (host path -> container-style path, from `cache_manager.init_cache_dirs()`)
+        is turned into real bind mounts inside the VM via `cache_mount_snippet()` -- see that
+        function's docstring for the OrbStack `/mnt/mac` mechanism this relies on. Previously this
+        parameter was accepted here and silently discarded.
         """
         unique_id = uuid.uuid4().hex[:6]
         name_suffix = f"-{repo.replace('/', '-')}" if repo else (f"-{org}" if org else "")
@@ -459,7 +471,37 @@ echo "Base image provisioning complete."
 export npm_config_registry="http://host.orb.internal:49501"
 export YARN_REGISTRY="http://host.orb.internal:49501"
 export GOPROXY="http://host.orb.internal:49500,https://proxy.golang.org,direct"
+export PIP_INDEX_URL="http://host.orb.internal:49507/root/pypi/+simple/"
+export UV_INDEX_URL="http://host.orb.internal:49507/root/pypi/+simple/"
+export PIP_TRUSTED_HOST="host.orb.internal"
 """
+            # pip implicitly trusts "localhost"/"127.0.0.1" for a plain-HTTP index but
+            # refuses any other host -- verified live (2026-08-26) inside a real OrbStack
+            # VM: without PIP_TRUSTED_HOST, pip printed "is not a trusted or secure host",
+            # silently skipped the index, and exited 0 having installed nothing. uv has no
+            # equivalent restriction (verified: identical install succeeds unmodified).
+            # kellnr's crates.io proxy has no single "index URL" env var: verified live
+            # (2026-08-26) that cargo silently ignores CARGO_SOURCE_<name>_* env vars for a
+            # dynamic/custom [source.*] table (a real cargo limitation, not a typo) --
+            # tracing cargo's own network layer showed it still fetching straight from
+            # https://index.crates.io with the env vars set, and only switching to the
+            # proxy once a real ~/.cargo/config.toml source-replacement block existed.
+            # Written directly here (rather than via a curl-based runtime probe like
+            # start.sh's, since host.orb.internal always resolves to the real Mac host from
+            # inside an OrbStack VM -- no "is it up" detection needed the way Mode 2's
+            # bridge-network containers need one).
+            proxy_env_block += """
+mkdir -p /home/runner/.cargo
+cat > /home/runner/.cargo/config.toml <<'CARGOCFG'
+[source.crates-io]
+replace-with = "kellnr-proxy"
+
+[source.kellnr-proxy]
+registry = "sparse+http://host.orb.internal:49506/api/v1/cratesio/"
+CARGOCFG
+"""
+
+        cache_mount_block = cache_mount_snippet(cache_mounts)
 
         if repo:
             api_base = f"https://api.github.com/repos/{repo}/actions/runners"
@@ -484,7 +526,7 @@ export GOPROXY="http://host.orb.internal:49500,https://proxy.golang.org,direct"
             return None
 
         reg_and_run = registration_and_run_snippet(
-            api_base, runner_url, access_token or "", vm_name, runner_labels, proxy_env_block
+            api_base, runner_url, access_token or "", vm_name, runner_labels, proxy_env_block, cache_mount_block
         )
 
         print(

@@ -138,6 +138,46 @@ class TestDockerDriver(unittest.TestCase):
         self.assertFalse(any(p.startswith("CACHE_MOUNT_DESTS=") for p in env_pairs))
 
     @patch("subprocess.run")
+    def test_spawn_runner_sets_pip_env_on_host_network(self, mock_run):
+        # devpi's pull-through PyPI proxy: on --network host (this driver's default),
+        # the published localhost port is reachable directly and pip implicitly trusts
+        # localhost for plain HTTP, so no PIP_TRUSTED_HOST is needed.
+        mock_run.return_value = MagicMock(returncode=0)
+        self.driver.spawn_runner(repo="el-j/run-zero", arch="arm64", access_token="tok", proxies_enabled=True)
+        cmd = mock_run.call_args[0][0]
+        env_values = [cmd[i + 1] for i, tok in enumerate(cmd) if tok == "-e"]
+        pip_entries = [v for v in env_values if v.startswith("PIP_INDEX_URL=")]
+        uv_entries = [v for v in env_values if v.startswith("UV_INDEX_URL=")]
+        self.assertEqual(pip_entries, ["PIP_INDEX_URL=http://localhost:49507/root/pypi/+simple/"])
+        self.assertEqual(uv_entries, ["UV_INDEX_URL=http://localhost:49507/root/pypi/+simple/"])
+        self.assertFalse(any(v.startswith("PIP_TRUSTED_HOST=") for v in env_values))
+
+    @patch("subprocess.run")
+    def test_spawn_runner_sets_pip_trusted_host_on_non_host_network(self, mock_run):
+        # Off --network host, PIP_INDEX_URL must point at the "devpi" Compose service
+        # name (localhost wouldn't reach a sibling container) -- and pip refuses a
+        # plain-HTTP index on any host other than localhost/127.0.0.1 unless it's
+        # explicitly trusted (verified live: without this, pip silently installs
+        # nothing and still exits 0).
+        mock_run.return_value = MagicMock(returncode=0)
+        driver = DockerDriver(network="runner-network")
+        driver.spawn_runner(repo="el-j/run-zero", arch="arm64", access_token="tok", proxies_enabled=True)
+        cmd = mock_run.call_args[0][0]
+        env_values = [cmd[i + 1] for i, tok in enumerate(cmd) if tok == "-e"]
+        self.assertIn("PIP_INDEX_URL=http://devpi:3141/root/pypi/+simple/", env_values)
+        self.assertIn("UV_INDEX_URL=http://devpi:3141/root/pypi/+simple/", env_values)
+        self.assertIn("PIP_TRUSTED_HOST=devpi", env_values)
+
+    @patch("subprocess.run")
+    def test_spawn_runner_omits_pip_env_when_proxies_disabled(self, mock_run):
+        mock_run.return_value = MagicMock(returncode=0)
+        self.driver.spawn_runner(repo="el-j/run-zero", arch="arm64", access_token="tok", proxies_enabled=False)
+        cmd = mock_run.call_args[0][0]
+        env_values = [cmd[i + 1] for i, tok in enumerate(cmd) if tok == "-e"]
+        self.assertFalse(any(v.startswith("PIP_INDEX_URL=") for v in env_values))
+        self.assertFalse(any(v.startswith("UV_INDEX_URL=") for v in env_values))
+
+    @patch("subprocess.run")
     def test_spawn_runner_failure(self, mock_run):
         mock_run.side_effect = subprocess.CalledProcessError(1, "docker", stderr=b"Docker daemon error")
         name = self.driver.spawn_runner(repo="el-j/run-zero")

@@ -103,10 +103,31 @@ class DockerDriver(RunnerDriver):
             # When on host network, access proxies on published localhost ports
             verdaccio_url = "http://localhost:49501/" if self.network == "host" else "http://verdaccio:4873/"
             athens_url = "http://localhost:49500,https://proxy.golang.org,direct" if self.network == "host" else "http://athens:3000,https://proxy.golang.org,direct"
+            # devpi's default "root/pypi" index is a real pull-through PyPI mirror out of the
+            # box; pip and uv both honor PIP_INDEX_URL, and uv additionally reads UV_INDEX_URL.
+            pip_host = "localhost:49507" if self.network == "host" else "devpi:3141"
+            pip_index_url = f"http://{pip_host}/root/pypi/+simple/"
             cmd.extend([
                 "-e", f"NPM_CONFIG_REGISTRY={verdaccio_url}",
-                "-e", f"GOPROXY={athens_url}"
+                "-e", f"GOPROXY={athens_url}",
+                "-e", f"PIP_INDEX_URL={pip_index_url}",
+                "-e", f"UV_INDEX_URL={pip_index_url}"
             ])
+            if self.network != "host":
+                # pip implicitly trusts "localhost"/"127.0.0.1" for plain-HTTP indexes but
+                # refuses anything else -- verified live (2026-08-26): pointing pip at a
+                # plain-HTTP non-localhost host without this produced "is not a trusted or
+                # secure host" and pip silently found zero packages, exit 0, no error. uv
+                # does not have this restriction (verified: identical install succeeds with
+                # no equivalent flag), so this is pip/PIP_TRUSTED_HOST-only.
+                cmd.extend(["-e", "PIP_TRUSTED_HOST=devpi"])
+            # kellnr's crates.io proxy is a real sparse-index mirror, but unlike pip/Go it
+            # has no single "point at this URL" env var: verified live (2026-08-26) that
+            # cargo silently ignores CARGO_SOURCE_<name>_* env vars for a dynamic/custom
+            # [source.*] table (a real cargo limitation, not a typo) -- only a real
+            # ~/.cargo/config.toml source-replacement block works. `docker/start.sh`
+            # (this image's own entrypoint) writes that file at container start when it
+            # detects kellnr is reachable, so no extra `-e`/`-v` is threaded through here.
 
         if cache_mounts:
             for host_p, cont_p in cache_mounts.items():
