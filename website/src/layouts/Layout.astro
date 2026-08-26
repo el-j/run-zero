@@ -7,12 +7,14 @@ interface Props {
   title?: string;
   description?: string;
   currentPath?: string;
+  currentVersion?: string;
 }
 
 const {
   title = 'RunZero ⚡ Zero-Bloat Local GitHub Actions Runner Fleet',
   description = 'Dual-Engine autoscaling GitHub Actions runner fleet for Docker Containers & Dedicated Linux VMs (OrbStack, WSL2, Multipass). Zero cloud minutes. Zero K8s bloat.',
-  currentPath = '/'
+  currentPath = '/',
+  currentVersion = import.meta.env.PUBLIC_DOCS_VERSION || 'main'
 } = Astro.props;
 
 const baseUrl = import.meta.env.BASE_URL.replace(/\/$/, '');
@@ -48,7 +50,7 @@ const baseUrl = import.meta.env.BASE_URL.replace(/\/$/, '');
     <div class="ambient-glow glow-primary"></div>
     <div class="ambient-glow glow-cyan"></div>
 
-    <Header currentPath={currentPath} />
+    <Header currentPath={currentPath} currentVersion={currentVersion} />
 
     <slot />
 

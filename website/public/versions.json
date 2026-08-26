@@ -1,12 +1,22 @@
 [
   {
-    "version": "v0.0.1",
-    "name": "v0.0.1 (Latest)",
-    "url": "/run-zero/",
-    "docsUrl": "/run-zero/docs/",
-    "releaseDate": "2026-08-25",
+    "version": "v0.0.3",
+    "name": "v0.0.3 (Latest Release)",
+    "url": "/run-zero/v0.0.3/",
+    "docsUrl": "/run-zero/v0.0.3/docs/",
+    "releaseDate": "2026-08-26",
     "status": "latest",
-    "notes": "Initial release: Dual-Engine architecture, OrbStack Linux VMs, Hybrid auto-routing, NVM multi-node, Verdaccio & Athens proxy caching.",
-    "changelogUrl": "https://github.com/el-j/run-zero/releases/tag/v0.0.1"
+    "notes": "Pinned documentation snapshot for RunZero v0.0.3.",
+    "changelogUrl": "https://github.com/el-j/run-zero/releases/tag/v0.0.3"
+  },
+  {
+    "version": "v0.0.2",
+    "name": "v0.0.2",
+    "url": "/run-zero/v0.0.2/",
+    "docsUrl": "/run-zero/v0.0.2/docs/",
+    "releaseDate": "2026-08-26",
+    "status": "archived",
+    "notes": "Pinned documentation snapshot for RunZero v0.0.2.",
+    "changelogUrl": "https://github.com/el-j/run-zero/releases/tag/v0.0.2"
   }
 ]
