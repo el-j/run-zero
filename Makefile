@@ -352,7 +352,7 @@ test-suite: ## Run test suite with pytest, mypy type checking, and flake8 linter
 	@docker run --rm -v "$$(pwd):/app" -w /app python:3.11-slim bash -c "\
 		pip install --quiet pytest pytest-cov mypy flake8 && \
 		flake8 src/ tests/ --max-line-length=160 --extend-ignore=E501,W503,E402 && \
-		MYPYPATH=src mypy src/drivers/ src/autoscaler.py --ignore-missing-imports && \
+		MYPYPATH=src mypy src/ --ignore-missing-imports && \
 		PYTHONPATH=src pytest --cov=src --cov-report=term-missing tests/"
 	@echo "$(GREEN)All tests passed with 0 warnings!$(RESET)"
 
