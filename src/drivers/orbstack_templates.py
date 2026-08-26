@@ -14,6 +14,35 @@ echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.
 sudo apt-get update -y
 sudo apt-get install -y --no-install-recommends docker-ce docker-ce-cli containerd.io docker-compose-plugin
 sudo usermod -aG docker runner
+
+# Docker's default cgroup driver on Ubuntu 24.04 is "systemd" -- it asks the
+# guest's systemd to create a transient scope unit (via dbus) for every
+# container it starts. That works on a real kernel, but this VM is itself an
+# OrbStack "scon" (an LXC-style container running inside one shared master
+# VM, not independent hardware virtualization -- see OrbStack's own
+# architecture). In that nested setup, systemd's kernel-thread check for the
+# new scope's cgroup.procs entries fails against the guest's /proc with
+# ENOTTY, which reads as: "Failed to determine whether process N is a kernel
+# thread: Inappropriate ioctl for device", and every `docker start` (incl.
+# GitHub Actions service containers like postgres) fails immediately.
+# cgroupfs manages the same cgroup v2 hierarchy directly, bypassing
+# systemd-managed scope units entirely, and needs no such kernel support.
+# Reproduced and confirmed live in this exact VM image (2026-08-26): systemd
+# driver reliably fails `docker start`; cgroupfs starts the same container
+# cleanly.
+#
+# registry-mirrors points every `docker pull`/`docker create` at the stack's
+# own pull-through cache (docker-compose.yml's "docker-mirror" service, a
+# registry:2 proxying registry-1.docker.io) instead of Docker Hub directly.
+# Without this, every image pull -- including GitHub Actions service
+# containers like postgres, which get pulled fresh on every single ephemeral
+# VM -- bypasses the mirror entirely and re-downloads from the internet every
+# time (confirmed live 2026-08-26: docker-mirror-storage sat at 0 bytes after
+# dozens of pulls this session, while verdaccio/athens/apt-cacher -- which ARE
+# wired via env vars -- had real cached data). insecure-registries is
+# required alongside it: dockerd refuses a registry-mirrors entry served over
+# plain HTTP otherwise, and the local mirror has no TLS cert.
+echo '{"exec-opts": ["native.cgroupdriver=cgroupfs"], "registry-mirrors": ["http://host.orb.internal:49502"], "insecure-registries": ["host.orb.internal:49502"]}' | sudo tee /etc/docker/daemon.json > /dev/null
 sudo systemctl enable docker
 """
 
@@ -65,8 +94,8 @@ fi
   --unattended --replace --ephemeral --labels "{runner_labels}"
 
 echo "Starting runner {vm_name}..."
-./run.sh
+./run.sh || true
 
 echo "Ephemeral run finished -- powering off so the autoscaler prunes this VM."
-sudo shutdown -h now
+sudo systemctl poweroff 2>/dev/null || sudo poweroff 2>/dev/null || sudo shutdown -h now 2>/dev/null || true
 """

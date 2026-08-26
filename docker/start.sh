@@ -60,6 +60,28 @@ for cache_dir in "${CACHE_DIRS[@]}"; do
   fi
 done
 
+# Final, verified pass on the plain (never bind-mounted) tool directories that
+# job steps write into directly, e.g. `actions/setup-go`'s own `mkdir
+# $GOPATH/bin`. The blanket `chown -R /home/runner` above already covers
+# these in the common case, but it also recurses into whatever bind-mounted
+# cache dirs (go/pkg, .npm, ...) got attached at container-create time, and a
+# host filesystem backend that silently refuses chown on a shared mount
+# (observed with OrbStack's virtiofs) makes the whole `chown -R` command exit
+# non-zero -- swallowed by `|| true` above, so a real ownership failure on an
+# unrelated sibling directory further down the same recursive walk would
+# previously go unnoticed until a much later, harder-to-diagnose step. Re-
+# assert ownership on exactly the paths that must be writable, verify it
+# actually took as the runner user, and fall back to a permissive chmod
+# (bypassing ownership entirely) rather than leave a job to fail on it.
+for must_own in /home/runner/go /home/runner/go/bin /home/runner/.local/bin; do
+  sudo mkdir -p "${must_own}"
+  sudo chown runner:runner "${must_own}" 2>/dev/null || true
+  if ! sudo -u runner test -w "${must_own}"; then
+    echo "⚠️  ${must_own} not writable by 'runner' after chown -- forcing chmod 777"
+    sudo chmod 777 "${must_own}"
+  fi
+done
+
 # Detect architecture for automatic labels
 ARCH=$(uname -m)
 case "${ARCH}" in

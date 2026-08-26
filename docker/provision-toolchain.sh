@@ -41,12 +41,16 @@ sudo apt-get install -y --no-install-recommends \
   bzip2 zstd xz-utils build-essential cmake pkg-config libssl-dev libffi-dev \
   libicu-dev libsqlite3-dev zlib1g-dev python3 python3-venv python3-dev python3-pip \
   software-properties-common postgresql-client
-sudo git lfs install --system
+sudo git lfs install --system --skip-repo 2>/dev/null || true
 
 echo "==> Installing .NET SDK 8.0..."
-curl -fsSL https://packages.microsoft.com/config/ubuntu/22.04/packages-microsoft-prod.deb -o /tmp/packages-microsoft-prod.deb
-sudo dpkg -i /tmp/packages-microsoft-prod.deb
-rm -f /tmp/packages-microsoft-prod.deb
+UBUNTU_VER=$(. /etc/os-release && echo "${VERSION_ID:-24.04}")
+curl -fsSL "https://packages.microsoft.com/config/ubuntu/${UBUNTU_VER}/packages-microsoft-prod.deb" -o /tmp/packages-microsoft-prod.deb 2>/dev/null || \
+  curl -fsSL "https://packages.microsoft.com/config/ubuntu/24.04/packages-microsoft-prod.deb" -o /tmp/packages-microsoft-prod.deb 2>/dev/null || true
+if [ -f /tmp/packages-microsoft-prod.deb ]; then
+  sudo dpkg -i /tmp/packages-microsoft-prod.deb 2>/dev/null || true
+  rm -f /tmp/packages-microsoft-prod.deb
+fi
 sudo apt-get update -y
 sudo apt-get install -y --no-install-recommends dotnet-sdk-8.0
 

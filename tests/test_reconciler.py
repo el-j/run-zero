@@ -112,6 +112,31 @@ class TestReconciler(unittest.TestCase):
         )
         driver.destroy_runner.assert_called_once_with("container123")
 
+    @patch("reconciler.github_request")
+    def test_reconcile_idle_orphans_destroys_finished_vm_runner(self, mock_gh):
+        # Ephemeral VM finished running action in el-j/herbful and was unregistered from GitHub,
+        # but the VM remained running. Reconciler detects it's not in GitHub and reaps it.
+        mock_gh.return_value = {"runners": []}
+        driver = MagicMock()
+        vm_runner = RunnerInfo(
+            id="runzero-vm-amd64-el-j-herbful-8e8a72",
+            name="runzero-vm-amd64-el-j-herbful-8e8a72",
+            status="running",
+            state="running",
+            target_repo="el-j-herbful",
+            target_arch="amd64",
+            backend="orbstack-vm",
+            created_at=1_000_000.0 - 250  # 250s old (> 180s unregistered threshold)
+        )
+        reconcile_idle_orphans(
+            ["el-j/herbful"],
+            [vm_runner],
+            {"orbstack-vm": driver},
+            access_token="token",
+            now=1_000_000.0
+        )
+        driver.destroy_runner.assert_called_once_with("runzero-vm-amd64-el-j-herbful-8e8a72")
+
 
 if __name__ == "__main__":
     unittest.main()
