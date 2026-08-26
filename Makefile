@@ -372,12 +372,15 @@ test-suite: ## Run test suite with pytest, mypy type checking, and flake8 linter
 	@echo "$(GREEN)All tests passed with 0 warnings!$(RESET)"
 
 .PHONY: mutation-test
-mutation-test: ## Run mutation testing suite (mutmut)
+mutation-test: ## Run mutation testing suite (mutmut) -- fails the build on surviving mutants
 	@echo "$(CYAN)Running Mutmut Mutation Testing Suite...$(RESET)"
 	@docker run --rm -v "$$(pwd):/app" -w /app python:3.11-slim bash -c "\
-		pip install --quiet pytest mutmut && \
-		PYTHONPATH=src mutmut run || true && \
-		mutmut results"
+		apt-get update -qq && apt-get install -y -qq --no-install-recommends make > /dev/null && \
+		pip install --quiet pytest pytest-cov mutmut && \
+		PYTHONPATH=src mutmut run; \
+		status=\$$?; \
+		mutmut results; \
+		exit \$$status"
 
 .PHONY: test
 test: ## Run local unit tests directly

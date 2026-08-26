@@ -56,12 +56,19 @@
 
 RunZero is the **first local runner fleet that gives you the choice between ultra-lightweight Docker containers and dedicated Linux Virtual Machines**:
 
-| Engine Backend | Upstream Runtime | Best Used For |
-|---|---|---|
-| 🐳 **Docker Containers** (`RUNNER_BACKEND=docker`) | [Docker Engine](https://docs.docker.com/engine/) / [OrbStack](https://orbstack.dev/) | Fast unit tests, linting, build pipelines, JS/Node/Python steps (**instant ~0.3s boot, ~20MB RAM**). |
-| 💻 **OrbStack Linux Machines** (`RUNNER_BACKEND=orbstack-vm`) | [OrbStack Virtualization](https://orbstack.dev/) | **Full systemd support**, background daemons, headless Chrome/Lighthouse, unconfined Docker daemon. |
-| 🪟 **Windows WSL2** (`RUNNER_BACKEND=wsl2`) | [Windows Subsystem for Linux 2](https://learn.microsoft.com/en-us/windows/wsl/) | Native Linux VM execution on Windows 10/11 & Windows Server. |
-| 🐧 **Canonical Multipass** (`RUNNER_BACKEND=multipass`) | [Canonical Multipass](https://multipass.run/) | Universal cross-platform VM backend for macOS, Linux, and Windows. |
+| Engine Backend | Upstream Runtime | Best Used For | Verification Status |
+|---|---|---|---|
+| 🐳 **Docker Containers** (`RUNNER_BACKEND=docker`) | [Docker Engine](https://docs.docker.com/engine/) / [OrbStack](https://orbstack.dev/) | Fast unit tests, linting, build pipelines, JS/Node/Python steps (**instant ~0.3s boot, ~20MB RAM**). | ✅ Unit-tested + automated e2e in CI |
+| 💻 **OrbStack Linux Machines** (`RUNNER_BACKEND=orbstack-vm`) | [OrbStack Virtualization](https://orbstack.dev/) | **Full systemd support**, background daemons, headless Chrome/Lighthouse, unconfined Docker daemon. | ✅ Unit-tested + manually verified against real OrbStack VMs |
+| 🪟 **Windows WSL2** (`RUNNER_BACKEND=wsl2`) | [Windows Subsystem for Linux 2](https://learn.microsoft.com/en-us/windows/wsl/) | Native Linux VM execution on Windows 10/11 & Windows Server. | ⚠️ Unit-tested only — **not yet verified against a real Windows/WSL2 host** |
+| 🐧 **Canonical Multipass** (`RUNNER_BACKEND=multipass`) | [Canonical Multipass](https://multipass.run/) | Universal cross-platform VM backend for macOS, Linux, and Windows. | ⚠️ Unit-tested only — **not yet verified against a real Multipass install** |
+
+The WSL2 and Multipass drivers are implemented and covered by unit tests that verify command
+construction (every `subprocess` call to `wsl.exe` / `multipass` is mocked at the call site), but
+neither has been exercised against real hardware — this project has been developed and driven
+entirely from a macOS host with OrbStack. See [`E2E_TESTING.md`](E2E_TESTING.md) and
+[issue #12](https://github.com/el-j/run-zero/issues/12) for the full honest breakdown and how to
+help verify one of these backends for real.
 
 ---
 
@@ -302,6 +309,9 @@ The suite is layered:
 - **True end-to-end tests** (`tests/test_e2e_docker.py`) — a real, unmocked Docker container
   lifecycle. See [`E2E_TESTING.md`](E2E_TESTING.md) for exactly what's automated in CI (Docker)
   versus what requires a human running a manual runbook locally (OrbStack VM, WSL2, Multipass).
+- **Mutation testing** (`make mutation-test`) — proves the test suite actually fails when `src/`
+  logic breaks, not just that it executes the line. See [`MUTATION_TESTING.md`](MUTATION_TESTING.md)
+  for how it's configured and wired into CI.
 
 ---
 
