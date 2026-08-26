@@ -4,7 +4,6 @@ on:
   push:
     branches:
       - main
-      - develop
     paths:
       - 'website/**'
       - '.github/workflows/deploy-pages.yml'
@@ -46,17 +45,21 @@ jobs:
 
       - name: Create Versioned Snapshot Copy
         run: |
-          # Fetch latest tag or fallback to v2.0.0
-          CURRENT_VERSION=$(git describe --tags --abbrev=0 2>/dev/null || echo "v2.0.0")
-          echo "Creating snapshot for version: $CURRENT_VERSION"
+          CURRENT_VERSION=$(git tag --points-at HEAD | head -n 1)
 
-          # Duplicate build into version subdirectory
-          mkdir -p website/dist/${CURRENT_VERSION}
-          cp -r website/dist/docs website/dist/${CURRENT_VERSION}/ || true
-          cp -r website/dist/_astro website/dist/${CURRENT_VERSION}/ || true
-          cp -r website/dist/fonts website/dist/${CURRENT_VERSION}/ || true
-          cp website/dist/index.html website/dist/${CURRENT_VERSION}/ || true
-          cp website/dist/favicon.svg website/dist/${CURRENT_VERSION}/ || true
+          if [ -n "$CURRENT_VERSION" ]; then
+            echo "Creating snapshot for release tag: $CURRENT_VERSION"
+
+            # Duplicate build into version subdirectory only for tagged releases.
+            mkdir -p "website/dist/${CURRENT_VERSION}"
+            cp -r website/dist/docs "website/dist/${CURRENT_VERSION}/"
+            cp -r website/dist/_astro "website/dist/${CURRENT_VERSION}/"
+            cp -r website/dist/fonts "website/dist/${CURRENT_VERSION}/"
+            cp website/dist/index.html "website/dist/${CURRENT_VERSION}/"
+            cp website/dist/favicon.svg "website/dist/${CURRENT_VERSION}/"
+          else
+            echo "No release tag on HEAD; skipping version snapshot update."
+          fi
 
           # Ensure .nojekyll is present to prevent GitHub Pages from ignoring _astro
           touch website/dist/.nojekyll
