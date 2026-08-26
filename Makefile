@@ -9,6 +9,8 @@
 CACHE_DIR := $(HOME)/.local-github-runner/cache
 AUTOSCALER_PID_FILE := .autoscaler.pid
 AUTOSCALER_LOG_FILE := .autoscaler.log
+BRIDGE_PID_FILE := .bridge.pid
+BRIDGE_LOG_FILE := .bridge.log
 
 # Colors for terminal styling
 CYAN    := \033[36m
@@ -70,7 +72,9 @@ cache-size: ## Show disk usage of the host package/tool cache only (subset of `m
 .PHONY: clean-cache
 clean-cache: ## Clear the persistent package/tool cache dir ($(CACHE_DIR)) only -- see `make clean-caches` to also clear proxy volumes and images
 	@echo "$(YELLOW)Clearing local runner caches at $(CACHE_DIR)...$(RESET)"
-	@rm -rf $(CACHE_DIR)
+	@chmod -R u+w $(CACHE_DIR) 2>/dev/null || true
+	@rm -rf $(CACHE_DIR) 2>/dev/null || docker run --rm -v "$(CACHE_DIR):/cache" alpine sh -c "rm -rf /cache/* /cache/.*" 2>/dev/null || true
+	@rm -rf $(CACHE_DIR) 2>/dev/null || true
 	@echo "$(GREEN)Runner cache cleared successfully.$(RESET)"
 
 # ==============================================================================
@@ -133,13 +137,18 @@ clean-pip: ## Clear only the cached pip packages
 clean-uv: ## Clear only the cached uv packages
 	@rm -rf $(CACHE_DIR)/uv && echo "$(GREEN)uv cache cleared.$(RESET)"
 clean-go-mod: ## Clear only the cached Go module downloads
-	@rm -rf $(CACHE_DIR)/go-mod && echo "$(GREEN)Go module cache cleared.$(RESET)"
+	@chmod -R u+w $(CACHE_DIR)/go-mod 2>/dev/null || true
+	@rm -rf $(CACHE_DIR)/go-mod 2>/dev/null || docker run --rm -v "$(CACHE_DIR)/go-mod:/cache" alpine sh -c "rm -rf /cache/* /cache/.*" 2>/dev/null || true
+	@rm -rf $(CACHE_DIR)/go-mod 2>/dev/null || true
+	@echo "$(GREEN)Go module cache cleared.$(RESET)"
 clean-go-build: ## Clear only the cached Go build cache
 	@rm -rf $(CACHE_DIR)/go-build && echo "$(GREEN)Go build cache cleared.$(RESET)"
 clean-cargo-registry: ## Clear only the cached Cargo registry
 	@rm -rf $(CACHE_DIR)/cargo-registry && echo "$(GREEN)Cargo registry cache cleared.$(RESET)"
 clean-toolcache: ## Clear only the cached hosted tool versions (Node/Go/etc SDK installs, per-arch)
-	@rm -rf $(CACHE_DIR)/toolcache && echo "$(GREEN)Tool cache cleared.$(RESET)"
+	@chmod -R u+w $(CACHE_DIR)/toolcache 2>/dev/null || true
+	@rm -rf $(CACHE_DIR)/toolcache 2>/dev/null || true
+	@echo "$(GREEN)Tool cache cleared.$(RESET)"
 
 .PHONY: clean-verdaccio clean-athens clean-docker-mirror clean-apt-cacher
 clean-verdaccio: ## Wipe the Verdaccio (npm proxy) cache volume
@@ -184,62 +193,61 @@ website-build: ## Build Astro static website and synchronize to docs/
 	@cd website && npm run build && rm -rf ../docs/* && cp -r dist/* ../docs/ && touch ../docs/.nojekyll
 	@echo "$(GREEN)Astro website built and synced to docs/ successfully!$(RESET)"
 
-.PHONY: verdaccio-ui
-verdaccio-ui: ## Open Verdaccio Web UI in default browser (http://localhost:49501)
-	@echo "$(CYAN)Opening Verdaccio Web UI at http://localhost:49501...$(RESET)"
-	@open http://localhost:49501 || echo "Navigate to http://localhost:49501 in your browser."
+.PHONY: dashboard
+dashboard: ## Open RunZero Real-Time Observability Web Dashboard in browser (http://localhost:49505)
+	@echo "$(CYAN)Opening RunZero Observability Dashboard at http://localhost:49505...$(RESET)"
+	@open http://localhost:49505 || echo "Navigate to http://localhost:49505 in your browser."
 
-.PHONY: apt-cacher-ui
-apt-cacher-ui: ## Open apt-cacher-ng statistics report in default browser (http://localhost:49503/acng-report.html)
-	@echo "$(CYAN)Opening apt-cacher-ng report at http://localhost:49503/acng-report.html...$(RESET)"
-	@open http://localhost:49503/acng-report.html || echo "Navigate to http://localhost:49503/acng-report.html in your browser."
+.PHONY: bridge-start bridge-stop bridge-status bridge-logs
+bridge-start: ## Start Host VM Bridge server on host (port 49504)
+	@if [ -f $(BRIDGE_PID_FILE) ] && kill -0 "$$(cat $(BRIDGE_PID_FILE))" 2>/dev/null; then \
+		echo "$(YELLOW)Host VM Bridge already running (PID $$(cat $(BRIDGE_PID_FILE))).$(RESET)"; \
+	else \
+		echo "$(CYAN)Starting Host VM Bridge on http://localhost:49504...$(RESET)"; \
+		set -a; [ -f .env ] && . ./.env; set +a; \
+		PYTHONPATH=src nohup python3 -u src/vm_bridge.py > $(BRIDGE_LOG_FILE) 2>&1 & \
+		echo $$! > $(BRIDGE_PID_FILE); \
+		echo "$(GREEN)Host VM Bridge running in background (PID $$(cat $(BRIDGE_PID_FILE))).$(RESET)"; \
+	fi
 
-.PHONY: build-arm64
-build-arm64: ## Build native ARM64 runner image (Apple Silicon M-series)
-	@echo "$(CYAN)Building native ARM64 runner image...$(RESET)"
-	docker build --platform linux/arm64 -f docker/Dockerfile -t local-github-runner:arm64 -t local-github-runner:latest ./docker
-	@echo "$(GREEN)ARM64 runner built successfully!$(RESET)"
+bridge-stop: ## Stop Host VM Bridge server
+	@echo "$(YELLOW)Stopping Host VM Bridge...$(RESET)"
+	@if [ -f $(BRIDGE_PID_FILE) ]; then \
+		pid=$$(cat $(BRIDGE_PID_FILE)); \
+		if kill -0 "$$pid" 2>/dev/null; then kill "$$pid"; fi; \
+		rm -f $(BRIDGE_PID_FILE); \
+	fi
+	@echo "$(GREEN)Host VM Bridge stopped.$(RESET)"
 
-.PHONY: build-amd64
-build-amd64: ## Build AMD64 / x86_64 runner image (via OrbStack Rosetta)
-	@echo "$(CYAN)Building AMD64 / x86_64 runner image...$(RESET)"
-	docker build --platform linux/amd64 -f docker/Dockerfile -t local-github-runner:amd64 ./docker
-	@echo "$(GREEN)AMD64 runner built successfully!$(RESET)"
+bridge-status: ## Check Host VM Bridge status
+	@echo "$(BOLD)$(CYAN)=== Host VM Bridge (port 49504) ===$(RESET)"
+	@if [ -f $(BRIDGE_PID_FILE) ] && kill -0 "$$(cat $(BRIDGE_PID_FILE))" 2>/dev/null; then \
+		echo "Running (PID $$(cat $(BRIDGE_PID_FILE)))"; \
+	else \
+		echo "Not running"; \
+	fi
 
-.PHONY: build-autoscaler
-build-autoscaler: ## Build the Autoscaler daemon image
-	@echo "$(CYAN)Building Autoscaler daemon image...$(RESET)"
-	docker build -f docker/Dockerfile.autoscaler -t local-runner-autoscaler:latest .
-	@echo "$(GREEN)Autoscaler built successfully!$(RESET)"
-
-.PHONY: build build-all
-build: build-arm64 build-amd64 build-autoscaler ## Build all images (ARM64 + AMD64 + Autoscaler)
-build-all: build
+bridge-logs: ## Stream live logs from the Host VM Bridge
+	@touch $(BRIDGE_LOG_FILE) && tail -f $(BRIDGE_LOG_FILE)
 
 .PHONY: start up run
-start: check-env init-cache ## Start Autoscaler (native host process) + Proxy services (Verdaccio, Athens, Docker mirror, apt-cacher)
-	@echo "$(CYAN)Starting caching proxy registries (Verdaccio, Athens, Docker mirror, apt-cacher)...$(RESET)"
+start: check-env init-cache bridge-start ## Start containerized Autoscaler + Host VM Bridge + Proxy services + Web Dashboard
+	@echo "$(CYAN)Starting RunZero containerized stack (Autoscaler, Dashboard, Proxy registries)...$(RESET)"
 	@docker compose up -d
-	@if [ -f $(AUTOSCALER_PID_FILE) ] && kill -0 "$$(cat $(AUTOSCALER_PID_FILE))" 2>/dev/null; then \
-		echo "$(YELLOW)Autoscaler already running (PID $$(cat $(AUTOSCALER_PID_FILE))).$(RESET)"; \
-	else \
-		echo "$(CYAN)Starting Autoscaler as a native host process...$(RESET)"; \
-		set -a; . ./.env; set +a; \
-		PYTHONPATH=src nohup python3 -u src/autoscaler.py > $(AUTOSCALER_LOG_FILE) 2>&1 & \
-		echo $$! > $(AUTOSCALER_PID_FILE); \
-	fi
-	@echo "$(GREEN)Autoscaler and Proxy registries are running in background!$(RESET)"
-	@echo "  • Verdaccio Web UI:  $(BOLD)http://localhost:49501$(RESET) (Run $(BOLD)make verdaccio-ui$(RESET))"
-	@echo "  • APT Cacher NG:     $(BOLD)http://localhost:49503/acng-report.html$(RESET) (Run $(BOLD)make apt-cacher-ui$(RESET))"
-	@echo "  • Athens Go Proxy:   $(BOLD)http://localhost:49500$(RESET)"
-	@echo "  • Docker Mirror:     $(BOLD)http://localhost:49502$(RESET)"
+	@echo "$(GREEN)RunZero Fleet & Observability Stack is running!$(RESET)"
+	@echo "  • 📊 Web Dashboard:  $(BOLD)http://localhost:49505$(RESET) (Run $(BOLD)make dashboard$(RESET))"
+	@echo "  • 🌉 Host VM Bridge: $(BOLD)http://localhost:49504$(RESET)"
+	@echo "  • 📦 Verdaccio UI:   $(BOLD)http://localhost:49501$(RESET) (Run $(BOLD)make verdaccio-ui$(RESET))"
+	@echo "  • 🐧 APT Cacher:     $(BOLD)http://localhost:49503/acng-report.html$(RESET) (Run $(BOLD)make apt-cacher-ui$(RESET))"
+	@echo "  • 🐹 Athens Go:      $(BOLD)http://localhost:49500$(RESET)"
+	@echo "  • 🐳 Docker Mirror:  $(BOLD)http://localhost:49502$(RESET)"
 	@echo "Use $(BOLD)make logs$(RESET) to stream logs or $(BOLD)make status$(RESET) to see active runners."
 
 up: start
 run: start
 
 .PHONY: stop down
-stop: ## Stop Autoscaler, Proxies, and remove active runner containers
+stop: bridge-stop ## Stop Autoscaler, Host VM Bridge, Proxies, and remove active runner containers
 	@echo "$(YELLOW)Stopping Autoscaler and unregistering active runners...$(RESET)"
 	@if [ -f $(AUTOSCALER_PID_FILE) ]; then \
 		pid=$$(cat $(AUTOSCALER_PID_FILE)); \
@@ -247,7 +255,7 @@ stop: ## Stop Autoscaler, Proxies, and remove active runner containers
 		rm -f $(AUTOSCALER_PID_FILE); \
 	fi
 	docker compose down
-	@echo "$(GREEN)Autoscaler and proxies stopped.$(RESET)"
+	@echo "$(GREEN)Autoscaler, VM bridge, and proxies stopped.$(RESET)"
 
 down: stop
 
@@ -255,24 +263,17 @@ down: stop
 restart: stop start ## Restart Autoscaler and Proxies
 
 .PHONY: logs
-logs: ## Stream live logs from the Autoscaler (native host process)
-	@touch $(AUTOSCALER_LOG_FILE) && tail -f $(AUTOSCALER_LOG_FILE)
+logs: ## Stream live logs from the Autoscaler container
+	@docker compose logs -f autoscaler 2>/dev/null || (touch $(AUTOSCALER_LOG_FILE) && tail -f $(AUTOSCALER_LOG_FILE))
 
 .PHONY: logs-all
-logs-all: ## Stream live logs from the Proxy services (Verdaccio + Athens + Docker mirror) -- see `make logs` for the Autoscaler
+logs-all: ## Stream live logs from all services (Autoscaler + Proxies)
 	@docker compose logs -f
 
 .PHONY: status ps
-status: ## Show running Autoscaler, Proxies, and active dynamic runners (containers + VMs)
+status: bridge-status ## Show running Autoscaler, VM Bridge, Proxies, and active dynamic runners (containers + VMs)
 	@echo ""
-	@echo "$(BOLD)$(CYAN)=== Autoscaler (native host process) ===$(RESET)"
-	@if [ -f $(AUTOSCALER_PID_FILE) ] && kill -0 "$$(cat $(AUTOSCALER_PID_FILE))" 2>/dev/null; then \
-		echo "Running (PID $$(cat $(AUTOSCALER_PID_FILE)))"; \
-	else \
-		echo "Not running -- run $(BOLD)make start$(RESET)"; \
-	fi
-	@echo ""
-	@echo "$(BOLD)$(CYAN)=== Proxy Services ===$(RESET)"
+	@echo "$(BOLD)$(CYAN)=== RunZero Container Stack (Autoscaler & Proxies) ===$(RESET)"
 	@docker compose ps
 	@echo ""
 	@echo "$(BOLD)$(CYAN)=== Active Ephemeral Runner Containers ===$(RESET)"
@@ -282,16 +283,21 @@ status: ## Show running Autoscaler, Proxies, and active dynamic runners (contain
 	@orbctl list 2>/dev/null | grep -i runzero-vm || echo "  (none)"
 	@echo ""
 
-.PHONY: start-container stop-container
-start-container: check-env init-cache ## [Opt-in] Run Autoscaler fully containerized -- Docker driver only, VM drivers cannot work in this mode
-	@echo "$(YELLOW)Starting fully containerized Autoscaler. VM drivers (orbstack-vm/wsl2/multipass) shell out$(RESET)"
-	@echo "$(YELLOW)to host-native tools that cannot exist inside this container, so only the Docker driver$(RESET)"
-	@echo "$(YELLOW)will ever be available in this mode. Use 'make start' instead for full VM support.$(RESET)"
-	docker compose --profile container-autoscaler up -d
-	@echo "$(GREEN)Containerized Autoscaler and Proxy registries are running!$(RESET)"
+.PHONY: start-host stop-host
+start-host: check-env init-cache bridge-start ## Start Autoscaler natively on host Python (without containerizing autoscaler)
+	@echo "$(CYAN)Starting caching proxy registries (Verdaccio, Athens, Docker mirror, apt-cacher)...$(RESET)"
+	@docker compose up -d verdaccio athens docker-mirror apt-cacher
+	@if [ -f $(AUTOSCALER_PID_FILE) ] && kill -0 "$$(cat $(AUTOSCALER_PID_FILE))" 2>/dev/null; then \
+		echo "$(YELLOW)Autoscaler already running on host (PID $$(cat $(AUTOSCALER_PID_FILE))).$(RESET)"; \
+	else \
+		echo "$(CYAN)Starting Autoscaler with Web Dashboard on host...$(RESET)"; \
+		set -a; . ./.env; set +a; \
+		PYTHONPATH=src nohup python3 -u src/autoscaler.py > $(AUTOSCALER_LOG_FILE) 2>&1 & \
+		echo $$! > $(AUTOSCALER_PID_FILE); \
+	fi
+	@echo "$(GREEN)Host Autoscaler & Stack is running!$(RESET)"
 
-stop-container: ## [Opt-in] Stop the fully containerized Autoscaler mode
-	docker compose --profile container-autoscaler down
+stop-host: stop ## Stop host Autoscaler and stack
 
 .PHONY: clean
 clean: ## Force clean stopped containers and temporary runner volumes
@@ -313,6 +319,21 @@ vm-clean: ## Clean up any orphaned ephemeral RunZero VMs (does NOT touch the gol
 		orbctl delete -f $$vm || true; \
 	done
 	@echo "$(GREEN)VM cleanup complete.$(RESET)"
+
+.PHONY: vm-clean-all
+vm-clean-all: ## Delete ALL RunZero OrbStack VMs including golden base images
+	@echo "$(YELLOW)Deleting all RunZero VMs including base master templates...$(RESET)"
+	@for vm in $$(orbctl list -q 2>/dev/null | grep '^runzero-vm-'); do \
+		echo "Deleting $$vm..."; \
+		orbctl delete -f $$vm || true; \
+	done
+	@echo "$(GREEN)All RunZero VMs deleted.$(RESET)"
+
+.PHONY: clean-all reset-all
+clean-all: stop clean vm-clean-all clean-caches clean-images ## Complete nuclear reset: stop autoscaler, wipe all caches, delete all VMs, and remove images for fresh out-of-the-box test
+	@echo "$(GREEN)RunZero completely reset to fresh out-of-the-box state.$(RESET)"
+
+reset-all: clean-all
 
 .PHONY: build-vm-base
 build-vm-base: ## Build the golden OrbStack VM base image (Docker/Node/nvm/.NET/Chrome/Playwright pre-installed) so ephemeral job VMs clone instantly instead of re-provisioning from scratch every run. Takes several minutes; run it once, and again whenever you change docker/provision-toolchain.sh.

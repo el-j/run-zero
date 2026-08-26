@@ -1,0 +1,483 @@
+---
+// Dashboard Showcase Component (Martian Cyberpunk Edition)
+const baseUrl = import.meta.env.BASE_URL.replace(/\/$/, '');
+---
+
+<section class="dashboard-showcase" id="dashboard">
+  <div class="section-tag">
+    <span class="tag-accent">//</span>
+    <span>LIVE_OBSERVABILITY_INTERFACE</span>
+  </div>
+
+  <div class="section-heading-group">
+    <div class="heading-badge-wrap">
+      <h2>Real-Time Fleet &amp; Telemetry Dashboard</h2>
+      <span class="pulse-badge">PORT :49505</span>
+    </div>
+    <p>Zero external SaaS dashboards. RunZero provides a built-in, 100% self-hosted real-time Web UI for instant fleet status, hybrid routing telemetry, cache analytics, and log streaming.</p>
+  </div>
+
+  <!-- Interactive Mock UI Window -->
+  <div class="dashboard-mock-window">
+    <div class="mock-window-header">
+      <div class="window-controls">
+        <span class="dot red"></span>
+        <span class="dot yellow"></span>
+        <span class="dot green"></span>
+      </div>
+      <div class="window-address-bar">
+        <span class="lock-icon">🔒</span>
+        <span class="url-text">http://localhost:49505</span>
+        <span class="badge-live">● LIVE SSE STREAM</span>
+      </div>
+      <div class="window-quick-action">
+        <span class="quick-cmd"><code>make dashboard</code></span>
+      </div>
+    </div>
+
+    <div class="mock-window-content">
+      <!-- KPI Row -->
+      <div class="mock-kpi-grid">
+        <div class="mock-kpi-card">
+          <div class="kpi-label">ACTIVE RUNNERS</div>
+          <div class="kpi-val"><span class="accent-cyan">3</span> <span class="kpi-sub">/ 10 max</span></div>
+          <div class="kpi-bar"><div class="kpi-fill cyan" style="width: 30%;"></div></div>
+        </div>
+
+        <div class="mock-kpi-card">
+          <div class="kpi-label">GITHUB API QUOTA</div>
+          <div class="kpi-val"><span class="accent-emerald">4,982</span> <span class="kpi-sub">/ 5,000</span></div>
+          <div class="kpi-bar"><div class="kpi-fill emerald" style="width: 99.6%;"></div></div>
+        </div>
+
+        <div class="mock-kpi-card">
+          <div class="kpi-label">HYBRID ROUTING</div>
+          <div class="kpi-val"><span class="accent-purple">62%</span> <span class="kpi-sub">Docker</span> · <span class="accent-amber">38%</span> <span class="kpi-sub">VM</span></div>
+          <div class="kpi-bar"><div class="kpi-fill purple" style="width: 62%;"></div></div>
+        </div>
+
+        <div class="mock-kpi-card">
+          <div class="kpi-label">PROXY CACHE USAGE</div>
+          <div class="kpi-val"><span class="accent-cyan">14.8 GB</span> <span class="kpi-sub">saved</span></div>
+          <div class="kpi-bar"><div class="kpi-fill solar" style="width: 45%;"></div></div>
+        </div>
+      </div>
+
+      <!-- Fleet & Routing Split -->
+      <div class="mock-middle-grid">
+        <!-- Live Fleet Grid -->
+        <div class="mock-panel fleet-panel">
+          <div class="panel-header">
+            <span class="panel-title">⚡ ACTIVE RUNNER FLEET</span>
+            <span class="panel-tag">AUTO-SCALE ENABLED</span>
+          </div>
+          <div class="mock-runners-list">
+            <div class="mock-runner-row active">
+              <div class="runner-badge docker">DOCKER</div>
+              <div class="runner-info">
+                <div class="runner-name">local-runner-arm64-1</div>
+                <div class="runner-repo">el-j/run-zero · <span class="time-active">00:42s</span></div>
+              </div>
+              <span class="runner-status-pill running">RUNNING JOB</span>
+            </div>
+
+            <div class="mock-runner-row active">
+              <div class="runner-badge vm">ORBSTACK VM</div>
+              <div class="runner-info">
+                <div class="runner-name">local-runner-amd64-vm-2</div>
+                <div class="runner-repo">el-j/webapp-e2e · <span class="time-active">01:18s</span></div>
+              </div>
+              <span class="runner-status-pill vm-pill">PLAYWRIGHT E2E</span>
+            </div>
+
+            <div class="mock-runner-row idle">
+              <div class="runner-badge docker">DOCKER</div>
+              <div class="runner-info">
+                <div class="runner-name">local-runner-arm64-standby</div>
+                <div class="runner-repo">fleet-standby · <span class="time-active">00:05s</span></div>
+              </div>
+              <span class="runner-status-pill idle">IDLE (MIN 1)</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Telemetry & Trigger Breakdown -->
+        <div class="mock-panel telemetry-panel">
+          <div class="panel-header">
+            <span class="panel-title">🧠 HYBRID ROUTING BREAKDOWN</span>
+            <span class="panel-tag">ZERO-CONFIG</span>
+          </div>
+          <div class="telemetry-breakdown-list">
+            <div class="breakdown-item">
+              <span class="b-label">Docker Containers (Unit Tests &amp; Builds)</span>
+              <span class="b-val">128 jobs (62%)</span>
+            </div>
+            <div class="breakdown-item">
+              <span class="b-label">Services / DIND Workflows (Auto-VM)</span>
+              <span class="b-val highlight-purple">44 jobs (21%)</span>
+            </div>
+            <div class="breakdown-item">
+              <span class="b-label">Playwright / Browser E2E (Auto-VM)</span>
+              <span class="b-val highlight-amber">26 jobs (13%)</span>
+            </div>
+            <div class="breakdown-item">
+              <span class="b-label">Systemd / Custom Labels (Auto-VM)</span>
+              <span class="b-val highlight-cyan">8 jobs (4%)</span>
+            </div>
+          </div>
+          <div class="action-bar-mini">
+            <span class="btn-mini-action">🧹 Clean Caches</span>
+            <span class="btn-mini-action">⚙️ Host VM Bridge :49504</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="dashboard-features-row">
+    <div class="feature-bullet">
+      <div class="bullet-icon">📡</div>
+      <div class="bullet-content">
+        <h4>Server-Sent Events (SSE)</h4>
+        <p>Ultra-low overhead real-time updates broadcast instantly to your browser without polling.</p>
+      </div>
+    </div>
+
+    <div class="feature-bullet">
+      <div class="bullet-icon">🌉</div>
+      <div class="bullet-content">
+        <h4>Host VM Bridge (:49504)</h4>
+        <p>Containerize your autoscaler daemon while retaining full OrbStack, WSL2, and Multipass VM capabilities.</p>
+      </div>
+    </div>
+
+    <div class="feature-bullet">
+      <div class="bullet-icon">📦</div>
+      <div class="bullet-content">
+        <h4>100% Offline &amp; Self-Hosted</h4>
+        <p>Zero external telemetry or cloud dependencies. All UI fonts, assets, and metrics stay on your machine.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<style>
+  .dashboard-showcase {
+    padding: 72px 0 96px;
+  }
+
+  .section-tag {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    font-family: var(--font-mono);
+    font-size: 0.75rem;
+    font-weight: 800;
+    color: var(--crimson-light);
+    letter-spacing: 0.08em;
+    margin-bottom: 12px;
+  }
+  .tag-accent { color: var(--text-dim); }
+
+  .section-heading-group {
+    margin-bottom: 36px;
+  }
+  .heading-badge-wrap {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    margin-bottom: 10px;
+    flex-wrap: wrap;
+  }
+  .section-heading-group h2 {
+    font-size: 2.4rem;
+    letter-spacing: -0.02em;
+    margin: 0;
+  }
+  .pulse-badge {
+    font-family: var(--font-mono);
+    font-size: 0.75rem;
+    font-weight: 800;
+    padding: 3px 10px;
+    background: rgba(0, 240, 255, 0.12);
+    color: var(--accent-cyan, #00f0ff);
+    border: 1px solid rgba(0, 240, 255, 0.3);
+    border-radius: var(--radius-sm);
+  }
+  .section-heading-group p {
+    color: var(--text-muted);
+    font-size: 1.1rem;
+    max-width: 820px;
+    line-height: 1.6;
+  }
+
+  /* Mock Window */
+  .dashboard-mock-window {
+    background: #080c14;
+    border: 1px solid rgba(0, 240, 255, 0.2);
+    border-radius: var(--radius-lg);
+    box-shadow: 0 30px 80px -15px rgba(0, 0, 0, 0.9), 0 0 30px -10px rgba(0, 240, 255, 0.15);
+    overflow: hidden;
+    margin-bottom: 48px;
+  }
+
+  .mock-window-header {
+    background: #0e1420;
+    padding: 12px 20px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+    gap: 16px;
+  }
+
+  .window-controls {
+    display: flex;
+    gap: 8px;
+  }
+  .dot {
+    width: 11px;
+    height: 11px;
+    border-radius: 50%;
+  }
+  .dot.red { background: #ff5f56; }
+  .dot.yellow { background: #ffbd2e; }
+  .dot.green { background: #27c93f; }
+
+  .window-address-bar {
+    flex: 1;
+    max-width: 480px;
+    background: rgba(0, 0, 0, 0.5);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-radius: 6px;
+    padding: 6px 14px;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    font-family: var(--font-mono);
+    font-size: 0.8rem;
+    color: #cbd5e1;
+  }
+  .lock-icon { font-size: 0.75rem; }
+  .url-text { color: #00f0ff; font-weight: 600; flex: 1; }
+  .badge-live {
+    font-size: 0.65rem;
+    color: #10b981;
+    font-weight: 700;
+    letter-spacing: 0.05em;
+  }
+
+  .quick-cmd code {
+    font-family: var(--font-mono);
+    font-size: 0.75rem;
+    background: rgba(255, 51, 85, 0.15);
+    color: #ff6b81;
+    padding: 4px 10px;
+    border-radius: 4px;
+    border: 1px solid rgba(255, 51, 85, 0.3);
+  }
+
+  .mock-window-content {
+    padding: 24px;
+  }
+
+  .mock-kpi-grid {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 16px;
+    margin-bottom: 20px;
+  }
+  @media (max-width: 900px) {
+    .mock-kpi-grid {
+      grid-template-columns: repeat(2, 1fr);
+    }
+  }
+  @media (max-width: 540px) {
+    .mock-kpi-grid {
+      grid-template-columns: 1fr;
+    }
+  }
+
+  .mock-kpi-card {
+    background: rgba(16, 23, 36, 0.8);
+    border: 1px solid rgba(255, 255, 255, 0.06);
+    border-radius: var(--radius-md);
+    padding: 14px 16px;
+  }
+  .kpi-label {
+    font-family: var(--font-mono);
+    font-size: 0.68rem;
+    font-weight: 700;
+    color: #94a3b8;
+    margin-bottom: 6px;
+    letter-spacing: 0.05em;
+  }
+  .kpi-val {
+    font-size: 1.35rem;
+    font-weight: 800;
+    color: #fff;
+    margin-bottom: 8px;
+  }
+  .kpi-sub {
+    font-size: 0.75rem;
+    color: #64748b;
+    font-weight: 500;
+  }
+  .accent-cyan { color: #00f0ff; }
+  .accent-emerald { color: #10b981; }
+  .accent-purple { color: #b057ff; }
+  .accent-amber { color: #f59e0b; }
+
+  .kpi-bar {
+    height: 4px;
+    background: rgba(255, 255, 255, 0.08);
+    border-radius: 2px;
+    overflow: hidden;
+  }
+  .kpi-fill { height: 100%; }
+  .kpi-fill.cyan { background: #00f0ff; }
+  .kpi-fill.emerald { background: #10b981; }
+  .kpi-fill.purple { background: #b057ff; }
+  .kpi-fill.solar { background: #f59e0b; }
+
+  .mock-middle-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 16px;
+  }
+  @media (max-width: 800px) {
+    .mock-middle-grid {
+      grid-template-columns: 1fr;
+    }
+  }
+
+  .mock-panel {
+    background: rgba(16, 23, 36, 0.8);
+    border: 1px solid rgba(255, 255, 255, 0.06);
+    border-radius: var(--radius-md);
+    padding: 16px;
+  }
+  .panel-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 12px;
+  }
+  .panel-title {
+    font-family: var(--font-mono);
+    font-size: 0.72rem;
+    font-weight: 800;
+    color: #f1f5f9;
+    letter-spacing: 0.05em;
+  }
+  .panel-tag {
+    font-family: var(--font-mono);
+    font-size: 0.62rem;
+    font-weight: 700;
+    color: #64748b;
+  }
+
+  .mock-runners-list {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+  .mock-runner-row {
+    background: rgba(0, 0, 0, 0.35);
+    border: 1px solid rgba(255, 255, 255, 0.04);
+    border-radius: 6px;
+    padding: 8px 12px;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+  .runner-badge {
+    font-family: var(--font-mono);
+    font-size: 0.62rem;
+    font-weight: 800;
+    padding: 2px 6px;
+    border-radius: 3px;
+  }
+  .runner-badge.docker { background: rgba(0, 240, 255, 0.15); color: #00f0ff; }
+  .runner-badge.vm { background: rgba(176, 87, 255, 0.15); color: #b057ff; }
+
+  .runner-info { flex: 1; }
+  .runner-name { font-family: var(--font-mono); font-size: 0.78rem; font-weight: 700; color: #fff; }
+  .runner-repo { font-size: 0.7rem; color: #94a3b8; }
+  .time-active { color: #00f0ff; font-family: var(--font-mono); font-weight: 600; }
+
+  .runner-status-pill {
+    font-family: var(--font-mono);
+    font-size: 0.65rem;
+    font-weight: 700;
+    padding: 2px 8px;
+    border-radius: 4px;
+  }
+  .runner-status-pill.running { background: rgba(16, 185, 129, 0.15); color: #10b981; }
+  .runner-status-pill.vm-pill { background: rgba(176, 87, 255, 0.15); color: #b057ff; }
+  .runner-status-pill.idle { background: rgba(100, 116, 139, 0.15); color: #94a3b8; }
+
+  .telemetry-breakdown-list {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    margin-bottom: 14px;
+  }
+  .breakdown-item {
+    display: flex;
+    justify-content: space-between;
+    font-size: 0.78rem;
+    padding: 6px 8px;
+    background: rgba(0, 0, 0, 0.25);
+    border-radius: 4px;
+  }
+  .b-label { color: #94a3b8; }
+  .b-val { font-family: var(--font-mono); font-weight: 700; color: #fff; }
+  .highlight-purple { color: #b057ff; }
+  .highlight-amber { color: #f59e0b; }
+  .highlight-cyan { color: #00f0ff; }
+
+  .action-bar-mini {
+    display: flex;
+    gap: 8px;
+  }
+  .btn-mini-action {
+    font-family: var(--font-mono);
+    font-size: 0.7rem;
+    padding: 4px 10px;
+    background: rgba(255, 255, 255, 0.05);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: 4px;
+    color: #cbd5e1;
+  }
+
+  .dashboard-features-row {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 24px;
+  }
+  @media (max-width: 768px) {
+    .dashboard-features-row {
+      grid-template-columns: 1fr;
+    }
+  }
+  .feature-bullet {
+    display: flex;
+    gap: 14px;
+  }
+  .bullet-icon {
+    font-size: 1.5rem;
+    line-height: 1;
+  }
+  .bullet-content h4 {
+    font-size: 1rem;
+    font-weight: 700;
+    margin-bottom: 4px;
+    color: #f1f5f9;
+  }
+  .bullet-content p {
+    font-size: 0.88rem;
+    color: var(--text-muted);
+    line-height: 1.5;
+  }
+</style>

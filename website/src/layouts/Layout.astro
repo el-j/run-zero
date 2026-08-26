@@ -25,7 +25,7 @@ const baseUrl = import.meta.env.BASE_URL.replace(/\/$/, '');
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>{title}</title>
     <meta name="description" content={description} />
-    
+
     <!-- Open Graph / Social Meta -->
     <meta property="og:type" content="website" />
     <meta property="og:title" content={title} />
@@ -40,6 +40,9 @@ const baseUrl = import.meta.env.BASE_URL.replace(/\/$/, '');
 
     <!-- Self-Hosted Local Fonts (100% Offline / Zero CDN) -->
     <link rel="stylesheet" href={`${baseUrl}/fonts/fonts.css`} />
+
+    <!-- Analytics -->
+    <script defer src="https://umami-phi-six-29.vercel.app/script.js" data-website-id="cbdada12-30ce-4fab-87c1-2acb34665cdf"></script>
   </head>
   <body>
     <div class="ambient-glow glow-primary"></div>

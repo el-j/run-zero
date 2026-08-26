@@ -8,6 +8,7 @@ import os
 import shutil
 import subprocess
 import sys
+import time
 import uuid
 from typing import Dict, List, Optional
 
@@ -15,8 +16,9 @@ from . import RunnerDriver, RunnerInfo
 
 
 class WSL2Driver(RunnerDriver):
-    def __init__(self, distro_base: str = "Ubuntu-22.04"):
+    def __init__(self, distro_base: str = "Ubuntu-24.04"):
         self.distro_base = os.getenv("WSL_DISTRO_BASE", distro_base)
+        self._runner_created_at: Dict[str, float] = {}
 
     def name(self) -> str:
         return "wsl2"
@@ -68,6 +70,7 @@ export ORG="{org or ''}"
 cd /home/runner/actions-runner && ./run.sh --unattended --ephemeral --name "{instance_name}" --labels "{runner_labels}"
 """]
             subprocess.Popen(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            self._runner_created_at[instance_name] = time.time()
             return instance_name
 
         except Exception as e:
@@ -80,7 +83,9 @@ cd /home/runner/actions-runner && ./run.sh --unattended --ephemeral --name "{ins
             runners = []
             for line in res.stdout.strip().split("\n"):
                 name = line.strip().replace("\x00", "")
-                if name.startswith("runzero-wsl-"):
+                if name.startswith("runzero-wsl-") or name.startswith("runzero-wsl"):
+                    if name not in self._runner_created_at:
+                        self._runner_created_at[name] = time.time()
                     runners.append(RunnerInfo(
                         id=name,
                         status="running",
@@ -88,7 +93,8 @@ cd /home/runner/actions-runner && ./run.sh --unattended --ephemeral --name "{ins
                         state="running",
                         target_repo="",
                         target_arch="x64",
-                        backend="wsl2"
+                        backend="wsl2",
+                        created_at=self._runner_created_at.get(name)
                     ))
             return runners
         except Exception:

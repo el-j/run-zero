@@ -9,13 +9,17 @@ from typing import Dict, List, Optional
 from drivers import RunnerDriver, RunnerInfo
 from github_api import github_request
 
-# Prefixes used by docker_driver.py and orbstack_vm_driver.py
-MANAGED_RUNNER_PREFIXES = ("local-runner-", "runzero-vm-")
+# Prefixes used by all RunZero runner drivers (Docker, OrbStack VM, Multipass, WSL2)
+MANAGED_RUNNER_PREFIXES = ("local-runner-", "runzero-vm-", "runzero-mp-", "runzero-wsl-")
 
 # How long a spawned runner is allowed to sit without GitHub ever marking it
-# busy before it's considered orphaned and torn down. Generous: real jobs are
-# normally claimed within seconds once a matching runner registers.
+# busy before it's considered orphaned and torn down.
 IDLE_ORPHAN_TIMEOUT_SECONDS = 600
+
+# Grace period for a runner to boot and register. If a runner is older than this
+# and is NOT found in GitHub's active runner list (e.g. ephemeral run already completed
+# or failed, or registration failed), it is considered an orphan and reaped.
+UNREGISTERED_ORPHAN_TIMEOUT_SECONDS = 180
 
 
 def reconcile_zombie_runners(repos: List[str], access_token: Optional[str] = None) -> None:
@@ -63,26 +67,23 @@ def reconcile_idle_orphans(
     drivers: Dict[str, RunnerDriver],
     access_token: Optional[str] = None,
     idle_timeout_seconds: int = IDLE_ORPHAN_TIMEOUT_SECONDS,
+    unregistered_timeout_seconds: int = UNREGISTERED_ORPHAN_TIMEOUT_SECONDS,
     now: Optional[float] = None
 ) -> None:
-    """Destroy our own runners that GitHub never dispatched a job to.
+    """Destroy our own runners that GitHub never dispatched a job to or that completed their run.
 
     A local container/VM can end up permanently unused for reasons other than
-    the zombie case above -- a mislabeled workflow, a race between our poll and
-    GitHub's own dispatch, an API hiccup. Whatever the cause, an unused runner
-    that sits registered and idle forever is exactly the "created a container
-    for nothing" failure mode this fleet must never leave unattended. Runners
-    GitHub marks busy are never touched here, however long they've run --
-    that's a real in-progress job, not an orphan.
+    the zombie case above -- a completed ephemeral job where the VM didn't power off,
+    a mislabeled workflow, a race between our poll and GitHub's dispatch, or an API hiccup.
     """
     now = now if now is not None else time.time()
 
+    min_timeout = min(idle_timeout_seconds, unregistered_timeout_seconds)
     managed = [
         r for r in local_runners
         if r.state == "running"
-        and r.created_at is not None
         and str(r.name).startswith(MANAGED_RUNNER_PREFIXES)
-        and now - r.created_at > idle_timeout_seconds
+        and (now - (r.created_at if r.created_at is not None else now) > min_timeout)
     ]
     if not managed:
         return
@@ -93,24 +94,59 @@ def reconcile_idle_orphans(
         gh_runners_by_repo[repo] = (data or {}).get("runners", [])
 
     for runner in managed:
-        gh_runners = gh_runners_by_repo.get(runner.target_repo, [])
-        gh_match = next((r for r in gh_runners if r.get("name") == runner.name), None)
+        created_at = runner.created_at if runner.created_at is not None else now
+        age_seconds = now - created_at
 
-        # A busy runner is doing real work no matter how long it's been alive.
+        # Match against GitHub runners across repos, handling owner/repo and owner-repo
+        gh_runners = gh_runners_by_repo.get(runner.target_repo, [])
+        if not gh_runners and runner.target_repo:
+            norm_target = runner.target_repo.replace("/", "-").lower()
+            for r_name, r_list in gh_runners_by_repo.items():
+                if r_name.replace("/", "-").lower() == norm_target:
+                    gh_runners = r_list
+                    break
+
+        gh_match = next((r for r in gh_runners if r.get("name") == runner.name), None)
+        if not gh_match:
+            # Fallback search across all tracked repos
+            for r_list in gh_runners_by_repo.values():
+                m = next((r for r in r_list if r.get("name") == runner.name), None)
+                if m:
+                    gh_match = m
+                    break
+
+        # A busy runner is actively running a job
         if gh_match and gh_match.get("busy"):
             continue
 
-        assert runner.created_at is not None  # guaranteed by the `managed` filter above
-        age_minutes = int((now - runner.created_at) / 60)
-        print(
-            f"[Autoscaler] 🧹 Orphaned runner detected: {runner.name} "
-            f"(idle {age_minutes}m, GitHub never dispatched a job to it) — tearing down...",
-            file=sys.stderr
-        )
+        # Case 1: Runner is NOT registered on GitHub (ephemeral run finished or failed to register)
+        # Check against unregistered_timeout_seconds (grace period for initial registration)
+        if not gh_match and age_seconds > unregistered_timeout_seconds:
+            age_minutes = max(1, int(age_seconds / 60))
+            print(
+                f"[Autoscaler] 🧹 Orphaned runner detected: {runner.name} "
+                f"(not registered in GitHub Actions / run finished, alive {age_minutes}m) — tearing down...",
+                file=sys.stderr
+            )
+            driver = drivers.get(runner.backend)
+            if driver:
+                driver.destroy_runner(runner.id)
+            continue
 
-        driver = drivers.get(runner.backend)
-        if driver:
-            driver.destroy_runner(runner.id)
+        # Case 2: Runner IS registered on GitHub but sat idle and unclaimed
+        if gh_match and age_seconds > idle_timeout_seconds:
+            age_minutes = int(age_seconds / 60)
+            print(
+                f"[Autoscaler] 🧹 Orphaned runner detected: {runner.name} "
+                f"(idle {age_minutes}m, GitHub never dispatched a job to it) — tearing down...",
+                file=sys.stderr
+            )
+            driver = drivers.get(runner.backend)
+            if driver:
+                driver.destroy_runner(runner.id)
 
-        if gh_match:
-            github_request(f"/repos/{runner.target_repo}/actions/runners/{gh_match['id']}", access_token=access_token, method="DELETE")
+            github_request(
+                f"/repos/{runner.target_repo}/actions/runners/{gh_match['id']}",
+                access_token=access_token,
+                method="DELETE"
+            )
