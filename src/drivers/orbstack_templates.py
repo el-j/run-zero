@@ -65,8 +65,8 @@ fi
   --unattended --replace --ephemeral --labels "{runner_labels}"
 
 echo "Starting runner {vm_name}..."
-./run.sh
+./run.sh || true
 
 echo "Ephemeral run finished -- powering off so the autoscaler prunes this VM."
-sudo shutdown -h now
+sudo systemctl poweroff 2>/dev/null || sudo poweroff 2>/dev/null || sudo shutdown -h now 2>/dev/null || true
 """

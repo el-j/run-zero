@@ -9,6 +9,7 @@ import os
 import shutil
 import subprocess
 import sys
+import time
 import uuid
 from typing import Dict, List, Optional
 
@@ -18,6 +19,7 @@ from . import RunnerDriver, RunnerInfo
 class MultipassDriver(RunnerDriver):
     def __init__(self, image: str = "24.04"):
         self.image = os.getenv("MULTIPASS_IMAGE", image)
+        self._runner_created_at: Dict[str, float] = {}
 
     def name(self) -> str:
         return "multipass"
@@ -58,15 +60,9 @@ export GOPROXY="http://${HOST_IP}:49500,https://proxy.golang.org,direct"
         print(f"[Autoscaler:Multipass] 🚀 Launching ephemeral VM '{vm_name}' with caching proxies...")
 
         try:
-            # 1. Launch the VM
-            launch_cmd = [
-                "multipass", "launch",
-                self.image,
-                "--name", vm_name,
-                "--cpus", "2",
-                "--memory", "2G"
-            ]
-            subprocess.run(launch_cmd, check=True, capture_output=True)
+            # 1. Launch instance
+            subprocess.run(["multipass", "launch", self.image, "--name", vm_name, "--cpus", "2", "--memory", "2G"], check=True, capture_output=True)
+            self._runner_created_at[vm_name] = time.time()
 
             # 2. Run bootstrap script inside the VM
             setup_script = f"""
@@ -102,6 +98,8 @@ nohup ./run.sh --unattended --ephemeral --name "{vm_name}" --labels "{runner_lab
                 if name.startswith("runzero-mp-"):
                     status = vm.get("state", "Running")
                     state = "running" if status.lower() == "running" else "exited"
+                    if name not in self._runner_created_at:
+                        self._runner_created_at[name] = time.time()
                     runners.append(RunnerInfo(
                         id=name,
                         status=status,
@@ -109,7 +107,8 @@ nohup ./run.sh --unattended --ephemeral --name "{vm_name}" --labels "{runner_lab
                         state=state,
                         target_repo="",
                         target_arch="arm64",
-                        backend="multipass"
+                        backend="multipass",
+                        created_at=self._runner_created_at.get(name)
                     ))
             return runners
         except Exception:

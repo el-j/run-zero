@@ -52,6 +52,8 @@ class OrbStackVMDriver(RunnerDriver):
         # success and no operator-visible signal that this isn't self-healing.
         self._build_failure_counts: Dict[str, int] = {}
         self._build_retry_after: Dict[str, float] = {}
+        self._runner_created_at: Dict[str, float] = {}
+        self._runner_repos: Dict[str, str] = {}
 
     def name(self) -> str:
         return "orbstack-vm"
@@ -434,13 +436,22 @@ export GOPROXY="http://host.orb.internal:49500,https://proxy.golang.org,direct"
         clone_cmd = ["orbctl", "clone", base_name, vm_name]
         setup_script = f"""
 exec > /home/runner/setup.log 2>&1
-trap 'sudo shutdown -h now' EXIT
+cleanup() {{
+    sudo systemctl poweroff 2>/dev/null || sudo poweroff 2>/dev/null || sudo shutdown -h now 2>/dev/null || true
+}}
+trap cleanup EXIT
 set -e
 {reg_and_run}
 """
 
         try:
             subprocess.run(clone_cmd, check=True, capture_output=True)
+            self._runner_created_at[vm_name] = time.time()
+            if repo:
+                self._runner_repos[vm_name] = repo
+            elif org:
+                self._runner_repos[vm_name] = org
+
             subprocess.Popen(
                 ["orb", "-m", vm_name, "-u", "runner", "bash", "-c", setup_script],
                 stdout=subprocess.DEVNULL,
@@ -466,36 +477,20 @@ set -e
                     if status_lower in ("running", "active"):
                         state = "running"
                     elif status_lower in ("creating", "provisioning", "starting"):
-                        # Transient startup states, NOT a terminal/prunable state --
-                        # misclassifying these as "exited" undercounts genuinely
-                        # in-flight VMs in main()'s active-runner tally, causing it
-                        # to spawn a duplicate for the same job before the first one
-                        # finishes booting (confirmed live: 3 runners registered for
-                        # one real queued job, the 2 losers idle forever since
-                        # ephemeral runners only self-terminate after completing a
-                        # job, never just for being unclaimed).
-                        #
-                        # "starting" was missing from this list and caused a much
-                        # worse variant of the same bug: prune_exited() force-deletes
-                        # anything classified "exited", so a VM caught mid-boot in
-                        # "starting" wasn't just undercounted, it was destroyed
-                        # outright before it could finish registering -- the job
-                        # never ran, the autoscaler saw it still queued next poll,
-                        # and spawned a fresh clone into the same fate. Confirmed
-                        # live via `orbctl list` polled every 2s during a real clone
-                        # boot. amd64-under-Rosetta boots slow enough that this
-                        # "starting" window reliably spans a full poll tick, whereas
-                        # native arm64 usually cleared it before the next poll --
-                        # which is exactly why this got much more visible once
-                        # amd64 became the default arch for unlabeled jobs.
                         state = "pending"
                     else:
                         state = "exited"
-                    target_repo = ""
-                    name_body = name[len(RUNNER_VM_PREFIX):]
-                    body_parts = name_body.split("-")
-                    if len(body_parts) >= 3:
-                        target_repo = "-".join(body_parts[1:-1])
+
+                    if name not in self._runner_created_at:
+                        self._runner_created_at[name] = time.time()
+
+                    target_repo = self._runner_repos.get(name, "")
+                    if not target_repo:
+                        name_body = name[len(RUNNER_VM_PREFIX):]
+                        body_parts = name_body.split("-")
+                        if len(body_parts) >= 3:
+                            target_repo = "-".join(body_parts[1:-1])
+
                     runners.append(RunnerInfo(
                         id=name,
                         name=name,
@@ -503,7 +498,8 @@ set -e
                         state=state,
                         target_repo=target_repo,
                         target_arch=arch,
-                        backend="orbstack-vm"
+                        backend="orbstack-vm",
+                        created_at=self._runner_created_at.get(name)
                     ))
             return runners
         except Exception as e:
@@ -511,12 +507,6 @@ set -e
             return []
 
     def destroy_runner(self, runner_id: str) -> bool:
-        # Belt-and-suspenders: list_runners() already excludes base images so
-        # prune_exited()/cleanup_all() never see one to pass in here, but this
-        # guard makes it structurally impossible for *any* caller (present or
-        # future) to delete the golden image through this single delete
-        # chokepoint. Rebuilding it costs 15-25 min; nothing that walks
-        # already-finished/exited job runners should ever be able to touch it.
         if runner_id.startswith(BASE_IMAGE_PREFIX):
             print(
                 f"[Autoscaler:OrbStack-VM] Refusing to delete '{runner_id}' -- it looks like a "
@@ -525,6 +515,8 @@ set -e
             return False
         try:
             subprocess.run(["orbctl", "delete", "-f", runner_id], check=True, capture_output=True)
+            self._runner_created_at.pop(runner_id, None)
+            self._runner_repos.pop(runner_id, None)
             return True
         except Exception:
             return False
