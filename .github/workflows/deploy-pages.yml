@@ -27,6 +27,7 @@ jobs:
     env:
       SITE_BASE: /run-zero
       SITE_URL: https://el-j.github.io/run-zero
+      REPO_URL: https://github.com/${{ github.repository }}
     steps:
       - name: Checkout repository
         uses: actions/checkout@v7
@@ -48,7 +49,7 @@ jobs:
 
       - name: Generate versions manifest
         run: |
-          python scripts/generate_versions_manifest.py --output website/public/versions.json --base-path "${SITE_BASE}"
+          python scripts/generate_versions_manifest.py --output website/public/versions.json --base-path "${SITE_BASE}" --repo-url "${REPO_URL}"
 
       - name: Build Astro current site
         run: |
