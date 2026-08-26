@@ -364,6 +364,7 @@ vm-rebuild-base: build-vm-base ## Alias for build-vm-base -- use after changing 
 test-suite: ## Run test suite with pytest, mypy type checking, and flake8 linter
 	@echo "$(CYAN)Running Flake8, Mypy, and Pytest coverage suite...$(RESET)"
 	@docker run --rm -v "$$(pwd):/app" -w /app python:3.11-slim bash -c "\
+		apt-get update -qq && apt-get install -y -qq --no-install-recommends make > /dev/null && \
 		pip install --quiet pytest pytest-cov mypy flake8 && \
 		flake8 src/ tests/ --max-line-length=160 --extend-ignore=E501,W503,E402 && \
 		MYPYPATH=src mypy src/ --ignore-missing-imports && \

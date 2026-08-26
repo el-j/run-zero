@@ -293,6 +293,16 @@ RunZero includes a 100% verified test suite with type checking, linting, and mut
 | `make test-suite` | Run Flake8 linter, Mypy static type checker, and Pytest coverage |
 | `make mutation-test` | Run Mutmut mutation testing suite across all drivers and autoscaler |
 
+The suite is layered:
+
+- **White-box unit tests** (most of `tests/`) — mock every `subprocess`/HTTP call at the call site.
+- **Blackbox process-boundary tests** (`tests/test_blackbox_*.py`) — real HTTP client against a
+  real dashboard/VM-bridge server bound to a real socket, plus a real `make` subprocess
+  invocation — no real Docker/VM/GitHub infrastructure required.
+- **True end-to-end tests** (`tests/test_e2e_docker.py`) — a real, unmocked Docker container
+  lifecycle. See [`E2E_TESTING.md`](E2E_TESTING.md) for exactly what's automated in CI (Docker)
+  versus what requires a human running a manual runbook locally (OrbStack VM, WSL2, Multipass).
+
 ---
 
 ## 📋 Makefile Commands
