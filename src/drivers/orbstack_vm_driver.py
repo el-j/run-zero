@@ -64,6 +64,16 @@ class OrbStackVMDriver(RunnerDriver):
         self._build_retry_after: Dict[str, float] = {}
         self._runner_created_at: Dict[str, float] = {}
         self._runner_repos: Dict[str, str] = {}
+        # Tracks the most recently started background build thread per arch
+        # (see _build_base_image_async below). Exists so callers -- mainly
+        # tests -- can deterministically wait for a driver-owned background
+        # thread to fully exit via join_background_build_threads() instead
+        # of polling shared state or letting it run un-joined past the
+        # caller's own scope (see issue #20: a thread left running past a
+        # test's mock.patch context stops seeing the test's mocked
+        # subprocess.run and starts issuing REAL orbctl/orb calls against a
+        # real OrbStack daemon, if one is installed).
+        self._build_threads: Dict[str, threading.Thread] = {}
 
     def name(self) -> str:
         """Return this driver's backend identifier: "orbstack-vm"."""
@@ -429,7 +439,34 @@ echo "Base image provisioning complete."
                             file=sys.stderr
                         )
 
-        threading.Thread(target=_run, name=f"runzero-build-base-{orb_arch}", daemon=True).start()
+        thread = threading.Thread(target=_run, name=f"runzero-build-base-{orb_arch}", daemon=True)
+        self._build_threads[orb_arch] = thread
+        thread.start()
+
+    def join_background_build_threads(self, timeout: float = 10.0) -> bool:
+        """Block until every background build_base_image() thread started via
+        `_build_base_image_async` has finished, up to `timeout` seconds each.
+
+        Exists primarily for tests: it gives a deterministic point to wait for
+        a driver-owned background thread to fully exit, instead of polling
+        shared state (racy) or letting the thread run un-joined past the
+        caller's own scope. A thread left running past a test's mock.patch
+        context stops seeing that test's mocked subprocess.run and starts
+        issuing REAL orbctl/orb calls against a real OrbStack daemon if one is
+        installed -- see issue #20.
+
+        Returns True if every tracked thread has finished (already, or within
+        `timeout`); False if at least one is still alive when this returns.
+        Callers that must guarantee "no thread survives past this point"
+        (e.g. a test's tearDown) should treat False as a hard failure.
+        """
+        all_finished = True
+        for thread in list(self._build_threads.values()):
+            if thread.is_alive():
+                thread.join(timeout=timeout)
+            if thread.is_alive():
+                all_finished = False
+        return all_finished
 
     def spawn_runner(
         self,

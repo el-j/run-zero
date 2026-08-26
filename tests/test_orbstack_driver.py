@@ -4,6 +4,7 @@ Unit tests for OrbStack Linux VM runner driver and templates.
 
 import json
 import subprocess
+import threading
 import time
 import unittest
 from unittest.mock import MagicMock, patch
@@ -125,8 +126,36 @@ class TestOrbStackTemplates(unittest.TestCase):
 
 
 class TestOrbStackVMDriver(unittest.TestCase):
+    # Regression guard for issue #20: OrbStackVMDriver._build_base_image_async
+    # starts a real background daemon thread. Under plain `unittest discover`
+    # (as opposed to the containerized `make test-suite` run), a thread left
+    # running past its own test's mock.patch context is invisible to that
+    # test but still alive when a LATER test starts -- and since
+    # unittest.mock.patch("subprocess.run") patches the module-global
+    # function, the leftover thread's real subprocess.run calls get routed
+    # through whatever later test currently has it patched, corrupting that
+    # test's mock call/side_effect bookkeeping non-deterministically. This
+    # was confirmed to be the actual root cause of order-dependent flakiness
+    # in test_spawn_runner_omits_cache_mount_lines_when_no_mounts, sourced
+    # from test_spawn_runner_failure (which used to leave exactly this kind
+    # of thread running -- see that test's fix below).
+    #
+    # tearDown joins every background thread this class's `self.driver`
+    # started, so no test in this class can leak a live thread into the next
+    # one. Any NEW test added here that triggers a real background thread
+    # (by not mocking `_build_base_image_async`/`build_base_image`) will now
+    # fail loudly, right here, instead of silently destabilizing an unrelated
+    # test later.
     def setUp(self):
         self.driver = OrbStackVMDriver(distro="ubuntu:24.04")
+
+    def tearDown(self):
+        all_finished = self.driver.join_background_build_threads(timeout=15.0)
+        self.assertTrue(
+            all_finished,
+            "A background build_base_image() thread outlived its test -- see issue #20. "
+            "Mock _build_base_image_async (or build_base_image) in the test that just ran."
+        )
 
     def test_name(self):
         self.assertEqual(self.driver.name(), "orbstack-vm")
@@ -368,25 +397,47 @@ class TestOrbStackVMDriver(unittest.TestCase):
             # flight" -- must be deduped, not queue a second build.
             driver._build_base_image_async("amd64")
 
-            for _ in range(100):
-                with driver._building_lock:
-                    if "amd64" not in driver._building_arches:
-                        break
-                time.sleep(0.02)
+            # Join (not just poll shared state) so the background thread is
+            # provably finished -- and thus can never leak into a later test
+            # -- before this mock.patch context exits. See issue #20.
+            self.assertTrue(driver.join_background_build_threads(timeout=5.0))
 
         self.assertEqual(calls, ["amd64"])
         self.assertNotIn("amd64", driver._building_arches)
 
+    def test_join_background_build_threads_reports_false_for_still_running_thread(self):
+        # join_background_build_threads() must distinguish "finished" from
+        # "gave up waiting" -- a caller (like a test tearDown) that treats a
+        # timed-out join as success would defeat the whole point of issue
+        # #20's fix: it needs an honest signal that a thread is still alive.
+        driver = OrbStackVMDriver(distro="ubuntu:24.04")
+        started = threading.Event()
+        release = threading.Event()
+
+        def slow_build(arch):
+            started.set()
+            release.wait(timeout=5.0)
+            return True
+
+        with patch.object(driver, "build_base_image", side_effect=slow_build):
+            driver._build_base_image_async("amd64")
+            self.assertTrue(started.wait(timeout=5.0), "background thread never started")
+
+            # Still blocked on release -- a short timeout must report False,
+            # not hang indefinitely or silently claim success.
+            self.assertFalse(driver.join_background_build_threads(timeout=0.05))
+
+            release.set()
+            # Let it actually finish so no thread survives past this test.
+            self.assertTrue(driver.join_background_build_threads(timeout=5.0))
+
     def _run_async_build_and_wait(self, driver: OrbStackVMDriver, orb_arch: str) -> None:
         """Kick off _build_base_image_async and block until its background
-        thread has finished (removed orb_arch from _building_arches)."""
+        thread has actually finished (joined, not just polled via shared
+        state) -- see issue #20 on why a real join matters here."""
         driver._build_base_image_async(orb_arch)
-        for _ in range(100):
-            with driver._building_lock:
-                if orb_arch not in driver._building_arches:
-                    return
-            time.sleep(0.02)
-        self.fail("build_base_image_async did not finish in time")
+        if not driver.join_background_build_threads(timeout=5.0):
+            self.fail("build_base_image_async did not finish in time")
 
     def test_build_base_image_async_backs_off_after_repeated_failures(self):
         # Regression test: a non-transient failure (confirmed live -- OrbStack
@@ -564,9 +615,22 @@ class TestOrbStackVMDriver(unittest.TestCase):
 
     @patch("subprocess.run")
     def test_spawn_runner_failure(self, mock_run):
+        # Root cause of issue #20's reproduction: with subprocess.run failing on
+        # every call, _list_vm_names() reports no VMs -> base_image_exists() is
+        # False -> spawn_runner() used to kick off a REAL _build_base_image_async
+        # background thread here (unmocked), which then kept calling the
+        # module-global subprocess.run via several real time.sleep-gated retry
+        # loops for a couple of real seconds -- long after this test method (and
+        # its @patch("subprocess.run") scope) had already returned, corrupting
+        # whichever later test's own subprocess.run mock happened to be active by
+        # then. This test only cares about spawn_runner()'s own return value
+        # under a subprocess failure, not the async-build machinery (that has
+        # its own dedicated tests), so mock it away entirely.
         mock_run.side_effect = subprocess.CalledProcessError(1, "orbctl", stderr=b"Out of memory")
-        name = self.driver.spawn_runner(repo="el-j/run-zero")
+        with patch.object(self.driver, "_build_base_image_async") as mock_async_build:
+            name = self.driver.spawn_runner(repo="el-j/run-zero")
         self.assertIsNone(name)
+        mock_async_build.assert_called_once_with("arm64")
 
     @patch("subprocess.run")
     def test_ensure_base_images_stopped_stops_idle_running_base(self, mock_run):
