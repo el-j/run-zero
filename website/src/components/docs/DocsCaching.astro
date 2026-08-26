@@ -1,0 +1,47 @@
+---
+// DocsCaching: Proxy caching table, ports and URLs
+---
+
+<h2 id="proxy-caching">APT &amp; Package Proxy Caching</h2>
+<p>
+  RunZero runs lightweight background caching proxy services so that neither your container image builds nor your CI runner executions waste bandwidth re-downloading packages from public registries:
+</p>
+
+<div class="table-wrapper">
+  <table class="comparison-table">
+    <thead>
+      <tr>
+        <th>Proxy Service</th>
+        <th>Target Packages</th>
+        <th>Host Port</th>
+        <th>Web UI / Dashboard</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td><strong><a href="https://www.unix-ag.uni-kl.de/~bloch/acng/" target="_blank" rel="noopener">APT Cacher NG</a></strong></td>
+        <td>Ubuntu/Debian <code>.deb</code> packages</td>
+        <td><code>:49503</code></td>
+        <td><a href="http://localhost:49503/acng-report.html" target="_blank" rel="noopener">http://localhost:49503/acng-report.html</a></td>
+      </tr>
+      <tr>
+        <td><strong><a href="https://verdaccio.org/" target="_blank" rel="noopener">Verdaccio</a></strong></td>
+        <td>NPM, Yarn, PNPM JavaScript packages</td>
+        <td><code>:49501</code></td>
+        <td><a href="http://localhost:49501" target="_blank" rel="noopener">http://localhost:49501</a></td>
+      </tr>
+      <tr>
+        <td><strong><a href="https://github.com/gomods/athens" target="_blank" rel="noopener">Athens</a></strong></td>
+        <td>Go language modules</td>
+        <td><code>:49500</code></td>
+        <td><code>http://localhost:49500</code></td>
+      </tr>
+      <tr>
+        <td><strong><a href="https://docs.docker.com/docker-hub/mirror/" target="_blank" rel="noopener">Docker Registry Mirror</a></strong></td>
+        <td>Docker Hub container layers</td>
+        <td><code>:49502</code></td>
+        <td><code>http://localhost:49502</code></td>
+      </tr>
+    </tbody>
+  </table>
+</div>

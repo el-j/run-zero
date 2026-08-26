@@ -7,238 +7,48 @@ Includes persistent multi-language package caching, proxy registries, and adapti
 """
 
 import os
+import signal
 import sys
 import time
-import signal
-import json
-import urllib.request
-import urllib.error
-from datetime import datetime, timezone, timedelta
-from typing import List, Dict, Tuple, Any
+from typing import Any, Dict, List
 
-from drivers import get_driver, get_available_drivers, RunnerDriver, RunnerInfo
+from cache_manager import init_cache_dirs
+from discovery import discover_repositories
+from drivers import RunnerInfo, get_available_drivers, get_driver
+from github_api import get_queued_job_details, rate_limit_remaining
+from reconciler import reconcile_idle_orphans, reconcile_zombie_runners
+from router import select_driver_for_job
 
 # Configuration from environment variables
 ACCESS_TOKEN = os.getenv("ACCESS_TOKEN") or os.getenv("GITHUB_TOKEN")
 OWNER = os.getenv("OWNER", "").strip()
 ORG = os.getenv("ORG", "").strip()
-REPOS_CONFIG = os.getenv("REPOS") or os.getenv("REPO", "")
+REPOS_CONFIG = os.getenv("REPOS") or os.getenv("REPO", "") or ""
 AUTO_DISCOVER = os.getenv("AUTO_DISCOVER_REPOS", "true").lower() in ("true", "1", "yes")
 ACTIVE_DAYS = int(os.getenv("ACTIVE_REPO_DAYS", "60"))
 DISCOVERY_INTERVAL = int(os.getenv("DISCOVERY_INTERVAL", "900"))
 
 # Driver & Architecture configuration
-RUNNER_BACKEND = os.getenv("RUNNER_BACKEND", "auto").lower().strip()
-RUNNER_ARCH = os.getenv("RUNNER_ARCH", "both").lower().strip()
-RUNNER_LABELS_CUSTOM = os.getenv("RUNNER_LABELS", "").strip()
-
-# Hybrid Auto-Routing settings
+RUNNER_BACKEND = os.getenv("RUNNER_BACKEND", "auto").strip().lower()
 AUTO_ROUTE_VM = os.getenv("AUTO_ROUTE_VM", "true").lower() in ("true", "1", "yes")
-VM_TRIGGER_LABELS = [
-    label.strip().lower()
-    for label in os.getenv("VM_TRIGGER_LABELS", "vm,browser,e2e,lighthouse,systemd,gui,unconfined").split(",")
-    if label.strip()
-]
+RUNNER_ARCH = os.getenv("RUNNER_ARCH", "both").strip().lower()
+PROXIES_ENABLED = os.getenv("PROXIES_ENABLED", "true").lower() in ("true", "1", "yes")
 
+# Concurrency & Cache settings
+CACHE_ENABLED = os.getenv("CACHE_ENABLED", "true").lower() in ("true", "1", "yes")
+HOST_CACHE_DIR = os.getenv("HOST_CACHE_DIR", "")
 MIN_RUNNERS = int(os.getenv("MIN_RUNNERS", "0"))
 MAX_RUNNERS = int(os.getenv("MAX_RUNNERS", "4"))
 POLL_INTERVAL = int(os.getenv("POLL_INTERVAL", "10"))
-DOCKER_SOCK = os.getenv("DOCKER_SOCK", "/var/run/docker.sock")
-DOCKER_NETWORK = os.getenv("DOCKER_NETWORK", "host")
 
-# Persistent Cache & Proxy Configuration
-CACHE_ENABLED = os.getenv("CACHE_ENABLED", "true").lower() in ("true", "1", "yes")
-PROXIES_ENABLED = os.getenv("PROXIES_ENABLED", "true").lower() in ("true", "1", "yes")
-HOST_CACHE_DIR = os.getenv("HOST_CACHE_DIR") or os.path.expanduser("~/.local-github-runner/cache")
-
-API_BASE = "https://api.github.com"
 running = True
 
-# Rate-limiting state
-rate_limit_remaining = 5000
-rate_limit_reset = time.time() + 3600
 
-
-def signal_handler(signum, frame):
-    global running
-    print("\n[Autoscaler] Received shutdown signal. Cleaning up...")
-    running = False
-
-
-signal.signal(signal.SIGINT, signal_handler)
-signal.signal(signal.SIGTERM, signal_handler)
-
-
-def init_cache_dirs():
-    """Ensure host cache directories exist."""
-    if not CACHE_ENABLED:
-        return {}
-
-    subdirs = {
-        "toolcache": "/opt/hostedtoolcache",
-        "npm": "/home/runner/.npm",
-        "yarn": "/home/runner/.cache/yarn",
-        "pnpm": "/home/runner/.local/share/pnpm/store",
-        "pip": "/home/runner/.cache/pip",
-        "uv": "/home/runner/.cache/uv",
-        "go-mod": "/home/runner/go/pkg/mod",
-        "go-build": "/home/runner/.cache/go-build",
-        "cargo-registry": "/home/runner/.cargo/registry"
-    }
-
-    os.makedirs(HOST_CACHE_DIR, exist_ok=True)
-    mount_mappings = {}
-    for key, container_path in subdirs.items():
-        host_path = os.path.join(HOST_CACHE_DIR, key)
-        os.makedirs(host_path, exist_ok=True)
-        mount_mappings[host_path] = container_path
-
-    return mount_mappings
-
-
-def github_request(endpoint):
-    """Perform authenticated GitHub REST API GET request with rate-limit tracking."""
-    global rate_limit_remaining, rate_limit_reset
-
-    now = time.time()
-    if rate_limit_remaining < 15 and now < rate_limit_reset:
-        wait_seconds = max(5, int(rate_limit_reset - now) + 2)
-        print(f"[Autoscaler] ⚠️ API rate limit low ({rate_limit_remaining} remaining). Backing off for {wait_seconds}s...", file=sys.stderr)
-        time.sleep(wait_seconds)
-
-    url = f"{API_BASE}{endpoint}"
-    req = urllib.request.Request(url)
-    req.add_header("Authorization", f"Bearer {ACCESS_TOKEN}")
-    req.add_header("Accept", "application/vnd.github+json")
-    req.add_header("X-GitHub-Api-Version", "2022-11-28")
-    req.add_header("User-Agent", "RunZero-Autoscaler")
-
-    try:
-        with urllib.request.urlopen(req, timeout=10) as resp:
-            headers = resp.headers
-            if "x-ratelimit-remaining" in headers:
-                try:
-                    rate_limit_remaining = int(headers["x-ratelimit-remaining"])
-                    rate_limit_reset = int(headers["x-ratelimit-reset"])
-                except Exception:
-                    pass
-            return json.loads(resp.read().decode("utf-8"))
-    except urllib.error.HTTPError as e:
-        headers = e.headers or {}
-        if "x-ratelimit-remaining" in headers:
-            try:
-                rate_limit_remaining = int(headers["x-ratelimit-remaining"])
-                rate_limit_reset = int(headers["x-ratelimit-reset"])
-            except Exception:
-                pass
-
-        if e.code in (403, 429):
-            wait_seconds = max(10, int(rate_limit_reset - time.time()) + 2) if rate_limit_reset > time.time() else 60
-            print(f"[Autoscaler] ⛔ GitHub API rate limit reached ({e.code}). Pausing for {wait_seconds}s...", file=sys.stderr)
-            time.sleep(min(wait_seconds, 300))
-        else:
-            body = e.read().decode("utf-8") if e.fp else ""
-            print(f"[Autoscaler] API Error ({e.code}) for {endpoint}: {body}", file=sys.stderr)
-        return None
-    except Exception as e:
-        print(f"[Autoscaler] Request Error for {endpoint}: {e}", file=sys.stderr)
-        return None
-
-
-def discover_repositories():
-    """Discover list of active repositories to monitor."""
-    repos = set()
-
-    if REPOS_CONFIG:
-        for r in REPOS_CONFIG.split(","):
-            r = r.strip()
-            if r:
-                repos.add(r)
-        return sorted(list(repos))
-
-    if AUTO_DISCOVER and ACCESS_TOKEN:
-        cutoff_date = datetime.now(timezone.utc) - timedelta(days=ACTIVE_DAYS)
-        page = 1
-        while True:
-            data = github_request(f"/user/repos?per_page=100&affiliation=owner&sort=pushed&direction=desc&page={page}")
-            if not isinstance(data, list) or not data:
-                break
-
-            stop_pagination = False
-            for item in data:
-                if not isinstance(item, dict) or item.get("archived", False):
-                    continue
-
-                full_name = item.get("full_name", "")
-                if OWNER and not full_name.startswith(f"{OWNER}/"):
-                    continue
-
-                pushed_at_str = item.get("pushed_at")
-                if pushed_at_str:
-                    try:
-                        pushed_at = datetime.fromisoformat(pushed_at_str.replace("Z", "+00:00"))
-                        if pushed_at < cutoff_date:
-                            stop_pagination = True
-                            break
-                    except Exception:
-                        pass
-
-                repos.add(full_name)
-
-            if stop_pagination or len(data) < 100:
-                break
-            page += 1
-
-    return sorted(list(repos))
-
-
-def get_queued_job_details(repo_full_name: str) -> List[Dict[str, Any]]:
-    """Inspect queued workflow runs and extract job labels for hybrid routing."""
-    data = github_request(f"/repos/{repo_full_name}/actions/runs?status=queued")
-    if not data or "workflow_runs" not in data:
-        return []
-
-    queued_jobs = []
-    for run in data["workflow_runs"]:
-        jobs_data = github_request(f"/repos/{repo_full_name}/actions/runs/{run['id']}/jobs?filter=latest")
-        if jobs_data and "jobs" in jobs_data:
-            for job in jobs_data["jobs"]:
-                if job.get("status") == "queued":
-                    labels = [lbl.lower() for lbl in job.get("labels", [])]
-                    queued_jobs.append({
-                        "id": job.get("id"),
-                        "name": job.get("name"),
-                        "labels": labels,
-                        "repo": repo_full_name
-                    })
-    return queued_jobs
-
-
-def select_driver_for_job(
-    job: Dict[str, Any],
-    default_driver: RunnerDriver,
-    available_drivers: Dict[str, RunnerDriver]
-) -> Tuple[RunnerDriver, str]:
-    """Determine whether a job requires a VM driver or a standard container driver."""
-    job_labels = job.get("labels", [])
-
-    # Check if job specifically requests a VM or features requiring full OS sandbox
-    needs_vm = any(trigger in job_labels for trigger in VM_TRIGGER_LABELS)
-
-    if needs_vm and AUTO_ROUTE_VM:
-        # Prefer VM backends: orbstack-vm -> wsl2 -> multipass
-        for vm_name in ("orbstack-vm", "wsl2", "multipass"):
-            if vm_name in available_drivers:
-                return available_drivers[vm_name], "vm"
-
-    return default_driver, "container"
-
-
-def get_target_architectures():
-    """Return list of architectures to spin up."""
-    if RUNNER_ARCH in ("both", "all", "dual"):
+def get_target_architectures() -> List[str]:
+    """Determine list of architectures to rotate through for pool."""
+    if RUNNER_ARCH == "both":
         return ["arm64", "amd64"]
-    elif RUNNER_ARCH in ("amd64", "x86_64", "x64"):
+    elif RUNNER_ARCH in ("amd64", "x64", "x86_64"):
         return ["amd64"]
     else:
         return ["arm64"]
@@ -249,13 +59,28 @@ def main():
         print("[Autoscaler] Error: ACCESS_TOKEN is required for autoscaling.", file=sys.stderr)
         sys.exit(1)
 
+    if CACHE_ENABLED and not HOST_CACHE_DIR:
+        print(
+            "[Autoscaler] Error: CACHE_ENABLED=true but HOST_CACHE_DIR is not set. "
+            "It must be a real path on the Docker HOST (not a path inside this "
+            "container) -- e.g. HOST_CACHE_DIR=/Users/you/.local-github-runner/cache "
+            "on macOS. Set it in .env, or set CACHE_ENABLED=false to run without "
+            "persistent caching.",
+            file=sys.stderr,
+        )
+        sys.exit(1)
+
     available_drivers = get_available_drivers()
     default_driver = get_driver(RUNNER_BACKEND)
     architectures = get_target_architectures()
-    cache_mounts = init_cache_dirs()
+
+    try:
+        from version import __version__
+    except ImportError:
+        __version__ = "0.0.1"
 
     print("=" * 65)
-    print(" ⚡ RunZero — Dual-Engine Local GitHub Runner Autoscaler")
+    print(f" ⚡ RunZero v{__version__} — Dual-Engine Local GitHub Runner Autoscaler")
     print(f" Default Engine:   {default_driver.name().upper()}")
     print(f" Available Drivers: {', '.join([k.upper() for k in available_drivers.keys()])}")
     print(f" Hybrid Routing:   {'Enabled (Auto-detecting VM vs Container jobs)' if AUTO_ROUTE_VM else 'Disabled'}")
@@ -265,14 +90,28 @@ def main():
     print(f" Active Filter:    Pushed within last {ACTIVE_DAYS} days")
     print("=" * 65)
 
-    last_discovery_time: float = 0.0
+    def signal_handler(signum, frame):
+        global running
+        print("\n[Autoscaler] Received shutdown signal. Cleaning up...")
+        running = False
+
+    signal.signal(signal.SIGINT, signal_handler)
+    signal.signal(signal.SIGTERM, signal_handler)
+
     tracked_repos: List[str] = []
+    last_discovery_time = 0.0
 
     while running:
         now = time.time()
         # Refresh tracked repositories periodically
         if not ORG and (now - last_discovery_time > DISCOVERY_INTERVAL or not tracked_repos):
-            discovered = discover_repositories()
+            discovered = discover_repositories(
+                owner=OWNER,
+                active_days=ACTIVE_DAYS,
+                auto_discover=AUTO_DISCOVER,
+                repos_config=REPOS_CONFIG,
+                access_token=ACCESS_TOKEN
+            )
             last_discovery_time = now
             if discovered:
                 tracked_repos = discovered
@@ -281,6 +120,9 @@ def main():
                     print(f"  • {r}")
                 print(f"[Autoscaler] GitHub API Quota remaining: {rate_limit_remaining}/5000")
 
+            if tracked_repos:
+                reconcile_zombie_runners(tracked_repos, access_token=ACCESS_TOKEN)
+
         # Collect active runners across all drivers
         all_runners: List[RunnerInfo] = []
         for d in available_drivers.values():
@@ -288,11 +130,20 @@ def main():
             d.prune_exited(runners)
             all_runners.extend(d.list_runners())
 
-        active_runners = [r for r in all_runners if r.state == "running"]
+        if tracked_repos and not ORG:
+            # No-ops (zero API calls) unless a runner is actually old enough and
+            # still idle to be worth checking -- cheap to call every poll.
+            reconcile_idle_orphans(tracked_repos, all_runners, available_drivers, access_token=ACCESS_TOKEN)
+
+        # "pending" (creating/provisioning/created) counts as active too -- a VM/
+        # container that's still booting hasn't hit GitHub's "claimed" state yet
+        # either, so undercounting it here caused a duplicate spawn for the same
+        # job on the very next poll, every time, before the fix.
+        active_runners = [r for r in all_runners if r.state in ("running", "pending")]
         active_count = len(active_runners)
 
         if ORG:
-            # For organizations
+            # For organizations: scale based on MIN_RUNNERS
             if active_count < MIN_RUNNERS and active_count < MAX_RUNNERS:
                 needed = min(MIN_RUNNERS - active_count, MAX_RUNNERS - active_count)
                 for i in range(needed):
@@ -301,7 +152,7 @@ def main():
                         org=ORG,
                         arch=arch,
                         access_token=ACCESS_TOKEN,
-                        cache_mounts=cache_mounts,
+                        cache_mounts=init_cache_dirs(HOST_CACHE_DIR, arch, CACHE_ENABLED),
                         proxies_enabled=PROXIES_ENABLED
                     )
         else:
@@ -310,7 +161,7 @@ def main():
             total_queued = 0
 
             for repo in tracked_repos:
-                jobs = get_queued_job_details(repo)
+                jobs = get_queued_job_details(repo, access_token=ACCESS_TOKEN)
                 if jobs:
                     queued_jobs_by_repo[repo] = jobs
                     total_queued += len(jobs)
@@ -327,7 +178,7 @@ def main():
                     if len(active_runners) >= MAX_RUNNERS or needed <= 0:
                         break
 
-                    driver_to_use, mode = select_driver_for_job(job, default_driver, available_drivers)
+                    driver_to_use, mode = select_driver_for_job(job, default_driver, available_drivers, AUTO_ROUTE_VM)
                     arch = architectures[0]
                     if "amd64" in job.get("labels", []) or "x64" in job.get("labels", []):
                         arch = "amd64"
@@ -336,10 +187,11 @@ def main():
                         repo=repo,
                         arch=arch,
                         access_token=ACCESS_TOKEN,
-                        cache_mounts=cache_mounts,
+                        cache_mounts=init_cache_dirs(HOST_CACHE_DIR, arch, CACHE_ENABLED),
                         proxies_enabled=PROXIES_ENABLED
                     )
                     if spawned_id:
+                        needed -= 1
                         active_runners.append(RunnerInfo(
                             id=spawned_id,
                             name=spawned_id,
@@ -349,26 +201,13 @@ def main():
                             target_arch=arch,
                             backend=driver_to_use.name()
                         ))
-                        needed -= 1
 
-            # Maintain MIN_RUNNERS if configured
-            if active_count < MIN_RUNNERS and active_count < MAX_RUNNERS and tracked_repos:
-                needed = min(MIN_RUNNERS - active_count, MAX_RUNNERS - active_count)
-                for i in range(needed):
-                    arch = architectures[i % len(architectures)]
-                    default_driver.spawn_runner(
-                        repo=tracked_repos[0],
-                        arch=arch,
-                        access_token=ACCESS_TOKEN,
-                        cache_mounts=cache_mounts,
-                        proxies_enabled=PROXIES_ENABLED
-                    )
+        # Sleep before next poll loop
+        for _ in range(POLL_INTERVAL):
+            if not running:
+                break
+            time.sleep(1)
 
-        # Adaptive sleep pacing
-        sleep_duration = max(POLL_INTERVAL, int(len(tracked_repos) * 0.5))
-        time.sleep(sleep_duration)
-
-    # Cleanup remaining runners across all drivers on shutdown
     print("[Autoscaler] Stopping managed runners on shutdown...")
     for d in available_drivers.values():
         d.cleanup_all()

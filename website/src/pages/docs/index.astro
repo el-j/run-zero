@@ -1,0 +1,290 @@
+---
+import Layout from '../../layouts/Layout.astro';
+import DocsSidebar from '../../components/docs/DocsSidebar.astro';
+import DocsQuickstart from '../../components/docs/DocsQuickstart.astro';
+import DocsDrivers from '../../components/docs/DocsDrivers.astro';
+import DocsHybridRouting from '../../components/docs/DocsHybridRouting.astro';
+import DocsCaching from '../../components/docs/DocsCaching.astro';
+import DocsDependencies from '../../components/docs/DocsDependencies.astro';
+import DocsZombieHealing from '../../components/docs/DocsZombieHealing.astro';
+import DocsEnvReference from '../../components/docs/DocsEnvReference.astro';
+import DocsCliReference from '../../components/docs/DocsCliReference.astro';
+import DocsFaq from '../../components/docs/DocsFaq.astro';
+---
+
+<Layout title="Documentation — RunZero" description="Complete installation, configuration, driver deep dive, and CLI guide for RunZero." currentPath="/docs">
+  <div class="ambient-crimson"></div>
+  
+  <div class="container">
+    <!-- Mobile Table of Contents Bar -->
+    <div class="mobile-docs-bar">
+      <button id="mobile-docs-toggle" class="btn-mobile-docs" aria-expanded="false" aria-controls="docs-sidebar">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"></path>
+          <path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"></path>
+        </svg>
+        <span>Table of Contents</span>
+        <svg class="chevron" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+          <path d="M6 9l6 6 6-6"></path>
+        </svg>
+      </button>
+      <span class="active-section-label" id="mobile-active-section">Quick Start</span>
+    </div>
+
+    <div class="docs-layout">
+      <!-- Sticky Sidebar Navigation -->
+      <DocsSidebar />
+
+      <!-- Main Documentation Content -->
+      <main class="docs-content">
+        <h1>RunZero Documentation</h1>
+        <p class="lead">
+          Everything you need to know about configuring, running, and scaling your local GitHub Actions runner fleet with Docker containers, dedicated Linux Virtual Machines, and intelligent proxy caching.
+        </p>
+
+        <DocsQuickstart />
+        <DocsDrivers />
+        <DocsHybridRouting />
+        <DocsCaching />
+        <DocsDependencies />
+        <DocsZombieHealing />
+        <DocsEnvReference />
+        <DocsCliReference />
+        <DocsFaq />
+      </main>
+    </div>
+  </div>
+</Layout>
+
+<style>
+  .mobile-docs-bar {
+    display: none;
+    position: sticky;
+    top: var(--header-height);
+    z-index: 90;
+    background: rgba(6, 8, 13, 0.95);
+    backdrop-filter: blur(16px);
+    -webkit-backdrop-filter: blur(16px);
+    border-bottom: 1px solid var(--border-subtle);
+    padding: 10px 16px;
+    align-items: center;
+    justify-content: space-between;
+    margin: 0 -16px 20px;
+  }
+
+  .btn-mobile-docs {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    background: var(--crimson-dim);
+    border: 1px solid var(--border-crimson);
+    color: var(--crimson-light);
+    padding: 6px 12px;
+    border-radius: var(--radius-sm);
+    font-size: 0.85rem;
+    font-weight: 700;
+    cursor: pointer;
+  }
+
+  .active-section-label {
+    font-size: 0.82rem;
+    color: var(--text-dim);
+    font-weight: 600;
+    max-width: 160px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .docs-layout {
+    display: flex;
+    min-height: calc(100vh - var(--header-height));
+    position: relative;
+  }
+
+  main.docs-content {
+    flex: 1;
+    padding: 40px 48px 96px;
+    max-width: 920px;
+    min-width: 0;
+    width: 100%;
+  }
+  .docs-content :global(h1) {
+    font-size: 2.8rem;
+    font-weight: 800;
+    margin-bottom: 14px;
+    line-height: 1.2;
+    word-break: break-word;
+  }
+  .docs-content :global(.lead) {
+    font-size: 1.18rem;
+    color: var(--text-muted);
+    margin-bottom: 40px;
+    line-height: 1.7;
+  }
+  .docs-content :global(h2) {
+    font-size: 1.8rem;
+    font-weight: 800;
+    margin: 44px 0 16px;
+    padding-top: 24px;
+    border-top: 1px solid var(--border-subtle);
+    word-break: break-word;
+  }
+  .docs-content :global(h3) {
+    font-size: 1.25rem;
+    font-weight: 700;
+    margin: 28px 0 10px;
+    color: #f1f5f9;
+    word-break: break-word;
+  }
+  .docs-content :global(p) {
+    color: var(--text-muted);
+    margin-bottom: 18px;
+    line-height: 1.7;
+  }
+  .docs-content :global(ul) {
+    color: var(--text-muted);
+    margin-left: 20px;
+    margin-bottom: 24px;
+    line-height: 1.7;
+  }
+  .docs-content :global(li) {
+    margin-bottom: 8px;
+  }
+  .docs-content :global(a) {
+    color: var(--crimson-light);
+    text-decoration: underline;
+  }
+
+  .docs-content :global(.callout) {
+    padding: 18px 22px;
+    border-radius: var(--radius-md);
+    margin: 24px 0;
+    border-left: 4px solid;
+  }
+  .docs-content :global(.callout.tip) {
+    border-color: var(--crimson);
+    background: var(--crimson-dim);
+  }
+  .docs-content :global(.callout-title) {
+    font-weight: 700;
+    margin-bottom: 4px;
+    color: #fff;
+  }
+
+  .docs-content :global(pre.code-block) {
+    background: var(--bg-code);
+    border: 1px solid var(--border-subtle);
+    border-radius: var(--radius-md);
+    padding: 18px;
+    margin: 20px 0;
+    overflow-x: auto;
+    font-family: var(--font-mono);
+    font-size: 0.88rem;
+    line-height: 1.7;
+    color: #e2e8f0;
+    max-width: 100%;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .docs-content :global(.table-wrapper) {
+    background: var(--bg-card);
+    border: 1px solid var(--border-subtle);
+    border-radius: var(--radius-lg);
+    overflow-x: auto;
+    margin: 24px 0 32px;
+    max-width: 100%;
+    width: 100%;
+    -webkit-overflow-scrolling: touch;
+  }
+  .docs-content :global(table.comparison-table) {
+    width: 100%;
+    border-collapse: collapse;
+    min-width: 540px;
+  }
+  .docs-content :global(table.comparison-table th),
+  .docs-content :global(table.comparison-table td) {
+    padding: 14px 18px;
+    border-bottom: 1px solid var(--border-subtle);
+    font-size: 0.9rem;
+  }
+  .docs-content :global(table.comparison-table th) {
+    background: rgba(255, 255, 255, 0.02);
+    color: var(--text-dim);
+    text-transform: uppercase;
+    font-size: 0.8rem;
+    letter-spacing: 0.05em;
+  }
+
+  @media (max-width: 1024px) {
+    .mobile-docs-bar {
+      display: flex;
+    }
+    main.docs-content {
+      padding: 20px 8px 64px;
+    }
+    .docs-content :global(h1) { font-size: 2.2rem; }
+    .docs-content :global(h2) { font-size: 1.5rem; }
+    .docs-content :global(.lead) { font-size: 1.05rem; }
+    .docs-content :global(pre.code-block) { font-size: 0.8rem; padding: 14px; }
+  }
+</style>
+
+<script>
+  const toggleBtn = document.getElementById('mobile-docs-toggle');
+  const sidebar = document.getElementById('docs-sidebar');
+  const backdrop = document.getElementById('sidebar-backdrop');
+  const closeBtn = document.getElementById('sidebar-close-btn');
+  const activeLabel = document.getElementById('mobile-active-section');
+  const sidebarLinks = document.querySelectorAll('.sidebar-link');
+  const sections = document.querySelectorAll('main.docs-content h2[id]');
+
+  function openSidebar() {
+    if (sidebar) sidebar.classList.add('drawer-open');
+    if (backdrop) backdrop.classList.add('show');
+    if (toggleBtn) toggleBtn.setAttribute('aria-expanded', 'true');
+  }
+
+  function closeSidebar() {
+    if (sidebar) sidebar.classList.remove('drawer-open');
+    if (backdrop) backdrop.classList.remove('show');
+    if (toggleBtn) toggleBtn.setAttribute('aria-expanded', 'false');
+  }
+
+  if (toggleBtn) toggleBtn.addEventListener('click', openSidebar);
+  if (closeBtn) closeBtn.addEventListener('click', closeSidebar);
+  if (backdrop) backdrop.addEventListener('click', closeSidebar);
+
+  sidebarLinks.forEach(link => {
+    link.addEventListener('click', () => {
+      closeSidebar();
+    });
+  });
+
+  // Active section scroll tracking
+  window.addEventListener('scroll', () => {
+    let currentId = '';
+    let currentTitle = '';
+    const scrollPos = window.scrollY + 140;
+
+    sections.forEach(section => {
+      const top = (section as HTMLElement).offsetTop;
+      if (scrollPos >= top) {
+        currentId = section.getAttribute('id') || '';
+        currentTitle = section.textContent || '';
+      }
+    });
+
+    if (currentId) {
+      sidebarLinks.forEach(link => {
+        link.classList.remove('active');
+        if (link.getAttribute('href') === `#${currentId}`) {
+          link.classList.add('active');
+        }
+      });
+      if (activeLabel && currentTitle) {
+        activeLabel.textContent = currentTitle;
+      }
+    }
+  });
+</script>

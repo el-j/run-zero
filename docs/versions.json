@@ -1,0 +1,12 @@
+[
+  {
+    "version": "v0.0.1",
+    "name": "v0.0.1 (Latest)",
+    "url": "/run-zero/",
+    "docsUrl": "/run-zero/docs/",
+    "releaseDate": "2026-08-25",
+    "status": "latest",
+    "notes": "Initial release: Dual-Engine architecture, OrbStack Linux VMs, Hybrid auto-routing, NVM multi-node, Verdaccio & Athens proxy caching.",
+    "changelogUrl": "https://github.com/el-j/run-zero/releases/tag/v0.0.1"
+  }
+]

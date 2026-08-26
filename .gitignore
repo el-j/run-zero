@@ -1,6 +1,7 @@
 .env
 .DS_Store
 *.log
+*.pid
 __pycache__/
 *.pyc
 .coverage
@@ -8,3 +9,8 @@ __pycache__/
 .mypy_cache
 __pycache__/
 mutants/
+node_modules/
+.output
+dist
+.astro
+_astro

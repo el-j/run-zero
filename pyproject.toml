@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "run-zero"
-version = "2.0.0"
+version = "0.0.1"
 description = "Dual-Engine Autoscaling GitHub Actions Runner Fleet for Docker & Linux VMs"
 readme = "README.md"
 requires-python = ">=3.9"

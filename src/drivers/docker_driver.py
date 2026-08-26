@@ -4,11 +4,13 @@ Spawns and manages ephemeral runner containers with host or bridge networking.
 """
 
 import os
-import sys
-import uuid
 import shutil
 import subprocess
-from typing import List, Dict, Optional
+import sys
+import uuid
+from datetime import datetime
+from typing import Dict, List, Optional
+
 from . import RunnerDriver, RunnerInfo
 
 
@@ -63,6 +65,14 @@ class DockerDriver(RunnerDriver):
             "--name", container_name,
             "--platform", platform_flag,
             "--network", self.network,
+            # Headless Chrome (Lighthouse CI, Playwright) needs to create its own
+            # user/PID namespace for its internal sandbox, which Docker blocks by
+            # default. GitHub-hosted runners never hit this because they're full
+            # VMs, not containers. Jobs only skip this container path when their
+            # own `runs-on:` labels match a VM_TRIGGER_LABELS entry and a VM
+            # driver is available (see select_driver_for_job in autoscaler.py) —
+            # every other job, including browser-driven ones, lands here.
+            "--cap-add", "SYS_ADMIN",
             "--label", "managed-by=local-autoscaler",
             "--label", "backend=docker",
             "--label", f"target-repo={repo or ''}",
@@ -88,6 +98,12 @@ class DockerDriver(RunnerDriver):
         if cache_mounts:
             for host_p, cont_p in cache_mounts.items():
                 cmd.extend(["-v", f"{host_p}:{cont_p}"])
+            # start.sh needs the exact set of container-side mount destinations to
+            # fix their ancestor-directory ownership (Docker/OrbStack create bind
+            # mount ancestors as root). Passing it from here — the same dict that
+            # drives the -v flags above — means start.sh can never drift out of
+            # sync with the actual mounts the way a second hardcoded list did.
+            cmd.extend(["-e", f"CACHE_MOUNT_DESTS={':'.join(cache_mounts.values())}"])
 
         if repo:
             cmd.extend(["-e", f"REPO={repo}"])
@@ -116,7 +132,7 @@ class DockerDriver(RunnerDriver):
                 [
                     "docker", "ps", "-a",
                     "--filter", "label=managed-by=local-autoscaler",
-                    "--format", "{{.ID}}|{{.Status}}|{{.Names}}|{{.State}}|{{.Label \"target-repo\"}}|{{.Label \"target-arch\"}}|{{.Label \"backend\"}}"
+                    "--format", "{{.ID}}|{{.Status}}|{{.Names}}|{{.State}}|{{.Label \"target-repo\"}}|{{.Label \"target-arch\"}}|{{.Label \"backend\"}}|{{.CreatedAt}}"
                 ],
                 capture_output=True,
                 text=True,
@@ -129,19 +145,45 @@ class DockerDriver(RunnerDriver):
                 parts = line.split("|")
                 if len(parts) >= 6:
                     backend = parts[6] if len(parts) > 6 and parts[6] else "docker"
+                    created_at = self._parse_created_at(parts[7]) if len(parts) > 7 else None
+                    # Docker's raw state, normalized so main()'s active-runner tally
+                    # (state == "running"/"pending") doesn't undercount a container
+                    # that's created but hasn't flipped to "running" yet -- narrow
+                    # window for Docker (near-instant) but same bug class as the VM
+                    # driver's "creating"/"provisioning" misclassification.
+                    raw_state = parts[3]
+                    if raw_state == "running":
+                        state = "running"
+                    elif raw_state in ("created", "restarting"):
+                        state = "pending"
+                    else:
+                        state = raw_state
                     runners.append(RunnerInfo(
                         id=parts[0],
                         status=parts[1],
                         name=parts[2],
-                        state=parts[3],
+                        state=state,
                         target_repo=parts[4],
                         target_arch=parts[5],
-                        backend=backend
+                        backend=backend,
+                        created_at=created_at
                     ))
             return runners
         except Exception as e:
             print(f"[Autoscaler:Docker] Docker ps error: {e}", file=sys.stderr)
             return []
+
+    @staticmethod
+    def _parse_created_at(raw: str) -> Optional[float]:
+        # Docker's `--format {{.CreatedAt}}` is e.g. "2026-08-25 14:38:53 +0200
+        # CEST" -- the trailing zone abbreviation isn't reliably parseable by
+        # strptime's %Z across platforms/locales, but the numeric UTC offset
+        # right before it is, so only the first three tokens are used.
+        try:
+            date_part, time_part, offset, *_ = raw.strip().split()
+            return datetime.strptime(f"{date_part} {time_part} {offset}", "%Y-%m-%d %H:%M:%S %z").timestamp()
+        except (ValueError, IndexError):
+            return None
 
     def prune_exited(self, runners: List[RunnerInfo]) -> None:
         for r in runners:

@@ -11,43 +11,30 @@ ENV DOTNET_CLI_TELEMETRY_OPTOUT=1
 ENV NVM_DIR=/home/runner/.nvm
 ENV PATH="/home/runner/.local/bin:/home/runner/go/bin:/usr/share/dotnet:/usr/share/dotnet/tools:${PATH}"
 
-# 1. Update system and install essential tools & libraries
+# 1. Minimal bootstrap packages needed before the shared provisioning script can
+# run (sudo for the runner user; iptables for Docker's own networking needs
+# when this container spawns sibling service containers via the host socket).
+# Not proxied through apt-cacher-ng -- curl itself isn't installed yet at this
+# point, so there's nothing to check reachability with (chicken-and-egg); small
+# enough (~few MB) not to matter. Everything downstream of this IS proxied.
 RUN apt-get update -y && apt-get upgrade -y && \
-    apt-get install -y --no-install-recommends \
-    ca-certificates \
-    curl \
-    wget \
-    rsync \
-    gnupg \
-    lsb-release \
-    jq \
-    git \
-    git-lfs \
-    tar \
-    unzip \
-    zip \
-    bzip2 \
-    zstd \
-    xz-utils \
-    build-essential \
-    cmake \
-    pkg-config \
-    libssl-dev \
-    libffi-dev \
-    libicu-dev \
-    libsqlite3-dev \
-    zlib1g-dev \
-    python3 \
-    python3-venv \
-    python3-dev \
-    python3-pip \
-    sudo \
-    iptables \
-    software-properties-common \
-    && git lfs install --system \
-    && rm -rf /var/lib/apt/lists/*
+    apt-get install -y --no-install-recommends sudo iptables ca-certificates curl && \
+    rm -rf /var/lib/apt/lists/*
 
-# 2. Install Docker CLI & Compose Plugin
+# Route apt through the local apt-cacher-ng proxy (docker-compose.yml) if it's
+# reachable during the build -- caches .deb packages across rebuilds of this
+# image AND the OrbStack VM golden image (both run docker/provision-toolchain.sh).
+# host.orb.internal resolves from a `docker build` RUN step under OrbStack;
+# harmless no-op (and the build just falls through to the real mirrors) if
+# apt-cacher-ng isn't running.
+RUN if curl -fsS --connect-timeout 2 "http://host.orb.internal:49503/acng-report.html" >/dev/null 2>&1; then \
+      echo 'Acquire::http::Proxy "http://host.orb.internal:49503";' > /etc/apt/apt.conf.d/01runzero-proxy; \
+    fi
+
+# 2. Install Docker CLI & Compose Plugin. CLI only, NOT the engine -- this
+# container talks to the HOST's docker.sock via a bind mount (docker_driver.py),
+# it never runs its own daemon. The OrbStack VM driver's golden base image
+# installs the full engine instead, since a VM has no host socket to mount.
 RUN curl -fsSL https://download.docker.com/linux/ubuntu/gpg -o /etc/apt/keyrings/docker.asc && \
     chmod a+r /etc/apt/keyrings/docker.asc && \
     echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.asc] https://download.docker.com/linux/ubuntu $(. /etc/os-release && echo "$VERSION_CODENAME") stable" | \
@@ -56,15 +43,7 @@ RUN curl -fsSL https://download.docker.com/linux/ubuntu/gpg -o /etc/apt/keyrings
     apt-get install -y --no-install-recommends docker-ce-cli docker-compose-plugin && \
     rm -rf /var/lib/apt/lists/*
 
-# 3. Install .NET SDK 8.0 & Configure Microsoft Repository
-RUN curl -fsSL https://packages.microsoft.com/config/ubuntu/22.04/packages-microsoft-prod.deb -o /tmp/packages-microsoft-prod.deb && \
-    dpkg -i /tmp/packages-microsoft-prod.deb && \
-    rm /tmp/packages-microsoft-prod.deb && \
-    apt-get update && \
-    apt-get install -y --no-install-recommends dotnet-sdk-8.0 && \
-    rm -rf /var/lib/apt/lists/*
-
-# 4. Create runner user with passwordless sudo access & create tool cache directory
+# 3. Create runner user with passwordless sudo access & create tool cache directory
 RUN useradd -m -s /bin/bash runner && \
     usermod -aG sudo runner && \
     echo "runner ALL=(ALL) NOPASSWD:ALL" >> /etc/sudoers && \
@@ -73,23 +52,17 @@ RUN useradd -m -s /bin/bash runner && \
 
 WORKDIR /home/runner
 
-# 5. Install NVM and pre-bake Node.js 20 (LTS), 22 (LTS), and 24 (Current) with yarn & pnpm
+# 4. Shared toolchain provisioning: base OS packages, .NET 8 SDK, PostgreSQL
+# client, Google Chrome, Node 20/22/24 + yarn/pnpm via nvm, and Playwright's
+# OS-level deps. This is the SAME script src/drivers/orbstack_vm_driver.py runs
+# to build its golden OrbStack VM base image -- one source of truth so the two
+# execution engines (Docker container vs. VM) can't drift apart on versions.
+COPY --chown=runner:runner provision-toolchain.sh /tmp/provision-toolchain.sh
 USER runner
-RUN curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.40.1/install.sh | bash && \
-    . $NVM_DIR/nvm.sh && \
-    nvm install 20 && \
-    nvm install 22 && \
-    nvm install 24 && \
-    nvm alias default 20 && \
-    nvm use 20 && \
-    npm install -g yarn pnpm && \
-    nvm use 22 && \
-    npm install -g yarn pnpm && \
-    nvm use 24 && \
-    npm install -g yarn pnpm && \
-    nvm use default
-
+RUN chmod +x /tmp/provision-toolchain.sh && \
+    /tmp/provision-toolchain.sh "${TARGETARCH:-amd64}"
 USER root
+RUN rm -f /tmp/provision-toolchain.sh && rm -rf /var/lib/apt/lists/*
 
 # Ensure NVM is auto-loaded for all shells
 RUN echo 'export NVM_DIR="/home/runner/.nvm"' >> /etc/profile.d/nvm.sh && \
@@ -97,7 +70,7 @@ RUN echo 'export NVM_DIR="/home/runner/.nvm"' >> /etc/profile.d/nvm.sh && \
     echo '[ -s "$NVM_DIR/bash_completion" ] && \. "$NVM_DIR/bash_completion"' >> /etc/profile.d/nvm.sh && \
     chmod +x /etc/profile.d/nvm.sh
 
-# 6. Download and extract GitHub Actions runner package based on architecture
+# 5. Download and extract GitHub Actions runner package based on architecture
 RUN case "${TARGETARCH:-$(dpkg --print-architecture)}" in \
       "arm64") RUNNER_ARCH="arm64" ;; \
       "amd64"|"x86_64") RUNNER_ARCH="x64" ;; \
@@ -110,26 +83,6 @@ RUN case "${TARGETARCH:-$(dpkg --print-architecture)}" in \
     rm "./actions-runner-linux-${RUNNER_ARCH}-${RUNNER_VERSION}.tar.gz" && \
     ./bin/installdependencies.sh && \
     chown -R runner:runner /home/runner
-
-# 7. Install PostgreSQL client (`psql`, used by workflows to seed test data)
-# and Google Chrome (needed by lhci autorun's headless browser audits) — both
-# ship on GitHub-hosted ubuntu-latest by default; this image needs them added
-# explicitly to run those steps natively instead of failing on a missing binary.
-# Chrome is amd64-only from Google's own repo (no arm64 build exists), so it's
-# skipped on arm64 builds — Playwright-driven jobs still get their own bundled
-# Chromium per-job via `playwright install`, this only affects Lighthouse CI.
-RUN apt-get update && \
-    apt-get install -y --no-install-recommends postgresql-client && \
-    rm -rf /var/lib/apt/lists/* && \
-    if [ "${TARGETARCH:-$(dpkg --print-architecture)}" = "amd64" ]; then \
-      curl -fsSL https://dl.google.com/linux/linux_signing_key.pub -o /etc/apt/keyrings/google-chrome.asc && \
-      chmod a+r /etc/apt/keyrings/google-chrome.asc && \
-      echo "deb [arch=amd64 signed-by=/etc/apt/keyrings/google-chrome.asc] http://dl.google.com/linux/chrome/deb/ stable main" | \
-        tee /etc/apt/sources.list.d/google-chrome.list > /dev/null && \
-      apt-get update && \
-      apt-get install -y --no-install-recommends google-chrome-stable && \
-      rm -rf /var/lib/apt/lists/*; \
-    fi
 
 WORKDIR /home/runner/actions-runner
 

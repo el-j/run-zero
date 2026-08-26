@@ -4,11 +4,21 @@ Defines the abstract RunnerDriver interface and driver discovery/factory mechani
 """
 
 from abc import ABC, abstractmethod
-from typing import List, Dict, Optional
+from typing import Any, Dict, List, Optional
 
 
 class RunnerInfo:
-    def __init__(self, id: str, name: str, status: str, state: str, target_repo: str, target_arch: str, backend: str):
+    def __init__(
+        self,
+        id: str,
+        name: str,
+        status: str,
+        state: str,
+        target_repo: str,
+        target_arch: str,
+        backend: str,
+        created_at: Optional[float] = None
+    ):
         self.id = id
         self.name = name
         self.status = status
@@ -16,8 +26,12 @@ class RunnerInfo:
         self.target_repo = target_repo
         self.target_arch = target_arch
         self.backend = backend
+        # Unix timestamp, when the driver can report it (currently: Docker only).
+        # Lets the reconciler tell "just spawned, GitHub hasn't dispatched to it
+        # yet" apart from "been sitting idle for way too long, orphaned".
+        self.created_at = created_at
 
-    def to_dict(self) -> Dict[str, str]:
+    def to_dict(self) -> Dict[str, Any]:
         return {
             "id": self.id,
             "name": self.name,
@@ -25,7 +39,8 @@ class RunnerInfo:
             "state": self.state,
             "target_repo": self.target_repo,
             "target_arch": self.target_arch,
-            "backend": self.backend
+            "backend": self.backend,
+            "created_at": self.created_at
         }
 
 
@@ -35,12 +50,10 @@ class RunnerDriver(ABC):
     @abstractmethod
     def name(self) -> str:
         """Return the unique identifier for this driver."""
-        pass
 
     @abstractmethod
     def is_available(self) -> bool:
         """Check if the underlying runtime (docker, orb, wsl, multipass) is available on the host."""
-        pass
 
     @abstractmethod
     def spawn_runner(
@@ -55,35 +68,30 @@ class RunnerDriver(ABC):
         extra_env: Optional[Dict[str, str]] = None
     ) -> Optional[str]:
         """Spawn a fresh ephemeral runner instance. Returns instance identifier/name."""
-        pass
 
     @abstractmethod
     def list_runners(self) -> List[RunnerInfo]:
         """List all runner instances currently managed by this driver."""
-        pass
 
     @abstractmethod
     def prune_exited(self, runners: List[RunnerInfo]) -> None:
         """Remove stopped or dead runner instances."""
-        pass
 
     @abstractmethod
     def destroy_runner(self, runner_id: str) -> bool:
         """Force destroy and clean up a specific runner instance."""
-        pass
 
     @abstractmethod
     def cleanup_all(self) -> None:
         """Clean up all managed runner instances during shutdown."""
-        pass
 
 
 def get_available_drivers() -> Dict[str, RunnerDriver]:
     """Discover and return all drivers available on the host system."""
     from .docker_driver import DockerDriver
+    from .multipass_driver import MultipassDriver
     from .orbstack_vm_driver import OrbStackVMDriver
     from .wsl_driver import WSL2Driver
-    from .multipass_driver import MultipassDriver
 
     drivers = {}
     candidates = [
@@ -103,9 +111,9 @@ def get_available_drivers() -> Dict[str, RunnerDriver]:
 def get_driver(name: str = "auto") -> RunnerDriver:
     """Instantiate and return the requested driver or auto-select best available."""
     from .docker_driver import DockerDriver
+    from .multipass_driver import MultipassDriver
     from .orbstack_vm_driver import OrbStackVMDriver
     from .wsl_driver import WSL2Driver
-    from .multipass_driver import MultipassDriver
 
     name = name.lower().strip()
 

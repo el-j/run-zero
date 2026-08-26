@@ -1,0 +1,237 @@
+/* ==========================================================================
+   RunZero — Martian Redshift & Carbon Design System
+   Unique Visual Identity: Deep Martian Obsidian (#06080d), Laser Crimson (#ff3355),
+   Solar Plasma Amber (#ff9f1c), Technical Grid Matrix & Precision Aerospace Styling
+   ========================================================================== */
+
+:root {
+  /* Surface Tokens */
+  --bg-primary: #06080d;
+  --bg-secondary: #0b0f17;
+  --bg-surface: #101522;
+  --bg-card: rgba(16, 21, 34, 0.85);
+  --bg-card-hover: rgba(22, 29, 46, 0.95);
+  --bg-code: #080a12;
+  --bg-code-header: rgba(255, 51, 85, 0.04);
+
+  /* Borders & Grids */
+  --border-subtle: rgba(255, 255, 255, 0.07);
+  --border-card: rgba(255, 255, 255, 0.12);
+  --border-crimson: rgba(255, 51, 85, 0.38);
+  --border-amber: rgba(255, 159, 28, 0.35);
+
+  /* Martian Redshift Colorway (Laser Crimson + Solar Amber + Plasma Cyan) */
+  --crimson: #ff3355;
+  --crimson-light: #ff6b82;
+  --crimson-glow: rgba(255, 51, 85, 0.3);
+  --crimson-dim: rgba(255, 51, 85, 0.1);
+  
+  --solar: #ff9f1c;
+  --solar-light: #ffb74d;
+  --solar-glow: rgba(255, 159, 28, 0.25);
+  --solar-dim: rgba(255, 159, 28, 0.1);
+
+  --cyan: #00f0ff;
+  --cyan-glow: rgba(0, 240, 255, 0.25);
+
+  --emerald: #10b981;
+  --rose: #ff2a55;
+
+  /* Typography Colors */
+  --text-main: #f8fafc;
+  --text-muted: #94a3b8;
+  --text-dim: #64748b;
+  --text-crimson: #ff3355;
+  --text-solar: #ff9f1c;
+
+  /* Sizing & Radii */
+  --radius-xl: 16px;
+  --radius-lg: 12px;
+  --radius-md: 8px;
+  --radius-sm: 4px;
+
+  --font-sans: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  --font-mono: 'JetBrains Mono', SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+
+  --header-height: 68px;
+  --sidebar-width: 280px;
+}
+
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+html {
+  scroll-behavior: smooth;
+  color-scheme: dark;
+}
+
+body {
+  background-color: var(--bg-primary);
+  background-image: 
+    radial-gradient(circle at 50% -15%, rgba(255, 51, 85, 0.1) 0%, transparent 55%),
+    radial-gradient(circle at 90% 50%, rgba(255, 159, 28, 0.06) 0%, transparent 45%),
+    linear-gradient(rgba(255, 255, 255, 0.02) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255, 255, 255, 0.02) 1px, transparent 1px);
+  background-size: 100% 100%, 100% 100%, 48px 48px, 48px 48px;
+  color: var(--text-main);
+  font-family: var(--font-sans);
+  line-height: 1.65;
+  overflow-x: hidden;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* Ambient Background Light Elements */
+.ambient-crimson {
+  position: fixed;
+  top: -150px;
+  left: 25%;
+  width: 550px;
+  height: 550px;
+  background: radial-gradient(circle, var(--crimson-glow) 0%, transparent 70%);
+  filter: blur(140px);
+  z-index: 0;
+  pointer-events: none;
+}
+
+.ambient-solar {
+  position: fixed;
+  top: 45%;
+  right: -100px;
+  width: 480px;
+  height: 480px;
+  background: radial-gradient(circle, var(--solar-glow) 0%, transparent 70%);
+  filter: blur(140px);
+  z-index: 0;
+  pointer-events: none;
+}
+
+.container {
+  max-width: 1240px;
+  margin: 0 auto;
+  padding: 0 24px;
+  position: relative;
+  z-index: 1;
+}
+
+/* Typography & Headings */
+h1, h2, h3, h4, h5 {
+  color: var(--text-main);
+  letter-spacing: -0.03em;
+  font-weight: 800;
+}
+
+.crimson-gradient {
+  background: linear-gradient(135deg, #ffffff 15%, #ff3355 70%, #ff9f1c 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+
+.crimson-text {
+  color: var(--crimson);
+  text-shadow: 0 0 12px var(--crimson-glow);
+}
+
+.solar-text {
+  color: var(--solar);
+  text-shadow: 0 0 12px var(--solar-glow);
+}
+
+/* Technical Telemetry Badges & Chips */
+.tech-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-family: var(--font-mono);
+  font-size: 0.76rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  padding: 3px 8px;
+  border-radius: var(--radius-sm);
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid var(--border-subtle);
+  color: var(--text-muted);
+}
+.tech-chip.crimson {
+  background: var(--crimson-dim);
+  border-color: var(--border-crimson);
+  color: var(--crimson-light);
+}
+.tech-chip.solar {
+  background: var(--solar-dim);
+  border-color: var(--border-amber);
+  color: var(--solar-light);
+}
+
+/* Technical Buttons */
+.btn-crimson {
+  background: linear-gradient(135deg, #ff3355 0%, #e62b48 100%);
+  color: #ffffff;
+  padding: 12px 24px;
+  border-radius: var(--radius-md);
+  font-size: 0.95rem;
+  font-weight: 800;
+  font-family: var(--font-mono);
+  letter-spacing: -0.01em;
+  text-decoration: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  box-shadow: 0 8px 24px -4px var(--crimson-glow);
+  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+}
+.btn-crimson:hover {
+  transform: translateY(-2px);
+  background: linear-gradient(135deg, #ff4767 0%, #ff2a4b 100%);
+  box-shadow: 0 12px 30px -2px rgba(255, 51, 85, 0.55);
+}
+
+.btn-ghost {
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid var(--border-card);
+  color: var(--text-main);
+  padding: 12px 22px;
+  border-radius: var(--radius-md);
+  font-size: 0.95rem;
+  font-weight: 600;
+  text-decoration: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  transition: all 0.2s ease;
+}
+.btn-ghost:hover {
+  background: rgba(255, 255, 255, 0.08);
+  border-color: var(--text-muted);
+  transform: translateY(-1px);
+}
+
+/* Technical Card with Crosshair Accents */
+.tech-card {
+  background: var(--bg-card);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-lg);
+  padding: 28px;
+  position: relative;
+  transition: all 0.25s ease;
+  backdrop-filter: blur(12px);
+}
+.tech-card:hover {
+  background: var(--bg-card-hover);
+  border-color: var(--border-crimson);
+  box-shadow: 0 15px 35px -10px rgba(0, 0, 0, 0.8), 0 0 20px -5px var(--crimson-dim);
+  transform: translateY(-3px);
+}
+.tech-card::before {
+  content: '+';
+  position: absolute;
+  top: 8px;
+  right: 10px;
+  font-family: var(--font-mono);
+  font-size: 0.8rem;
+  color: var(--text-dim);
+}

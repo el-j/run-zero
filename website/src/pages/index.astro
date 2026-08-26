@@ -1,0 +1,23 @@
+---
+import Layout from '../layouts/Layout.astro';
+import Hero from '../components/home/Hero.astro';
+import FeatureGrid from '../components/home/FeatureGrid.astro';
+import CodeShowcase from '../components/CodeShowcase.astro';
+import CompatibilityMatrix from '../components/home/CompatibilityMatrix.astro';
+import ComparisonTable from '../components/ComparisonTable.astro';
+import LaunchBanner from '../components/home/LaunchBanner.astro';
+---
+
+<Layout title="RunZero ⚡ Zero Cloud Minutes. Zero K8s Bloat. Zero Idle Waste." currentPath="/">
+  <div class="ambient-crimson"></div>
+  <div class="ambient-solar"></div>
+
+  <div class="container">
+    <Hero />
+    <FeatureGrid />
+    <CodeShowcase />
+    <CompatibilityMatrix />
+    <ComparisonTable />
+    <LaunchBanner />
+  </div>
+</Layout>

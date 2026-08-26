@@ -14,18 +14,40 @@ fi
 # Ensure package-manager cache mount permissions if mounted — OrbStack presents
 # bind-mounted host dirs as root-owned regardless of the container user. Docker
 # also auto-creates the *ancestor* path components of a bind mount as root (e.g.
-# mounting .../go/pkg/mod still leaves .../go itself root-owned), so a sibling
-# dir a tool tries to mkdir later (like go/bin next to go/pkg/mod) fails too —
-# every ancestor from /home/runner down needs chowning, not just the mount leaf.
-for cache_dir in \
-  /home/runner/.npm \
-  /home/runner/.cache/yarn \
-  /home/runner/.local/share/pnpm/store \
-  /home/runner/.cache/pip \
-  /home/runner/.cache/uv \
-  /home/runner/go/pkg/mod \
-  /home/runner/.cache/go-build \
-  /home/runner/.cargo/registry; do
+# mounting .../go/pkg still leaves .../go itself root-owned), so a sibling dir a
+# tool tries to mkdir later (like go/bin next to go/pkg) fails too — every
+# ancestor from /home/runner down needs chowning, not just the mount leaf.
+#
+# CACHE_MOUNT_DESTS (set by docker_driver.py, colon-separated) carries the exact
+# container-side paths cache_manager.py just mounted with -v — the same source
+# of truth, so this can't silently drift out of sync with the real mounts again
+# the way a second hand-maintained list did (.nuget/packages was missing here
+# entirely, and go/pkg/mod didn't match the actual go/pkg mount so its ancestor
+# was never chowned — see run-zero PR fixing cache-mount-ownership-drift).
+# Falls back to a fixed copy of cache_manager.py's destinations for a manual/
+# standalone `docker run` without the autoscaler.
+if [ -n "${CACHE_MOUNT_DESTS:-}" ]; then
+  IFS=':' read -ra CACHE_DIRS <<< "${CACHE_MOUNT_DESTS}"
+else
+  CACHE_DIRS=(
+    /home/runner/.npm
+    /home/runner/.local/share/pnpm/store
+    /home/runner/.cache/yarn
+    /home/runner/.cache/pip
+    /home/runner/.cache/uv
+    /home/runner/go/pkg
+    /home/runner/.cache/go-build
+    /home/runner/.nuget/packages
+    /home/runner/.cargo/registry
+  )
+fi
+
+# Ensure /home/runner and all tool/language directories (Go, Cargo, NVM, Pip) are owned and writable
+sudo mkdir -p /home/runner/go/bin /home/runner/go/pkg /home/runner/.cache /home/runner/.local/bin /opt/hostedtoolcache
+sudo chown -R runner:runner /home/runner /opt/hostedtoolcache 2>/dev/null || true
+sudo chmod -R 777 /home/runner/go /opt/hostedtoolcache /home/runner/.cache 2>/dev/null || true
+
+for cache_dir in "${CACHE_DIRS[@]}"; do
   if [ -d "${cache_dir}" ]; then
     path="/home/runner"
     rel="${cache_dir#/home/runner/}"
@@ -60,6 +82,18 @@ fi
 if curl -s --connect-timeout 1 http://localhost:49500/ >/dev/null 2>&1; then
   export GOPROXY="http://localhost:49500,https://proxy.golang.org,direct"
   echo "⚡ Athens Go proxy connected: http://localhost:49500"
+fi
+
+# apt-cacher-ng only gets wired into the image if it happened to be running at
+# `docker build` time (see provision-toolchain.sh) -- a real container built
+# on a machine where it wasn't up starts with no apt proxy config at all, and
+# even when it WAS baked in, that only sped up the one-time image build, never
+# an actual job's own `sudo apt-get install ...` step, since nothing re-checked
+# at container start. Doing it here, same as npm/Go above, means the proxy
+# works for user workflows too, regardless of build-time luck.
+if curl -fsS --connect-timeout 1 http://localhost:49503/acng-report.html >/dev/null 2>&1; then
+  echo 'Acquire::http::Proxy "http://localhost:49503";' | sudo tee /etc/apt/apt.conf.d/01runzero-proxy > /dev/null
+  echo "⚡ apt-cacher-ng proxy connected: http://localhost:49503"
 fi
 
 # Fallback/alias for environment variable names

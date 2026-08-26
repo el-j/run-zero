@@ -1,0 +1,109 @@
+name: Semantic Release & Changelog
+
+on:
+  push:
+    branches:
+      - main
+      - develop
+    paths-ignore:
+      - 'website/dist/**'
+      - 'docs/**'
+      - '.github/workflows/deploy-pages.yml'
+  workflow_dispatch:
+    inputs:
+      version_bump:
+        description: 'Semantic Version Bump'
+        required: true
+        default: 'patch'
+        type: choice
+        options:
+          - patch
+          - minor
+          - major
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  release:
+    name: Calculate & Publish SemVer Release
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - name: Calculate Accurate SemVer Tag
+        id: semver
+        run: |
+          git fetch --tags
+          BRANCH="${GITHUB_REF_NAME}"
+
+          # Strictly match pure stable release tags (v0.0.1, v1.0.0) without hyphens/prerelease suffixes
+          LATEST_STABLE=$(git tag -l | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' | sort -V | tail -n 1 || true)
+
+          if [ -z "$LATEST_STABLE" ]; then
+            BASE_VERSION="0.0.1"
+          else
+            BASE_VERSION="${LATEST_STABLE#v}"
+          fi
+
+          # Strip any prerelease suffix if somehow present to guarantee clean major.minor.patch
+          BASE_VERSION=$(echo "$BASE_VERSION" | sed -E 's/-.*//')
+
+          COMMIT_COUNT=$(git rev-list --count HEAD)
+
+          if [ "$BRANCH" = "main" ]; then
+            if [ -z "$LATEST_STABLE" ]; then
+              NEW_VERSION="v0.0.1"
+            else
+              IFS='.' read -r MAJOR MINOR PATCH <<< "$BASE_VERSION"
+              BUMP="${{ github.event.inputs.version_bump || 'patch' }}"
+              if [ "$BUMP" = "major" ]; then
+                NEW_VERSION="v$((MAJOR + 1)).0.0"
+              elif [ "$BUMP" = "minor" ]; then
+                NEW_VERSION="v${MAJOR}.$((MINOR + 1)).0"
+              else
+                NEW_VERSION="v${MAJOR}.${MINOR}.$((PATCH + 1))"
+              fi
+            fi
+            IS_PRERELEASE="false"
+          elif [ "$BRANCH" = "develop" ]; then
+            NEW_VERSION="v${BASE_VERSION}-beta.${COMMIT_COUNT}"
+            IS_PRERELEASE="true"
+          else
+            NEW_VERSION="v${BASE_VERSION}-alpha.${COMMIT_COUNT}"
+            IS_PRERELEASE="true"
+          fi
+
+          echo "Calculated release tag: $NEW_VERSION (prerelease: $IS_PRERELEASE)"
+          echo "new_tag=$NEW_VERSION" >> $GITHUB_OUTPUT
+          echo "is_prerelease=$IS_PRERELEASE" >> $GITHUB_OUTPUT
+          echo "previous_tag=${LATEST_STABLE:-v0.0.0}" >> $GITHUB_OUTPUT
+
+      - name: Generate Release Notes
+        id: changelog
+        run: |
+          PREV="${{ steps.semver.outputs.previous_tag }}"
+          NEW="${{ steps.semver.outputs.new_tag }}"
+
+          echo "## ⚡ RunZero ${NEW} Release Notes" > RELEASE_NOTES.md
+          echo "" >> RELEASE_NOTES.md
+          echo "### 🚀 Changes in this release:" >> RELEASE_NOTES.md
+          git log -n 20 --pretty=format:"* %s ([%h](https://github.com/${{ github.repository }}/commit/%H))" --no-merges >> RELEASE_NOTES.md
+          echo "" >> RELEASE_NOTES.md
+          echo "---" >> RELEASE_NOTES.md
+          echo "Branch: \`${GITHUB_REF_NAME}\` | Tag: \`${NEW}\`" >> RELEASE_NOTES.md
+
+      - name: Publish GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.semver.outputs.new_tag }}
+          name: RunZero ${{ steps.semver.outputs.new_tag }}
+          body_path: RELEASE_NOTES.md
+          draft: false
+          prerelease: ${{ steps.semver.outputs.is_prerelease == 'true' }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

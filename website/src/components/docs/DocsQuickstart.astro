@@ -1,0 +1,46 @@
+---
+// DocsQuickstart: Quickstart commands, prerequisites & interactive wizard
+---
+
+<!-- Section 1: Quickstart -->
+<h2 id="quickstart">Quick Start in 60 Seconds</h2>
+<p>
+  RunZero deploys an autoscaler daemon alongside local caching proxies (<a href="https://www.unix-ag.uni-kl.de/~bloch/acng/" target="_blank" rel="noopener">apt-cacher-ng</a> for Debian/Ubuntu, <a href="https://verdaccio.org/" target="_blank" rel="noopener">Verdaccio</a> for npm, <a href="https://github.com/gomods/athens" target="_blank" rel="noopener">Athens</a> for Go, and Docker Hub mirror).
+</p>
+<pre class="code-block"><code># 1. Clone the repository
+git clone git@github.com:el-j/run-zero.git
+cd run-zero
+
+# 2. Launch the interactive configuration wizard
+make env
+
+# 3. Build runner images (ARM64 + AMD64)
+make build
+
+# 4. (Optional for VM speeds) Build golden VM base template
+make build-vm-base
+
+# 5. Start the autoscaler and caching proxies in the background
+make start
+
+# 6. Stream live runner logs
+make logs</code></pre>
+
+<!-- Section 2: Prerequisites -->
+<h2 id="prerequisites">Prerequisites</h2>
+<p>RunZero runs on macOS, Linux, and Windows with minimal system requirements:</p>
+<ul>
+  <li><strong>Container Runtime</strong>: <a href="https://orbstack.dev" target="_blank" rel="noopener">OrbStack</a> (recommended for macOS), <a href="https://www.docker.com/" target="_blank" rel="noopener">Docker Desktop</a>, or native Linux Docker.</li>
+  <li><strong>GitHub Personal Access Token (PAT)</strong>: Classic PAT with <code>repo</code> scope (and <code>admin:org</code> if managing an Organization fleet).</li>
+  <li><strong>Hardware</strong>: Apple Silicon (M1/M2/M3/M4) or Intel/AMD x86_64 CPU, 4GB+ RAM.</li>
+</ul>
+
+<!-- Section 3: Setup Wizard -->
+<h2 id="interactive-wizard">Interactive Setup Wizard (<code>make env</code>)</h2>
+<p>
+  Running <code>make env</code> invokes an interactive terminal wizard that asks for your token, account username, desired engine, and concurrency limit:
+</p>
+<div class="callout tip">
+  <div class="callout-title">💡 Automated &amp; CI Execution</div>
+  <p>If run non-interactively (e.g. in CI with <code>NON_INTERACTIVE=true</code>), <code>make env</code> automatically copies <code>.env.example</code> to <code>.env</code> without blocking.</p>
+</div>

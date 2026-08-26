@@ -1,0 +1,146 @@
+---
+// FeatureGrid: 8 architecture specification cards with technical metadata
+---
+
+<section class="features-section" id="features">
+  <div class="section-tag">
+    <span class="tag-accent">//</span>
+    <span>SYSTEM_CAPABILITIES</span>
+  </div>
+  
+  <div class="section-heading-group">
+    <h2>Engineered for High-Performance Workstations</h2>
+    <p>Direct host acceleration with zero Kubernetes control plane overhead and automated registry proxy caching.</p>
+  </div>
+
+  <div class="tech-grid">
+    <div class="tech-card">
+      <div class="card-icon-box">⚡</div>
+      <h3>Dual-Engine Fleet</h3>
+      <p>Execute jobs in ephemeral Docker containers (~0.3s boot, 20MB idle RAM) or dedicated Linux VMs (OrbStack / WSL2) with full <code>systemd</code> and unconfined Chrome sandboxing.</p>
+      <div class="card-footer-meta">DRIVER: DOCKER + VM</div>
+    </div>
+
+    <div class="tech-card">
+      <div class="card-icon-box">🧠</div>
+      <h3>Hybrid Auto-Routing</h3>
+      <p>Inspects workflow labels in real time and automatically routes jobs with <code>browser</code>, <code>e2e</code>, <code>lighthouse</code>, or <code>systemd</code> labels to dedicated VMs while keeping unit tests in fast containers.</p>
+      <div class="card-footer-meta">ROUTING: ZERO-CONFIG</div>
+    </div>
+
+    <div class="tech-card">
+      <div class="card-icon-box">🍏</div>
+      <h3>Native ARM64 + Rosetta AMD64</h3>
+      <p>Run native Apple Silicon ARM64 binaries at bare-metal speed, or run x86_64 AMD64 Docker containers simultaneously using OrbStack's Rosetta 2 acceleration.</p>
+      <div class="card-footer-meta">ARCH: MULTI-PLATFORM</div>
+    </div>
+
+    <div class="tech-card">
+      <div class="card-icon-box">📦</div>
+      <h3>APT, Verdaccio &amp; Athens Caching</h3>
+      <p>Integrated caching proxies for Debian/Ubuntu (<a href="https://www.unix-ag.uni-kl.de/~bloch/acng/" target="_blank" rel="noopener">apt-cacher-ng</a> :49503), npm (<a href="https://verdaccio.org/" target="_blank" rel="noopener">Verdaccio</a> :49501), Go (<a href="https://github.com/gomods/athens" target="_blank" rel="noopener">Athens</a> :49500), and Docker Hub.</p>
+      <div class="card-footer-meta">PROXIES: APT + NPM + GO + DOCKER</div>
+    </div>
+
+    <div class="tech-card">
+      <div class="card-icon-box">🌐</div>
+      <h3>Adaptive Rate-Limiting &amp; Zombie Healing</h3>
+      <p>Smart discovery filters active repositories, auto-cancels orphaned runs pinned to dead runners, and monitors GitHub API quota headers to guarantee zero rate-limit bans.</p>
+      <div class="card-footer-meta">QUOTA: PROTECTED</div>
+    </div>
+
+    <div class="tech-card">
+      <div class="card-icon-box">🔒</div>
+      <h3>Zero Kubernetes Overhead</h3>
+      <p>No K8s control plane, no etcd, no Helm charts, and no cert-manager consuming 3.5GB of your laptop's RAM before a single job even starts.</p>
+      <div class="card-footer-meta">IDLE RAM: ~20MB</div>
+    </div>
+
+    <div class="tech-card">
+      <div class="card-icon-box">🛡️</div>
+      <h3>100% Mutation &amp; Unit Tested</h3>
+      <p>Verified with 90 unit tests, 0 Flake8 lint warnings, 100% Mypy static type safety, and Mutmut mutation testing across all drivers.</p>
+      <div class="card-footer-meta">QUALITY: 100% VERIFIED</div>
+    </div>
+
+    <div class="tech-card">
+      <div class="card-icon-box">🟢</div>
+      <h3>Unified CI Toolchain</h3>
+      <p>Single source of truth toolchain script: pre-installed Node.js 20/22/24 LTS via <a href="https://github.com/nvm-sh/nvm" target="_blank" rel="noopener">nvm</a>, <a href="https://dotnet.microsoft.com/" target="_blank" rel="noopener">.NET SDK 8.0</a>, Git LFS, PostgreSQL client, and <a href="https://playwright.dev/" target="_blank" rel="noopener">Playwright</a> OS dependencies.</p>
+      <div class="card-footer-meta">TOOLCHAIN: READY</div>
+    </div>
+  </div>
+</section>
+
+<style>
+  .features-section {
+    padding: 72px 0;
+  }
+
+  .section-tag {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    font-family: var(--font-mono);
+    font-size: 0.75rem;
+    font-weight: 800;
+    color: var(--crimson-light);
+    letter-spacing: 0.08em;
+    margin-bottom: 12px;
+  }
+  .tag-accent { color: var(--text-dim); }
+
+  .section-heading-group {
+    margin-bottom: 48px;
+  }
+  .section-heading-group h2 {
+    font-size: 2.4rem;
+    margin-bottom: 10px;
+  }
+  .section-heading-group p {
+    color: var(--text-muted);
+    font-size: 1.08rem;
+    max-width: 680px;
+  }
+
+  .tech-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+    gap: 20px;
+  }
+  .card-icon-box {
+    width: 42px;
+    height: 42px;
+    border-radius: var(--radius-sm);
+    background: rgba(255, 51, 85, 0.08);
+    border: 1px solid var(--border-crimson);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 1.3rem;
+    margin-bottom: 18px;
+  }
+  .tech-card h3 {
+    font-size: 1.18rem;
+    margin-bottom: 10px;
+  }
+  .tech-card p {
+    color: var(--text-muted);
+    font-size: 0.92rem;
+    line-height: 1.6;
+    margin-bottom: 20px;
+  }
+  .tech-card a {
+    color: var(--crimson-light);
+    text-decoration: underline;
+  }
+  .card-footer-meta {
+    font-family: var(--font-mono);
+    font-size: 0.68rem;
+    font-weight: 800;
+    color: var(--text-dim);
+    letter-spacing: 0.06em;
+    padding-top: 12px;
+    border-top: 1px solid var(--border-subtle);
+  }
+</style>

@@ -1,0 +1,106 @@
+---
+// Hero component with high-impact headline, telemetry badge, and CTAs
+import Terminal from '../Terminal.astro';
+
+const baseUrl = import.meta.env.BASE_URL.replace(/\/$/, '');
+---
+
+<section class="hero-section">
+  <div class="hero-telemetry-badge">
+    <span class="telemetry-dot"></span>
+    <span class="telemetry-text">ARCHITECTURE // DUAL-ENGINE HYBRID CI</span>
+    <span class="telemetry-pill">v0.0.1</span>
+  </div>
+
+  <h1 class="hero-title">
+    Zero Cloud Minutes.<br />
+    Zero K8s Bloat.<br />
+    <span class="crimson-gradient">Zero Idle Waste.</span>
+  </h1>
+
+  <p class="hero-lead">
+    The hardware-optimized, autoscaling GitHub Actions runner fleet for developer workstations. 
+    Instantly launches ephemeral Docker containers (<strong>~0.3s</strong>) for rapid builds, or provisions dedicated Linux Virtual Machines with full <code>systemd</code> and unconfined Chrome sandboxing for browser E2E tests.
+  </p>
+
+  <div class="hero-actions">
+    <a href="#quickstart" class="btn-crimson">
+      <span>⚡ INITIALIZE FLEET</span>
+    </a>
+    <a href={`${baseUrl}/docs/`} class="btn-ghost">
+      <span>READ ARCHITECTURE DOCS →</span>
+    </a>
+  </div>
+
+  <!-- Hardware CLI Workbench Terminal -->
+  <Terminal />
+</section>
+
+<style>
+  .hero-section {
+    padding: 80px 0 40px;
+    text-align: center;
+  }
+
+  .hero-telemetry-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    padding: 4px 12px;
+    background: rgba(255, 51, 85, 0.06);
+    border: 1px solid var(--border-crimson);
+    border-radius: var(--radius-sm);
+    margin-bottom: 24px;
+  }
+  .telemetry-dot {
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: var(--crimson);
+    box-shadow: 0 0 8px var(--crimson);
+  }
+  .telemetry-text {
+    font-family: var(--font-mono);
+    font-size: 0.72rem;
+    font-weight: 800;
+    color: var(--crimson-light);
+    letter-spacing: 0.08em;
+  }
+  .telemetry-pill {
+    font-family: var(--font-mono);
+    font-size: 0.65rem;
+    font-weight: 800;
+    padding: 1px 5px;
+    background: var(--solar-dim);
+    color: var(--solar-light);
+    border-radius: 2px;
+  }
+
+  .hero-title {
+    font-size: 4.2rem;
+    line-height: 1.08;
+    letter-spacing: -0.04em;
+    margin-bottom: 24px;
+  }
+
+  .hero-lead {
+    font-size: 1.25rem;
+    color: var(--text-muted);
+    max-width: 760px;
+    margin: 0 auto 36px;
+    line-height: 1.65;
+  }
+
+  .hero-actions {
+    display: flex;
+    justify-content: center;
+    gap: 16px;
+    margin-bottom: 56px;
+    flex-wrap: wrap;
+  }
+
+  @media (max-width: 768px) {
+    .hero-title { font-size: 2.7rem; }
+    .hero-lead { font-size: 1.05rem; }
+  }
+</style>

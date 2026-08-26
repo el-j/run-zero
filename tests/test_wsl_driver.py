@@ -1,0 +1,81 @@
+"""
+Unit tests for Windows WSL2 runner driver.
+"""
+
+import subprocess
+import unittest
+from unittest.mock import MagicMock, patch
+
+from drivers import RunnerInfo
+from drivers.wsl_driver import WSL2Driver
+
+
+class TestWSL2Driver(unittest.TestCase):
+    def setUp(self):
+        self.driver = WSL2Driver()
+
+    def test_name(self):
+        self.assertEqual(self.driver.name(), "wsl2")
+
+    @patch("shutil.which", return_value="/mnt/c/Windows/System32/wsl.exe")
+    @patch("subprocess.run")
+    def test_is_available(self, mock_run, mock_which):
+        mock_run.return_value = MagicMock(returncode=0)
+        self.assertTrue(self.driver.is_available())
+
+    @patch("shutil.which", return_value=None)
+    def test_is_available_missing(self, mock_which):
+        self.assertFalse(self.driver.is_available())
+
+    @patch("shutil.which", return_value="/mnt/c/Windows/System32/wsl.exe")
+    @patch("subprocess.run")
+    def test_is_available_exception(self, mock_run, mock_which):
+        mock_run.side_effect = subprocess.CalledProcessError(1, "wsl.exe")
+        self.assertFalse(self.driver.is_available())
+
+    @patch("subprocess.run")
+    def test_list_runners_parser(self, mock_run):
+        mock_run.return_value = MagicMock(
+            stdout="runzero-wsl-el-j-run-zero-123\nunrelated-distro\n",
+            returncode=0
+        )
+        runners = self.driver.list_runners()
+        self.assertEqual(len(runners), 1)
+        self.assertEqual(runners[0].name, "runzero-wsl-el-j-run-zero-123")
+        self.assertEqual(runners[0].state, "running")
+
+    @patch("subprocess.run")
+    def test_list_runners_exception(self, mock_run):
+        mock_run.side_effect = subprocess.CalledProcessError(1, "wsl.exe")
+        runners = self.driver.list_runners()
+        self.assertEqual(runners, [])
+
+    @patch("subprocess.Popen")
+    def test_spawn_runner(self, mock_popen):
+        name = self.driver.spawn_runner(repo="el-j/run-zero", access_token="token")
+        self.assertIn("runzero-wsl-el-j-run-zero-", name)
+
+    @patch("subprocess.Popen")
+    def test_spawn_runner_failure(self, mock_popen):
+        mock_popen.side_effect = OSError("Launch failed")
+        name = self.driver.spawn_runner(repo="el-j/run-zero")
+        self.assertIsNone(name)
+
+    @patch("subprocess.run")
+    def test_prune_and_destroy(self, mock_run):
+        mock_run.return_value = MagicMock(returncode=0)
+        runners = [
+            RunnerInfo(id="r1", name="runzero-wsl-dead", status="stopped", state="exited", target_repo="", target_arch="x64", backend="wsl2"),
+        ]
+        self.driver.prune_exited(runners)
+        self.driver.destroy_runner("runzero-wsl-dead")
+        self.driver.cleanup_all()
+
+    @patch("subprocess.run")
+    def test_destroy_runner_exception(self, mock_run):
+        mock_run.side_effect = subprocess.CalledProcessError(1, "wsl.exe", stderr=b"Terminate error")
+        self.assertFalse(self.driver.destroy_runner("runzero-wsl-dead"))
+
+
+if __name__ == "__main__":
+    unittest.main()

@@ -1,14 +1,47 @@
 # Contributing to RunZero ⚡
 
-Thank you for your interest in contributing to **RunZero**! We welcome contributions from developers of all skill levels.
+Thank you for your interest in contributing to **RunZero**! We follow a structured **Git-Flow** branching model and **Semantic Versioning (SemVer)** to ensure high stability and continuous delivery.
 
 ---
 
-## 🛠️ Development Setup
+## 🌳 Branching Strategy & Git Workflow
 
-1. **Fork and Clone the repository**:
+We use a standard branching strategy to ensure that only tested, release-ready code lands on `main`:
+
+```text
+  main (Production Releases / SemVer Tags: v2.0.0)
+   ▲
+   │  (Release PR / Merge)
+  develop (Active Integration & Staging)
+   ▲             ▲
+   │             │
+feat/my-feature  fix/bug-fix
+```
+
+### 1. `main` (Production Branch)
+- Protected branch containing stable, production-ready code.
+- Merges to `main` automatically trigger `.github/workflows/release.yml` to generate the next **SemVer release tag** and publish the GitHub Release with changelogs.
+
+### 2. `develop` (Integration Branch)
+- Active integration branch for upcoming releases.
+- All feature and fix PRs should target `develop`.
+
+### 3. Topic Branches (`feat/*`, `fix/*`, `docs/*`)
+- Create feature branches off `develop`:
+  ```bash
+  git checkout develop
+  git pull origin develop
+  git checkout -b feat/your-feature-name
+  ```
+- Use conventional commits format (`feat: ...`, `fix: ...`, `docs: ...`, `refactor: ...`, `test: ...`).
+
+---
+
+## 🛠️ Development & Quality Setup
+
+1. **Clone the repository**:
    ```bash
-   git clone https://github.com/el-j/run-zero.git
+   git clone git@github.com:el-j/run-zero.git
    cd run-zero
    ```
 
@@ -16,44 +49,30 @@ Thank you for your interest in contributing to **RunZero**! We welcome contribut
    ```bash
    make env
    ```
-   Edit `.env` and set your GitHub Personal Access Token (`ACCESS_TOKEN`) and GitHub username (`OWNER`).
 
-3. **Build Images**:
+3. **Run Testing Suite (100% Quality Mandate)**:
    ```bash
-   make build
+   make test           # 68 local unit tests
+   make test-suite     # Flake8 linter + Mypy type check + Pytest coverage
+   make mutation-test  # Mutmut mutation testing
    ```
 
-4. **Run Local Test**:
+4. **Astro Website Development**:
    ```bash
-   make test
+   make website-dev    # Start local Astro dev server
+   make website-build  # Build production static bundle and sync to docs/
    ```
-
----
-
-## 🧪 Testing Guidelines
-
-Before submitting a Pull Request, please ensure:
-- Python script syntax is valid: `python3 -m py_compile docker/autoscaler.py`
-- Bash entrypoint scripts are valid: `bash -n docker/start.sh`
-- Docker Compose configuration parses cleanly: `docker compose config`
-- The `make help` command runs with no formatting issues.
 
 ---
 
 ## 🚀 Submitting a Pull Request
 
-1. Create a feature branch (`git checkout -b feature/amazing-feature`).
-2. Commit your changes with clear, descriptive commit messages.
-3. Push to your branch (`git push origin feature/amazing-feature`).
-4. Open a Pull Request on GitHub targeting the `main` branch.
-5. Describe your changes clearly in the PR description template.
-
----
-
-## 💬 Code Style & Conventions
-
-- **Python**: Follow PEP 8 style guidelines.
-- **Shell**: Use `set -e` in bash scripts and quote variables to handle whitespace safely.
-- **Docker**: Keep images minimal and multi-arch compliant (`arm64` and `amd64`).
+1. Push your branch to GitHub:
+   ```bash
+   git push origin feat/your-feature-name
+   ```
+2. Open a Pull Request targeting the **`develop`** branch.
+3. Verify that all CI validation checks pass in GitHub Actions.
+4. Once reviewed and merged into `develop`, changes will be rolled into the next release on `main`.
 
 Thank you for making RunZero better!

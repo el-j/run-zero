@@ -1,0 +1,54 @@
+---
+import Header from '../components/Header.astro';
+import Footer from '../components/Footer.astro';
+import '../styles/global.css';
+
+interface Props {
+  title?: string;
+  description?: string;
+  currentPath?: string;
+}
+
+const {
+  title = 'RunZero ⚡ Zero-Bloat Local GitHub Actions Runner Fleet',
+  description = 'Dual-Engine autoscaling GitHub Actions runner fleet for Docker Containers & Dedicated Linux VMs (OrbStack, WSL2, Multipass). Zero cloud minutes. Zero K8s bloat.',
+  currentPath = '/'
+} = Astro.props;
+
+const baseUrl = import.meta.env.BASE_URL.replace(/\/$/, '');
+---
+
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>{title}</title>
+    <meta name="description" content={description} />
+    
+    <!-- Open Graph / Social Meta -->
+    <meta property="og:type" content="website" />
+    <meta property="og:title" content={title} />
+    <meta property="og:description" content={description} />
+    <meta property="og:site_name" content="RunZero" />
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content={title} />
+    <meta name="twitter:description" content={description} />
+
+    <!-- Favicon -->
+    <link rel="icon" type="image/svg+xml" href={`${baseUrl}/favicon.svg`} />
+
+    <!-- Self-Hosted Local Fonts (100% Offline / Zero CDN) -->
+    <link rel="stylesheet" href={`${baseUrl}/fonts/fonts.css`} />
+  </head>
+  <body>
+    <div class="ambient-glow glow-primary"></div>
+    <div class="ambient-glow glow-cyan"></div>
+
+    <Header currentPath={currentPath} />
+
+    <slot />
+
+    <Footer />
+  </body>
+</html>

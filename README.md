@@ -4,7 +4,7 @@
 
 **Zero Cloud Minutes. Zero K8s Bloat. Zero Idle Waste.**
 
-*An intelligent, autoscaling local GitHub Actions runner fleet with **Dual-Engine execution** (Docker Containers & Dedicated Linux VMs via **OrbStack**, **Windows WSL2**, and **Multipass**), with native Apple Silicon (`arm64`) & Intel/AMD (`amd64`), **Verdaccio**, **Athens**, and persistent multi-language caching.*
+*An intelligent, autoscaling local GitHub Actions runner fleet with **Dual-Engine execution** (Docker Containers & Dedicated Linux VMs via [OrbStack](https://orbstack.dev/), [Windows WSL2](https://learn.microsoft.com/en-us/windows/wsl/), and [Multipass](https://multipass.run/)), with native Apple Silicon (`arm64`) & Intel/AMD (`amd64`), [Verdaccio](https://verdaccio.org/), [Athens](https://github.com/gomods/athens), [apt-cacher-ng](https://www.unix-ag.uni-kl.de/~bloch/acng/), and persistent multi-language caching.*
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Docker](https://img.shields.io/badge/Docker-20%2B%20%2F%20Desktop-blue.svg)](https://www.docker.com/)
@@ -24,11 +24,11 @@
 - [Hybrid Auto-Routing for Chrome / Lighthouse / Systemd](#-hybrid-auto-routing)
 - [Docker & VM Engine Compatibility](#-docker--vm-engine-compatibility)
 - [Key Features](#-key-features)
+- [Proxy Registries & Upstream Ecosystem](#-proxy-registries--upstream-ecosystem)
 - [Architecture Overview](#-architecture-overview)
 - [Repository Structure](#-repository-structure)
 - [Quick Start](#-quick-start)
 - [Automatic Cloud Fallback in Workflows](#-automatic-cloud-fallback-in-workflows)
-- [Proxy Registries & Caching](#-proxy-registries--caching)
 - [Multi-Architecture Builds (ARM64 vs. AMD64)](#-multi-architecture-builds)
 - [Makefile Commands Reference](#-makefile-commands)
 - [Configuration Reference (`.env`)](#-configuration-reference-env)
@@ -47,7 +47,7 @@
 | **Runs Real GitHub Queue** |  **Yes** (Pulls live jobs) |  **Yes** | ❌ **No** (Local emulation only) |  **Yes** |
 | **Personal Account Multi-Repo** |  **Automatic Discovery** | ❌ **No** (Org / Enterprise only) | ❌ N/A | ❌ **No** (1 repo per container) |
 | **Multi-Arch (Apple Silicon + x86_64)** |  **Native ARM64 + Rosetta AMD64** | ⚠️ Complex (K8s node taints) | ⚠️ Partial | ❌ Fixed single arch |
-| **Built-in Package Proxies** |  **Verdaccio + Athens + Mirrors** | ❌ None (Requires K8s PVC/NFS) | ❌ None | ❌ None |
+| **Built-in Package Proxies** |  **APT + Verdaccio + Athens + Mirrors** | ❌ None (Requires K8s PVC/NFS) | ❌ None | ❌ None |
 | **Setup Complexity** |  **1 Command (`make start`)** | ❌ Complex Helm / CRDs |  Simple CLI | ⚠️ Moderate |
 
 ---
@@ -56,12 +56,12 @@
 
 RunZero is the **first local runner fleet that gives you the choice between ultra-lightweight Docker containers and dedicated Linux Virtual Machines**:
 
-| Engine Backend | Technology | Best Used For |
+| Engine Backend | Upstream Runtime | Best Used For |
 |---|---|---|
-| 🐳 **Docker Containers** (`RUNNER_BACKEND=docker`) | Docker / OrbStack Containers | Fast unit tests, linting, build pipelines, JS/Node/Python steps (**instant ~0.3s boot, ~20MB RAM**). |
-| 💻 **OrbStack Linux Machines** (`RUNNER_BACKEND=orbstack-vm`) | Apple Virtualization.framework | **Full systemd support**, background daemons, headless Chrome/Lighthouse, unconfined Docker daemon. |
-| 🪟 **Windows WSL2** (`RUNNER_BACKEND=wsl2`) | Windows Subsystem for Linux 2 | Native Linux VM execution on Windows 10/11 & Windows Server. |
-| 🐧 **Canonical Multipass** (`RUNNER_BACKEND=multipass`) | QEMU / Hyper-V / VirtualBox | Universal cross-platform VM backend for macOS, Linux, and Windows. |
+| 🐳 **Docker Containers** (`RUNNER_BACKEND=docker`) | [Docker Engine](https://docs.docker.com/engine/) / [OrbStack](https://orbstack.dev/) | Fast unit tests, linting, build pipelines, JS/Node/Python steps (**instant ~0.3s boot, ~20MB RAM**). |
+| 💻 **OrbStack Linux Machines** (`RUNNER_BACKEND=orbstack-vm`) | [OrbStack Virtualization](https://orbstack.dev/) | **Full systemd support**, background daemons, headless Chrome/Lighthouse, unconfined Docker daemon. |
+| 🪟 **Windows WSL2** (`RUNNER_BACKEND=wsl2`) | [Windows Subsystem for Linux 2](https://learn.microsoft.com/en-us/windows/wsl/) | Native Linux VM execution on Windows 10/11 & Windows Server. |
+| 🐧 **Canonical Multipass** (`RUNNER_BACKEND=multipass`) | [Canonical Multipass](https://multipass.run/) | Universal cross-platform VM backend for macOS, Linux, and Windows. |
 
 ---
 
@@ -87,15 +87,31 @@ jobs:
 
 ---
 
+## 📦 Proxy Registries & Upstream Ecosystem
+
+RunZero runs local caching proxy registries alongside the autoscaler so your runners and image builds never re-download packages over the public internet:
+
+| Service / Dependency | Upstream Project | Local Port | Dashboard / Report | Description |
+|---|---|---|---|---|
+| **APT Cacher NG** | [apt-cacher-ng](https://www.unix-ag.uni-kl.de/~bloch/acng/) | `:49503` | [http://localhost:49503/acng-report.html](http://localhost:49503/acng-report.html) | Caches Ubuntu/Debian `.deb` packages across Docker builds & VM golden image clones. |
+| **Verdaccio** | [Verdaccio](https://verdaccio.org/) | `:49501` | [http://localhost:49501](http://localhost:49501) | Private npm/yarn/pnpm caching proxy registry with web UI. |
+| **Athens** | [Athens Go Proxy](https://github.com/gomods/athens) | `:49500` | `http://localhost:49500` | Immutable Go module proxy and download cache. |
+| **Docker Registry Mirror** | [Docker Registry](https://docs.docker.com/docker-hub/mirror/) | `:49502` | `http://localhost:49502` | Pull-through mirror for Docker Hub images. |
+| **Node.js Toolchain** | [NVM](https://github.com/nvm-sh/nvm) & [Node.js](https://nodejs.org/) | Local | Pre-baked | Pre-installed Node.js 20 LTS, 22 LTS, and 24 Current with yarn & pnpm. |
+| **.NET SDK** | [Microsoft .NET 8](https://dotnet.microsoft.com/) | Local | Pre-baked | Pre-installed .NET 8.0 SDK for C#/F# workflow pipelines. |
+| **Browser Testing** | [Playwright](https://playwright.dev/) & [Google Chrome](https://www.google.com/chrome/) | Local | Pre-baked | Pre-installed system dependencies and browser runtimes for E2E testing. |
+
+---
+
 ## 🐳 Docker & VM Engine Compatibility
 
 | Engine | macOS (Apple Silicon) | macOS (Intel) | Windows | Linux / Homelab |
 |---|---|---|---|---|
-| 🪐 **OrbStack** *(Recommended for Mac)* | ⭐ **Containers + Linux VMs** | ⭐ Fast | — | — |
-| 🐳 **Docker Desktop** |  Native Containers |  Native Containers |  Native Containers |  Native Containers |
-| 🪟 **Windows WSL2** | — | — | ⭐ **Native Linux VMs** | — |
-| 🐧 **Native Linux Docker** |  Native (ARM64) |  Native (AMD64) | — | ⭐ **Native (Best for Servers)** |
-| 🚀 **Canonical Multipass** |  Native VMs |  Native VMs |  Native VMs |  Native VMs |
+| 🪐 [OrbStack](https://orbstack.dev/) *(Recommended for Mac)* | ⭐ **Containers + Linux VMs** | ⭐ Fast | — | — |
+| 🐳 [Docker Desktop](https://www.docker.com/) |  Native Containers |  Native Containers |  Native Containers |  Native Containers |
+| 🪟 [Windows WSL2](https://learn.microsoft.com/en-us/windows/wsl/) | — | — | ⭐ **Native Linux VMs** | — |
+| 🐧 [Native Linux Docker](https://docs.docker.com/engine/) |  Native (ARM64) |  Native (AMD64) | — | ⭐ **Native (Best for Servers)** |
+| 🚀 [Canonical Multipass](https://multipass.run/) |  Native VMs |  Native VMs |  Native VMs |  Native VMs |
 
 ---
 
@@ -107,15 +123,19 @@ jobs:
 2. **Owner-Wide Multi-Repo Auto-Discovery**:
    - Automatically monitors **all active repositories** under your personal GitHub account (`OWNER=your-username`), explicit repo lists, or GitHub Organizations.
 3. **Pluggable Multi-Backend Drivers**:
-   - Easily switch between Docker containers, OrbStack VMs, Windows WSL2, and Canonical Multipass via `RUNNER_BACKEND`.
-4. **Adaptive GitHub API Rate-Limiting**:
+   - Easily switch between [Docker](https://www.docker.com/) containers, [OrbStack](https://orbstack.dev/) VMs, [Windows WSL2](https://learn.microsoft.com/en-us/windows/wsl/), and [Canonical Multipass](https://multipass.run/) via `RUNNER_BACKEND`.
+4. **Golden VM Base Cloning (`make build-vm-base`)**:
+   - Pre-bakes the unified toolchain into a golden base image (`runzero-vm-base-<arch>`). VM jobs launch in seconds by cloning the base image.
+5. **Self-Healing Zombie Runner Reconciliation**:
+   - Automatically detects offline runners that GitHub still marks as `busy: true` (e.g. after abrupt host restarts), cancels orphaned jobs, and unblocks your queue.
+6. **Adaptive GitHub API Rate-Limiting**:
    - Intelligently filters to active repositories and dynamically paces API calls to keep you safely within GitHub's 5,000 req/hr ceiling.
-5. **Built-in Local Proxy Registries & Caching**:
-   - **Verdaccio** (`:49501`) for instant npm/yarn/pnpm caching + web dashboard.
-   - **Athens** (`:49500`) for immutable Go module caching.
-   - **Docker Registry Mirror** (`:49502`) for Docker Hub pull-through caching.
-   - **Tool Cache Volume** for `actions/setup-node`, `setup-python`, `setup-dotnet`, `setup-go` toolchains.
-6. **Zero Cloud Bill**:
+7. **Built-in Local Proxy Registries & Caching**:
+   - [apt-cacher-ng](https://www.unix-ag.uni-kl.de/~bloch/acng/) (`:49503`) for Debian/Ubuntu `.deb` packages.
+   - [Verdaccio](https://verdaccio.org/) (`:49501`) for instant npm/yarn/pnpm caching + web dashboard.
+   - [Athens](https://github.com/gomods/athens) (`:49500`) for immutable Go module caching.
+   - [Docker Registry Mirror](https://docs.docker.com/docker-hub/mirror/) (`:49502`) for Docker Hub pull-through caching.
+8. **Zero Cloud Bill**:
    - Self-hosted runners **never** consume GitHub Actions minutes (100% free and unlimited).
 
 ---
@@ -153,42 +173,38 @@ jobs:
 ```text
 .
 ├── src/                                   # 🐍 Pure Python Application Code
-│   ├── autoscaler.py                      #    Dynamic queue monitor, rate limiter & hybrid router
+│   ├── autoscaler.py                      #    Dynamic queue monitor, rate limiter, zombie healer & hybrid router
+│   ├── version.py                         #    Dynamic SemVer resolver (main: 0.0.1, develop: beta, feat: alpha)
 │   └── drivers/                           #    Pluggable Execution Drivers
 │       ├── __init__.py                    #    RunnerDriver interface & discovery factory
 │       ├── docker_driver.py               #    Docker container engine
-│       ├── orbstack_vm_driver.py          #    OrbStack macOS Linux VM engine (with proxy caching)
+│       ├── orbstack_vm_driver.py          #    OrbStack macOS Linux VM engine (with golden base cloning)
 │       ├── wsl_driver.py                  #    Windows WSL2 engine (with proxy caching)
 │       └── multipass_driver.py            #    Canonical Multipass engine (with proxy caching)
 ├── docker/                                # 🐳 Container Build Manifests & Entrypoints
 │   ├── Dockerfile                         #    Multi-arch runner image (ARM64 + AMD64)
 │   ├── Dockerfile.autoscaler              #    Autoscaler daemon container
+│   ├── provision-toolchain.sh             #    Unified toolchain script (shared by Docker & VM base images)
 │   └── start.sh                           #    Runner entrypoint with proxy auto-detect
-├── tests/                                 # 🧪 Comprehensive Test Suite (66 Tests)
-│   ├── test_autoscaler.py                 #    Autoscaler, rate limiting & hybrid routing tests
-│   ├── test_drivers.py                    #    All driver lifecycle & error branch tests
-│   └── test_shell_scripts.py              #    Shell script syntax & entrypoint tests
-├── docs/                                  # 🌐 Documentation & GitHub Pages Website
-│   ├── favicon.svg                        #    RunZero vector icon
-│   ├── fonts/                             #    Self-hosted local fonts (zero CDN)
-│   ├── index.html                         #    Interactive dark-mode landing page
-│   ├── style.css                          #    Modular styles
-│   └── script.js                          #    Client interactions
-├── .github/
-│   ├── ISSUE_TEMPLATE/                    # 📋 Community Issue Templates
-│   │   ├── bug_report.md
-│   │   └── feature_request.md
-│   ├── workflows/                         # 🤖 GitHub Actions CI/CD
-│   │   ├── ci.yml                         #    Syntax, Flake8, Mypy, Pytest & build validation
-│   │   └── deploy-pages.yml               #    Auto-deploys docs/ to GitHub Pages
-│   └── PULL_REQUEST_TEMPLATE.md           # 📝 Reviewer checklist
-├── docker-compose.yml                     # 🚀 Orchestration (Autoscaler + Verdaccio + Athens)
+├── tests/                                 # 🧪 Comprehensive Test Suite (90 Tests)
+│   ├── test_autoscaler.py                 #    Autoscaler, rate limiting, zombie healing & hybrid routing tests
+│   ├── test_drivers.py                    #    All driver lifecycle, base image & error branch tests
+│   ├── test_version.py                    #    Dynamic SemVer branch resolver tests
+│   └── test_shell_scripts.py              #    Shell script syntax & wizard tests
+├── website/                               # 🚀 Astro Static Website & Documentation
+│   ├── src/                               #    Astro components, pages (Hero + Docs + Versions) & styles
+│   ├── public/                            #    Self-hosted fonts, versions.json, and SVG assets
+│   ├── astro.config.mjs                   #    Astro static SSG configuration
+│   └── package.json                       #    Website dependencies
+├── docs/                                  # 🌐 Compiled GitHub Pages Website
+│   ├── index.html                         #    Compiled Hero Landing Page
+│   ├── docs/index.html                    #    Compiled Dedicated Documentation Page
+│   └── versions/index.html                #    Compiled Release Version Archive Page
+├── docker-compose.yml                     # 🚀 Orchestration (apt-cacher + Verdaccio + Athens + Docker Mirror)
 ├── Makefile                               # 🛠️ Unified management commands
 ├── pyproject.toml                         # ⚙️ Python project configuration (Pytest, Mypy, Mutmut)
 ├── .env.example                           # ⚙️ Configuration template
-├── CONTRIBUTING.md                        # 🤝 Contributor guidelines
-├── CODE_OF_CONDUCT.md                     # 📜 Community standards
-├── SECURITY.md                            # 🔒 Security policy
+├── CONTRIBUTING.md                        # 🤝 Contributor guidelines & Git-Flow guide
 ├── LICENSE                                # 📄 MIT License
 └── README.md                              # 📖 Main repository documentation
 ```
@@ -208,17 +224,18 @@ OWNER=your-username
 AUTO_DISCOVER_REPOS=true
 RUNNER_BACKEND=auto  # 'auto', 'docker', 'orbstack-vm', 'wsl2', or 'multipass'
 RUNNER_ARCH=both     # 'both', 'amd64', or 'arm64'
-PROXIES_ENABLED=true # Starts Verdaccio, Athens & Docker Mirror
+PROXIES_ENABLED=true # Starts apt-cacher, Verdaccio, Athens & Docker Mirror
 ```
 
-### 2. Build images:
+### 2. Build images & VM templates:
 ```bash
-make build          # Builds ARM64 + AMD64 + Autoscaler
+make build          # Builds ARM64 + AMD64 + Autoscaler container images
+make build-vm-base  # Builds golden OrbStack VM base image for instant cloning
 ```
 
 ### 3. Start the Autoscaler & Proxies:
 ```bash
-make start          # (or make run)
+make start          # Starts apt-cacher, Verdaccio, Athens, Docker mirror, and Autoscaler
 ```
 
 ### 4. Check status & live logs:
@@ -240,8 +257,8 @@ RunZero includes a 100% verified test suite with type checking, linting, and mut
 
 | Command | Description |
 |---|---|
-| `make test` | Run fast local unit tests directly (66 tests in ~1.1s) |
-| `make test-suite` | Run Flake8 linter, Mypy static type checker, and Pytest coverage in container |
+| `make test` | Run fast local unit tests directly (90 tests in ~1.0s) |
+| `make test-suite` | Run Flake8 linter, Mypy static type checker, and Pytest coverage |
 | `make mutation-test` | Run Mutmut mutation testing suite across all drivers and autoscaler |
 
 ---
@@ -250,25 +267,29 @@ RunZero includes a 100% verified test suite with type checking, linting, and mut
 
 | Command | Description |
 |---|---|
-| `make start` (or `make run`, `make up`) | Launch autoscaler, Verdaccio, Athens, and Docker mirror |
+| `make start` (or `make run`, `make up`) | Launch autoscaler, apt-cacher, Verdaccio, Athens, and Docker mirror |
 | `make stop` (or `make down`) | Gracefully stop the autoscaler, proxies, and active runners |
 | `make status` (or `make ps`) | Display running autoscaler, proxies & active ephemeral runners |
-| `make test` | Run local unit tests directly with `unittest` |
+| `make test` | Run fast local unit tests directly with `unittest` (85 tests in 0.04s) |
 | `make test-suite` | Run Flake8 linter, Mypy type-checker, and Pytest coverage report |
+| `make install-hooks` | Install RunZero pre-commit quality guard into `.git/hooks/pre-commit` |
+| `make pre-commit` | Run the pre-commit quality guard manually with auto-fixes |
+| `make lint` | Run Flake8 linter and Mypy static type checker |
+| `make lint-fix` | Auto-fix Python code formatting and strip trailing whitespace |
 | `make mutation-test` | Run Mutmut mutation testing suite |
-| `make vm-list` | Display active OrbStack Linux runner VMs |
-| `make vm-clean` | Clean up any orphaned RunZero VMs |
-| `make verdaccio-ui` | Open Verdaccio Web UI at `http://localhost:49501` |
+| `make build-vm-base` | Build golden OrbStack VM base image for near-instant VM spins |
+| `make website-dev` | Start Astro documentation website development server |
+| `make website-build` | Build Astro static website and synchronize to `docs/` |
 | `make docs` | Preview the documentation website locally in your browser |
+| `make verdaccio-ui` | Open Verdaccio Web UI at `http://localhost:49501` |
+| `make apt-cacher-ui` | Open apt-cacher-ng statistics report at `http://localhost:49503/acng-report.html` |
 | `make logs` | Stream live autoscaler logs |
 | `make logs-all` | Stream live logs from all services (autoscaler + proxies) |
 | `make cache-size` | Display disk usage of package and tool caches |
 | `make clean-cache` | Clear all shared package/tool caches |
 | `make build` (or `make build-all`) | Build all images (`arm64` + `amd64` + autoscaler) |
-| `make build-arm64` | Build native Apple Silicon `arm64` runner |
-| `make build-amd64` | Build Intel/AMD `amd64` (x86_64) runner |
 | `make clean` | Force-remove stopped containers and volumes |
-| `make env` | Generate `.env` from template if missing |
+| `make env` | Run interactive `.env` configuration wizard |
 | `make help` | Show all available Makefile commands |
 
 ---
@@ -286,7 +307,7 @@ RunZero includes a 100% verified test suite with type checking, linting, and mut
 | `AUTO_DISCOVER_REPOS` | Automatically discover and monitor all user repos | `true` |
 | `ACTIVE_REPO_DAYS` | Only monitor repos pushed in the last N days | `60` |
 | `RUNNER_ARCH` | Runner architectures to spawn (`arm64`, `amd64`, or `both`) | `both` |
-| `PROXIES_ENABLED` | Enable Verdaccio & Athens proxy registries for runners | `true` |
+| `PROXIES_ENABLED` | Enable apt-cacher, Verdaccio & Athens proxy registries for runners | `true` |
 | `CACHE_ENABLED` | Enable persistent package/tool caching across runners | `true` |
 | `MIN_RUNNERS` | Minimum idle runners on standby | `0` |
 | `MAX_RUNNERS` | Maximum concurrent runner instances | `4` |

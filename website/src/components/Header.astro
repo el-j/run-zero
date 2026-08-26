@@ -1,0 +1,309 @@
+---
+import VersionSwitcher from './VersionSwitcher.astro';
+
+interface Props {
+  currentPath?: string;
+}
+
+const { currentPath = '/' } = Astro.props;
+const baseUrl = import.meta.env.BASE_URL.replace(/\/$/, '');
+---
+
+<header class="site-header">
+  <div class="header-inner">
+    <!-- Brand & Version Switcher -->
+    <div class="brand-group">
+      <a href={`${baseUrl}/`} class="brand">
+        <div class="brand-icon-box">
+          <img src={`${baseUrl}/favicon.svg`} alt="RunZero Logo" width="22" height="22" />
+        </div>
+        <span class="brand-title">RUN<span class="crimson-text">ZERO</span></span>
+      </a>
+      <VersionSwitcher />
+    </div>
+
+    <!-- Desktop Navigation Menu -->
+    <ul class="nav-menu">
+      <li><a href={`${baseUrl}/`} class={`nav-link ${currentPath === '/' || currentPath === '' ? 'active' : ''}`}>// OVERVIEW</a></li>
+      <li><a href={`${baseUrl}/#features`} class="nav-link">// ARCHITECTURE</a></li>
+      <li><a href={`${baseUrl}/#routing`} class="nav-link">// AUTO-ROUTING</a></li>
+      <li><a href={`${baseUrl}/#comparison`} class="nav-link">// BENCHMARKS</a></li>
+      <li><a href={`${baseUrl}/docs/`} class={`nav-link ${currentPath.startsWith('/docs') ? 'active' : ''}`}>// DOCS</a></li>
+      <li><a href={`${baseUrl}/versions/`} class={`nav-link ${currentPath.startsWith('/versions') ? 'active' : ''}`}>// VERSIONS</a></li>
+    </ul>
+
+    <!-- Desktop Action Buttons -->
+    <div class="nav-actions">
+      <div class="status-indicator">
+        <span class="pulse-dot"></span>
+        <span class="status-text">FLEET READY</span>
+      </div>
+      <a href={`${baseUrl}/docs/`} class="btn-nav-docs">Get Started</a>
+      <a href="https://github.com/el-j/run-zero" class="btn-github" target="_blank" rel="noopener" aria-label="GitHub Repository">
+        <svg height="16" width="16" viewBox="0 0 16 16" fill="currentColor">
+          <path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"></path>
+        </svg>
+      </a>
+    </div>
+
+    <!-- Mobile Hamburger Toggle -->
+    <button class="mobile-toggle" id="mobile-toggle" aria-label="Toggle navigation menu">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <line x1="3" y1="12" x2="21" y2="12"></line>
+        <line x1="3" y1="6" x2="21" y2="6"></line>
+        <line x1="3" y1="18" x2="21" y2="18"></line>
+      </svg>
+    </button>
+  </div>
+
+  <!-- Mobile Drawer Overlay -->
+  <div class="mobile-drawer" id="mobile-drawer">
+    <a href={`${baseUrl}/`} class="nav-link">// Overview</a>
+    <a href={`${baseUrl}/#features`} class="nav-link">// Architecture</a>
+    <a href={`${baseUrl}/#routing`} class="nav-link">// Auto-Routing</a>
+    <a href={`${baseUrl}/#comparison`} class="nav-link">// Benchmarks</a>
+    <a href={`${baseUrl}/docs/`} class="nav-link">// Full Documentation</a>
+    <a href={`${baseUrl}/versions/`} class="nav-link">// All Versions &amp; Archive</a>
+    <a href="https://github.com/el-j/run-zero" class="btn-github" target="_blank" rel="noopener" style="justify-content: center; margin-top: 12px;">GitHub Repository ↗</a>
+  </div>
+</header>
+
+<style>
+  header.site-header {
+    position: sticky;
+    top: 0;
+    z-index: 100;
+    background: rgba(6, 8, 13, 0.92);
+    backdrop-filter: blur(20px);
+    -webkit-backdrop-filter: blur(20px);
+    border-bottom: 1px solid var(--border-subtle);
+    height: var(--header-height);
+    width: 100%;
+    display: flex;
+    align-items: center;
+  }
+
+  .header-inner {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    width: 100%;
+    max-width: 1360px;
+    height: 100%;
+    margin: 0 auto;
+    padding: 0 28px;
+    gap: 16px;
+  }
+
+  .brand-group {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    flex-shrink: 0;
+  }
+
+  .brand {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    text-decoration: none;
+    color: var(--text-main);
+    white-space: nowrap;
+  }
+
+  .brand-icon-box {
+    width: 32px;
+    height: 32px;
+    border-radius: var(--radius-sm);
+    background: rgba(255, 51, 85, 0.08);
+    border: 1px solid var(--border-crimson);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  .brand-title {
+    font-family: var(--font-mono);
+    font-weight: 800;
+    font-size: 1.15rem;
+    letter-spacing: -0.04em;
+  }
+
+  .nav-menu {
+    display: flex;
+    gap: 18px;
+    align-items: center;
+    list-style: none;
+    margin: 0 12px;
+  }
+
+  .nav-link {
+    color: var(--text-dim);
+    text-decoration: none;
+    font-family: var(--font-mono);
+    font-size: 0.8rem;
+    font-weight: 700;
+    letter-spacing: 0.04em;
+    transition: color 0.2s ease;
+    position: relative;
+    padding: 6px 0;
+    white-space: nowrap;
+  }
+  .nav-link:hover, .nav-link.active {
+    color: var(--crimson-light);
+  }
+  .nav-link.active::after {
+    content: '';
+    position: absolute;
+    bottom: -2px;
+    left: 0;
+    width: 100%;
+    height: 2px;
+    background: var(--crimson);
+    border-radius: 2px;
+    box-shadow: 0 0 8px var(--crimson);
+  }
+
+  .nav-actions {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    flex-shrink: 0;
+  }
+
+  .status-indicator {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 4px 8px;
+    background: rgba(255, 51, 85, 0.06);
+    border: 1px solid var(--border-crimson);
+    border-radius: var(--radius-sm);
+  }
+  .pulse-dot {
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: var(--crimson);
+    box-shadow: 0 0 8px var(--crimson);
+  }
+  .status-text {
+    font-family: var(--font-mono);
+    font-size: 0.68rem;
+    font-weight: 800;
+    letter-spacing: 0.08em;
+    color: var(--crimson-light);
+  }
+
+  .btn-nav-docs {
+    background: linear-gradient(135deg, #ff3355 0%, #e62b48 100%);
+    color: #ffffff;
+    padding: 6px 14px;
+    border-radius: var(--radius-sm);
+    font-family: var(--font-mono);
+    font-size: 0.82rem;
+    font-weight: 800;
+    text-decoration: none;
+    white-space: nowrap;
+    border: 1px solid rgba(255, 255, 255, 0.15);
+    transition: all 0.2s ease;
+  }
+  .btn-nav-docs:hover {
+    background: linear-gradient(135deg, #ff4767 0%, #ff2a4b 100%);
+    box-shadow: 0 0 16px var(--crimson-glow);
+  }
+
+  .btn-github {
+    background: rgba(255, 255, 255, 0.04);
+    border: 1px solid var(--border-subtle);
+    color: var(--text-muted);
+    padding: 7px 10px;
+    border-radius: var(--radius-sm);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: all 0.2s ease;
+  }
+  .btn-github:hover {
+    color: #fff;
+    border-color: var(--text-dim);
+  }
+
+  .mobile-toggle {
+    display: none;
+    background: rgba(255, 255, 255, 0.05);
+    border: 1px solid var(--border-subtle);
+    color: var(--text-main);
+    padding: 6px 10px;
+    border-radius: var(--radius-sm);
+    cursor: pointer;
+    margin-left: auto;
+  }
+
+  .mobile-drawer {
+    display: none;
+    position: fixed;
+    top: var(--header-height);
+    left: 0;
+    width: 100%;
+    height: calc(100vh - var(--header-height));
+    background: var(--bg-secondary);
+    border-bottom: 1px solid var(--border-subtle);
+    padding: 24px;
+    z-index: 99;
+    flex-direction: column;
+    gap: 16px;
+    overflow-y: auto;
+  }
+  .mobile-drawer.open {
+    display: flex;
+  }
+  .mobile-drawer .nav-link {
+    font-size: 0.95rem;
+    padding: 10px 0;
+    border-bottom: 1px solid var(--border-subtle);
+  }
+
+  @media (max-width: 960px) {
+    .header-inner {
+      padding: 0 16px;
+      gap: 12px;
+    }
+    .nav-menu, .nav-actions { display: none; }
+    .mobile-toggle { display: flex; align-items: center; justify-content: center; }
+    .brand-group {
+      gap: 10px;
+      flex: 1;
+      min-width: 0;
+    }
+  }
+
+  @media (max-width: 480px) {
+    .header-inner {
+      padding: 0 12px;
+      gap: 8px;
+    }
+    .brand-group {
+      gap: 8px;
+    }
+    .brand-title {
+      font-size: 1.05rem;
+    }
+  }
+</style>
+
+<script>
+  const toggleBtn = document.getElementById('mobile-toggle');
+  const drawer = document.getElementById('mobile-drawer');
+
+  if (toggleBtn && drawer) {
+    toggleBtn.addEventListener('click', () => {
+      drawer.classList.toggle('open');
+    });
+    drawer.querySelectorAll('a').forEach(link => {
+      link.addEventListener('click', () => {
+        drawer.classList.remove('open');
+      });
+    });
+  }
+</script>
