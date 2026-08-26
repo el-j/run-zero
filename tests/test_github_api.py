@@ -153,6 +153,89 @@ class TestGitHubApi(unittest.TestCase):
         text = get_workflow_text_for_run("el-j/herbful", 1, access_token="token")
         self.assertIsNone(text)
 
+    @patch("time.sleep")
+    @patch("urllib.request.urlopen")
+    def test_github_request_throttles_when_rate_limit_nearly_exhausted(self, mock_urlopen, mock_sleep):
+        import github_api
+        mock_resp = MagicMock()
+        mock_resp.read.return_value = b'{"status": "ok"}'
+        mock_resp.headers = {"x-ratelimit-remaining": "4990", "x-ratelimit-reset": "1700000000"}
+        mock_resp.__enter__.return_value = mock_resp
+        mock_urlopen.return_value = mock_resp
+
+        with patch.object(github_api, "rate_limit_remaining", 5), \
+             patch.object(github_api, "rate_limit_reset", 9_999_999_999):
+            result = github_request("/test", access_token="secret")
+        self.assertEqual(result, {"status": "ok"})
+        mock_sleep.assert_called_once()
+
+    @patch("urllib.request.urlopen")
+    def test_github_request_success_tolerates_malformed_ratelimit_headers(self, mock_urlopen):
+        mock_resp = MagicMock()
+        mock_resp.read.return_value = b'{"status": "ok"}'
+        mock_resp.headers = {"x-ratelimit-remaining": "not-a-number", "x-ratelimit-reset": "1700000000"}
+        mock_resp.__enter__.return_value = mock_resp
+        mock_urlopen.return_value = mock_resp
+
+        result = github_request("/test", access_token="secret")
+        self.assertEqual(result, {"status": "ok"})
+
+    @patch("urllib.request.urlopen")
+    def test_github_request_http_error_tolerates_malformed_ratelimit_headers(self, mock_urlopen):
+        error = urllib.error.HTTPError(
+            url="/test", code=500, msg="Server Error",
+            hdrs={"x-ratelimit-remaining": "garbage", "x-ratelimit-reset": "garbage"},
+            fp=BytesIO(b"")
+        )
+        mock_urlopen.side_effect = error
+        result = github_request("/test", access_token="secret")
+        self.assertIsNone(result)
+
+    @patch("urllib.request.urlopen")
+    def test_github_request_http_error_non_rate_limit_prints_and_returns_none(self, mock_urlopen):
+        # A 500 (or any code other than 401/403-with-exhausted-quota or 404)
+        # must hit the generic "HTTP Error" logging branch.
+        error = urllib.error.HTTPError(
+            url="/test", code=500, msg="Internal Server Error",
+            hdrs={}, fp=BytesIO(b"")
+        )
+        mock_urlopen.side_effect = error
+        result = github_request("/test", access_token="secret")
+        self.assertIsNone(result)
+
+    @patch("github_api.github_request")
+    def test_get_workflow_text_for_run_decode_error_returns_none(self, mock_gh):
+        mock_gh.side_effect = [
+            {"path": ".github/workflows/ci.yml", "head_sha": "abc123"},
+            {"encoding": "base64", "content": "not-valid-base64!!!"},
+        ]
+        text = get_workflow_text_for_run("el-j/herbful", 2222, access_token="token")
+        self.assertIsNone(text)
+
+    @patch("github_api.github_request")
+    def test_get_queued_job_details_no_data_returns_empty(self, mock_gh):
+        mock_gh.return_value = None
+        jobs = get_queued_job_details("el-j/run-zero", access_token="token")
+        self.assertEqual(jobs, [])
+
+    @patch("github_api.github_request")
+    def test_get_queued_job_details_run_without_id_is_skipped(self, mock_gh):
+        mock_gh.return_value = {"workflow_runs": [{"head_branch": "main", "event": "push"}]}
+        jobs = get_queued_job_details("el-j/run-zero", access_token="token")
+        self.assertEqual(jobs, [])
+        # Only the initial queued-runs lookup should happen -- no jobs lookup
+        # for a run with no id.
+        self.assertEqual(mock_gh.call_count, 1)
+
+    @patch("github_api.github_request")
+    def test_get_queued_job_details_missing_jobs_data_is_skipped(self, mock_gh):
+        mock_gh.side_effect = [
+            {"workflow_runs": [{"id": 101, "head_branch": "main", "event": "push"}]},
+            None,  # jobs lookup fails
+        ]
+        jobs = get_queued_job_details("el-j/run-zero", access_token="token")
+        self.assertEqual(jobs, [])
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -138,6 +138,46 @@ class TestDockerDriver(unittest.TestCase):
         self.assertFalse(any(p.startswith("CACHE_MOUNT_DESTS=") for p in env_pairs))
 
     @patch("subprocess.run")
+    def test_spawn_runner_sets_pip_env_on_host_network(self, mock_run):
+        # devpi's pull-through PyPI proxy: on --network host (this driver's default),
+        # the published localhost port is reachable directly and pip implicitly trusts
+        # localhost for plain HTTP, so no PIP_TRUSTED_HOST is needed.
+        mock_run.return_value = MagicMock(returncode=0)
+        self.driver.spawn_runner(repo="el-j/run-zero", arch="arm64", access_token="tok", proxies_enabled=True)
+        cmd = mock_run.call_args[0][0]
+        env_values = [cmd[i + 1] for i, tok in enumerate(cmd) if tok == "-e"]
+        pip_entries = [v for v in env_values if v.startswith("PIP_INDEX_URL=")]
+        uv_entries = [v for v in env_values if v.startswith("UV_INDEX_URL=")]
+        self.assertEqual(pip_entries, ["PIP_INDEX_URL=http://localhost:49507/root/pypi/+simple/"])
+        self.assertEqual(uv_entries, ["UV_INDEX_URL=http://localhost:49507/root/pypi/+simple/"])
+        self.assertFalse(any(v.startswith("PIP_TRUSTED_HOST=") for v in env_values))
+
+    @patch("subprocess.run")
+    def test_spawn_runner_sets_pip_trusted_host_on_non_host_network(self, mock_run):
+        # Off --network host, PIP_INDEX_URL must point at the "devpi" Compose service
+        # name (localhost wouldn't reach a sibling container) -- and pip refuses a
+        # plain-HTTP index on any host other than localhost/127.0.0.1 unless it's
+        # explicitly trusted (verified live: without this, pip silently installs
+        # nothing and still exits 0).
+        mock_run.return_value = MagicMock(returncode=0)
+        driver = DockerDriver(network="runner-network")
+        driver.spawn_runner(repo="el-j/run-zero", arch="arm64", access_token="tok", proxies_enabled=True)
+        cmd = mock_run.call_args[0][0]
+        env_values = [cmd[i + 1] for i, tok in enumerate(cmd) if tok == "-e"]
+        self.assertIn("PIP_INDEX_URL=http://devpi:3141/root/pypi/+simple/", env_values)
+        self.assertIn("UV_INDEX_URL=http://devpi:3141/root/pypi/+simple/", env_values)
+        self.assertIn("PIP_TRUSTED_HOST=devpi", env_values)
+
+    @patch("subprocess.run")
+    def test_spawn_runner_omits_pip_env_when_proxies_disabled(self, mock_run):
+        mock_run.return_value = MagicMock(returncode=0)
+        self.driver.spawn_runner(repo="el-j/run-zero", arch="arm64", access_token="tok", proxies_enabled=False)
+        cmd = mock_run.call_args[0][0]
+        env_values = [cmd[i + 1] for i, tok in enumerate(cmd) if tok == "-e"]
+        self.assertFalse(any(v.startswith("PIP_INDEX_URL=") for v in env_values))
+        self.assertFalse(any(v.startswith("UV_INDEX_URL=") for v in env_values))
+
+    @patch("subprocess.run")
     def test_spawn_runner_failure(self, mock_run):
         mock_run.side_effect = subprocess.CalledProcessError(1, "docker", stderr=b"Docker daemon error")
         name = self.driver.spawn_runner(repo="el-j/run-zero")
@@ -154,6 +194,47 @@ class TestDockerDriver(unittest.TestCase):
         self.driver.prune_exited(runners)
         self.driver.destroy_runner("runner-dead")
         self.driver.cleanup_all()
+
+    @patch("subprocess.run")
+    def test_cleanup_all_stops_and_removes_docker_backed_runners(self, mock_run):
+        # Regression guard: cleanup_all() must only stop+remove runners whose
+        # backend is actually "docker" -- list_runners() itself is real here
+        # (only subprocess.run is mocked), so this exercises the real
+        # filtering loop in cleanup_all() rather than relying on
+        # list_runners() failing closed to an empty list.
+        mock_run.return_value = MagicMock(
+            stdout="c1|Up|local-runner-arm64-1|running|el-j/run-zero|arm64|docker\n",
+            returncode=0
+        )
+        self.driver.cleanup_all()
+        stop_calls = [c for c in mock_run.call_args_list if c[0][0][:2] == ["docker", "stop"]]
+        rm_calls = [c for c in mock_run.call_args_list if c[0][0][:2] == ["docker", "rm"]]
+        self.assertEqual(len(stop_calls), 1)
+        self.assertEqual(len(rm_calls), 1)
+        self.assertEqual(stop_calls[0][0][0], ["docker", "stop", "c1"])
+
+    @patch("subprocess.run")
+    def test_spawn_runner_with_extra_env(self, mock_run):
+        mock_run.return_value = MagicMock(returncode=0)
+        self.driver.spawn_runner(
+            repo="el-j/run-zero",
+            arch="arm64",
+            access_token="secret-pat",
+            extra_env={"FOO": "bar", "BAZ": "qux"},
+        )
+        cmd = mock_run.call_args[0][0]
+        env_pairs = [cmd[i + 1] for i, tok in enumerate(cmd) if tok == "-e"]
+        self.assertIn("FOO=bar", env_pairs)
+        self.assertIn("BAZ=qux", env_pairs)
+
+    @patch("subprocess.run")
+    def test_list_runners_skips_blank_lines(self, mock_run):
+        mock_run.return_value = MagicMock(
+            stdout="c1|Up|local-runner-arm64-1|running|el-j/run-zero|arm64|docker\n\nc2|Up|local-runner-arm64-2|running|el-j/run-zero|arm64|docker\n",
+            returncode=0
+        )
+        runners = self.driver.list_runners()
+        self.assertEqual(len(runners), 2)
 
 
 if __name__ == "__main__":

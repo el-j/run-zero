@@ -1,0 +1,24 @@
+name: Mutation Testing
+
+# Mutation testing (mutmut) is intentionally not run on every push -- it's
+# far slower than the regular unit-test suite. It runs on a weekly schedule
+# for baseline drift visibility, on PRs targeting main as a release gate,
+# and can be triggered manually. See issue #17.
+on:
+  schedule:
+    - cron: '0 6 * * 1' # Every Monday 06:00 UTC
+  pull_request:
+    branches:
+      - main
+  workflow_dispatch: {}
+
+jobs:
+  mutation-test:
+    name: Mutmut Mutation Testing
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v7
+
+      - name: Run mutation testing suite
+        run: make mutation-test

@@ -2,7 +2,9 @@
 🪐 OrbStack Virtual Machine Runner Driver
 Spawns and manages dedicated, lightweight Linux Virtual Machines via OrbStack (Apple Virtualization framework).
 Provides full systemd, dedicated kernel, internal Docker daemon, unconfined browser sandboxes,
-and automatic integration with local caching proxies (Verdaccio, Athens, apt-cacher-ng).
+automatic integration with local caching proxies (Verdaccio, Athens, apt-cacher-ng, devpi, kellnr),
+and real host-backed local disk caches via OrbStack's automatic /mnt/mac filesystem share
+(see `orbstack_templates.cache_mount_snippet()`).
 """
 
 import json
@@ -16,7 +18,12 @@ import uuid
 from typing import Dict, List, Optional
 
 from . import RunnerDriver, RunnerInfo
-from .orbstack_templates import docker_engine_snippet, registration_and_run_snippet, runner_download_snippet
+from .orbstack_templates import (
+    cache_mount_snippet,
+    docker_engine_snippet,
+    registration_and_run_snippet,
+    runner_download_snippet,
+)
 
 RUNNER_VERSION = "2.336.0"
 RUNNER_VM_PREFIX = "runzero-vm-"
@@ -24,7 +31,10 @@ BASE_IMAGE_PREFIX = "runzero-vm-base-"
 
 
 class OrbStackVMDriver(RunnerDriver):
+    """Runs ephemeral runners as dedicated OrbStack Linux VMs, cloned per-job from a golden base image."""
+
     def __init__(self, distro: str = "ubuntu:24.04"):
+        """Configure the base distro golden images are built from, and init per-arch build/tracking state."""
         self.distro = distro
         self._provision_script_path = os.path.join(
             os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))),
@@ -54,11 +64,23 @@ class OrbStackVMDriver(RunnerDriver):
         self._build_retry_after: Dict[str, float] = {}
         self._runner_created_at: Dict[str, float] = {}
         self._runner_repos: Dict[str, str] = {}
+        # Tracks the most recently started background build thread per arch
+        # (see _build_base_image_async below). Exists so callers -- mainly
+        # tests -- can deterministically wait for a driver-owned background
+        # thread to fully exit via join_background_build_threads() instead
+        # of polling shared state or letting it run un-joined past the
+        # caller's own scope (see issue #20: a thread left running past a
+        # test's mock.patch context stops seeing the test's mocked
+        # subprocess.run and starts issuing REAL orbctl/orb calls against a
+        # real OrbStack daemon, if one is installed).
+        self._build_threads: Dict[str, threading.Thread] = {}
 
     def name(self) -> str:
+        """Return this driver's backend identifier: "orbstack-vm"."""
         return "orbstack-vm"
 
     def is_available(self) -> bool:
+        """True if `orbctl`/`orb` are on PATH and `orbctl status` reports the OrbStack daemon running."""
         if not shutil.which("orbctl") or not shutil.which("orb"):
             return False
         try:
@@ -69,6 +91,7 @@ class OrbStackVMDriver(RunnerDriver):
 
     @staticmethod
     def base_image_name(orb_arch: str) -> str:
+        """Return the golden base image's VM name for a given OrbStack arch (e.g. "arm64" -> "runzero-vm-base-arm64")."""
         return f"{BASE_IMAGE_PREFIX}{orb_arch}"
 
     def _list_vm_names(self) -> List[str]:
@@ -94,6 +117,12 @@ class OrbStackVMDriver(RunnerDriver):
         return []
 
     def base_image_exists(self, orb_arch: str) -> bool:
+        """True if the golden base image VM exists for `orb_arch`.
+
+        Also opportunistically promotes a fully-provisioned "-building" staging VM to the
+        final base image if one is found (self-heals a build that finished but never got
+        renamed, e.g. after a process restart mid-build).
+        """
         base_name = self.base_image_name(orb_arch)
         names = self._list_vm_names()
         if base_name in names:
@@ -410,7 +439,34 @@ echo "Base image provisioning complete."
                             file=sys.stderr
                         )
 
-        threading.Thread(target=_run, name=f"runzero-build-base-{orb_arch}", daemon=True).start()
+        thread = threading.Thread(target=_run, name=f"runzero-build-base-{orb_arch}", daemon=True)
+        self._build_threads[orb_arch] = thread
+        thread.start()
+
+    def join_background_build_threads(self, timeout: float = 10.0) -> bool:
+        """Block until every background build_base_image() thread started via
+        `_build_base_image_async` has finished, up to `timeout` seconds each.
+
+        Exists primarily for tests: it gives a deterministic point to wait for
+        a driver-owned background thread to fully exit, instead of polling
+        shared state (racy) or letting the thread run un-joined past the
+        caller's own scope. A thread left running past a test's mock.patch
+        context stops seeing that test's mocked subprocess.run and starts
+        issuing REAL orbctl/orb calls against a real OrbStack daemon if one is
+        installed -- see issue #20.
+
+        Returns True if every tracked thread has finished (already, or within
+        `timeout`); False if at least one is still alive when this returns.
+        Callers that must guarantee "no thread survives past this point"
+        (e.g. a test's tearDown) should treat False as a hard failure.
+        """
+        all_finished = True
+        for thread in list(self._build_threads.values()):
+            if thread.is_alive():
+                thread.join(timeout=timeout)
+            if thread.is_alive():
+                all_finished = False
+        return all_finished
 
     def spawn_runner(
         self,
@@ -423,6 +479,19 @@ echo "Base image provisioning complete."
         proxies_enabled: bool = True,
         extra_env: Optional[Dict[str, str]] = None
     ) -> Optional[str]:
+        """Clone the golden base image and boot a per-job VM that registers, runs, then self-powers-off.
+
+        If the base image for this arch doesn't exist yet, kicks off an async background build
+        (see `_build_base_image_async`) and returns None immediately -- callers should treat that
+        as "not ready this poll, try again later," not a hard failure. Also returns None if the
+        `orbctl clone` step itself fails. The clone is synchronous; registration/run/shutdown inside
+        the VM happens via a detached `orb exec` (Popen), so this call doesn't block on job execution.
+
+        `cache_mounts` (host path -> container-style path, from `cache_manager.init_cache_dirs()`)
+        is turned into real bind mounts inside the VM via `cache_mount_snippet()` -- see that
+        function's docstring for the OrbStack `/mnt/mac` mechanism this relies on. Previously this
+        parameter was accepted here and silently discarded.
+        """
         unique_id = uuid.uuid4().hex[:6]
         name_suffix = f"-{repo.replace('/', '-')}" if repo else (f"-{org}" if org else "")
         vm_name = f"{RUNNER_VM_PREFIX}{arch}{name_suffix}-{unique_id}"
@@ -439,7 +508,37 @@ echo "Base image provisioning complete."
 export npm_config_registry="http://host.orb.internal:49501"
 export YARN_REGISTRY="http://host.orb.internal:49501"
 export GOPROXY="http://host.orb.internal:49500,https://proxy.golang.org,direct"
+export PIP_INDEX_URL="http://host.orb.internal:49507/root/pypi/+simple/"
+export UV_INDEX_URL="http://host.orb.internal:49507/root/pypi/+simple/"
+export PIP_TRUSTED_HOST="host.orb.internal"
 """
+            # pip implicitly trusts "localhost"/"127.0.0.1" for a plain-HTTP index but
+            # refuses any other host -- verified live (2026-08-26) inside a real OrbStack
+            # VM: without PIP_TRUSTED_HOST, pip printed "is not a trusted or secure host",
+            # silently skipped the index, and exited 0 having installed nothing. uv has no
+            # equivalent restriction (verified: identical install succeeds unmodified).
+            # kellnr's crates.io proxy has no single "index URL" env var: verified live
+            # (2026-08-26) that cargo silently ignores CARGO_SOURCE_<name>_* env vars for a
+            # dynamic/custom [source.*] table (a real cargo limitation, not a typo) --
+            # tracing cargo's own network layer showed it still fetching straight from
+            # https://index.crates.io with the env vars set, and only switching to the
+            # proxy once a real ~/.cargo/config.toml source-replacement block existed.
+            # Written directly here (rather than via a curl-based runtime probe like
+            # start.sh's, since host.orb.internal always resolves to the real Mac host from
+            # inside an OrbStack VM -- no "is it up" detection needed the way Mode 2's
+            # bridge-network containers need one).
+            proxy_env_block += """
+mkdir -p /home/runner/.cargo
+cat > /home/runner/.cargo/config.toml <<'CARGOCFG'
+[source.crates-io]
+replace-with = "kellnr-proxy"
+
+[source.kellnr-proxy]
+registry = "sparse+http://host.orb.internal:49506/api/v1/cratesio/"
+CARGOCFG
+"""
+
+        cache_mount_block = cache_mount_snippet(cache_mounts)
 
         if repo:
             api_base = f"https://api.github.com/repos/{repo}/actions/runners"
@@ -464,7 +563,7 @@ export GOPROXY="http://host.orb.internal:49500,https://proxy.golang.org,direct"
             return None
 
         reg_and_run = registration_and_run_snippet(
-            api_base, runner_url, access_token or "", vm_name, runner_labels, proxy_env_block
+            api_base, runner_url, access_token or "", vm_name, runner_labels, proxy_env_block, cache_mount_block
         )
 
         print(
@@ -502,6 +601,10 @@ set -e
             return None
 
     def list_runners(self) -> List[RunnerInfo]:
+        """List job VMs (name starts with the runner prefix, excluding golden base images).
+
+        Returns an empty list (and prints to stderr) if the `orbctl list` call itself fails.
+        """
         try:
             res = subprocess.run(["orbctl", "list", "--format", "json"], capture_output=True, text=True, check=True)
             vms = json.loads(res.stdout or "[]")
@@ -545,6 +648,11 @@ set -e
             return []
 
     def destroy_runner(self, runner_id: str) -> bool:
+        """Delete the named job VM via `orbctl delete -f`.
+
+        Refuses (returns False) if `runner_id` looks like a golden base image name, to guard
+        against a caller accidentally destroying the shared image instead of an ephemeral clone.
+        """
         if runner_id.startswith(BASE_IMAGE_PREFIX):
             print(
                 f"[Autoscaler:OrbStack-VM] Refusing to delete '{runner_id}' -- it looks like a "
@@ -560,12 +668,14 @@ set -e
             return False
 
     def prune_exited(self, active_runners: List[RunnerInfo]) -> None:
+        """Delete any `active_runners` entries that are OrbStack-VM-backed and in a stopped state."""
         for r in active_runners:
             if r.backend == "orbstack-vm" and r.state in ("exited", "stopped", "dead"):
                 print(f"[Autoscaler:OrbStack-VM] Deleting stopped VM: {r.name}")
                 self.destroy_runner(r.name)
 
     def cleanup_all(self) -> None:
+        """Delete every job VM this driver manages (used on autoscaler shutdown). Golden base images are untouched."""
         runners = self.list_runners()
         for r in runners:
             if r.backend == "orbstack-vm":

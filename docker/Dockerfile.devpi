@@ -1,0 +1,26 @@
+FROM python:3.11-slim
+
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends curl && \
+    rm -rf /var/lib/apt/lists/*
+
+# devpi-server is a real PyPI pull-through proxy/cache (not a blind HTTP cache): its default
+# "root/pypi" index, created automatically on `devpi-init`, mirrors pypi.org on first request
+# per package and serves subsequent requests for the same package/version from local disk.
+# There's no actively-maintained official multi-arch Docker image for it (the public images on
+# Docker Hub are unmaintained/amd64-only, last published 2018) -- this is a small, first-party
+# image built the same way this repo already builds its own runner/autoscaler images, so it
+# works natively on both the Apple Silicon host this stack normally runs on and amd64 CI.
+RUN pip install --no-cache-dir devpi-server==6.20.3
+
+RUN mkdir -p /data
+
+EXPOSE 3141
+
+HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
+    CMD curl -fs http://localhost:3141/root/pypi/+simple/ || exit 1
+
+# devpi-init is a one-shot "create the serverdir + default root/pypi mirror index if it
+# doesn't already exist" step; re-running it against an already-initialized --serverdir is a
+# no-op error we deliberately ignore so container restarts don't fail.
+ENTRYPOINT ["sh", "-c", "devpi-init --serverdir /data 2>/dev/null; exec devpi-server --serverdir /data --host 0.0.0.0 --port 3141"]

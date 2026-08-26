@@ -27,6 +27,8 @@ services:
       - verdaccio
       - athens
       - docker-mirror
+      - devpi
+      - kellnr
     environment:
       - ACCESS_TOKEN=${ACCESS_TOKEN:-}
       - OWNER=${OWNER:-}
@@ -47,6 +49,23 @@ services:
       - HOST_VM_BRIDGE_URL=${HOST_VM_BRIDGE_URL:-http://host.docker.internal:49504}
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
+      # cache_manager.py's init_cache_dirs() runs INSIDE this container and calls
+      # os.makedirs()/os.chmod() on HOST_CACHE_DIR to prepare per-language cache
+      # subdirectories, then hands their paths straight to `docker run -v host:container`
+      # (issued against the HOST's Docker daemon via the socket mount above) when spawning
+      # each ephemeral runner. Without this bind mount, those os.makedirs() calls land in
+      # this container's own disposable overlay filesystem -- a real directory from the
+      # container's point of view, but invisible to the actual host and to the runner
+      # containers Docker then spawns pointing at that same path. Confirmed live
+      # (2026-08-26) via `docker inspect`: the running autoscaler container had no mount
+      # for HOST_CACHE_DIR at all, so the dashboard's Cache Analytics panel correctly
+      # reported 0 B for every category even though the code "looked" wired up. Mounting
+      # the exact same path on both sides (source == target) means paths written by this
+      # container and paths referenced by the host's `docker run -v` are identical strings
+      # that also resolve to the same real inode -- no translation needed anywhere else in
+      # the codebase. Falls back to a harmless throwaway path when HOST_CACHE_DIR is unset
+      # (e.g. CACHE_ENABLED=false), since Compose can't conditionally omit a volume line.
+      - ${HOST_CACHE_DIR:-/tmp/runzero-cache-disabled}:${HOST_CACHE_DIR:-/tmp/runzero-cache-disabled}
 
 
   # ============================================================================
@@ -115,6 +134,62 @@ services:
     volumes:
       - docker-mirror-storage:/var/lib/registry
 
+  # devpi: Real pull-through caching proxy for PyPI (pip & uv). Its default "root/pypi"
+  # index (auto-created on init) mirrors pypi.org per-package on first request and serves
+  # every subsequent request for that package/version from local disk -- verified live
+  # (2026-08-26): a real `pip install`/`uv pip install` through this exact image populates
+  # devpi-storage, and a second install of the same package is served from cache. No
+  # actively-maintained official multi-arch image exists for it (public Docker Hub images
+  # are unmaintained/amd64-only), so this is a small first-party image, built the same way
+  # this repo already builds its own runner/autoscaler images -- see docker/Dockerfile.devpi.
+  devpi:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.devpi
+    image: local-runner-devpi:latest
+    container_name: local-runner-devpi
+    restart: unless-stopped
+    networks:
+      - runner-network
+    ports:
+      - "49507:3141"
+    volumes:
+      - devpi-storage:/data
+
+  # kellnr: Real pull-through caching proxy for Cargo/crates.io, via its built-in
+  # "crates.io proxy" feature (a genuine sparse-index mirror, not a blind HTTP cache) --
+  # verified live (2026-08-26): a real `cargo build` against a crates.io dependency,
+  # pointed at this exact image via cargo's source-replacement env vars
+  # (CARGO_SOURCE_CRATES_IO_REPLACE_WITH / CARGO_SOURCE_KELLNR_PROXY_REGISTRY), resolves
+  # and compiles successfully, and the fetched .crate is persisted under kellnr-storage.
+  kellnr:
+    image: ghcr.io/kellnr/kellnr:6
+    container_name: local-runner-kellnr
+    restart: unless-stopped
+    networks:
+      - runner-network
+    ports:
+      - "49506:8000"
+    environment:
+      # kellnr bakes this into the "dl" (download) URL its sparse-index config.json
+      # advertises to every client -- it is NOT derived from the request's Host header
+      # (verified live: querying config.json via a different hostname still returned
+      # this fixed value). "host.orb.internal" is OrbStack's own universal DNS name for
+      # the Mac host, and -- unlike "localhost" -- it resolves correctly from ALL of this
+      # stack's real client contexts: OrbStack VMs (confirmed live), Docker containers on
+      # --network host, AND Docker containers on a regular bridge network. Confirmed live
+      # (2026-08-26) this was a real, silent breakage: with KELLNR_ORIGIN__HOSTNAME=localhost,
+      # cargo's sparse-index metadata fetch succeeded (reaching kellnr fine via
+      # host.orb.internal) but the actual .crate download then failed outright --
+      # "Could not connect to localhost:49506" -- because "localhost" inside a VM means the
+      # VM itself, not the Mac host serving kellnr.
+      - KELLNR_ORIGIN__HOSTNAME=host.orb.internal
+      - KELLNR_ORIGIN__PORT=49506
+      - KELLNR_REGISTRY__DATA_DIR=/opt/kellnr/data
+      - KELLNR_PROXY__ENABLED=true
+    volumes:
+      - kellnr-storage:/opt/kellnr/data
+
   # ============================================================================
   # Mode 2: Static Fixed Runner Services (Alternative profile)
   # ============================================================================
@@ -140,6 +215,17 @@ services:
       - EPHEMERAL=${EPHEMERAL:-false}
       - NPM_CONFIG_REGISTRY=http://verdaccio:4873/
       - GOPROXY=http://athens:3000,https://proxy.golang.org,direct
+      - PIP_INDEX_URL=http://devpi:3141/root/pypi/+simple/
+      - UV_INDEX_URL=http://devpi:3141/root/pypi/+simple/
+      # pip refuses a plain-HTTP index on any host but localhost/127.0.0.1 unless it's
+      # explicitly trusted (verified live: without this, pip silently installs nothing and
+      # still exits 0) -- uv has no equivalent restriction.
+      - PIP_TRUSTED_HOST=devpi
+      # No CARGO_SOURCE_* env var here -- cargo doesn't honor those for a dynamic
+      # [source.*] table (verified live, see docker/start.sh's comment). start.sh
+      # (this image's own entrypoint) writes a real ~/.cargo/config.toml at container
+      # start once it detects kellnr on the network -- these containers reach it at
+      # http://kellnr:8000 via runner-network's Compose DNS, not localhost.
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
       - runner-work-arm64:/home/runner/actions-runner/_work
@@ -170,6 +256,17 @@ services:
       - EPHEMERAL=${EPHEMERAL:-false}
       - NPM_CONFIG_REGISTRY=http://verdaccio:4873/
       - GOPROXY=http://athens:3000,https://proxy.golang.org,direct
+      - PIP_INDEX_URL=http://devpi:3141/root/pypi/+simple/
+      - UV_INDEX_URL=http://devpi:3141/root/pypi/+simple/
+      # pip refuses a plain-HTTP index on any host but localhost/127.0.0.1 unless it's
+      # explicitly trusted (verified live: without this, pip silently installs nothing and
+      # still exits 0) -- uv has no equivalent restriction.
+      - PIP_TRUSTED_HOST=devpi
+      # No CARGO_SOURCE_* env var here -- cargo doesn't honor those for a dynamic
+      # [source.*] table (verified live, see docker/start.sh's comment). start.sh
+      # (this image's own entrypoint) writes a real ~/.cargo/config.toml at container
+      # start once it detects kellnr on the network -- these containers reach it at
+      # http://kellnr:8000 via runner-network's Compose DNS, not localhost.
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
       - runner-work-amd64:/home/runner/actions-runner/_work
@@ -183,6 +280,8 @@ volumes:
   verdaccio-storage:
   athens-storage:
   docker-mirror-storage:
+  devpi-storage:
+  kellnr-storage:
   runner-work-arm64:
   runner-work-amd64:
   runner-cache-npm:

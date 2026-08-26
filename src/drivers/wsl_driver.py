@@ -16,14 +16,19 @@ from . import RunnerDriver, RunnerInfo
 
 
 class WSL2Driver(RunnerDriver):
+    """Runs ephemeral runners as processes inside a WSL2 Linux distro, for the Windows host case."""
+
     def __init__(self, distro_base: str = "Ubuntu-24.04"):
+        """Configure which WSL distro to run jobs in (falls back to the WSL_DISTRO_BASE env var)."""
         self.distro_base = os.getenv("WSL_DISTRO_BASE", distro_base)
         self._runner_created_at: Dict[str, float] = {}
 
     def name(self) -> str:
+        """Return this driver's backend identifier: "wsl2"."""
         return "wsl2"
 
     def is_available(self) -> bool:
+        """True if a `wsl`/`wsl.exe` binary is on PATH and `wsl --status` succeeds."""
         if not shutil.which("wsl.exe") and not shutil.which("wsl"):
             return False
         try:
@@ -43,6 +48,12 @@ class WSL2Driver(RunnerDriver):
         proxies_enabled: bool = True,
         extra_env: Optional[Dict[str, str]] = None
     ) -> Optional[str]:
+        """Launch `run.sh` inside `distro_base` as a detached background process and return its name.
+
+        Unlike the VM drivers, this doesn't create a new WSL instance per runner -- it runs directly
+        inside the existing distro. Returns None (and prints to stderr) only if the `wsl` invocation
+        itself fails to start; the runner's own registration/execution happens asynchronously.
+        """
         unique_id = uuid.uuid4().hex[:6]
         name_suffix = f"-{repo.replace('/', '-')}" if repo else (f"-{org}" if org else "")
         instance_name = f"runzero-wsl{name_suffix}-{unique_id}"
@@ -78,6 +89,10 @@ cd /home/runner/actions-runner && ./run.sh --unattended --ephemeral --name "{ins
             return None
 
     def list_runners(self) -> List[RunnerInfo]:
+        """List registered WSL distro names (via `wsl --list --quiet`) starting with "runzero-wsl".
+
+        Returns an empty list (silently) if the `wsl --list` call itself fails.
+        """
         try:
             res = subprocess.run(["wsl", "--list", "--quiet"], capture_output=True, text=True, check=True)
             runners = []
@@ -101,12 +116,17 @@ cd /home/runner/actions-runner && ./run.sh --unattended --ephemeral --name "{ins
             return []
 
     def prune_exited(self, runners: List[RunnerInfo]) -> None:
+        """Terminate any `runners` entries that are WSL2-backed and in "exited"/"stopped"/"dead" state."""
         for r in runners:
             if r.backend == "wsl2" and r.state in ("exited", "stopped", "dead"):
                 print(f"[Autoscaler:WSL2] Terminating exited runner: {r.name}")
                 self.destroy_runner(r.id)
 
     def destroy_runner(self, runner_id: str) -> bool:
+        """Terminate the named WSL distro instance via `wsl --terminate`.
+
+        Returns False (and prints to stderr) on any exception, including a timeout.
+        """
         try:
             res = subprocess.run(["wsl", "--terminate", runner_id], capture_output=True, timeout=10)
             return res.returncode == 0
@@ -115,6 +135,7 @@ cd /home/runner/actions-runner && ./run.sh --unattended --ephemeral --name "{ins
             return False
 
     def cleanup_all(self) -> None:
+        """Terminate every WSL2-backed runner this driver manages (used on autoscaler shutdown)."""
         runners = self.list_runners()
         for r in runners:
             if r.backend == "wsl2":

@@ -7,6 +7,7 @@ on:
       - develop
       - 'feat/**'
       - 'fix/**'
+      - 'chore/**'
   pull_request:
     branches:
       - main
@@ -36,7 +37,7 @@ jobs:
 
       - name: Mypy Static Type Checking
         run: |
-          MYPYPATH=src mypy src/drivers/ src/autoscaler.py --ignore-missing-imports
+          MYPYPATH=src mypy src/ --ignore-missing-imports
 
       - name: Run Pytest with Code Coverage
         run: |

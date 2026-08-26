@@ -15,20 +15,28 @@ from . import RunnerDriver, RunnerInfo
 
 
 class DockerDriver(RunnerDriver):
+    """Runs ephemeral GitHub Actions runners as Docker containers -- the fastest, lightest-weight backend."""
+
     def __init__(
         self,
         docker_sock: str = "/var/run/docker.sock",
         network: str = "host",
         runner_image_prefix: str = "local-github-runner"
     ):
+        """Configure the Docker socket path, container network mode, and runner image tag prefix.
+
+        `docker_sock`/`network` fall back to DOCKER_SOCK/DOCKER_NETWORK env vars if set.
+        """
         self.docker_sock = os.getenv("DOCKER_SOCK", docker_sock)
         self.network = os.getenv("DOCKER_NETWORK", network)
         self.runner_image_prefix = runner_image_prefix
 
     def name(self) -> str:
+        """Return this driver's backend identifier: "docker"."""
         return "docker"
 
     def is_available(self) -> bool:
+        """True if the `docker` CLI is on PATH and `docker info` succeeds (daemon reachable)."""
         if not shutil.which("docker"):
             return False
         try:
@@ -48,6 +56,11 @@ class DockerDriver(RunnerDriver):
         proxies_enabled: bool = True,
         extra_env: Optional[Dict[str, str]] = None
     ) -> Optional[str]:
+        """Launch a detached, ephemeral runner container via `docker run -d` and return its name.
+
+        Returns None (and prints to stderr) if the `docker run` invocation itself fails;
+        registration/execution then happens asynchronously inside the container's own entrypoint.
+        """
         unique_id = uuid.uuid4().hex[:6]
         name_suffix = f"-{repo.replace('/', '-')}" if repo else (f"-{org}" if org else "")
         container_name = f"local-runner-{arch}{name_suffix}-{unique_id}"
@@ -90,10 +103,31 @@ class DockerDriver(RunnerDriver):
             # When on host network, access proxies on published localhost ports
             verdaccio_url = "http://localhost:49501/" if self.network == "host" else "http://verdaccio:4873/"
             athens_url = "http://localhost:49500,https://proxy.golang.org,direct" if self.network == "host" else "http://athens:3000,https://proxy.golang.org,direct"
+            # devpi's default "root/pypi" index is a real pull-through PyPI mirror out of the
+            # box; pip and uv both honor PIP_INDEX_URL, and uv additionally reads UV_INDEX_URL.
+            pip_host = "localhost:49507" if self.network == "host" else "devpi:3141"
+            pip_index_url = f"http://{pip_host}/root/pypi/+simple/"
             cmd.extend([
                 "-e", f"NPM_CONFIG_REGISTRY={verdaccio_url}",
-                "-e", f"GOPROXY={athens_url}"
+                "-e", f"GOPROXY={athens_url}",
+                "-e", f"PIP_INDEX_URL={pip_index_url}",
+                "-e", f"UV_INDEX_URL={pip_index_url}"
             ])
+            if self.network != "host":
+                # pip implicitly trusts "localhost"/"127.0.0.1" for plain-HTTP indexes but
+                # refuses anything else -- verified live (2026-08-26): pointing pip at a
+                # plain-HTTP non-localhost host without this produced "is not a trusted or
+                # secure host" and pip silently found zero packages, exit 0, no error. uv
+                # does not have this restriction (verified: identical install succeeds with
+                # no equivalent flag), so this is pip/PIP_TRUSTED_HOST-only.
+                cmd.extend(["-e", "PIP_TRUSTED_HOST=devpi"])
+            # kellnr's crates.io proxy is a real sparse-index mirror, but unlike pip/Go it
+            # has no single "point at this URL" env var: verified live (2026-08-26) that
+            # cargo silently ignores CARGO_SOURCE_<name>_* env vars for a dynamic/custom
+            # [source.*] table (a real cargo limitation, not a typo) -- only a real
+            # ~/.cargo/config.toml source-replacement block works. `docker/start.sh`
+            # (this image's own entrypoint) writes that file at container start when it
+            # detects kellnr is reachable, so no extra `-e`/`-v` is threaded through here.
 
         if cache_mounts:
             for host_p, cont_p in cache_mounts.items():
@@ -127,6 +161,10 @@ class DockerDriver(RunnerDriver):
             return None
 
     def list_runners(self) -> List[RunnerInfo]:
+        """List containers labeled `managed-by=local-autoscaler` via `docker ps -a`.
+
+        Returns an empty list (and prints to stderr) if the `docker ps` call itself fails.
+        """
         try:
             res = subprocess.run(
                 [
@@ -186,16 +224,19 @@ class DockerDriver(RunnerDriver):
             return None
 
     def prune_exited(self, runners: List[RunnerInfo]) -> None:
+        """Force-remove any `runners` entries that are Docker-backed and in "exited"/"dead" state."""
         for r in runners:
             if r.backend == "docker" and r.state in ("exited", "dead"):
                 print(f"[Autoscaler:Docker] Removing finished container: {r.name} ({r.id})")
                 subprocess.run(["docker", "rm", "-f", r.id], capture_output=True)
 
     def destroy_runner(self, runner_id: str) -> bool:
+        """Force-remove the container with this id/name via `docker rm -f`."""
         res = subprocess.run(["docker", "rm", "-f", runner_id], capture_output=True)
         return res.returncode == 0
 
     def cleanup_all(self) -> None:
+        """Stop and force-remove every container this driver manages (used on autoscaler shutdown)."""
         runners = self.list_runners()
         for r in runners:
             if r.backend == "docker":

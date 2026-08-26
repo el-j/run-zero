@@ -13,7 +13,7 @@ requires-python = ">=3.9"
 minversion = "7.0"
 testpaths = ["tests"]
 pythonpath = ["src"]
-addopts = "-ra -q --cov=src --cov-report=term-missing"
+addopts = "-ra -q --cov=src --cov-report=term-missing --cov-fail-under=100"
 
 [tool.coverage.run]
 source = ["src"]
@@ -33,5 +33,34 @@ disallow_untyped_defs = false
 check_untyped_defs = true
 
 [tool.mutmut]
-paths_to_mutate = "src/"
-runner = "python -m pytest -q"
+# NOTE: this MUST be a TOML array, not a bare string. mutmut 3.x does
+# `[Path(p) for p in source_paths]` -- a bare string "src/" iterates
+# character-by-character ('s', 'r', 'c', '/'), and Path('/') then makes
+# mutmut try to copy the entire root filesystem into its mutants/ working
+# copy (confirmed live: it died trying to copy /etc/alternatives/awk.1.gz).
+# This is very likely *why* issue #17 found no evidence mutmut had ever
+# completed a real run -- the previous single-string config could never have
+# worked. `paths_to_mutate` (mutmut 2.x's key) still works via mutmut 3.x's
+# back-compat shim but is deprecated in favor of `source_paths`.
+source_paths = ["src/"]
+# tests/test_blackbox_cli.py shells out to the real `make` binary, and
+# OrbStackVMDriver reads docker/provision-toolchain.sh from disk -- both
+# resolve their path via `__file__`, which lands inside mutmut's mutants/
+# sandbox copy once the referencing module itself is copied there. Without
+# these, mutmut's own baseline run fails ("No rule to make target" /
+# "provisioning script not found") because those paths were never mirrored
+# into the sandbox.
+also_copy = ["Makefile", "docker/"]
+# mutmut 3.x runs pytest in-process via `pytest.main()`, so it inherits
+# [tool.pytest.ini_options]'s addopts -- including --cov-fail-under=100.
+# Each mutant run only executes the narrow subset of tests mutmut's own
+# dependency tracking determined are relevant to the mutated line, which
+# would almost never itself reach 100% coverage of the whole src/ tree.
+# Without --no-cov here, that unrelated coverage gate would fail (and thus
+# mark "killed") almost every mutant regardless of whether its actual
+# behavior change was caught by a real assertion -- silently invalidating
+# the whole run's results.
+pytest_add_cli_args = ["--no-cov"]
+# The old `runner = "python -m pytest -q"` key from mutmut 2.x is not read
+# by mutmut 3.x at all (it always drives pytest directly in-process) --
+# removed rather than left as dead, misleading config.

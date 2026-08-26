@@ -137,6 +137,68 @@ class TestReconciler(unittest.TestCase):
         )
         driver.destroy_runner.assert_called_once_with("runzero-vm-amd64-el-j-herbful-8e8a72")
 
+    @patch("reconciler.github_request")
+    def test_reconcile_zombie_runners_no_runners_key_skips_repo(self, mock_gh):
+        # data present but missing the "runners" key entirely (e.g. an
+        # unexpected API shape) must be treated like "nothing to do" for
+        # that repo, not raise.
+        mock_gh.return_value = {}
+        reconcile_zombie_runners(["el-j/run-zero"], access_token="token")
+        self.assertEqual(mock_gh.call_count, 1)
+
+    @patch("reconciler.github_request")
+    def test_reconcile_zombie_runners_no_zombies_found(self, mock_gh):
+        mock_gh.return_value = {
+            "runners": [
+                {"id": 20, "name": "local-runner-arm64-2", "status": "online", "busy": True},
+            ]
+        }
+        reconcile_zombie_runners(["el-j/run-zero"], access_token="token")
+        # Only the initial runners lookup should happen -- no in_progress
+        # runs lookup, no cancel, no delete, since there's nothing to reconcile.
+        self.assertEqual(mock_gh.call_count, 1)
+
+    @patch("reconciler.github_request")
+    def test_reconcile_zombie_runners_delete_failure_logs_and_continues(self, mock_gh):
+        # When the DELETE call comes back falsy (run cancellation likely
+        # still in flight), reconcile_zombie_runners must not raise -- it
+        # just retries next cycle.
+        mock_gh.side_effect = [
+            {
+                "runners": [
+                    {"id": 10, "name": "local-runner-arm64-1", "status": "offline", "busy": True},
+                ]
+            },
+            {"workflow_runs": []},
+            None,  # DELETE runner 10 fails
+        ]
+        reconcile_zombie_runners(["el-j/run-zero"], access_token="token")
+        self.assertEqual(mock_gh.call_count, 3)
+
+    @patch("reconciler.github_request")
+    def test_reconcile_idle_orphans_finds_runner_via_fallback_repo_search(self, mock_gh):
+        # Regression test: a runner's own target_repo doesn't match any key
+        # in gh_runners_by_repo (e.g. repo naming drift), but the runner's
+        # name IS found under a different tracked repo's runner list --
+        # reconcile_idle_orphans must still find that match via the
+        # fallback search across all tracked repos, and treat it as busy
+        # (so it must NOT be destroyed).
+        mock_gh.side_effect = [
+            {"runners": []},  # el-j/run-zero: no match by target_repo
+            {"runners": [{"id": 99, "name": "local-runner-arm64-el-j-run-zero-abc123", "busy": True}]},  # el-j/other
+        ]
+        driver = MagicMock()
+        runner = self._runner(age_seconds=700)
+        runner.target_repo = "el-j/nonexistent"
+        reconcile_idle_orphans(
+            ["el-j/run-zero", "el-j/other"],
+            [runner],
+            {"docker": driver},
+            access_token="token",
+            now=1_000_000.0
+        )
+        driver.destroy_runner.assert_not_called()
+
 
 if __name__ == "__main__":
     unittest.main()

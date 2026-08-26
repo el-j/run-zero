@@ -2,6 +2,51 @@
 Shell script generation templates for OrbStack Linux VM provisioning.
 """
 
+from typing import Dict, Optional
+
+
+def cache_mount_snippet(cache_mounts: Optional[Dict[str, str]]) -> str:
+    """Generate a shell snippet that bind-mounts host-backed package caches into this VM.
+
+    A Docker container shares the host's mount namespace, so `DockerDriver` can turn
+    `cache_mounts` (host path -> container path) directly into `-v host:container` bind
+    mounts. An OrbStack VM is a real, separate guest filesystem -- there's no `-v` flag --
+    but every non-isolated OrbStack VM (the kind this driver creates; `--isolated`/`--mount`
+    is a different, opt-in mode) automatically virtiofs-shares the ENTIRE host macOS
+    filesystem into the guest at a fixed path, `/mnt/mac<absolute-macOS-path>`. Confirmed
+    live (2026-08-26): a file written from inside a VM under `/mnt/mac/Users/...` appears
+    immediately, with matching ownership, at the real `/Users/...` path on the host and vice
+    versa, and `mount --bind /mnt/mac/<path> <container-style-path>` inside the guest
+    transparently round-trips writes to real host disk -- see docs/README caching section.
+    That makes a real, kernel-level bind mount possible without any extra OrbStack
+    configuration: bind the `/mnt/mac`-relative source onto the destination path so package
+    managers see an ordinary local directory that happens to persist on the real host disk
+    across every VM cloned from this golden image.
+
+    Returns "" when `cache_mounts` is empty/None (matches `if cache_mounts:` guards
+    elsewhere in the codebase -- no snippet, no bind mounts, VM behaves as before).
+    """
+    if not cache_mounts:
+        return ""
+
+    lines = [
+        "# Bind-mount host-backed package caches via OrbStack's automatic /mnt/mac host share",
+        "# (see cache_mount_snippet() in orbstack_templates.py for why this works).",
+    ]
+    for host_path, container_path in cache_mounts.items():
+        mac_path = f"/mnt/mac{host_path}"
+        lines.append(f'sudo mkdir -p "{container_path}"')
+        lines.append(
+            f'if [ -d "{mac_path}" ]; then\n'
+            f'  sudo mount --bind "{mac_path}" "{container_path}" || '
+            f'echo "Warning: cache bind mount failed for {container_path}" >&2\n'
+            f"else\n"
+            f'  echo "Warning: host cache dir {mac_path} not visible via OrbStack mac share -- '
+            f'skipping mount for {container_path}" >&2\n'
+            f"fi"
+        )
+    return "\n".join(lines)
+
 
 def docker_engine_snippet() -> str:
     """Generate shell snippet for installing full Docker daemon inside the VM."""
@@ -66,15 +111,24 @@ def registration_and_run_snippet(
     access_token: str,
     vm_name: str,
     runner_labels: str,
-    proxy_env_block: str
+    proxy_env_block: str,
+    cache_mount_block: str = ""
 ) -> str:
-    """Generate shell snippet for obtaining registration token, registering with config.sh, and executing run.sh."""
+    """Generate shell snippet for obtaining registration token, registering with config.sh, and executing run.sh.
+
+    `cache_mount_block` (from `cache_mount_snippet()`) runs after the base directory
+    chown/chmod pass and before the proxy env vars are exported, so the bind-mounted cache
+    directories are in place -- with the right ownership underneath them -- before the job's
+    own tooling starts reading/writing to them. Defaults to "" (no-op) so existing callers
+    that don't pass it behave exactly as before.
+    """
     return f"""
 sudo systemctl start docker 2>/dev/null || true
 sudo chmod 666 /var/run/docker.sock 2>/dev/null || true
 sudo mkdir -p /home/runner/go/bin /home/runner/go/pkg /opt/hostedtoolcache /home/runner/.cache
 sudo chown -R runner:runner /home/runner /opt/hostedtoolcache 2>/dev/null || true
 sudo chmod -R 777 /home/runner/go /opt/hostedtoolcache /home/runner/.cache 2>/dev/null || true
+{cache_mount_block}
 {proxy_env_block}
 cd /home/runner/actions-runner
 

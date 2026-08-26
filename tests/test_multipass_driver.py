@@ -85,6 +85,22 @@ class TestMultipassDriver(unittest.TestCase):
         self.driver.destroy_runner("runzero-mp-dead")
         self.driver.cleanup_all()
 
+    @patch("subprocess.run")
+    def test_cleanup_all_deletes_multipass_backed_runners(self, mock_run):
+        # Regression guard: cleanup_all() must only purge runners whose
+        # backend is actually "multipass" -- list_runners() itself is real
+        # here (only subprocess.run is mocked), so this exercises the real
+        # filtering loop rather than relying on list_runners() failing
+        # closed to an empty list.
+        mock_run.return_value = MagicMock(
+            stdout=json.dumps({"list": [{"name": "runzero-mp-arm64-el-j-run-zero-abc123", "state": "Running"}]}),
+            returncode=0
+        )
+        self.driver.cleanup_all()
+        delete_calls = [c for c in mock_run.call_args_list if c[0][0][:2] == ["multipass", "delete"]]
+        self.assertEqual(len(delete_calls), 1)
+        self.assertEqual(delete_calls[0][0][0], ["multipass", "delete", "--purge", "runzero-mp-arm64-el-j-run-zero-abc123"])
+
 
 if __name__ == "__main__":
     unittest.main()
