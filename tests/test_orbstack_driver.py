@@ -297,12 +297,9 @@ class TestOrbStackVMDriver(unittest.TestCase):
     def test_build_base_image_missing_script_fails_gracefully(self, mock_run):
         driver = OrbStackVMDriver(distro="ubuntu:24.04")
         driver._provision_script_path = "/nonexistent/provision-toolchain.sh"
-        # base_image_exists() check runs first (list call) before the script check.
-        mock_run.return_value = MagicMock(stdout=json.dumps([]), returncode=0)
         result = driver.build_base_image("amd64")
         self.assertFalse(result)
-        mock_run.assert_called_once()
-        self.assertEqual(mock_run.call_args[0][0][:2], ["orbctl", "list"])
+        mock_run.assert_not_called()
 
     @patch("subprocess.run")
     def test_build_base_image_skips_when_already_exists(self, mock_run):
@@ -328,44 +325,60 @@ class TestOrbStackVMDriver(unittest.TestCase):
 
     @patch("subprocess.run")
     def test_build_base_image_success(self, mock_run):
-        mock_run.side_effect = [
-            MagicMock(stdout=json.dumps([]), returncode=0),  # base_image_exists() -> False
-            MagicMock(returncode=0),  # orbctl delete -f <staging> (no-op)
-            MagicMock(returncode=0),  # orbctl create <staging>
-            MagicMock(returncode=0),  # orb provision <staging>
-            MagicMock(returncode=0),  # orbctl stop <staging> (inside _stop_vm)
-            MagicMock(
-                stdout=json.dumps([{"name": "runzero-vm-base-amd64-building", "state": "stopped"}]), returncode=0
-            ),
-            MagicMock(returncode=0),  # orbctl rename <staging> <base_name>
-        ]
-        result = self.driver.build_base_image("amd64")
-        self.assertTrue(result)
-        rename_calls = [c for c in mock_run.call_args_list if c[0][0][:2] == ["orbctl", "rename"]]
-        self.assertEqual(
-            rename_calls[0][0][0], ["orbctl", "rename", "runzero-vm-base-amd64-building", "runzero-vm-base-amd64"]
-        )
+        def fake_run(cmd, *args, **kwargs):
+            if cmd[:2] == ["orbctl", "list"]:
+                return MagicMock(stdout=json.dumps([{"name": "runzero-vm-base-amd64-building", "state": "stopped"}]), returncode=0)
+            elif cmd[:2] == ["orbctl", "rename"]:
+                return MagicMock(returncode=0)
+            return MagicMock(returncode=0, stdout=json.dumps([]))
+
+        mock_run.side_effect = fake_run
+        with patch.object(self.driver, "base_image_exists", return_value=False), \
+             patch.object(self.driver, "_stop_vm", return_value=True):
+            result = self.driver.build_base_image("amd64")
+            self.assertTrue(result)
+            rename_calls = [c for c in mock_run.call_args_list if c[0][0][:2] == ["orbctl", "rename"]]
+            self.assertEqual(len(rename_calls), 1)
+            self.assertEqual(
+                rename_calls[0][0][0], ["orbctl", "rename", "runzero-vm-base-amd64-building", "runzero-vm-base-amd64"]
+            )
 
     @patch("subprocess.run")
     def test_build_base_image_rename_failure(self, mock_run):
-        # Confirms the atomicity guarantee: if the final rename fails for any
-        # reason, build_base_image() must return False rather than silently
-        # leaving the (fully-provisioned, in this case) staging VM unpromoted
-        # -- a caller checking base_image_exists() on the final name must not
-        # be told "ready" until the rename has actually landed.
-        mock_run.side_effect = [
-            MagicMock(stdout=json.dumps([]), returncode=0),
-            MagicMock(returncode=0),
-            MagicMock(returncode=0),
-            MagicMock(returncode=0),
-            MagicMock(returncode=0),
-            MagicMock(
-                stdout=json.dumps([{"name": "runzero-vm-base-amd64-building", "state": "stopped"}]), returncode=0
-            ),
-            subprocess.CalledProcessError(1, ["orbctl", "rename"], stderr=b"destination already exists"),
-        ]
-        result = self.driver.build_base_image("amd64")
-        self.assertFalse(result)
+        # When rename fails across all retries and clone fallback also fails,
+        # build_base_image returns False.
+        mock_run.return_value = MagicMock(returncode=1, stderr=b"persistent error", stdout=json.dumps([]))
+        with patch.object(self.driver, "base_image_exists", return_value=False), \
+             patch.object(self.driver, "_stop_vm", return_value=True):
+            result = self.driver.build_base_image("amd64")
+            self.assertFalse(result)
+
+    @patch("subprocess.run")
+    def test_promote_staging_to_base_clone_fallback(self, mock_run):
+        # If orbctl rename fails with error, fallback to orbctl clone succeeds
+        def fake_run(cmd, *args, **kwargs):
+            if cmd[:2] == ["orbctl", "rename"]:
+                return MagicMock(returncode=1, stderr="rename locked")
+            elif cmd[:2] == ["orbctl", "clone"] or cmd[:2] == ["orbctl", "delete"]:
+                return MagicMock(returncode=0)
+            return MagicMock(returncode=0, stdout=json.dumps([]))
+
+        mock_run.side_effect = fake_run
+        with patch.object(self.driver, "_stop_vm", return_value=True):
+            res = self.driver._promote_staging_to_base("runzero-vm-base-amd64-building", "runzero-vm-base-amd64")
+            self.assertTrue(res)
+
+    @patch("subprocess.run")
+    def test_base_image_exists_auto_promotes_completed_staging(self, mock_run):
+        # If base image is missing but completed staging VM exists, base_image_exists auto-promotes it
+        mock_run.return_value = MagicMock(
+            stdout=json.dumps([{"name": "runzero-vm-base-amd64-building", "state": "stopped"}]),
+            returncode=0
+        )
+        with patch.object(self.driver, "_is_staging_provisioned", return_value=True), \
+             patch.object(self.driver, "_promote_staging_to_base", return_value=True) as mock_promote:
+            self.assertTrue(self.driver.base_image_exists("amd64"))
+            mock_promote.assert_called_once_with("runzero-vm-base-amd64-building", "runzero-vm-base-amd64")
 
     @patch("subprocess.run")
     def test_build_base_image_provision_timeout(self, mock_run):

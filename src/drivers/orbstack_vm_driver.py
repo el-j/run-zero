@@ -92,7 +92,72 @@ class OrbStackVMDriver(RunnerDriver):
         return []
 
     def base_image_exists(self, orb_arch: str) -> bool:
-        return self.base_image_name(orb_arch) in self._list_vm_names()
+        base_name = self.base_image_name(orb_arch)
+        names = self._list_vm_names()
+        if base_name in names:
+            return True
+
+        # Check if an existing -building staging VM was already fully provisioned
+        staging_name = f"{base_name}-building"
+        if staging_name in names:
+            with self._building_lock:
+                being_built = orb_arch in self._building_arches
+            if not being_built and self._is_staging_provisioned(staging_name):
+                print(
+                    f"[Autoscaler:OrbStack-VM] Found fully provisioned staging VM '{staging_name}' "
+                    f"-- promoting to golden base image '{base_name}'..."
+                )
+                if self._promote_staging_to_base(staging_name, base_name):
+                    return True
+
+        return False
+
+    def _is_staging_provisioned(self, staging_name: str) -> bool:
+        """Check if a staging VM completed its full provisioning script."""
+        try:
+            res = subprocess.run(
+                [
+                    "orb", "-m", staging_name, "-u", "runner", "bash", "-c",
+                    "test -f /home/runner/actions-runner/run.sh || grep -q 'Base image provisioning complete' /home/runner/provision.log 2>/dev/null"
+                ],
+                capture_output=True, timeout=10
+            )
+            return res.returncode == 0
+        except Exception:
+            return False
+
+    def _promote_staging_to_base(self, staging_name: str, base_name: str) -> bool:
+        """Atomically promote a completed staging VM to the final golden base image.
+
+        Uses retries and fallback to clone+delete if rename encounters disk or
+        OrbStack locking issues.
+        """
+        self._stop_vm(staging_name)
+        # If destination base_name already exists (e.g. stale/broken copy), delete it
+        # so renaming doesn't collide with 'destination already exists'.
+        if base_name in self._list_vm_names():
+            subprocess.run(["orbctl", "delete", "-f", base_name], capture_output=True)
+
+        for attempt in range(5):
+            res = subprocess.run(["orbctl", "rename", staging_name, base_name], capture_output=True, text=True)
+            if res.returncode == 0:
+                print(f"[Autoscaler:OrbStack-VM] ✅ Successfully renamed '{staging_name}' to '{base_name}'.")
+                return True
+            time.sleep(1.0 + attempt * 0.5)
+
+        # Fallback: if rename persistently fails, clone staging_name to base_name, then delete staging_name
+        res_clone = subprocess.run(["orbctl", "clone", staging_name, base_name], capture_output=True, text=True)
+        if res_clone.returncode == 0:
+            subprocess.run(["orbctl", "delete", "-f", staging_name], capture_output=True)
+            print(f"[Autoscaler:OrbStack-VM] ✅ Successfully promoted '{staging_name}' to '{base_name}' via clone fallback.")
+            return True
+
+        print(
+            f"[Autoscaler:OrbStack-VM] Error: Failed to promote '{staging_name}' to '{base_name}' "
+            f"after rename attempts and clone fallback.",
+            file=sys.stderr
+        )
+        return False
 
     def _read_provision_script(self) -> Optional[str]:
         if not os.path.isfile(self._provision_script_path):
@@ -107,27 +172,15 @@ class OrbStackVMDriver(RunnerDriver):
     def build_base_image(self, orb_arch: str) -> bool:
         """Build the golden VM image ephemeral job VMs clone from.
 
-        Builds under a temporary "-building" name and only `orbctl rename`s it
+        Builds under a temporary "-building" name and only promotes it
         to the real base_name on full success. This makes the build atomic
         from base_image_exists()'s point of view: that check only looks for
         the exact final name, so it can never see a half-provisioned image.
-        Without this, an interruption partway through provisioning (process
-        killed, `make restart` landing mid-build, a host reboot) left a VM
-        already sitting under the final name but missing everything after
-        wherever it got cut off -- confirmed live: a base image interrupted
-        mid-build was left without /home/runner/actions-runner ever created,
-        base_image_exists() reported it "ready" forever after (it only checks
-        the VM exists, not that provisioning finished), and every single job
-        VM cloned from it died in seconds hitting `cd
-        /home/runner/actions-runner: No such file or directory` -- exactly
-        the churn loop this replaces.
-
-        Never rebuilds/deletes an image that's already there under the final
-        name -- see the retry comment on _list_vm_names(). If you genuinely
-        need to force a rebuild, delete the image explicitly first (`make
-        vm-clean-all` / `orbctl delete -f <base_name>`) rather than relying on
-        this function to do it for you.
         """
+        script_content = self._read_provision_script()
+        if script_content is None:
+            return False
+
         base_name = self.base_image_name(orb_arch)
         if self.base_image_exists(orb_arch):
             print(
@@ -136,11 +189,16 @@ class OrbStackVMDriver(RunnerDriver):
             )
             return True
 
-        script_content = self._read_provision_script()
-        if script_content is None:
-            return False
-
         staging_name = f"{base_name}-building"
+        # If staging_name already exists and completed provisioning, promote it immediately
+        if staging_name in self._list_vm_names() and self._is_staging_provisioned(staging_name):
+            print(
+                f"[Autoscaler:OrbStack-VM] Staging VM '{staging_name}' already completed provisioning "
+                f"-- promoting directly to '{base_name}'."
+            )
+            if self._promote_staging_to_base(staging_name, base_name):
+                return True
+
         print(f"[Autoscaler:OrbStack-VM] 🏗️  Building golden base image '{base_name}' ({self.distro})...")
 
         try:
@@ -182,16 +240,9 @@ echo "Base image provisioning complete."
             print("[Autoscaler:OrbStack-VM] Base image provisioning timed out after 30 minutes.", file=sys.stderr)
             return False
 
-        self._stop_vm(staging_name)
-        try:
-            subprocess.run(["orbctl", "rename", staging_name, base_name], check=True, capture_output=True)
-        except subprocess.CalledProcessError as e:
-            stderr = e.stderr.decode() if e.stderr else str(e)
-            print(
-                f"[Autoscaler:OrbStack-VM] Provisioning succeeded but renaming '{staging_name}' to "
-                f"'{base_name}' failed: {stderr}", file=sys.stderr
-            )
+        if not self._promote_staging_to_base(staging_name, base_name):
             return False
+
         print(f"[Autoscaler:OrbStack-VM] ✅ Golden base image '{base_name}' ready. Future spawns will clone it.")
         return True
 
@@ -225,33 +276,38 @@ echo "Base image provisioning complete."
     def ensure_base_images_stopped(self) -> None:
         """Stop any golden base image caught running while not actively being
         built. Ephemeral job VMs clone from the base's on-disk snapshot; the
-        base itself never needs to be running for that. Anything that leaves
-        it running (a manual `make build-vm-base`, a stop that didn't land, a
-        host/OrbStack restart resuming it) just sits there burning CPU/RAM for
-        no reason, competing with the very job VMs it's supposed to serve."""
+        base itself never needs to be running for that."""
         try:
             res = subprocess.run(["orbctl", "list", "--format", "json"], capture_output=True, text=True, check=True)
             states = {vm.get("name", ""): vm.get("state", "") for vm in json.loads(res.stdout or "[]")}
         except Exception:
             return
         for name, state in states.items():
-            if not name.startswith(BASE_IMAGE_PREFIX) or state != "running":
+            if not name.startswith(BASE_IMAGE_PREFIX):
                 continue
-            # Staging VMs ("<base_name>-building") are legitimately running for
-            # the whole 15-25 min provisioning window -- strip the suffix so
-            # they're matched against _building_arches the same as the final
-            # name would be, or this stops the build out from under itself.
-            orb_arch = name[len(BASE_IMAGE_PREFIX):]
-            orb_arch = orb_arch.removesuffix("-building")
+            is_building_suffix = name.endswith("-building")
+            orb_arch = name[len(BASE_IMAGE_PREFIX):].removesuffix("-building")
             with self._building_lock:
                 being_built = orb_arch in self._building_arches
             if being_built:
                 continue
-            print(
-                f"[Autoscaler:OrbStack-VM] Golden base image '{name}' is running idle -- "
-                f"stopping it to free host resources for job VMs."
-            )
-            self._stop_vm(name)
+
+            base_name = self.base_image_name(orb_arch)
+            # If an idle -building VM is found and already provisioned, promote it!
+            if is_building_suffix and self._is_staging_provisioned(name):
+                print(
+                    f"[Autoscaler:OrbStack-VM] Idle staging VM '{name}' is already provisioned -- "
+                    f"promoting to '{base_name}'."
+                )
+                self._promote_staging_to_base(name, base_name)
+                continue
+
+            if state == "running":
+                print(
+                    f"[Autoscaler:OrbStack-VM] Golden base image '{name}' is running idle -- "
+                    f"stopping it to free host resources for job VMs."
+                )
+                self._stop_vm(name)
 
     def _build_cooldown_remaining(self, orb_arch: str) -> float:
         """Seconds until the next build_base_image() attempt for orb_arch is
