@@ -13,7 +13,15 @@ from typing import Any, Dict, List, Optional
 
 
 class DashboardState:
+    """Thread-safe, process-wide singleton holding fleet/telemetry state and broadcasting it to SSE clients.
+
+    A single instance (`dashboard_state`, defined at the bottom of this module) is imported and
+    mutated by both `autoscaler.py`'s poll loop and the dashboard HTTP handlers -- every public
+    method that reads/writes shared state takes `self._lock`.
+    """
+
     def __init__(self, max_log_lines: int = 500):
+        """Initialize state to its startup defaults; the real values arrive via `update_fleet()` on the first poll."""
         self._lock = threading.Lock()
         self.max_log_lines = max_log_lines
         self.log_buffer: collections.deque = collections.deque(maxlen=max_log_lines)
@@ -70,6 +78,7 @@ class DashboardState:
 
     @property
     def routing_stats(self) -> Dict[str, Any]:
+        """Return the Docker-vs-VM job routing counters and per-trigger breakdown as a plain dict."""
         return {
             "docker_jobs": self.routing_docker_jobs,
             "vm_jobs": self.routing_vm_jobs,
@@ -133,6 +142,12 @@ class DashboardState:
         default_engine: str = "docker",
         version: str = "0.1.0"
     ) -> None:
+        """Replace the fleet/config snapshot with this poll's data, refresh cache sizes, and broadcast to SSE clients.
+
+        `runners` entries may be `RunnerInfo` (or anything with `.to_dict()`), plain dicts, or
+        arbitrary objects (stringified as a fallback); each gets a computed `duration` field
+        added based on its `created_at`, or "active" if that isn't known.
+        """
         with self._lock:
             self.version = version
             self.default_engine = default_engine
@@ -171,6 +186,11 @@ class DashboardState:
         self.broadcast_state()
 
     def record_routing_decision(self, engine: str, trigger: Optional[str] = None) -> None:
+        """Increment the Docker-vs-VM job counter for `engine`, and classify `trigger` into a bucket if it's a VM job.
+
+        `trigger` is matched by substring against a fixed set of known reasons (service containers,
+        Docker-in-Docker, browser/e2e testing, systemd) and falls into "custom_label" otherwise.
+        """
         with self._lock:
             if "vm" in engine.lower():
                 self.routing_vm_jobs += 1

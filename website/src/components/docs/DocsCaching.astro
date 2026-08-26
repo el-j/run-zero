@@ -42,6 +42,40 @@
         <td><code>:49502</code></td>
         <td><code>http://localhost:49502</code></td>
       </tr>
+      <tr>
+        <td><strong><a href="https://devpi.net/" target="_blank" rel="noopener">devpi</a></strong></td>
+        <td>Python pip &amp; uv packages (PyPI)</td>
+        <td><code>:49507</code></td>
+        <td><a href="http://localhost:49507/root/pypi/+simple/" target="_blank" rel="noopener">http://localhost:49507/root/pypi/+simple/</a></td>
+      </tr>
+      <tr>
+        <td><strong><a href="https://kellnr.io/" target="_blank" rel="noopener">kellnr</a></strong></td>
+        <td>Cargo / Rust crates (crates.io)</td>
+        <td><code>:49506</code></td>
+        <td><code>http://localhost:49506</code></td>
+      </tr>
     </tbody>
   </table>
 </div>
+
+<p>
+  Cargo has no single "index URL" environment variable the way pip/uv (<code>PIP_INDEX_URL</code>/<code>UV_INDEX_URL</code>)
+  and Go (<code>GOPROXY</code>) do -- pointing it at kellnr requires a real <code>~/.cargo/config.toml</code>
+  source-replacement block, written automatically for both the Docker and OrbStack VM engines. pip also refuses a
+  plain-HTTP index on any host other than <code>localhost</code>/<code>127.0.0.1</code> unless it's explicitly
+  trusted via <code>PIP_TRUSTED_HOST</code>, which both engines set automatically alongside <code>PIP_INDEX_URL</code>
+  wherever the index isn't reached via <code>localhost</code>.
+</p>
+
+<h2 id="orbstack-vm-disk-caching">OrbStack VM Local Disk Caching</h2>
+<p>
+  The proxies above cache package <em>downloads</em> over the network. Package managers also keep a local,
+  already-extracted disk cache (<code>~/.npm</code>, <code>~/.cache/pip</code>, <code>~/go/pkg</code>,
+  <code>~/.cargo/registry</code>, etc.), which for the Docker engine is a plain <code>-v host:container</code>
+  bind mount. An OrbStack VM is a real, separate guest filesystem with no such flag, but every non-isolated
+  OrbStack VM automatically virtiofs-shares the entire host macOS filesystem into the guest at a fixed path,
+  <code>/mnt/mac&lt;absolute-macOS-path&gt;</code>. RunZero's OrbStack driver uses this to bind-mount each
+  host-side cache directory onto its container-style destination path inside the VM before the job runs, so
+  cache data written by one ephemeral VM is really on host disk and visible to the next VM cloned for the same
+  architecture.
+</p>

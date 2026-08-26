@@ -13,9 +13,9 @@ We use a standard branching strategy to ensure that only tested, release-ready c
    ▲
    │  (Release PR / Merge)
   develop (Active Integration & Staging)
-   ▲             ▲
-   │             │
-feat/my-feature  fix/bug-fix
+   ▲             ▲             ▲
+   │             │             │
+feat/my-feature  fix/bug-fix  chore/maintenance-task
 ```
 
 ### 1. `main` (Production Branch)
@@ -26,14 +26,15 @@ feat/my-feature  fix/bug-fix
 - Active integration branch for upcoming releases.
 - All feature and fix PRs should target `develop`.
 
-### 3. Topic Branches (`feat/*`, `fix/*`, `docs/*`)
+### 3. Topic Branches (`feat/*`, `fix/*`, `docs/*`, `chore/*`)
 - Create feature branches off `develop`:
   ```bash
   git checkout develop
   git pull origin develop
   git checkout -b feat/your-feature-name
   ```
-- Use conventional commits format (`feat: ...`, `fix: ...`, `docs: ...`, `refactor: ...`, `test: ...`).
+- Use conventional commits format (`feat: ...`, `fix: ...`, `docs: ...`, `refactor: ...`, `test: ...`, `chore: ...`).
+- `chore/*` is for maintenance work that doesn't fit cleanly under `feat`/`fix`/`docs` alone -- audits, dependency bumps, CI/tooling changes, and multi-part remediation branches that mix small fixes, docs, and tests. Prefer `feat/*` or `fix/*` when a branch is genuinely single-purpose; reach for `chore/*` when it's legitimately a grab-bag.
 
 ---
 
@@ -56,6 +57,14 @@ feat/my-feature  fix/bug-fix
    make test-suite     # Flake8 linter + Mypy type check + Pytest coverage
    make mutation-test  # Mutmut mutation testing
    ```
+
+   The suite has three layers: white-box unit tests (most of `tests/`, everything mocked),
+   blackbox process-boundary tests (`tests/test_blackbox_*.py` — real HTTP/subprocess calls
+   against run-zero's own dashboard/bridge/Makefile surfaces, no real Docker/VM/GitHub needed),
+   and true end-to-end tests (`tests/test_e2e_docker.py` — a real, unmocked Docker container
+   lifecycle). See [`E2E_TESTING.md`](E2E_TESTING.md) for the honest boundary between what's
+   automated in CI and what requires a human running a manual runbook locally (OrbStack VM,
+   WSL2, Multipass).
 
 4. **Astro Website Development**:
    ```bash

@@ -1,7 +1,7 @@
 # ==============================================================================
 # Local GitHub Actions Runner & Autoscaler - Makefile (OrbStack / Docker)
 # Multi-Architecture Support: Apple Silicon (ARM64) & Intel/AMD (AMD64 / x86_64)
-# Persistent Package Caching + Proxy Registries (Verdaccio, Athens, Docker Mirror)
+# Persistent Package Caching + Proxy Registries (Verdaccio, Athens, Docker Mirror, devpi, kellnr)
 # ==============================================================================
 
 .DEFAULT_GOAL := help
@@ -99,8 +99,8 @@ info: ## Show total disk usage of everything run-zero manages: host cache dir, p
 		echo "  (not created yet)"; \
 	fi
 	@echo ""
-	@echo "$(BOLD)$(CYAN)=== Proxy Cache Volumes (Verdaccio/Athens/Docker Mirror/apt-cacher-ng) ===$(RESET)"
-	@for v in verdaccio-storage athens-storage docker-mirror-storage apt-cacher-storage; do \
+	@echo "$(BOLD)$(CYAN)=== Proxy Cache Volumes (Verdaccio/Athens/Docker Mirror/apt-cacher-ng/devpi/kellnr) ===$(RESET)"
+	@for v in verdaccio-storage athens-storage docker-mirror-storage apt-cacher-storage devpi-storage kellnr-storage; do \
 		vol=$(call find_volume,$$v); \
 		if [ -n "$$vol" ]; then \
 			size=$$(docker run --rm -v "$$vol":/data:ro alpine du -sh /data 2>/dev/null | cut -f1); \
@@ -122,7 +122,7 @@ info: ## Show total disk usage of everything run-zero manages: host cache dir, p
 	@echo ""
 
 .PHONY: clean-caches
-clean-caches: clean-cache clean-verdaccio clean-athens clean-docker-mirror clean-apt-cacher ## Clear EVERY cache run-zero manages: host cache dir + all proxy volumes (does NOT touch runner images or the VM base image -- see clean-images/vm-clean)
+clean-caches: clean-cache clean-verdaccio clean-athens clean-docker-mirror clean-apt-cacher clean-devpi clean-kellnr ## Clear EVERY cache run-zero manages: host cache dir + all proxy volumes (does NOT touch runner images or the VM base image -- see clean-images/vm-clean)
 	@echo "$(GREEN)All run-zero caches cleared.$(RESET)"
 
 .PHONY: clean-npm clean-yarn clean-pnpm clean-pip clean-uv clean-go-mod clean-go-build clean-cargo-registry clean-toolcache
@@ -171,6 +171,18 @@ clean-apt-cacher: ## Wipe the apt-cacher-ng (.deb package proxy) cache volume
 	@docker compose rm -f apt-cacher >/dev/null 2>&1 || true
 	@vol=$(call find_volume,apt-cacher-storage); [ -n "$$vol" ] && docker volume rm "$$vol" >/dev/null 2>&1 || true
 	@echo "$(GREEN)apt-cacher-ng cache cleared.$(RESET) Run 'make start' to recreate it."
+
+.PHONY: clean-devpi clean-kellnr
+clean-devpi: ## Wipe the devpi (pip/uv PyPI proxy) cache volume
+	@docker compose stop devpi >/dev/null 2>&1 || true
+	@docker compose rm -f devpi >/dev/null 2>&1 || true
+	@vol=$(call find_volume,devpi-storage); [ -n "$$vol" ] && docker volume rm "$$vol" >/dev/null 2>&1 || true
+	@echo "$(GREEN)devpi cache cleared.$(RESET) Run 'make start' to recreate it."
+clean-kellnr: ## Wipe the kellnr (Cargo/crates.io proxy) cache volume
+	@docker compose stop kellnr >/dev/null 2>&1 || true
+	@docker compose rm -f kellnr >/dev/null 2>&1 || true
+	@vol=$(call find_volume,kellnr-storage); [ -n "$$vol" ] && docker volume rm "$$vol" >/dev/null 2>&1 || true
+	@echo "$(GREEN)kellnr cache cleared.$(RESET) Run 'make start' to recreate it."
 
 .PHONY: clean-images
 clean-images: ## Remove the built runner/autoscaler images (local-github-runner:*, local-runner-autoscaler:*) -- forces a full rebuild next time
@@ -241,6 +253,8 @@ start: check-env init-cache bridge-start ## Start containerized Autoscaler + Hos
 	@echo "  • 🐧 APT Cacher:     $(BOLD)http://localhost:49503/acng-report.html$(RESET) (Run $(BOLD)make apt-cacher-ui$(RESET))"
 	@echo "  • 🐹 Athens Go:      $(BOLD)http://localhost:49500$(RESET)"
 	@echo "  • 🐳 Docker Mirror:  $(BOLD)http://localhost:49502$(RESET)"
+	@echo "  • 🐍 devpi (pip/uv): $(BOLD)http://localhost:49507/root/pypi/+simple/$(RESET)"
+	@echo "  • 🦀 kellnr (Cargo): $(BOLD)http://localhost:49506$(RESET)"
 	@echo "Use $(BOLD)make logs$(RESET) to stream logs or $(BOLD)make status$(RESET) to see active runners."
 
 up: start
@@ -285,8 +299,8 @@ status: bridge-status ## Show running Autoscaler, VM Bridge, Proxies, and active
 
 .PHONY: start-host stop-host
 start-host: check-env init-cache bridge-start ## Start Autoscaler natively on host Python (without containerizing autoscaler)
-	@echo "$(CYAN)Starting caching proxy registries (Verdaccio, Athens, Docker mirror, apt-cacher)...$(RESET)"
-	@docker compose up -d verdaccio athens docker-mirror apt-cacher
+	@echo "$(CYAN)Starting caching proxy registries (Verdaccio, Athens, Docker mirror, apt-cacher, devpi, kellnr)...$(RESET)"
+	@docker compose up -d verdaccio athens docker-mirror apt-cacher devpi kellnr
 	@if [ -f $(AUTOSCALER_PID_FILE) ] && kill -0 "$$(cat $(AUTOSCALER_PID_FILE))" 2>/dev/null; then \
 		echo "$(YELLOW)Autoscaler already running on host (PID $$(cat $(AUTOSCALER_PID_FILE))).$(RESET)"; \
 	else \
@@ -350,19 +364,23 @@ vm-rebuild-base: build-vm-base ## Alias for build-vm-base -- use after changing 
 test-suite: ## Run test suite with pytest, mypy type checking, and flake8 linter
 	@echo "$(CYAN)Running Flake8, Mypy, and Pytest coverage suite...$(RESET)"
 	@docker run --rm -v "$$(pwd):/app" -w /app python:3.11-slim bash -c "\
+		apt-get update -qq && apt-get install -y -qq --no-install-recommends make > /dev/null && \
 		pip install --quiet pytest pytest-cov mypy flake8 && \
 		flake8 src/ tests/ --max-line-length=160 --extend-ignore=E501,W503,E402 && \
-		MYPYPATH=src mypy src/drivers/ src/autoscaler.py --ignore-missing-imports && \
+		MYPYPATH=src mypy src/ --ignore-missing-imports && \
 		PYTHONPATH=src pytest --cov=src --cov-report=term-missing tests/"
 	@echo "$(GREEN)All tests passed with 0 warnings!$(RESET)"
 
 .PHONY: mutation-test
-mutation-test: ## Run mutation testing suite (mutmut)
+mutation-test: ## Run mutation testing suite (mutmut) -- fails the build on surviving mutants
 	@echo "$(CYAN)Running Mutmut Mutation Testing Suite...$(RESET)"
 	@docker run --rm -v "$$(pwd):/app" -w /app python:3.11-slim bash -c "\
-		pip install --quiet pytest mutmut && \
-		PYTHONPATH=src mutmut run || true && \
-		mutmut results"
+		apt-get update -qq && apt-get install -y -qq --no-install-recommends make > /dev/null && \
+		pip install --quiet pytest pytest-cov mutmut && \
+		PYTHONPATH=src mutmut run; \
+		status=\$$?; \
+		mutmut results; \
+		exit \$$status"
 
 .PHONY: test
 test: ## Run local unit tests directly

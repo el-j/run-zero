@@ -13,6 +13,11 @@ BASE_VERSION = "0.0.1"
 
 
 def get_version() -> str:
+    """Resolve the running version: RUNZERO_VERSION env var if set, else derived from the git branch.
+
+    Falls back to bare BASE_VERSION if git isn't available or any git call fails (e.g. not a repo,
+    such as inside a built container image without a .git directory).
+    """
     # Check if RUNZERO_VERSION is explicitly passed (e.g., in CI or Docker build)
     env_ver = os.environ.get("RUNZERO_VERSION")
     if env_ver:
@@ -47,5 +52,5 @@ def get_version() -> str:
 
 __version__ = get_version()
 
-if __name__ == "__main__":
+if __name__ == "__main__":  # pragma: no cover -- CLI entrypoint guard, only runs via `python version.py`
     print(__version__)
