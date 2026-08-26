@@ -76,6 +76,22 @@ class TestWSL2Driver(unittest.TestCase):
         mock_run.side_effect = subprocess.CalledProcessError(1, "wsl.exe", stderr=b"Terminate error")
         self.assertFalse(self.driver.destroy_runner("runzero-wsl-dead"))
 
+    @patch("subprocess.run")
+    def test_cleanup_all_terminates_wsl2_backed_runners(self, mock_run):
+        # Regression guard: cleanup_all() must only terminate runners whose
+        # backend is actually "wsl2" -- list_runners() itself is real here
+        # (only subprocess.run is mocked), so this exercises the real
+        # filtering loop rather than relying on list_runners() failing
+        # closed to an empty list.
+        mock_run.return_value = MagicMock(
+            stdout="runzero-wsl-el-j-run-zero-abc123\n",
+            returncode=0
+        )
+        self.driver.cleanup_all()
+        terminate_calls = [c for c in mock_run.call_args_list if c[0][0][:2] == ["wsl", "--terminate"]]
+        self.assertEqual(len(terminate_calls), 1)
+        self.assertEqual(terminate_calls[0][0][0], ["wsl", "--terminate", "runzero-wsl-el-j-run-zero-abc123"])
+
 
 if __name__ == "__main__":
     unittest.main()

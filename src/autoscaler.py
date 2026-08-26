@@ -297,5 +297,5 @@ def main():
     log_print("[Autoscaler] Shutdown complete.")
 
 
-if __name__ == "__main__":
+if __name__ == "__main__":  # pragma: no cover -- CLI entrypoint guard, only runs via `python autoscaler.py`
     main()

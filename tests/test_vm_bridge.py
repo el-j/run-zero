@@ -1,10 +1,13 @@
 import json
+import signal
 import threading
 import time
 import unittest
+import urllib.error
 import urllib.request
 from unittest.mock import MagicMock, patch
 
+import vm_bridge
 from drivers import RunnerInfo
 from drivers.bridge_driver import BridgeVMDriver
 from vm_bridge import VMBridgeServer
@@ -196,6 +199,246 @@ class TestVMBridge(unittest.TestCase):
             self.assertEqual(data.get("status"), "success")
             mock_driver.cleanup_all.assert_called_once()
 
+    def test_options_preflight(self):
+        req = urllib.request.Request(f"{self.base_url}/api/drivers/orbstack-vm/spawn", method="OPTIONS")
+        with urllib.request.urlopen(req, timeout=3.0) as resp:
+            self.assertEqual(resp.status, 204)
+            self.assertEqual(resp.headers.get("Access-Control-Allow-Origin"), "*")
+
+    def test_unknown_get_path_returns_404(self):
+        req = urllib.request.Request(f"{self.base_url}/nonexistent")
+        with self.assertRaises(urllib.error.HTTPError) as cm:
+            urllib.request.urlopen(req, timeout=3.0)
+        self.assertEqual(cm.exception.code, 404)
+
+    def test_unknown_post_path_returns_404(self):
+        req = urllib.request.Request(f"{self.base_url}/nonexistent", data=b"{}", method="POST")
+        with self.assertRaises(urllib.error.HTTPError) as cm:
+            urllib.request.urlopen(req, timeout=3.0)
+        self.assertEqual(cm.exception.code, 404)
+
+    def test_malformed_json_body_defaults_to_empty(self):
+        # _read_json() must swallow a JSONDecodeError and behave as if no
+        # body was sent, not raise / 500.
+        req = urllib.request.Request(
+            f"{self.base_url}/api/drivers/orbstack-vm/cleanup",
+            data=b"not valid json{{{",
+            headers={"Content-Type": "application/json"},
+            method="POST"
+        )
+        with patch("vm_bridge.get_driver", return_value=MagicMock()), urllib.request.urlopen(req, timeout=3.0) as resp:
+            data = json.loads(resp.read().decode("utf-8"))
+            self.assertEqual(data.get("status"), "success")
+
+    @patch("vm_bridge.get_driver")
+    def test_get_runners_endpoint_invalid_driver_returns_500(self, mock_get_driver):
+        mock_get_driver.side_effect = ValueError("Unknown runner backend driver: 'bogus'")
+        req = urllib.request.Request(f"{self.base_url}/api/drivers/bogus/runners")
+        with self.assertRaises(urllib.error.HTTPError) as cm:
+            urllib.request.urlopen(req, timeout=3.0)
+        self.assertEqual(cm.exception.code, 500)
+
+    @patch("vm_bridge.get_driver")
+    def test_post_invalid_driver_returns_400(self, mock_get_driver):
+        mock_get_driver.side_effect = ValueError("Unknown runner backend driver: 'bogus'")
+        req = urllib.request.Request(
+            f"{self.base_url}/api/drivers/bogus/spawn",
+            data=b"{}", headers={"Content-Type": "application/json"}, method="POST"
+        )
+        with self.assertRaises(urllib.error.HTTPError) as cm:
+            urllib.request.urlopen(req, timeout=3.0)
+        self.assertEqual(cm.exception.code, 400)
+
+    @patch("vm_bridge.get_driver")
+    def test_spawn_endpoint_driver_exception_returns_500(self, mock_get_driver):
+        mock_driver = MagicMock()
+        mock_driver.spawn_runner.side_effect = RuntimeError("boom")
+        mock_get_driver.return_value = mock_driver
+        req = urllib.request.Request(
+            f"{self.base_url}/api/drivers/orbstack-vm/spawn",
+            data=b"{}", headers={"Content-Type": "application/json"}, method="POST"
+        )
+        with self.assertRaises(urllib.error.HTTPError) as cm:
+            urllib.request.urlopen(req, timeout=3.0)
+        self.assertEqual(cm.exception.code, 500)
+
+    @patch("vm_bridge.get_driver")
+    def test_prune_endpoint_driver_exception_returns_500(self, mock_get_driver):
+        mock_driver = MagicMock()
+        mock_driver.prune_exited.side_effect = RuntimeError("boom")
+        mock_get_driver.return_value = mock_driver
+        req = urllib.request.Request(
+            f"{self.base_url}/api/drivers/orbstack-vm/prune",
+            data=b"{}", headers={"Content-Type": "application/json"}, method="POST"
+        )
+        with self.assertRaises(urllib.error.HTTPError) as cm:
+            urllib.request.urlopen(req, timeout=3.0)
+        self.assertEqual(cm.exception.code, 500)
+
+    @patch("vm_bridge.get_driver")
+    def test_destroy_endpoint_missing_runner_id_returns_400(self, mock_get_driver):
+        mock_get_driver.return_value = MagicMock()
+        req = urllib.request.Request(
+            f"{self.base_url}/api/drivers/orbstack-vm/destroy",
+            data=b"{}", headers={"Content-Type": "application/json"}, method="POST"
+        )
+        with self.assertRaises(urllib.error.HTTPError) as cm:
+            urllib.request.urlopen(req, timeout=3.0)
+        self.assertEqual(cm.exception.code, 400)
+
+    @patch("vm_bridge.get_driver")
+    def test_destroy_endpoint_driver_exception_returns_500(self, mock_get_driver):
+        mock_driver = MagicMock()
+        mock_driver.destroy_runner.side_effect = RuntimeError("boom")
+        mock_get_driver.return_value = mock_driver
+        payload = json.dumps({"runner_id": "vm-1"}).encode("utf-8")
+        req = urllib.request.Request(
+            f"{self.base_url}/api/drivers/orbstack-vm/destroy",
+            data=payload, headers={"Content-Type": "application/json"}, method="POST"
+        )
+        with self.assertRaises(urllib.error.HTTPError) as cm:
+            urllib.request.urlopen(req, timeout=3.0)
+        self.assertEqual(cm.exception.code, 500)
+
+    @patch("vm_bridge.get_driver")
+    def test_cleanup_endpoint_driver_exception_returns_500(self, mock_get_driver):
+        mock_driver = MagicMock()
+        mock_driver.cleanup_all.side_effect = RuntimeError("boom")
+        mock_get_driver.return_value = mock_driver
+        req = urllib.request.Request(
+            f"{self.base_url}/api/drivers/orbstack-vm/cleanup",
+            data=b"{}", headers={"Content-Type": "application/json"}, method="POST"
+        )
+        with self.assertRaises(urllib.error.HTTPError) as cm:
+            urllib.request.urlopen(req, timeout=3.0)
+        self.assertEqual(cm.exception.code, 500)
+
+    @patch("vm_bridge.get_driver")
+    def test_ensure_base_stopped_endpoint_success(self, mock_get_driver):
+        mock_driver = MagicMock()
+        mock_get_driver.return_value = mock_driver
+        req = urllib.request.Request(
+            f"{self.base_url}/api/drivers/orbstack-vm/ensure-base-stopped",
+            data=b"{}", headers={"Content-Type": "application/json"}, method="POST"
+        )
+        with urllib.request.urlopen(req, timeout=3.0) as resp:
+            data = json.loads(resp.read().decode("utf-8"))
+            self.assertEqual(data.get("status"), "success")
+            mock_driver.ensure_base_images_stopped.assert_called_once()
+
+    @patch("vm_bridge.get_driver")
+    def test_ensure_base_stopped_endpoint_exception_returns_500(self, mock_get_driver):
+        mock_driver = MagicMock()
+        mock_driver.ensure_base_images_stopped.side_effect = RuntimeError("boom")
+        mock_get_driver.return_value = mock_driver
+        req = urllib.request.Request(
+            f"{self.base_url}/api/drivers/orbstack-vm/ensure-base-stopped",
+            data=b"{}", headers={"Content-Type": "application/json"}, method="POST"
+        )
+        with self.assertRaises(urllib.error.HTTPError) as cm:
+            urllib.request.urlopen(req, timeout=3.0)
+        self.assertEqual(cm.exception.code, 500)
+
+    @patch("vm_bridge.get_driver")
+    def test_build_base_endpoint_unsupported_driver_returns_400(self, mock_get_driver):
+        # A driver without build_base_image (e.g. DockerDriver) must yield a
+        # clean 400, not a 500/attribute error.
+        mock_driver = MagicMock()
+        del mock_driver.build_base_image
+        mock_get_driver.return_value = mock_driver
+        req = urllib.request.Request(
+            f"{self.base_url}/api/drivers/docker/build-base",
+            data=b"{}", headers={"Content-Type": "application/json"}, method="POST"
+        )
+        with self.assertRaises(urllib.error.HTTPError) as cm:
+            urllib.request.urlopen(req, timeout=3.0)
+        self.assertEqual(cm.exception.code, 400)
+
+    @patch("vm_bridge.get_driver")
+    def test_build_base_endpoint_exception_returns_500(self, mock_get_driver):
+        mock_driver = MagicMock()
+        mock_driver.build_base_image.side_effect = RuntimeError("boom")
+        mock_get_driver.return_value = mock_driver
+        req = urllib.request.Request(
+            f"{self.base_url}/api/drivers/orbstack-vm/build-base",
+            data=b"{}", headers={"Content-Type": "application/json"}, method="POST"
+        )
+        with self.assertRaises(urllib.error.HTTPError) as cm:
+            urllib.request.urlopen(req, timeout=3.0)
+        self.assertEqual(cm.exception.code, 500)
+
+    def test_debug_log_message_does_not_crash(self):
+        # RUNZERO_DEBUG=true switches log_message() to actually write to
+        # stderr -- must not error, and every request triggers it via the
+        # base handler's own request logging.
+        with patch.dict("os.environ", {"RUNZERO_DEBUG": "true"}), \
+             patch("vm_bridge.get_available_drivers", return_value={}):
+            req = urllib.request.Request(f"{self.base_url}/health")
+            with urllib.request.urlopen(req, timeout=3.0) as resp:
+                self.assertEqual(resp.status, 200)
+
+
+class TestVMBridgeServerLifecycle(unittest.TestCase):
+    @patch("vm_bridge.ThreadingHTTPServer")
+    def test_start_blocking_stops_cleanly_on_keyboard_interrupt(self, mock_server_cls):
+        mock_httpd = MagicMock()
+        mock_httpd.serve_forever.side_effect = KeyboardInterrupt()
+        mock_server_cls.return_value = mock_httpd
+
+        server = VMBridgeServer(host="127.0.0.1", port=0)
+        server.start(blocking=True)
+
+        mock_httpd.shutdown.assert_called_once()
+        mock_httpd.server_close.assert_called_once()
+
+    def test_stop_joins_still_alive_serving_thread(self):
+        # stop()'s thread.join() only fires if the serving thread is still
+        # alive at the moment shutdown() returns -- in real runs that race
+        # usually loses (the thread has already unwound), so it's exercised
+        # directly here with a fake thread pinned to is_alive()=True.
+        server = VMBridgeServer(host="127.0.0.1", port=0)
+        server.httpd = MagicMock()
+        server._is_running = True
+        server.thread = MagicMock()
+        server.thread.is_alive.return_value = True
+
+        server.stop()
+
+        server.thread.join.assert_called_once_with(timeout=2.0)
+
+    @patch("vm_bridge.signal.signal")
+    @patch("vm_bridge.VMBridgeServer")
+    def test_main_starts_server_and_signal_handler_stops_it(self, mock_server_cls, mock_signal):
+        mock_server = MagicMock()
+        mock_server_cls.return_value = mock_server
+        captured_handlers = {}
+
+        def capture(sig, handler):
+            captured_handlers[sig] = handler
+
+        mock_signal.side_effect = capture
+
+        with patch("vm_bridge.sys.exit") as mock_exit:
+            vm_bridge.main()
+
+            mock_server.start.assert_called_once_with(blocking=True)
+            self.assertIn(signal.SIGINT, captured_handlers)
+            self.assertIn(signal.SIGTERM, captured_handlers)
+
+            captured_handlers[signal.SIGINT](signal.SIGINT, None)
+            mock_server.stop.assert_called_once()
+            mock_exit.assert_called_once_with(0)
+
+    def test_send_json_swallows_broken_pipe(self):
+        # A client that disconnects mid-response must not blow up the
+        # handler -- _send_json() swallows BrokenPipeError/ConnectionResetError.
+        mock_self = MagicMock()
+        mock_self.wfile.write.side_effect = BrokenPipeError()
+        # Calling the unbound method directly against a mock avoids needing
+        # a real socket/connection for this handler instance.
+        vm_bridge.VMBridgeRequestHandler._send_json(mock_self, 200, {"status": "ok"})
+        mock_self.wfile.write.assert_called_once()
+
 
 class TestBridgeVMDriver(unittest.TestCase):
     def setUp(self):
@@ -258,3 +501,64 @@ class TestBridgeVMDriver(unittest.TestCase):
         self.assertTrue(self.driver.destroy_runner("vm-123"))
         self.driver.cleanup_all()
         mock_driver.cleanup_all.assert_called_once()
+
+
+class TestBridgeVMDriverDirectUnit(unittest.TestCase):
+    """Unit tests for BridgeVMDriver methods with `_request` mocked directly
+    (no real HTTP server involved), covering methods the e2e-style
+    TestBridgeVMDriver above doesn't exercise on its own."""
+
+    def setUp(self):
+        self.driver = BridgeVMDriver("orbstack-vm", bridge_url="http://127.0.0.1:1")
+
+    @patch.object(BridgeVMDriver, "_request")
+    def test_spawn_runner_returns_none_on_bridge_failure(self, mock_request):
+        mock_request.return_value = {"error": "connection refused"}
+        self.assertIsNone(self.driver.spawn_runner(repo="owner/repo", arch="arm64"))
+
+    @patch.object(BridgeVMDriver, "_request")
+    def test_destroy_runner_true(self, mock_request):
+        mock_request.return_value = {"destroyed": True}
+        self.assertTrue(self.driver.destroy_runner("vm-123"))
+        mock_request.assert_called_once_with(
+            "POST", "/api/drivers/orbstack-vm/destroy", data={"runner_id": "vm-123"}, timeout=30.0
+        )
+
+    @patch.object(BridgeVMDriver, "_request")
+    def test_destroy_runner_false_on_bridge_failure(self, mock_request):
+        mock_request.return_value = {"error": "connection refused"}
+        self.assertFalse(self.driver.destroy_runner("vm-123"))
+
+    @patch.object(BridgeVMDriver, "_request")
+    def test_prune_exited_posts_serialized_runners(self, mock_request):
+        mock_request.return_value = {}
+        runners = [
+            RunnerInfo(id="vm-1", name="vm-1", status="stopped", state="exited", target_repo="o/r", target_arch="arm64", backend="orbstack-vm")
+        ]
+        self.driver.prune_exited(runners)
+        mock_request.assert_called_once()
+        args, kwargs = mock_request.call_args
+        self.assertEqual(args[0], "POST")
+        self.assertEqual(args[1], "/api/drivers/orbstack-vm/prune")
+        self.assertEqual(len(kwargs["data"]["runners"]), 1)
+
+    @patch.object(BridgeVMDriver, "_request")
+    def test_ensure_base_images_stopped_posts_to_bridge(self, mock_request):
+        mock_request.return_value = {}
+        self.driver.ensure_base_images_stopped()
+        mock_request.assert_called_once_with(
+            "POST", "/api/drivers/orbstack-vm/ensure-base-stopped", timeout=15.0
+        )
+
+    @patch.object(BridgeVMDriver, "_request")
+    def test_build_base_image_true(self, mock_request):
+        mock_request.return_value = {"built": True}
+        self.assertTrue(self.driver.build_base_image("amd64"))
+        mock_request.assert_called_once_with(
+            "POST", "/api/drivers/orbstack-vm/build-base", data={"arch": "amd64"}, timeout=300.0
+        )
+
+    @patch.object(BridgeVMDriver, "_request")
+    def test_build_base_image_false_on_bridge_failure(self, mock_request):
+        mock_request.return_value = {"error": "timeout"}
+        self.assertFalse(self.driver.build_base_image("amd64"))

@@ -52,5 +52,5 @@ def get_version() -> str:
 
 __version__ = get_version()
 
-if __name__ == "__main__":
+if __name__ == "__main__":  # pragma: no cover -- CLI entrypoint guard, only runs via `python version.py`
     print(__version__)

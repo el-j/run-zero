@@ -155,6 +155,47 @@ class TestDockerDriver(unittest.TestCase):
         self.driver.destroy_runner("runner-dead")
         self.driver.cleanup_all()
 
+    @patch("subprocess.run")
+    def test_cleanup_all_stops_and_removes_docker_backed_runners(self, mock_run):
+        # Regression guard: cleanup_all() must only stop+remove runners whose
+        # backend is actually "docker" -- list_runners() itself is real here
+        # (only subprocess.run is mocked), so this exercises the real
+        # filtering loop in cleanup_all() rather than relying on
+        # list_runners() failing closed to an empty list.
+        mock_run.return_value = MagicMock(
+            stdout="c1|Up|local-runner-arm64-1|running|el-j/run-zero|arm64|docker\n",
+            returncode=0
+        )
+        self.driver.cleanup_all()
+        stop_calls = [c for c in mock_run.call_args_list if c[0][0][:2] == ["docker", "stop"]]
+        rm_calls = [c for c in mock_run.call_args_list if c[0][0][:2] == ["docker", "rm"]]
+        self.assertEqual(len(stop_calls), 1)
+        self.assertEqual(len(rm_calls), 1)
+        self.assertEqual(stop_calls[0][0][0], ["docker", "stop", "c1"])
+
+    @patch("subprocess.run")
+    def test_spawn_runner_with_extra_env(self, mock_run):
+        mock_run.return_value = MagicMock(returncode=0)
+        self.driver.spawn_runner(
+            repo="el-j/run-zero",
+            arch="arm64",
+            access_token="secret-pat",
+            extra_env={"FOO": "bar", "BAZ": "qux"},
+        )
+        cmd = mock_run.call_args[0][0]
+        env_pairs = [cmd[i + 1] for i, tok in enumerate(cmd) if tok == "-e"]
+        self.assertIn("FOO=bar", env_pairs)
+        self.assertIn("BAZ=qux", env_pairs)
+
+    @patch("subprocess.run")
+    def test_list_runners_skips_blank_lines(self, mock_run):
+        mock_run.return_value = MagicMock(
+            stdout="c1|Up|local-runner-arm64-1|running|el-j/run-zero|arm64|docker\n\nc2|Up|local-runner-arm64-2|running|el-j/run-zero|arm64|docker\n",
+            returncode=0
+        )
+        runners = self.driver.list_runners()
+        self.assertEqual(len(runners), 2)
+
 
 if __name__ == "__main__":
     unittest.main()

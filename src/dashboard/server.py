@@ -251,5 +251,5 @@ def main():
     server.start(blocking=True)
 
 
-if __name__ == "__main__":
+if __name__ == "__main__":  # pragma: no cover -- CLI entrypoint guard, only runs via `python -m dashboard.server`
     main()
