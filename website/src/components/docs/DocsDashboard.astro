@@ -1,0 +1,240 @@
+---
+// DocsDashboard: Comprehensive guide to Real-Time Web Dashboard & Host VM Bridge
+---
+
+<section class="doc-section" id="dashboard">
+  <div class="doc-section-header">
+    <span class="badge-tag">// OBSERVABILITY</span>
+    <h2>Real-Time Web Dashboard &amp; Host VM Bridge</h2>
+  </div>
+
+  <p class="lead">
+    RunZero features a built-in, lightweight real-time Web UI Dashboard and Host VM Bridge. Monitor active ephemeral runners, GitHub API quotas, hybrid routing distributions, and cache storage with zero external SaaS dependencies.
+  </p>
+
+  <!-- Web Dashboard Section -->
+  <div class="doc-sub-card">
+    <div class="card-sub-header">
+      <span class="sub-icon">📊</span>
+      <h3>1. Real-Time Web Dashboard (Port 49505)</h3>
+    </div>
+    <p>
+      The Web Dashboard starts automatically alongside the autoscaler daemon on <code>http://localhost:49505</code>.
+    </p>
+
+    <div class="code-block-wrap">
+      <div class="code-block-header">
+        <span>BASH // LAUNCH DASHBOARD</span>
+      </div>
+      <pre><code><span class="c"># Quick launch in your default web browser</span>
+<span class="cmd">make dashboard</span>
+
+<span class="c"># Or start the full fleet and navigate directly to:</span>
+<span class="cmd">open http://localhost:49505</span></code></pre>
+    </div>
+
+    <h4>Key Dashboard Capabilities</h4>
+    <ul class="styled-list">
+      <li><strong>Live Ephemeral Runner Fleet:</strong> Real-time status halos, active duration stopwatches, target repo/workflow name, and runtime engine (Docker vs OrbStack / WSL2 / Multipass VM).</li>
+      <li><strong>Server-Sent Events (SSE) Stream:</strong> Instant UI updates delivered via <code>/api/events</code> with zero page polling and zero socket bloat.</li>
+      <li><strong>GitHub API Quota Tracker:</strong> Visual gauge tracking live GitHub REST API rate-limit headroom.</li>
+      <li><strong>Hybrid Routing Breakdown:</strong> Real-time counts of jobs routed to Docker vs VM backends (Services/DIND, Browser E2E, Systemd).</li>
+      <li><strong>Proxy Cache Analytics:</strong> Disk usage breakdown across NPM (Verdaccio), Go (Athens), APT, Docker, and Toolcache directories, with one-click purge actions.</li>
+      <li><strong>Streaming Terminal Log Viewer:</strong> Live tailing ring buffer of autoscaler daemon logs with auto-scroll and pause controls.</li>
+    </ul>
+
+    <h4>Dashboard Configuration Options</h4>
+    <div class="table-responsive">
+      <table class="doc-table">
+        <thead>
+          <tr>
+            <th>Variable</th>
+            <th>Default</th>
+            <th>Description</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><code>DASHBOARD_ENABLED</code></td>
+            <td><code>true</code></td>
+            <td>Enables the built-in HTTP and SSE dashboard server.</td>
+          </tr>
+          <tr>
+            <td><code>DASHBOARD_HOST</code></td>
+            <td><code>0.0.0.0</code></td>
+            <td>Host address the dashboard binds to.</td>
+          </tr>
+          <tr>
+            <td><code>DASHBOARD_PORT</code></td>
+            <td><code>49505</code></td>
+            <td>Web UI dashboard listening port.</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- Host VM Bridge Section -->
+  <div class="doc-sub-card">
+    <div class="card-sub-header">
+      <span class="sub-icon">🌉</span>
+      <h3>2. Host VM Bridge (Port 49504)</h3>
+    </div>
+    <p>
+      When running RunZero's autoscaler inside a Docker container (<code>make start-container</code>), native virtualization CLI tools like <code>orbctl</code>, <code>wsl.exe</code>, or <code>multipass</code> are not directly executable within the container. The <strong>Host VM Bridge</strong> bridges this gap by exposing a zero-dependency HTTP control daemon on the host.
+    </p>
+
+    <div class="code-block-wrap">
+      <div class="code-block-header">
+        <span>BASH // HOST VM BRIDGE MANAGEMENT</span>
+      </div>
+      <pre><code><span class="c"># Start the Host VM Bridge daemon on the host</span>
+<span class="cmd">make bridge-start</span>
+
+<span class="c"># Check bridge daemon status and health</span>
+<span class="cmd">make bridge-status</span>
+
+<span class="c"># Stream bridge logs</span>
+<span class="cmd">make bridge-logs</span>
+
+<span class="c"># Stop the bridge daemon</span>
+<span class="cmd">make bridge-stop</span></code></pre>
+    </div>
+
+    <h4>Bridge Configuration Options</h4>
+    <div class="table-responsive">
+      <table class="doc-table">
+        <thead>
+          <tr>
+            <th>Variable</th>
+            <th>Default</th>
+            <th>Description</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><code>HOST_VM_BRIDGE_PORT</code></td>
+            <td><code>49504</code></td>
+            <td>Port the host bridge HTTP daemon listens on.</td>
+          </tr>
+          <tr>
+            <td><code>HOST_VM_BRIDGE_URL</code></td>
+            <td><code>http://host.docker.internal:49504</code></td>
+            <td>URL the containerized autoscaler uses to reach the host bridge.</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+</section>
+
+<style>
+  .doc-section {
+    padding-bottom: 56px;
+    border-bottom: 1px solid var(--border-subtle);
+    margin-bottom: 56px;
+  }
+  .doc-section-header {
+    margin-bottom: 20px;
+  }
+  .badge-tag {
+    display: inline-block;
+    font-family: var(--font-mono);
+    font-size: 0.75rem;
+    font-weight: 800;
+    color: var(--crimson-light);
+    letter-spacing: 0.08em;
+    margin-bottom: 8px;
+  }
+  .lead {
+    font-size: 1.15rem;
+    color: var(--text-muted);
+    line-height: 1.65;
+    margin-bottom: 32px;
+  }
+  .doc-sub-card {
+    background: rgba(16, 23, 36, 0.6);
+    border: 1px solid var(--border-card);
+    border-radius: var(--radius-md);
+    padding: 28px;
+    margin-bottom: 32px;
+  }
+  .card-sub-header {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    margin-bottom: 12px;
+  }
+  .card-sub-header h3 {
+    font-size: 1.35rem;
+    margin: 0;
+    color: #fff;
+  }
+  .sub-icon { font-size: 1.4rem; }
+  .doc-sub-card h4 {
+    font-size: 1.05rem;
+    margin: 24px 0 12px;
+    color: var(--accent-cyan, #00f0ff);
+  }
+  .styled-list {
+    margin-left: 20px;
+    margin-bottom: 20px;
+    color: var(--text-muted);
+    line-height: 1.7;
+  }
+  .styled-list strong {
+    color: #f1f5f9;
+  }
+  .code-block-wrap {
+    background: var(--bg-code);
+    border: 1px solid var(--border-card);
+    border-radius: var(--radius-md);
+    overflow: hidden;
+    margin: 18px 0;
+  }
+  .code-block-header {
+    background: rgba(255, 255, 255, 0.03);
+    padding: 8px 16px;
+    font-family: var(--font-mono);
+    font-size: 0.72rem;
+    font-weight: 700;
+    color: var(--text-dim);
+    border-bottom: 1px solid var(--border-subtle);
+  }
+  .code-block-wrap pre {
+    padding: 16px;
+    margin: 0;
+    overflow-x: auto;
+    font-family: var(--font-mono);
+    font-size: 0.85rem;
+    line-height: 1.5;
+  }
+  .table-responsive {
+    overflow-x: auto;
+    margin-top: 14px;
+  }
+  .doc-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.9rem;
+  }
+  .doc-table th, .doc-table td {
+    padding: 10px 14px;
+    text-align: left;
+    border-bottom: 1px solid var(--border-subtle);
+  }
+  .doc-table th {
+    font-family: var(--font-mono);
+    font-size: 0.75rem;
+    color: var(--text-dim);
+    background: rgba(255, 255, 255, 0.02);
+  }
+  .doc-table td code {
+    font-family: var(--font-mono);
+    font-size: 0.82rem;
+    color: var(--crimson-light);
+    background: var(--crimson-dim);
+    padding: 2px 6px;
+    border-radius: 4px;
+  }
+</style>
