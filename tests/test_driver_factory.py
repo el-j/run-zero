@@ -6,6 +6,7 @@ import unittest
 from unittest.mock import patch
 
 from drivers import RunnerInfo, get_available_drivers, get_driver
+from drivers.bridge_driver import BridgeVMDriver
 from drivers.docker_driver import DockerDriver
 from drivers.multipass_driver import MultipassDriver
 from drivers.orbstack_vm_driver import OrbStackVMDriver
@@ -37,7 +38,21 @@ class TestRunnerInfo(unittest.TestCase):
 
 
 class TestDriverFactory(unittest.TestCase):
-    def test_get_driver_explicit_names(self):
+    """
+    All tests here must fully mock `is_available()` on every native driver
+    class AND on `BridgeVMDriver` -- `get_driver()`/`get_available_drivers()`
+    fall through to `BridgeVMDriver(name).is_available()` (a real HTTP call,
+    see bridge_driver.py) whenever a native driver reports unavailable, so
+    any code path that reaches that fallback without a mock in place would
+    depend on whatever host-VM-bridge process happens to be reachable on the
+    machine running the tests. See GitHub issue #9.
+    """
+
+    @patch.object(BridgeVMDriver, "is_available", return_value=False)
+    @patch.object(OrbStackVMDriver, "is_available", return_value=True)
+    @patch.object(WSL2Driver, "is_available", return_value=True)
+    @patch.object(MultipassDriver, "is_available", return_value=True)
+    def test_get_driver_explicit_names(self, mock_mp, mock_wsl, mock_orb, mock_bridge):
         self.assertIsInstance(get_driver("docker"), DockerDriver)
         self.assertIsInstance(get_driver("orbstack-vm"), OrbStackVMDriver)
         self.assertIsInstance(get_driver("wsl2"), WSL2Driver)
@@ -58,27 +73,74 @@ class TestDriverFactory(unittest.TestCase):
         driver = get_driver("auto")
         self.assertIsInstance(driver, OrbStackVMDriver)
 
+    @patch.object(BridgeVMDriver, "is_available", return_value=False)
     @patch.object(DockerDriver, "is_available", return_value=False)
     @patch.object(OrbStackVMDriver, "is_available", return_value=False)
     @patch.object(WSL2Driver, "is_available", return_value=True)
-    def test_get_driver_auto_falls_back_to_wsl(self, mock_wsl, mock_orb, mock_docker):
+    def test_get_driver_auto_falls_back_to_wsl(self, mock_wsl, mock_orb, mock_docker, mock_bridge):
         driver = get_driver("auto")
         self.assertIsInstance(driver, WSL2Driver)
 
+    @patch.object(BridgeVMDriver, "is_available", return_value=False)
     @patch.object(DockerDriver, "is_available", return_value=False)
     @patch.object(OrbStackVMDriver, "is_available", return_value=False)
     @patch.object(WSL2Driver, "is_available", return_value=False)
     @patch.object(MultipassDriver, "is_available", return_value=True)
-    def test_get_driver_auto_falls_back_to_multipass(self, mock_mp, mock_wsl, mock_orb, mock_docker):
+    def test_get_driver_auto_falls_back_to_multipass(self, mock_mp, mock_wsl, mock_orb, mock_docker, mock_bridge):
         driver = get_driver("auto")
         self.assertIsInstance(driver, MultipassDriver)
 
+    @patch.object(BridgeVMDriver, "is_available", return_value=False)
+    @patch.object(DockerDriver, "is_available", return_value=False)
+    @patch.object(OrbStackVMDriver, "is_available", return_value=False)
+    @patch.object(WSL2Driver, "is_available", return_value=False)
+    @patch.object(MultipassDriver, "is_available", return_value=False)
+    def test_get_driver_auto_falls_back_to_docker_when_nothing_available(self, mock_mp, mock_wsl, mock_orb, mock_docker, mock_bridge):
+        # get_driver("auto")'s documented final fallback (see src/drivers/__init__.py) is the
+        # Docker driver itself, even though DockerDriver.is_available() is False here -- this
+        # locks in that "give up and return docker anyway" behavior as an intentional contract,
+        # not an accident.
+        driver = get_driver("auto")
+        self.assertIsInstance(driver, DockerDriver)
+
+    @patch.object(BridgeVMDriver, "is_available", return_value=False)
     @patch.object(DockerDriver, "is_available", return_value=True)
     @patch.object(OrbStackVMDriver, "is_available", return_value=False)
-    def test_get_available_drivers_returns_dict(self, mock_orb, mock_docker):
+    @patch.object(WSL2Driver, "is_available", return_value=False)
+    @patch.object(MultipassDriver, "is_available", return_value=False)
+    def test_get_available_drivers_returns_dict(self, mock_mp, mock_wsl, mock_orb, mock_docker, mock_bridge):
         avail = get_available_drivers()
         self.assertIn("docker", avail)
         self.assertNotIn("orbstack-vm", avail)
+        self.assertNotIn("wsl2", avail)
+        self.assertNotIn("multipass", avail)
+
+    @patch.object(BridgeVMDriver, "is_available")
+    @patch.object(OrbStackVMDriver, "is_available", return_value=False)
+    def test_get_driver_falls_through_to_bridge_when_native_unavailable(self, mock_orb, mock_bridge_avail):
+        # Regression test for the fallback documented in src/drivers/__init__.py: when a native
+        # driver is unavailable but the Host VM Bridge reports the same backend as available,
+        # get_driver() must hand back a BridgeVMDriver wrapping that backend instead of the
+        # (unavailable) native driver. Previously this path was only ever exercised by accident
+        # (see #9), never asserted directly.
+        mock_bridge_avail.return_value = True
+        driver = get_driver("orbstack-vm")
+        self.assertIsInstance(driver, BridgeVMDriver)
+        self.assertEqual(driver.name(), "orbstack-vm")
+
+    @patch.object(BridgeVMDriver, "is_available", return_value=True)
+    @patch.object(DockerDriver, "is_available", return_value=False)
+    @patch.object(OrbStackVMDriver, "is_available", return_value=False)
+    @patch.object(WSL2Driver, "is_available", return_value=False)
+    @patch.object(MultipassDriver, "is_available", return_value=False)
+    def test_get_available_drivers_uses_bridge_when_native_unavailable(self, mock_mp, mock_wsl, mock_orb, mock_docker, mock_bridge):
+        # Mirrors the regression above but through get_available_drivers()'s own loop: every
+        # native driver is unavailable, but the bridge reports every backend as available, so
+        # all four keys should be populated with BridgeVMDriver instances.
+        avail = get_available_drivers()
+        self.assertEqual(set(avail.keys()), {"docker", "orbstack-vm", "wsl2", "multipass"})
+        for driver in avail.values():
+            self.assertIsInstance(driver, BridgeVMDriver)
 
 
 if __name__ == "__main__":
