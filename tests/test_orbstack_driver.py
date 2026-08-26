@@ -19,6 +19,41 @@ class TestOrbStackTemplates(unittest.TestCase):
         self.assertIn("docker-ce", engine)
         self.assertIn("systemctl enable docker", engine)
 
+    def test_docker_engine_uses_cgroupfs_driver(self):
+        # Regression test: Docker's default "systemd" cgroup driver asks the
+        # guest's systemd to create a transient scope unit (via dbus) for
+        # every container started. The golden VM is itself an OrbStack
+        # "scon" (an LXC-style container inside one shared master VM, not
+        # independent hardware virtualization), and in that nested setup
+        # systemd's kernel-thread check for the new scope fails against the
+        # guest's /proc with ENOTTY: "Failed to determine whether process N
+        # is a kernel thread: Inappropriate ioctl for device" -- so every
+        # `docker start` (including GitHub Actions service containers like
+        # postgres) failed immediately. Reproduced live in the actual golden
+        # base VM and confirmed the systemd driver fails while cgroupfs
+        # (which manages the cgroup v2 hierarchy directly, without asking
+        # systemd for a scope unit) starts the same container cleanly.
+        engine = docker_engine_snippet()
+        self.assertIn('"exec-opts": ["native.cgroupdriver=cgroupfs"]', engine)
+        self.assertIn("/etc/docker/daemon.json", engine)
+
+    def test_docker_engine_uses_registry_mirror(self):
+        # Regression test: without a registry-mirrors entry, every `docker
+        # pull`/`docker create` inside the VM (including GitHub Actions
+        # service containers like postgres, pulled fresh on every ephemeral
+        # VM) goes straight to Docker Hub, bypassing the stack's own
+        # pull-through cache (docker-compose.yml's "docker-mirror" service)
+        # entirely. Confirmed live (2026-08-26): docker-mirror-storage sat at
+        # 0 bytes after dozens of pulls this session; after adding this
+        # config, `docker info` reported the mirror active and a single pull
+        # inside a real VM grew the mirror's storage volume from 0 to 3.4M.
+        engine = docker_engine_snippet()
+        self.assertIn('"registry-mirrors": ["http://host.orb.internal:49502"]', engine)
+        # Required alongside it: dockerd refuses a plain-HTTP registry-mirrors
+        # entry unless it's also listed in insecure-registries.
+        self.assertIn('"insecure-registries": ["host.orb.internal:49502"]', engine)
+
+    def test_other_snippets_generate_valid_bash(self):
         dl = runner_download_snippet("amd64", "2.336.0")
         self.assertIn("actions-runner-linux-${RUNNER_ARCH}-2.336.0.tar.gz", dl)
 
@@ -459,6 +494,48 @@ class TestOrbStackVMDriver(unittest.TestCase):
             driver.ensure_base_images_stopped()
         stop_calls = [c for c in mock_run.call_args_list if c[0][0][:2] == ["orbctl", "stop"]]
         self.assertEqual(stop_calls, [])
+
+    def test_ensure_base_images_stopped_resumes_orphaned_stopped_staging_vm(self):
+        # Regression test: a "-building" VM with no live builder tracked in
+        # THIS process (e.g. the bridge process was restarted mid-build, a
+        # normal maintenance operation -- the background thread dies with the
+        # old process, but the half-provisioned staging VM survives on disk)
+        # used to get silently woken up by _is_staging_provisioned()'s exec
+        # probe (confirmed live: `orb -m <stopped-vm> exec ...` boots a
+        # stopped VM as a side effect) and then stopped again next tick --
+        # forever, with zero provisioning progress. A stopped, untracked
+        # "-building" VM must now resume its build instead of being probed.
+        driver = OrbStackVMDriver(distro="ubuntu:24.04")
+        with patch("subprocess.run") as mock_run, \
+             patch.object(driver, "_is_staging_provisioned") as mock_probe, \
+             patch.object(driver, "_build_base_image_async") as mock_resume:
+            mock_run.return_value = MagicMock(
+                stdout=json.dumps([{"name": "runzero-vm-base-arm64-building", "state": "stopped"}]),
+                returncode=0
+            )
+            driver.ensure_base_images_stopped()
+        mock_probe.assert_not_called()
+        mock_resume.assert_called_once_with("arm64")
+        stop_calls = [c for c in mock_run.call_args_list if c[0][0][:2] == ["orbctl", "stop"]]
+        self.assertEqual(stop_calls, [])
+
+    def test_ensure_base_images_stopped_probes_running_orphaned_staging_vm(self):
+        # A "-building" VM that's already running (not woken by our own probe)
+        # is still safe to probe for completed provisioning -- this preserves
+        # the existing promote-if-done / stop-if-idle behavior for that case.
+        driver = OrbStackVMDriver(distro="ubuntu:24.04")
+        with patch("subprocess.run") as mock_run, \
+             patch.object(driver, "_is_staging_provisioned", return_value=False) as mock_probe, \
+             patch.object(driver, "_stop_vm", return_value=True) as mock_stop, \
+             patch.object(driver, "_build_base_image_async") as mock_resume:
+            mock_run.return_value = MagicMock(
+                stdout=json.dumps([{"name": "runzero-vm-base-arm64-building", "state": "running"}]),
+                returncode=0
+            )
+            driver.ensure_base_images_stopped()
+        mock_probe.assert_called_once_with("runzero-vm-base-arm64-building")
+        mock_stop.assert_called_once_with("runzero-vm-base-arm64-building")
+        mock_resume.assert_not_called()
 
     @patch("subprocess.run")
     def test_prune_and_destroy(self, mock_run):

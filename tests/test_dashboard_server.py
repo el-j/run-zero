@@ -107,6 +107,26 @@ class TestDashboardServer(unittest.TestCase):
             self.assertGreater(len(data), 1000)
             self.assertEqual(resp.headers.get("Content-Type"), "font/woff2")
 
+    def test_sse_stream_does_not_block_other_requests(self):
+        # Regression test: plain HTTPServer handles one request at a time,
+        # and /api/events runs an infinite loop for the life of the
+        # connection -- confirmed live, opening this endpoint permanently
+        # wedged the server, so the container's OWN healthcheck against
+        # /api/status could never be answered again (curl connected, then
+        # hung until the 5s healthcheck timeout, forever). ThreadingHTTPServer
+        # fixes this; this test would have failed (timed out) before that fix.
+        sse_req = urllib.request.Request(f"{self.base_url}/api/events")
+        sse_resp = urllib.request.urlopen(sse_req, timeout=10.0)
+        self.addCleanup(sse_resp.close)
+        # Read the initial event so we know the handler is actually inside
+        # its streaming loop, not just mid-connect.
+        first_line = sse_resp.readline()
+        self.assertTrue(first_line.startswith(b"event:"))
+
+        status_req = urllib.request.Request(f"{self.base_url}/api/status")
+        with urllib.request.urlopen(status_req, timeout=3.0) as resp:
+            self.assertEqual(resp.status, 200)
+
     def test_api_status(self):
         req = urllib.request.Request(f"{self.base_url}/api/status")
         with urllib.request.urlopen(req, timeout=3.0) as resp:

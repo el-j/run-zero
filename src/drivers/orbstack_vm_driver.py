@@ -295,13 +295,51 @@ echo "Base image provisioning complete."
                 continue
 
             base_name = self.base_image_name(orb_arch)
-            # If an idle -building VM is found and already provisioned, promote it!
-            if is_building_suffix and self._is_staging_provisioned(name):
-                print(
-                    f"[Autoscaler:OrbStack-VM] Idle staging VM '{name}' is already provisioned -- "
-                    f"promoting to '{base_name}'."
-                )
-                self._promote_staging_to_base(name, base_name)
+
+            if is_building_suffix:
+                # `being_built` above only reflects builds THIS process instance
+                # is actively running. A "-building" VM can outlive that: e.g.
+                # the bridge process gets restarted (a normal maintenance
+                # operation) while a build's background thread is mid-flight --
+                # the thread dies with the old process, but the half-provisioned
+                # staging VM it created stays on disk. Confirmed live (2026-08-26):
+                # with no live builder, this VM sat as an orphan and this exact
+                # loop kept it stuck: `orb -m <stopped> exec ...` implicitly boots
+                # a stopped VM as a side effect (confirmed: state flips
+                # stopped->running from one exec call), so unconditionally
+                # probing it here every poll woke it up only to have the
+                # `state == "running"` stop-it branch below shut it down again
+                # next tick -- an endless toggle that never let provisioning run
+                # long enough to finish.
+                if state == "running":
+                    # Safe to probe here: this branch only ever sees a VM that
+                    # was ALREADY running (not woken by our own probe), so the
+                    # exec call below can't itself cause the oscillation above.
+                    if self._is_staging_provisioned(name):
+                        print(
+                            f"[Autoscaler:OrbStack-VM] Idle staging VM '{name}' is already provisioned -- "
+                            f"promoting to '{base_name}'."
+                        )
+                        self._promote_staging_to_base(name, base_name)
+                    else:
+                        print(
+                            f"[Autoscaler:OrbStack-VM] Golden base image '{name}' is running idle -- "
+                            f"stopping it to free host resources for job VMs."
+                        )
+                        self._stop_vm(name)
+                else:
+                    # Stopped, and no live builder in this process is tracking
+                    # it: an orphaned/interrupted build. Resume it rather than
+                    # leaving it inert forever -- build_base_image() already
+                    # handles "found but not provisioned" by deleting and
+                    # re-provisioning cleanly from scratch. Dedup'd and
+                    # backoff-gated the same as any other build trigger, so
+                    # this can't hot-loop even if the resume keeps failing.
+                    print(
+                        f"[Autoscaler:OrbStack-VM] Found orphaned staging VM '{name}' with no active "
+                        f"builder in this process -- resuming its build."
+                    )
+                    self._build_base_image_async(orb_arch)
                 continue
 
             if state == "running":

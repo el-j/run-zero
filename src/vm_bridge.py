@@ -10,15 +10,42 @@ import os
 import signal
 import sys
 import threading
-from http.server import BaseHTTPRequestHandler, HTTPServer
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from typing import Any, Dict, Optional
 from urllib.parse import urlparse
 
-from drivers import RunnerInfo, get_available_drivers, get_driver
+from drivers import RunnerDriver, RunnerInfo, get_available_drivers, get_driver
 from drivers.docker_driver import DockerDriver
 
 DEFAULT_BRIDGE_PORT = 49504
 DEFAULT_BRIDGE_HOST = "0.0.0.0"
+
+# get_driver() constructs a brand-new driver instance on every call -- fine
+# for autoscaler.py, which calls it once at startup and holds the result for
+# its whole lifetime, but the bridge previously called it fresh on EVERY
+# incoming HTTP request. That silently discarded OrbStackVMDriver's
+# _building_arches/_build_retry_after state (the backoff/dedup mechanism
+# that stops a golden-image build from being retried every poll tick)
+# between one request and the next. Confirmed live: the containerized
+# autoscaler polls the bridge every POLL_INTERVAL (default 5s); each poll
+# got served by a fresh, backoff-unaware driver instance, so the bridge
+# deleted and recreated the "-building" staging VM roughly every 5s,
+# forever -- provisioning never survived long enough to even write
+# provision.log, let alone finish, stop, and rename. Caching one instance
+# per driver name here makes the bridge behave like autoscaler.py's own
+# persistent-driver model.
+_driver_cache: Dict[str, RunnerDriver] = {}
+_driver_cache_lock = threading.Lock()
+
+
+def _get_cached_driver(name: str) -> RunnerDriver:
+    key = name.lower().strip()
+    with _driver_cache_lock:
+        driver = _driver_cache.get(key)
+        if driver is None:
+            driver = get_driver(key)
+            _driver_cache[key] = driver
+        return driver
 
 
 class VMBridgeRequestHandler(BaseHTTPRequestHandler):
@@ -91,7 +118,7 @@ class VMBridgeRequestHandler(BaseHTTPRequestHandler):
         if len(parts) == 4 and parts[0] == "api" and parts[1] == "drivers" and parts[3] == "runners":
             driver_name = parts[2]
             try:
-                driver = get_driver(driver_name)
+                driver = _get_cached_driver(driver_name)
                 runners = driver.list_runners()
                 self._send_json(200, {
                     "driver": driver_name,
@@ -114,7 +141,7 @@ class VMBridgeRequestHandler(BaseHTTPRequestHandler):
             body = self._read_json()
 
             try:
-                driver = get_driver(driver_name)
+                driver = _get_cached_driver(driver_name)
             except Exception as e:
                 self._send_json(400, {"error": f"Invalid driver: {driver_name} ({e})"})
                 return
@@ -214,12 +241,22 @@ class VMBridgeServer:
     def __init__(self, host: str = DEFAULT_BRIDGE_HOST, port: int = DEFAULT_BRIDGE_PORT):
         self.host = host
         self.port = port
-        self.httpd: Optional[HTTPServer] = None
+        self.httpd: Optional[ThreadingHTTPServer] = None
         self.thread: Optional[threading.Thread] = None
         self._is_running = False
 
     def start(self, blocking: bool = False) -> None:
-        self.httpd = HTTPServer((self.host, self.port), VMBridgeRequestHandler)
+        # Plain HTTPServer serves one request at a time. The "build-base"
+        # action calls driver.build_base_image() synchronously in the
+        # handler -- a real golden-image build takes 15-25 minutes, during
+        # which a single-threaded server can't answer ANY other request
+        # (spawn/list/prune/status for every driver/repo/arch), defeating the
+        # whole point of build_base_image()'s own internal async-thread
+        # design (it's meant to let the poll loop keep moving while a build
+        # runs). ThreadingHTTPServer (stdlib since 3.7, no new dependency)
+        # gives each connection its own thread so one long call can't starve
+        # the rest of the bridge.
+        self.httpd = ThreadingHTTPServer((self.host, self.port), VMBridgeRequestHandler)
         self._is_running = True
         print(f"[VMBridge] 🚀 Host VM Bridge listening on http://{self.host}:{self.port}")
 

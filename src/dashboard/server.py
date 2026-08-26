@@ -9,7 +9,7 @@ import queue
 import signal
 import sys
 import threading
-from http.server import BaseHTTPRequestHandler, HTTPServer
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from typing import Any, Dict, Optional
 from urllib.parse import urlparse
 
@@ -179,12 +179,23 @@ class DashboardServer:
     def __init__(self, host: str = DEFAULT_DASHBOARD_HOST, port: int = DEFAULT_DASHBOARD_PORT):
         self.host = host
         self.port = port
-        self.httpd: Optional[HTTPServer] = None
+        self.httpd: Optional[ThreadingHTTPServer] = None
         self.thread: Optional[threading.Thread] = None
         self._is_running = False
 
     def start(self, blocking: bool = False) -> None:
-        self.httpd = HTTPServer((self.host, self.port), DashboardRequestHandler)
+        # Plain HTTPServer handles one request at a time. /api/events (SSE)
+        # blocks its handler thread in an infinite loop for the life of the
+        # connection -- with a single-threaded server, the FIRST client to
+        # open that stream (e.g. the dashboard's own frontend, which connects
+        # automatically) permanently wedges the server: every other request,
+        # including the container's own healthcheck against /api/status,
+        # hangs forever after that (confirmed live: container stuck
+        # "unhealthy", curl connects but gets 0 bytes back within the 5s
+        # healthcheck timeout). ThreadingHTTPServer (stdlib since 3.7, no new
+        # dependency) gives each connection its own thread so a long-lived
+        # SSE stream can't starve every other request.
+        self.httpd = ThreadingHTTPServer((self.host, self.port), DashboardRequestHandler)
         self._is_running = True
         print(f"[Dashboard] 📊 Real-Time Web UI running at http://localhost:{self.port}")
 
