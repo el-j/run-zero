@@ -24,6 +24,9 @@ jobs:
   build-and-deploy:
     name: Build & Deploy to gh-pages Branch
     runs-on: ubuntu-latest
+    env:
+      SITE_BASE: /run-zero
+      SITE_URL: https://el-j.github.io/run-zero
     steps:
       - name: Checkout repository
         uses: actions/checkout@v7
@@ -45,14 +48,14 @@ jobs:
 
       - name: Generate versions manifest
         run: |
-          python scripts/generate_versions_manifest.py --output website/public/versions.json
+          python scripts/generate_versions_manifest.py --output website/public/versions.json --base-path "${SITE_BASE}"
 
       - name: Build Astro current site
         run: |
           rm -rf website/dist website/dist-live website/dist-archive
           cd website
-          DEPLOY_BASE="/run-zero" \
-          DEPLOY_SITE="https://el-j.github.io/run-zero" \
+          DEPLOY_BASE="${SITE_BASE}" \
+          DEPLOY_SITE="${SITE_URL}" \
           PUBLIC_DOCS_VERSION="main" \
           npm run build
           mv dist dist-live
@@ -62,8 +65,8 @@ jobs:
         run: |
           CURRENT_VERSION="${{ github.event.release.tag_name }}"
           cd website
-          DEPLOY_BASE="/run-zero/${CURRENT_VERSION}" \
-          DEPLOY_SITE="https://el-j.github.io/run-zero/${CURRENT_VERSION}" \
+          DEPLOY_BASE="${SITE_BASE}/${CURRENT_VERSION}" \
+          DEPLOY_SITE="${SITE_URL}/${CURRENT_VERSION}" \
           PUBLIC_DOCS_VERSION="${CURRENT_VERSION}" \
           npm run build
           mv dist dist-archive

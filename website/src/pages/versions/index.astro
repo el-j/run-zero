@@ -1,6 +1,9 @@
 ---
 import Layout from '../../layouts/Layout.astro';
 import versionsData from '../../../public/versions.json';
+
+const baseUrl = import.meta.env.BASE_URL.replace(/\/$/, '');
+const currentDocsBaseUrl = versionsData[0]?.url.replace(/\/v\d+\.\d+\.\d+\/$/, '') || baseUrl;
 ---
 
 <Layout title="Releases & Version Archive — RunZero" description="Archive of all RunZero documentation releases and release notes." currentPath="/versions" currentVersion={import.meta.env.PUBLIC_DOCS_VERSION || 'main'}>
@@ -20,7 +23,7 @@ import versionsData from '../../../public/versions.json';
           The live documentation at <code>/run-zero/</code> tracks the latest site deployed from <code>main</code>. Use the release snapshots below when you need docs that match an older installed version.
         </p>
         <div class="card-actions" style="margin-top: 18px;">
-          <a href="/run-zero/" class="btn-crimson">
+          <a href={`${currentDocsBaseUrl}/`} class="btn-crimson">
             Open Current Docs →
           </a>
         </div>
