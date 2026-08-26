@@ -13,9 +13,9 @@ We use a standard branching strategy to ensure that only tested, release-ready c
    ▲
    │  (Release PR / Merge)
   develop (Active Integration & Staging)
-   ▲             ▲
-   │             │
-feat/my-feature  fix/bug-fix
+   ▲             ▲             ▲
+   │             │             │
+feat/my-feature  fix/bug-fix  chore/maintenance-task
 ```
 
 ### 1. `main` (Production Branch)
@@ -26,14 +26,15 @@ feat/my-feature  fix/bug-fix
 - Active integration branch for upcoming releases.
 - All feature and fix PRs should target `develop`.
 
-### 3. Topic Branches (`feat/*`, `fix/*`, `docs/*`)
+### 3. Topic Branches (`feat/*`, `fix/*`, `docs/*`, `chore/*`)
 - Create feature branches off `develop`:
   ```bash
   git checkout develop
   git pull origin develop
   git checkout -b feat/your-feature-name
   ```
-- Use conventional commits format (`feat: ...`, `fix: ...`, `docs: ...`, `refactor: ...`, `test: ...`).
+- Use conventional commits format (`feat: ...`, `fix: ...`, `docs: ...`, `refactor: ...`, `test: ...`, `chore: ...`).
+- `chore/*` is for maintenance work that doesn't fit cleanly under `feat`/`fix`/`docs` alone -- audits, dependency bumps, CI/tooling changes, and multi-part remediation branches that mix small fixes, docs, and tests. Prefer `feat/*` or `fix/*` when a branch is genuinely single-purpose; reach for `chore/*` when it's legitimately a grab-bag.
 
 ---
 
