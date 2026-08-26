@@ -12,5 +12,7 @@ mutants/
 node_modules/
 .output
 dist
+website/dist-live/
+website/dist-archive/
 .astro
 _astro

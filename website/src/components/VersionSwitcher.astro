@@ -6,19 +6,20 @@ interface Props {
 }
 
 const { currentVersion = 'main' } = Astro.props;
+const baseUrl = import.meta.env.BASE_URL.replace(/\/$/, '');
 const currentEntry = versionsData.find((version) => version.version === currentVersion);
-const currentVersionLabel = currentVersion === 'main' ? 'main' : currentVersion;
 const currentVersionTag = currentVersion === 'main'
   ? 'CURRENT'
   : currentEntry?.status === 'latest'
     ? 'LATEST'
     : 'ARCHIVED';
+const archiveIndexBaseUrl = versionsData[0]?.url.replace(/\/v\d+\.\d+\.\d+\/$/, '') || baseUrl;
 ---
 
 <div class="version-switcher" id="version-switcher">
   <button class="version-btn" id="version-btn" aria-haspopup="true" aria-expanded="false" aria-label="Select documentation version">
     <span class="version-dot"></span>
-    <span class="version-label">{currentVersionLabel}</span>
+    <span class="version-label">{currentVersion}</span>
     <span class="version-tag">{currentVersionTag}</span>
     <svg class="chevron-icon" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3">
       <path d="M6 9l6 6 6-6"></path>
@@ -39,7 +40,7 @@ const currentVersionTag = currentVersion === 'main'
     ))}
 
     <div class="dropdown-footer">
-      <a href="/run-zero/versions/" class="all-versions-link">// ARCHIVE_INDEX →</a>
+      <a href={`${archiveIndexBaseUrl}/versions/`} class="all-versions-link">// ARCHIVE_INDEX →</a>
     </div>
   </div>
 </div>
