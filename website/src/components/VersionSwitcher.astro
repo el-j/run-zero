@@ -5,15 +5,21 @@ interface Props {
   currentVersion?: string;
 }
 
-const { currentVersion = 'v0.0.1' } = Astro.props;
-const baseUrl = import.meta.env.BASE_URL.replace(/\/$/, '');
+const { currentVersion = 'main' } = Astro.props;
+const currentEntry = versionsData.find((version) => version.version === currentVersion);
+const currentVersionLabel = currentVersion === 'main' ? 'main' : currentVersion;
+const currentVersionTag = currentVersion === 'main'
+  ? 'CURRENT'
+  : currentEntry?.status === 'latest'
+    ? 'LATEST'
+    : 'ARCHIVED';
 ---
 
 <div class="version-switcher" id="version-switcher">
   <button class="version-btn" id="version-btn" aria-haspopup="true" aria-expanded="false" aria-label="Select documentation version">
     <span class="version-dot"></span>
-    <span class="version-label">{currentVersion}</span>
-    <span class="version-tag">LATEST</span>
+    <span class="version-label">{currentVersionLabel}</span>
+    <span class="version-tag">{currentVersionTag}</span>
     <svg class="chevron-icon" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3">
       <path d="M6 9l6 6 6-6"></path>
     </svg>
@@ -22,18 +28,18 @@ const baseUrl = import.meta.env.BASE_URL.replace(/\/$/, '');
   <div class="version-dropdown" id="version-dropdown">
     <div class="dropdown-header">// RELEASES_MANIFEST</div>
     {versionsData.map((v) => (
-      <a href={v.status === 'latest' ? `${baseUrl}/` : `${baseUrl}/${v.version}/`} class={`version-item ${v.version === currentVersion ? 'active' : ''}`}>
+      <a href={v.url} class={`version-item ${v.version === currentVersion ? 'active' : ''}`}>
         <div class="item-title">
           <span>{v.version}</span>
           {v.status === 'latest' && <span class="badge-pill latest">LATEST</span>}
-          {v.status === 'prerelease' && <span class="badge-pill beta">BETA</span>}
+          {v.status === 'archived' && <span class="badge-pill archived">ARCHIVED</span>}
         </div>
         <span class="item-desc">{v.notes}</span>
       </a>
     ))}
 
     <div class="dropdown-footer">
-      <a href={`${baseUrl}/versions/`} class="all-versions-link">// ARCHIVE_INDEX →</a>
+      <a href="/run-zero/versions/" class="all-versions-link">// ARCHIVE_INDEX →</a>
     </div>
   </div>
 </div>
@@ -152,6 +158,10 @@ const baseUrl = import.meta.env.BASE_URL.replace(/\/$/, '');
   .badge-pill.latest {
     background: var(--solar-dim);
     color: var(--solar-light);
+  }
+  .badge-pill.archived {
+    background: rgba(255, 255, 255, 0.08);
+    color: var(--text-dim);
   }
 
   .item-desc {
