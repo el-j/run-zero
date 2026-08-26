@@ -15,20 +15,28 @@ from . import RunnerDriver, RunnerInfo
 
 
 class DockerDriver(RunnerDriver):
+    """Runs ephemeral GitHub Actions runners as Docker containers -- the fastest, lightest-weight backend."""
+
     def __init__(
         self,
         docker_sock: str = "/var/run/docker.sock",
         network: str = "host",
         runner_image_prefix: str = "local-github-runner"
     ):
+        """Configure the Docker socket path, container network mode, and runner image tag prefix.
+
+        `docker_sock`/`network` fall back to DOCKER_SOCK/DOCKER_NETWORK env vars if set.
+        """
         self.docker_sock = os.getenv("DOCKER_SOCK", docker_sock)
         self.network = os.getenv("DOCKER_NETWORK", network)
         self.runner_image_prefix = runner_image_prefix
 
     def name(self) -> str:
+        """Return this driver's backend identifier: "docker"."""
         return "docker"
 
     def is_available(self) -> bool:
+        """True if the `docker` CLI is on PATH and `docker info` succeeds (daemon reachable)."""
         if not shutil.which("docker"):
             return False
         try:
@@ -48,6 +56,11 @@ class DockerDriver(RunnerDriver):
         proxies_enabled: bool = True,
         extra_env: Optional[Dict[str, str]] = None
     ) -> Optional[str]:
+        """Launch a detached, ephemeral runner container via `docker run -d` and return its name.
+
+        Returns None (and prints to stderr) if the `docker run` invocation itself fails;
+        registration/execution then happens asynchronously inside the container's own entrypoint.
+        """
         unique_id = uuid.uuid4().hex[:6]
         name_suffix = f"-{repo.replace('/', '-')}" if repo else (f"-{org}" if org else "")
         container_name = f"local-runner-{arch}{name_suffix}-{unique_id}"
@@ -127,6 +140,10 @@ class DockerDriver(RunnerDriver):
             return None
 
     def list_runners(self) -> List[RunnerInfo]:
+        """List containers labeled `managed-by=local-autoscaler` via `docker ps -a`.
+
+        Returns an empty list (and prints to stderr) if the `docker ps` call itself fails.
+        """
         try:
             res = subprocess.run(
                 [
@@ -186,16 +203,19 @@ class DockerDriver(RunnerDriver):
             return None
 
     def prune_exited(self, runners: List[RunnerInfo]) -> None:
+        """Force-remove any `runners` entries that are Docker-backed and in "exited"/"dead" state."""
         for r in runners:
             if r.backend == "docker" and r.state in ("exited", "dead"):
                 print(f"[Autoscaler:Docker] Removing finished container: {r.name} ({r.id})")
                 subprocess.run(["docker", "rm", "-f", r.id], capture_output=True)
 
     def destroy_runner(self, runner_id: str) -> bool:
+        """Force-remove the container with this id/name via `docker rm -f`."""
         res = subprocess.run(["docker", "rm", "-f", runner_id], capture_output=True)
         return res.returncode == 0
 
     def cleanup_all(self) -> None:
+        """Stop and force-remove every container this driver manages (used on autoscaler shutdown)."""
         runners = self.list_runners()
         for r in runners:
             if r.backend == "docker":

@@ -17,14 +17,19 @@ from . import RunnerDriver, RunnerInfo
 
 
 class MultipassDriver(RunnerDriver):
+    """Runs ephemeral runners as Canonical Multipass VMs -- cross-platform fallback (macOS/Linux/Windows)."""
+
     def __init__(self, image: str = "24.04"):
+        """Configure the Multipass base image (falls back to the MULTIPASS_IMAGE env var)."""
         self.image = os.getenv("MULTIPASS_IMAGE", image)
         self._runner_created_at: Dict[str, float] = {}
 
     def name(self) -> str:
+        """Return this driver's backend identifier: "multipass"."""
         return "multipass"
 
     def is_available(self) -> bool:
+        """True if the `multipass` CLI is on PATH and `multipass version` succeeds."""
         if not shutil.which("multipass"):
             return False
         try:
@@ -44,6 +49,12 @@ class MultipassDriver(RunnerDriver):
         proxies_enabled: bool = True,
         extra_env: Optional[Dict[str, str]] = None
     ) -> Optional[str]:
+        """Launch a fresh Multipass VM (`multipass launch`) and bootstrap+register the runner inside it.
+
+        The launch itself is synchronous; the apt-get/runner-download/registration bootstrap script
+        runs detached (`multipass exec` via Popen) so this call returns as soon as the VM boots.
+        Returns None (and prints to stderr) only if the `multipass launch` step itself fails.
+        """
         unique_id = uuid.uuid4().hex[:6]
         name_suffix = f"-{repo.replace('/', '-')}" if repo else (f"-{org}" if org else "")
         vm_name = f"runzero-mp-{arch}{name_suffix}-{unique_id}"
@@ -88,6 +99,10 @@ nohup ./run.sh --unattended --ephemeral --name "{vm_name}" --labels "{runner_lab
             return None
 
     def list_runners(self) -> List[RunnerInfo]:
+        """List VMs whose name starts with "runzero-mp-" via `multipass list --format json`.
+
+        Returns an empty list (silently) if the `multipass list` call itself fails.
+        """
         try:
             res = subprocess.run(["multipass", "list", "--format", "json"], capture_output=True, text=True, check=True)
             data = json.loads(res.stdout or "{}")
@@ -115,16 +130,19 @@ nohup ./run.sh --unattended --ephemeral --name "{vm_name}" --labels "{runner_lab
             return []
 
     def prune_exited(self, runners: List[RunnerInfo]) -> None:
+        """Delete-and-purge any `runners` entries that are Multipass-backed and in a stopped state."""
         for r in runners:
             if r.backend == "multipass" and r.state in ("exited", "stopped", "dead"):
                 print(f"[Autoscaler:Multipass] Deleting stopped VM: {r.name}")
                 subprocess.run(["multipass", "delete", "--purge", r.name], capture_output=True)
 
     def destroy_runner(self, runner_id: str) -> bool:
+        """Delete and purge the named VM via `multipass delete --purge`."""
         res = subprocess.run(["multipass", "delete", "--purge", runner_id], capture_output=True)
         return res.returncode == 0
 
     def cleanup_all(self) -> None:
+        """Delete and purge every Multipass-backed runner this driver manages (used on autoscaler shutdown)."""
         runners = self.list_runners()
         for r in runners:
             if r.backend == "multipass":

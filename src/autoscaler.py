@@ -84,6 +84,12 @@ def resolve_job_arch(job_labels: List[str]) -> str:
 
 
 def main():
+    """Entrypoint: validate config, start the dashboard, then run the poll-scale-reconcile loop forever.
+
+    Exits(1) immediately if ACCESS_TOKEN is missing, or if caching is enabled without a
+    HOST_CACHE_DIR. Otherwise blocks until a SIGINT/SIGTERM flips the module-level `running`
+    flag, then cleans up every managed runner and stops the dashboard before returning.
+    """
     if not ACCESS_TOKEN:
         log_print("[Autoscaler] Error: ACCESS_TOKEN is required for autoscaling.", file=sys.stderr)
         sys.exit(1)
@@ -141,6 +147,7 @@ def main():
     log_print("=" * 65)
 
     def signal_handler(signum, frame):
+        """Flip the module-level `running` flag so the poll loop exits and shutdown cleanup runs."""
         global running
         log_print("\n[Autoscaler] Received shutdown signal. Cleaning up...")
         running = False

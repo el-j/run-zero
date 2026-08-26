@@ -24,7 +24,10 @@ BASE_IMAGE_PREFIX = "runzero-vm-base-"
 
 
 class OrbStackVMDriver(RunnerDriver):
+    """Runs ephemeral runners as dedicated OrbStack Linux VMs, cloned per-job from a golden base image."""
+
     def __init__(self, distro: str = "ubuntu:24.04"):
+        """Configure the base distro golden images are built from, and init per-arch build/tracking state."""
         self.distro = distro
         self._provision_script_path = os.path.join(
             os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))),
@@ -56,9 +59,11 @@ class OrbStackVMDriver(RunnerDriver):
         self._runner_repos: Dict[str, str] = {}
 
     def name(self) -> str:
+        """Return this driver's backend identifier: "orbstack-vm"."""
         return "orbstack-vm"
 
     def is_available(self) -> bool:
+        """True if `orbctl`/`orb` are on PATH and `orbctl status` reports the OrbStack daemon running."""
         if not shutil.which("orbctl") or not shutil.which("orb"):
             return False
         try:
@@ -69,6 +74,7 @@ class OrbStackVMDriver(RunnerDriver):
 
     @staticmethod
     def base_image_name(orb_arch: str) -> str:
+        """Return the golden base image's VM name for a given OrbStack arch (e.g. "arm64" -> "runzero-vm-base-arm64")."""
         return f"{BASE_IMAGE_PREFIX}{orb_arch}"
 
     def _list_vm_names(self) -> List[str]:
@@ -94,6 +100,12 @@ class OrbStackVMDriver(RunnerDriver):
         return []
 
     def base_image_exists(self, orb_arch: str) -> bool:
+        """True if the golden base image VM exists for `orb_arch`.
+
+        Also opportunistically promotes a fully-provisioned "-building" staging VM to the
+        final base image if one is found (self-heals a build that finished but never got
+        renamed, e.g. after a process restart mid-build).
+        """
         base_name = self.base_image_name(orb_arch)
         names = self._list_vm_names()
         if base_name in names:
@@ -423,6 +435,14 @@ echo "Base image provisioning complete."
         proxies_enabled: bool = True,
         extra_env: Optional[Dict[str, str]] = None
     ) -> Optional[str]:
+        """Clone the golden base image and boot a per-job VM that registers, runs, then self-powers-off.
+
+        If the base image for this arch doesn't exist yet, kicks off an async background build
+        (see `_build_base_image_async`) and returns None immediately -- callers should treat that
+        as "not ready this poll, try again later," not a hard failure. Also returns None if the
+        `orbctl clone` step itself fails. The clone is synchronous; registration/run/shutdown inside
+        the VM happens via a detached `orb exec` (Popen), so this call doesn't block on job execution.
+        """
         unique_id = uuid.uuid4().hex[:6]
         name_suffix = f"-{repo.replace('/', '-')}" if repo else (f"-{org}" if org else "")
         vm_name = f"{RUNNER_VM_PREFIX}{arch}{name_suffix}-{unique_id}"
@@ -502,6 +522,10 @@ set -e
             return None
 
     def list_runners(self) -> List[RunnerInfo]:
+        """List job VMs (name starts with the runner prefix, excluding golden base images).
+
+        Returns an empty list (and prints to stderr) if the `orbctl list` call itself fails.
+        """
         try:
             res = subprocess.run(["orbctl", "list", "--format", "json"], capture_output=True, text=True, check=True)
             vms = json.loads(res.stdout or "[]")
@@ -545,6 +569,11 @@ set -e
             return []
 
     def destroy_runner(self, runner_id: str) -> bool:
+        """Delete the named job VM via `orbctl delete -f`.
+
+        Refuses (returns False) if `runner_id` looks like a golden base image name, to guard
+        against a caller accidentally destroying the shared image instead of an ephemeral clone.
+        """
         if runner_id.startswith(BASE_IMAGE_PREFIX):
             print(
                 f"[Autoscaler:OrbStack-VM] Refusing to delete '{runner_id}' -- it looks like a "
@@ -560,12 +589,14 @@ set -e
             return False
 
     def prune_exited(self, active_runners: List[RunnerInfo]) -> None:
+        """Delete any `active_runners` entries that are OrbStack-VM-backed and in a stopped state."""
         for r in active_runners:
             if r.backend == "orbstack-vm" and r.state in ("exited", "stopped", "dead"):
                 print(f"[Autoscaler:OrbStack-VM] Deleting stopped VM: {r.name}")
                 self.destroy_runner(r.name)
 
     def cleanup_all(self) -> None:
+        """Delete every job VM this driver manages (used on autoscaler shutdown). Golden base images are untouched."""
         runners = self.list_runners()
         for r in runners:
             if r.backend == "orbstack-vm":

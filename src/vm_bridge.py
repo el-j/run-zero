@@ -81,6 +81,7 @@ class VMBridgeRequestHandler(BaseHTTPRequestHandler):
         return {}
 
     def do_OPTIONS(self) -> None:
+        """Answer a CORS preflight request with an empty 204 and the allowed methods/headers."""
         self.send_response(204)
         self.send_header("Access-Control-Allow-Origin", "*")
         self.send_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
@@ -88,6 +89,7 @@ class VMBridgeRequestHandler(BaseHTTPRequestHandler):
         self.end_headers()
 
     def do_GET(self) -> None:
+        """Route GET requests: /health(-alias)es, /api/status, and /api/drivers/{name}/runners."""
         parsed = urlparse(self.path)
         path = parsed.path.rstrip("/")
 
@@ -131,6 +133,11 @@ class VMBridgeRequestHandler(BaseHTTPRequestHandler):
         self._send_json(404, {"error": f"Endpoint not found: {path}"})
 
     def do_POST(self) -> None:
+        """Route POST requests to /api/drivers/{name}/{spawn,prune,destroy,cleanup,ensure-base-stopped,build-base}.
+
+        Dispatches each action to the corresponding method on the (cached) real driver for
+        `{name}`, translating its result/exception into a JSON response.
+        """
         parsed = urlparse(self.path)
         path = parsed.path.rstrip("/")
         parts = [p for p in path.split("/") if p]
@@ -239,6 +246,7 @@ class VMBridgeServer:
     """Manages the lifecycle of the Host VM Bridge HTTP server."""
 
     def __init__(self, host: str = DEFAULT_BRIDGE_HOST, port: int = DEFAULT_BRIDGE_PORT):
+        """Store the bind address/port; the server isn't started until `start()` is called."""
         self.host = host
         self.port = port
         self.httpd: Optional[ThreadingHTTPServer] = None
@@ -246,6 +254,10 @@ class VMBridgeServer:
         self._is_running = False
 
     def start(self, blocking: bool = False) -> None:
+        """Start the ThreadingHTTPServer; either block the caller (`blocking=True`) or run it on a daemon thread.
+
+        See the comment below for why this must be ThreadingHTTPServer, not plain HTTPServer.
+        """
         # Plain HTTPServer serves one request at a time. The "build-base"
         # action calls driver.build_base_image() synchronously in the
         # handler -- a real golden-image build takes 15-25 minutes, during
@@ -270,6 +282,7 @@ class VMBridgeServer:
             self.thread.start()
 
     def stop(self) -> None:
+        """Shut down the HTTP server and join its serving thread (up to 2s), if running."""
         if self._is_running and self.httpd:
             print("\n[VMBridge] Shutting down Host VM Bridge...")
             self._is_running = False
@@ -281,12 +294,14 @@ class VMBridgeServer:
 
 
 def main():
+    """Entrypoint: start the bridge server and block until a SIGINT/SIGTERM stops it."""
     host = os.getenv("HOST_VM_BRIDGE_HOST", DEFAULT_BRIDGE_HOST)
     port = int(os.getenv("HOST_VM_BRIDGE_PORT", str(DEFAULT_BRIDGE_PORT)))
 
     server = VMBridgeServer(host, port)
 
     def signal_handler(signum, frame):
+        """Stop the bridge server cleanly and exit the process."""
         server.stop()
         sys.exit(0)
 

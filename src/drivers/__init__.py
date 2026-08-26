@@ -8,6 +8,8 @@ from typing import Any, Dict, List, Optional
 
 
 class RunnerInfo:
+    """Driver-agnostic snapshot of one ephemeral runner instance, as returned by `list_runners()`."""
+
     def __init__(
         self,
         id: str,
@@ -19,6 +21,7 @@ class RunnerInfo:
         backend: str,
         created_at: Optional[float] = None
     ):
+        """Store the runner's identity, driver-reported status/state, and routing metadata."""
         self.id = id
         self.name = name
         self.status = status
@@ -32,6 +35,7 @@ class RunnerInfo:
         self.created_at = created_at
 
     def to_dict(self) -> Dict[str, Any]:
+        """Serialize to a JSON-compatible dict (used for the VM bridge's HTTP payloads)."""
         return {
             "id": self.id,
             "name": self.name,
@@ -67,23 +71,35 @@ class RunnerDriver(ABC):
         proxies_enabled: bool = True,
         extra_env: Optional[Dict[str, str]] = None
     ) -> Optional[str]:
-        """Spawn a fresh ephemeral runner instance. Returns instance identifier/name."""
+        """Spawn a fresh ephemeral runner for `repo` (or `org` if `repo` is unset).
+
+        Must not block the caller for the life of the runner -- registration/execution
+        happens out-of-process (background thread, detached subprocess, or remote job).
+        Returns the new instance's id/name on success, or None on failure (including a
+        deliberate "not ready yet" case, e.g. a VM driver still building its base image).
+        """
 
     @abstractmethod
     def list_runners(self) -> List[RunnerInfo]:
-        """List all runner instances currently managed by this driver."""
+        """Return every runner instance this driver currently manages, regardless of state."""
 
     @abstractmethod
     def prune_exited(self, runners: List[RunnerInfo]) -> None:
-        """Remove stopped or dead runner instances."""
+        """Remove any of `runners` (as previously returned by `list_runners()`) that have exited.
+
+        Only acts on entries whose `backend` matches this driver; safe to call with a mixed-backend list.
+        """
 
     @abstractmethod
     def destroy_runner(self, runner_id: str) -> bool:
-        """Force destroy and clean up a specific runner instance."""
+        """Force-stop and remove one runner by id, regardless of its current state.
+
+        Returns True if the runner was destroyed (or already gone), False on failure.
+        """
 
     @abstractmethod
     def cleanup_all(self) -> None:
-        """Clean up all managed runner instances during shutdown."""
+        """Destroy every runner this driver manages. Best-effort: swallows per-runner failures."""
 
 
 def get_available_drivers() -> Dict[str, RunnerDriver]:

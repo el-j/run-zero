@@ -74,6 +74,7 @@ class DashboardRequestHandler(BaseHTTPRequestHandler):
             self.wfile.write(str(e).encode("utf-8"))
 
     def do_OPTIONS(self) -> None:
+        """Answer a CORS preflight request with an empty 204 and the allowed methods/headers."""
         self.send_response(204)
         self.send_header("Access-Control-Allow-Origin", "*")
         self.send_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
@@ -81,6 +82,7 @@ class DashboardRequestHandler(BaseHTTPRequestHandler):
         self.end_headers()
 
     def do_GET(self) -> None:
+        """Route GET requests: static UI assets, REST snapshot/log endpoints, and the /api/events SSE stream."""
         parsed = urlparse(self.path)
         path = parsed.path.rstrip("/")
 
@@ -146,6 +148,7 @@ class DashboardRequestHandler(BaseHTTPRequestHandler):
         self._send_json(404, {"error": f"Endpoint not found: {path}"})
 
     def do_POST(self) -> None:
+        """Route POST requests: /api/actions/clean-cache and /api/actions/prune."""
         parsed = urlparse(self.path)
         path = parsed.path.rstrip("/")
         body = self._read_json()
@@ -177,6 +180,7 @@ class DashboardServer:
     """Manages the Dashboard HTTP & SSE server lifecycle."""
 
     def __init__(self, host: str = DEFAULT_DASHBOARD_HOST, port: int = DEFAULT_DASHBOARD_PORT):
+        """Store the bind address/port; the server isn't started until `start()` is called."""
         self.host = host
         self.port = port
         self.httpd: Optional[ThreadingHTTPServer] = None
@@ -184,6 +188,10 @@ class DashboardServer:
         self._is_running = False
 
     def start(self, blocking: bool = False) -> None:
+        """Start the ThreadingHTTPServer; either block the caller (`blocking=True`) or run it on a daemon thread.
+
+        See the comment below for why this must be ThreadingHTTPServer, not plain HTTPServer.
+        """
         # Plain HTTPServer handles one request at a time. /api/events (SSE)
         # blocks its handler thread in an infinite loop for the life of the
         # connection -- with a single-threaded server, the FIRST client to
@@ -209,6 +217,7 @@ class DashboardServer:
             self.thread.start()
 
     def stop(self) -> None:
+        """Shut down the HTTP server and join its serving thread (up to 2s), if running."""
         if self._is_running and self.httpd:
             print("\n[Dashboard] Stopping Web Dashboard...")
             self._is_running = False
@@ -220,12 +229,14 @@ class DashboardServer:
 
 
 def main():
+    """Entrypoint: start the dashboard server standalone and block until a SIGINT/SIGTERM stops it."""
     host = os.getenv("DASHBOARD_HOST", DEFAULT_DASHBOARD_HOST)
     port = int(os.getenv("DASHBOARD_PORT", str(DEFAULT_DASHBOARD_PORT)))
 
     server = DashboardServer(host, port)
 
     def signal_handler(signum, frame):
+        """Stop the dashboard server cleanly and exit the process."""
         server.stop()
         sys.exit(0)
 
