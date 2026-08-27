@@ -16,6 +16,15 @@ def git(*args: str) -> str:
     return subprocess.check_output(["git", *args], text=True).strip()
 
 
+def refresh_tags() -> None:
+    subprocess.run(
+        ["git", "fetch", "--tags", "--force", "origin"],
+        check=False,
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+    )
+
+
 def origin_repo_url() -> str:
     remote_url = git("remote", "get-url", "origin")
     remote_url = remote_url.removesuffix(".git")
@@ -27,6 +36,7 @@ def origin_repo_url() -> str:
 
 
 def stable_release_tags() -> list[str]:
+    refresh_tags()
     tags = git("tag", "-l").splitlines()
     parsed_tags: list[tuple[tuple[int, int, int], str]] = []
 
