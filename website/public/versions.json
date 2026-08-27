@@ -1,11 +1,21 @@
 [
   {
+    "version": "v0.0.4",
+    "name": "v0.0.4 (Latest Release)",
+    "url": "/run-zero/v0.0.4/",
+    "docsUrl": "/run-zero/v0.0.4/docs/",
+    "releaseDate": "2026-08-26",
+    "status": "latest",
+    "notes": "Pinned documentation snapshot for RunZero v0.0.4.",
+    "changelogUrl": "https://github.com/el-j/run-zero/releases/tag/v0.0.4"
+  },
+  {
     "version": "v0.0.3",
-    "name": "v0.0.3 (Latest Release)",
+    "name": "v0.0.3",
     "url": "/run-zero/v0.0.3/",
     "docsUrl": "/run-zero/v0.0.3/docs/",
     "releaseDate": "2026-08-26",
-    "status": "latest",
+    "status": "archived",
     "notes": "Pinned documentation snapshot for RunZero v0.0.3.",
     "changelogUrl": "https://github.com/el-j/run-zero/releases/tag/v0.0.3"
   },
@@ -18,5 +28,15 @@
     "status": "archived",
     "notes": "Pinned documentation snapshot for RunZero v0.0.2.",
     "changelogUrl": "https://github.com/el-j/run-zero/releases/tag/v0.0.2"
+  },
+  {
+    "version": "v0.0.1",
+    "name": "v0.0.1",
+    "url": "/run-zero/v0.0.1/",
+    "docsUrl": "/run-zero/v0.0.1/docs/",
+    "releaseDate": "2026-08-25",
+    "status": "archived",
+    "notes": "Pinned documentation snapshot for RunZero v0.0.1.",
+    "changelogUrl": "https://github.com/el-j/run-zero/releases/tag/v0.0.1"
   }
 ]

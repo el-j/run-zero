@@ -61,18 +61,30 @@ jobs:
           npm run build
           mv dist dist-live
 
-      - name: Build stable release snapshot
-        if: github.event_name == 'release'
+      - name: Build stable release snapshots
         run: |
-          CURRENT_VERSION="${{ github.event.release.tag_name }}"
-          cd website
-          DEPLOY_BASE="${SITE_BASE}/${CURRENT_VERSION}" \
-          DEPLOY_SITE="${SITE_URL}/${CURRENT_VERSION}" \
-          PUBLIC_DOCS_VERSION="${CURRENT_VERSION}" \
-          npm run build
-          mv dist dist-archive
-          mkdir -p "dist-live/${CURRENT_VERSION}"
-          cp -R dist-archive/. "dist-live/${CURRENT_VERSION}/"
+          mapfile -t STABLE_VERSIONS < <(python - <<'PY'
+          import json
+          from pathlib import Path
+
+          versions = json.loads(Path("website/public/versions.json").read_text(encoding="utf-8"))
+          for entry in versions:
+              print(entry["version"])
+          PY
+          )
+
+          for VERSION in "${STABLE_VERSIONS[@]}"; do
+            echo "Building stable docs snapshot for ${VERSION}"
+            rm -rf website/dist
+            cd website
+            DEPLOY_BASE="${SITE_BASE}/${VERSION}" \
+            DEPLOY_SITE="${SITE_URL}/${VERSION}" \
+            PUBLIC_DOCS_VERSION="${VERSION}" \
+            npm run build
+            cd ..
+            mkdir -p "website/dist-live/${VERSION}"
+            cp -R website/dist/. "website/dist-live/${VERSION}/"
+          done
 
       - name: Finalize static output
         run: |
