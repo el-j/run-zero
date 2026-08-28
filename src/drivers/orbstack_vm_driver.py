@@ -506,11 +506,13 @@ echo "Base image provisioning complete."
         if proxies_enabled:
             proxy_env_block = """
 export npm_config_registry="http://host.orb.internal:49501"
+export NPM_CONFIG_REGISTRY="http://host.orb.internal:49501/"
 export YARN_REGISTRY="http://host.orb.internal:49501"
 export GOPROXY="http://host.orb.internal:49500,https://proxy.golang.org,direct"
 export PIP_INDEX_URL="http://host.orb.internal:49507/root/pypi/+simple/"
 export UV_INDEX_URL="http://host.orb.internal:49507/root/pypi/+simple/"
 export PIP_TRUSTED_HOST="host.orb.internal"
+echo 'Acquire::http::Proxy "http://host.orb.internal:49503";' | sudo tee /etc/apt/apt.conf.d/01runzero-proxy > /dev/null
 """
             # pip implicitly trusts "localhost"/"127.0.0.1" for a plain-HTTP index but
             # refuses any other host -- verified live (2026-08-26) inside a real OrbStack

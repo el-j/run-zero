@@ -55,6 +55,32 @@ jobs:
       - run: echo hi
 """
 
+UNNAMED_JOB_YML = """\
+jobs:
+  integration-tests:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+    steps:
+      - run: pytest
+"""
+
+MATRIX_JOB_YML = """\
+jobs:
+  test:
+    name: Test Matrix
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        py: ["3.10", "3.11"]
+    services:
+      redis:
+        image: redis:7
+    steps:
+      - run: pytest
+"""
+
 
 class TestWorkflowInspector(unittest.TestCase):
     def test_job_with_services_block_detected(self):
@@ -86,6 +112,12 @@ class TestWorkflowInspector(unittest.TestCase):
     def test_quoted_job_name_matches(self):
         text = 'jobs:\n  x:\n    name: "Quoted Name"\n    services:\n      db:\n        image: postgres\n'
         self.assertTrue(job_uses_services_or_container(text, "Quoted Name"))
+
+    def test_job_without_name_matches_by_job_id(self):
+        self.assertTrue(job_uses_services_or_container(UNNAMED_JOB_YML, "integration-tests"))
+
+    def test_matrix_expanded_job_name_matches_base_name(self):
+        self.assertTrue(job_uses_services_or_container(MATRIX_JOB_YML, "Test Matrix (3.11)"))
 
 
 if __name__ == "__main__":

@@ -56,6 +56,25 @@ class TestWSL2Driver(unittest.TestCase):
         self.assertIn("runzero-wsl-el-j-run-zero-", name)
 
     @patch("subprocess.Popen")
+    def test_spawn_runner_wires_proxy_stack_when_enabled(self, mock_popen):
+        self.driver.spawn_runner(repo="el-j/run-zero", access_token="token", proxies_enabled=True)
+        setup_script = mock_popen.call_args[0][0][-1]
+        self.assertIn('export YARN_REGISTRY="http://${HOST_IP}:49501/"', setup_script)
+        self.assertIn('export PIP_INDEX_URL="http://${HOST_IP}:49507/root/pypi/+simple/"', setup_script)
+        self.assertIn('export UV_INDEX_URL="${PIP_INDEX_URL}"', setup_script)
+        self.assertIn('export PIP_TRUSTED_HOST="${HOST_IP}"', setup_script)
+        self.assertIn('Acquire::http::Proxy "http://${HOST_IP}:49503";', setup_script)
+        self.assertIn('replace-with = "kellnr-proxy"', setup_script)
+
+    @patch("subprocess.Popen")
+    def test_spawn_runner_omits_proxy_stack_when_disabled(self, mock_popen):
+        self.driver.spawn_runner(repo="el-j/run-zero", access_token="token", proxies_enabled=False)
+        setup_script = mock_popen.call_args[0][0][-1]
+        self.assertNotIn("PIP_INDEX_URL", setup_script)
+        self.assertNotIn("kellnr-proxy", setup_script)
+        self.assertNotIn("01runzero-proxy", setup_script)
+
+    @patch("subprocess.Popen")
     def test_spawn_runner_failure(self, mock_popen):
         mock_popen.side_effect = OSError("Launch failed")
         name = self.driver.spawn_runner(repo="el-j/run-zero")

@@ -109,6 +109,7 @@ class DockerDriver(RunnerDriver):
             pip_index_url = f"http://{pip_host}/root/pypi/+simple/"
             cmd.extend([
                 "-e", f"NPM_CONFIG_REGISTRY={verdaccio_url}",
+                "-e", f"YARN_REGISTRY={verdaccio_url}",
                 "-e", f"GOPROXY={athens_url}",
                 "-e", f"PIP_INDEX_URL={pip_index_url}",
                 "-e", f"UV_INDEX_URL={pip_index_url}"

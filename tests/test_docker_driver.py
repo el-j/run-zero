@@ -150,6 +150,7 @@ class TestDockerDriver(unittest.TestCase):
         uv_entries = [v for v in env_values if v.startswith("UV_INDEX_URL=")]
         self.assertEqual(pip_entries, ["PIP_INDEX_URL=http://localhost:49507/root/pypi/+simple/"])
         self.assertEqual(uv_entries, ["UV_INDEX_URL=http://localhost:49507/root/pypi/+simple/"])
+        self.assertIn("YARN_REGISTRY=http://localhost:49501/", env_values)
         self.assertFalse(any(v.startswith("PIP_TRUSTED_HOST=") for v in env_values))
 
     @patch("subprocess.run")
@@ -164,6 +165,7 @@ class TestDockerDriver(unittest.TestCase):
         driver.spawn_runner(repo="el-j/run-zero", arch="arm64", access_token="tok", proxies_enabled=True)
         cmd = mock_run.call_args[0][0]
         env_values = [cmd[i + 1] for i, tok in enumerate(cmd) if tok == "-e"]
+        self.assertIn("YARN_REGISTRY=http://verdaccio:4873/", env_values)
         self.assertIn("PIP_INDEX_URL=http://devpi:3141/root/pypi/+simple/", env_values)
         self.assertIn("UV_INDEX_URL=http://devpi:3141/root/pypi/+simple/", env_values)
         self.assertIn("PIP_TRUSTED_HOST=devpi", env_values)
