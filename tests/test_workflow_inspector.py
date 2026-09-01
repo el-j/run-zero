@@ -4,7 +4,7 @@ Unit tests for the dependency-free workflow-YAML services/container detector.
 
 import unittest
 
-from workflow_inspector import job_uses_services_or_container
+from workflow_inspector import _iter_jobs, _looks_like_job_key, job_uses_services_or_container
 
 CI_YML = """\
 jobs:
@@ -118,6 +118,44 @@ class TestWorkflowInspector(unittest.TestCase):
 
     def test_matrix_expanded_job_name_matches_base_name(self):
         self.assertTrue(job_uses_services_or_container(MATRIX_JOB_YML, "Test Matrix (3.11)"))
+
+    def test_iter_jobs_returns_empty_when_jobs_key_missing(self):
+        self.assertEqual(list(_iter_jobs("name: only\n")), [])
+
+    def test_iter_jobs_stops_when_top_level_dedents(self):
+        text = """\
+jobs:
+  first:
+    steps:
+      - run: echo hi
+name: workflow
+"""
+        jobs = list(_iter_jobs(text))
+        self.assertEqual(len(jobs), 1)
+        self.assertEqual(jobs[0]["job_id"], "first")
+
+    def test_looks_like_job_key_rejects_invalid_lines(self):
+        self.assertIsNone(_looks_like_job_key("", 2))
+        self.assertIsNone(_looks_like_job_key("  # comment", 2))
+        self.assertIsNone(_looks_like_job_key("first:", 2))
+        self.assertIsNone(_looks_like_job_key("  - item:", 2))
+        self.assertIsNone(_looks_like_job_key("  key", 2))
+        self.assertIsNone(_looks_like_job_key("  invalid key:", 2))
+
+    def test_iter_jobs_skips_non_job_entries_inside_jobs_block(self):
+        text = """\
+jobs:
+  # comment in jobs block
+  - not-a-job
+  not_a_mapping
+  valid-job:
+    name: Valid Job
+    steps:
+      - run: echo hi
+"""
+        jobs = list(_iter_jobs(text))
+        self.assertEqual(len(jobs), 1)
+        self.assertEqual(jobs[0]["job_id"], "valid-job")
 
 
 if __name__ == "__main__":

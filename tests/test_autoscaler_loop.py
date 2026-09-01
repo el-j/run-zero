@@ -54,6 +54,19 @@ class TestAutoscalerLoop(unittest.TestCase):
         with patch.object(autoscaler, "RUNNER_ARCH", "arm64"):
             self.assertEqual(autoscaler.resolve_job_arch([]), "arm64")
 
+    def test_ensure_driver_runtime_assets_returns_true_when_driver_has_no_hook(self):
+        class DriverWithoutHook:
+            pass
+
+        self.assertTrue(autoscaler.ensure_driver_runtime_assets(DriverWithoutHook(), "amd64"))
+
+    def test_ensure_driver_runtime_assets_falls_back_to_positional_call(self):
+        class PositionalOnlyDriver:
+            def ensure_runtime_assets(self, value):
+                return value == "amd64"
+
+        self.assertTrue(autoscaler.ensure_driver_runtime_assets(PositionalOnlyDriver(), "amd64"))
+
     @patch("autoscaler.ACCESS_TOKEN", "fake-token")
     @patch("autoscaler.CACHE_ENABLED", True)
     @patch("autoscaler.DASHBOARD_ENABLED", False)
@@ -122,6 +135,37 @@ class TestAutoscalerLoop(unittest.TestCase):
             autoscaler.main()
 
             self.assertEqual(mock_driver.spawn_runner.call_count, 2)
+
+    @patch("autoscaler.ACCESS_TOKEN", "fake-token")
+    @patch("autoscaler.ORG", "my-test-org")
+    @patch("autoscaler.MIN_RUNNERS", 2)
+    @patch("autoscaler.MAX_RUNNERS", 4)
+    @patch("autoscaler.CACHE_ENABLED", True)
+    @patch("autoscaler.DASHBOARD_ENABLED", False)
+    @patch("autoscaler.time.sleep")
+    def test_main_loop_organization_mode_skips_spawn_when_assets_not_ready(self, mock_sleep):
+        def stop_loop(*args, **kwargs):
+            autoscaler.running = False
+
+        mock_sleep.side_effect = stop_loop
+
+        with patch.object(autoscaler, "HOST_CACHE_DIR", self.temp_cache), \
+             patch("autoscaler.get_driver") as mock_get_driver, \
+             patch("autoscaler.get_available_drivers") as mock_avail:
+
+            mock_driver = MagicMock()
+            mock_driver.name.return_value = "docker"
+            mock_driver.list_runners.return_value = []
+            mock_driver.ensure_runtime_assets.return_value = False
+
+            mock_get_driver.return_value = mock_driver
+            mock_avail.return_value = {"docker": mock_driver}
+
+            autoscaler.running = True
+            autoscaler.main()
+
+            self.assertGreaterEqual(mock_driver.ensure_runtime_assets.call_count, 1)
+            mock_driver.spawn_runner.assert_not_called()
 
     def test_log_print_writes_to_given_file(self):
         buf = io.StringIO()

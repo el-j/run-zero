@@ -5,7 +5,7 @@ Unit tests for Driver Factory and RunnerInfo model.
 import unittest
 from unittest.mock import patch
 
-from drivers import RunnerInfo, get_available_drivers, get_driver
+from drivers import RunnerDriver, RunnerInfo, get_available_drivers, get_driver
 from drivers.bridge_driver import BridgeVMDriver
 from drivers.docker_driver import DockerDriver
 from drivers.multipass_driver import MultipassDriver
@@ -35,6 +35,37 @@ class TestRunnerInfo(unittest.TestCase):
         d = info.to_dict()
         self.assertEqual(d["id"], "runner-123")
         self.assertEqual(d["target_repo"], "el-j/run-zero")
+
+
+class _MinimalDriver(RunnerDriver):
+    """Concrete helper to exercise RunnerDriver default methods."""
+
+    def name(self) -> str:
+        return "minimal"
+
+    def is_available(self) -> bool:
+        return True
+
+    def spawn_runner(self, **kwargs):
+        return None
+
+    def list_runners(self):
+        return []
+
+    def prune_exited(self, runners):
+        return None
+
+    def destroy_runner(self, runner_id: str) -> bool:
+        return True
+
+    def cleanup_all(self) -> None:
+        return None
+
+
+class TestRunnerDriverDefaults(unittest.TestCase):
+    def test_default_ensure_runtime_assets_returns_true(self):
+        driver = _MinimalDriver()
+        self.assertTrue(driver.ensure_runtime_assets("amd64"))
 
 
 class TestDriverFactory(unittest.TestCase):
