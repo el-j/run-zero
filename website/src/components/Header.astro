@@ -1,13 +1,13 @@
 ---
-import VersionSwitcher from './VersionSwitcher.astro';
+import VersionSwitcher from "./VersionSwitcher.astro";
 
 interface Props {
   currentPath?: string;
   currentVersion?: string;
 }
 
-const { currentPath = '/', currentVersion = 'main' } = Astro.props;
-const baseUrl = import.meta.env.BASE_URL.replace(/\/$/, '');
+const { currentPath = "/", currentVersion = "main" } = Astro.props;
+const baseUrl = import.meta.env.BASE_URL.replace(/\/$/, "");
 ---
 
 <header class="site-header">
@@ -16,22 +16,57 @@ const baseUrl = import.meta.env.BASE_URL.replace(/\/$/, '');
     <div class="brand-group">
       <a href={`${baseUrl}/`} class="brand">
         <div class="brand-icon-box">
-          <img src={`${baseUrl}/favicon.svg`} alt="RunZero Logo" width="22" height="22" />
+          <img
+            src={`${baseUrl}/favicon.svg`}
+            alt="RunZero Logo"
+            width="22"
+            height="22"
+          />
         </div>
-        <span class="brand-title">RUN<span class="crimson-text">ZERO</span></span>
+        <span class="brand-title"
+          >RUN<span class="crimson-text">ZERO</span></span
+        >
       </a>
       <VersionSwitcher currentVersion={currentVersion} />
     </div>
 
     <!-- Desktop Navigation Menu -->
     <ul class="nav-menu">
-      <li><a href={`${baseUrl}/`} class={`nav-link ${currentPath === '/' || currentPath === '' ? 'active' : ''}`}>// OVERVIEW</a></li>
-      <li><a href={`${baseUrl}/#features`} class="nav-link">// ARCHITECTURE</a></li>
-      <li><a href={`${baseUrl}/#dashboard`} class="nav-link highlight-cyan">// DASHBOARD</a></li>
-      <li><a href={`${baseUrl}/#routing`} class="nav-link">// AUTO-ROUTING</a></li>
-      <li><a href={`${baseUrl}/#comparison`} class="nav-link">// BENCHMARKS</a></li>
-      <li><a href={`${baseUrl}/docs/`} class={`nav-link ${currentPath.startsWith('/docs') ? 'active' : ''}`}>// DOCS</a></li>
-      <li><a href={`${baseUrl}/versions/`} class={`nav-link ${currentPath.startsWith('/versions') ? 'active' : ''}`}>// VERSIONS</a></li>
+      <li>
+        <a
+          href={`${baseUrl}/`}
+          class={`nav-link ${currentPath === "/" || currentPath === "" ? "active" : ""}`}
+          >// OVERVIEW</a
+        >
+      </li>
+      <li>
+        <a href={`${baseUrl}/#features`} class="nav-link">// ARCHITECTURE</a>
+      </li>
+      <li>
+        <a href={`${baseUrl}/#dashboard`} class="nav-link highlight-cyan"
+          >// DASHBOARD</a
+        >
+      </li>
+      <li>
+        <a href={`${baseUrl}/#routing`} class="nav-link">// AUTO-ROUTING</a>
+      </li>
+      <li>
+        <a href={`${baseUrl}/#comparison`} class="nav-link">// BENCHMARKS</a>
+      </li>
+      <li>
+        <a
+          href={`${baseUrl}/docs/`}
+          class={`nav-link ${currentPath.startsWith("/docs") ? "active" : ""}`}
+          >// DOCS</a
+        >
+      </li>
+      <li>
+        <a
+          href={`${baseUrl}/versions/`}
+          class={`nav-link ${currentPath.startsWith("/versions") ? "active" : ""}`}
+          >// VERSIONS</a
+        >
+      </li>
     </ul>
 
     <!-- Desktop Action Buttons -->
@@ -41,16 +76,35 @@ const baseUrl = import.meta.env.BASE_URL.replace(/\/$/, '');
         <span class="status-text">FLEET READY</span>
       </div>
       <a href={`${baseUrl}/docs/`} class="btn-nav-docs">Get Started</a>
-      <a href="https://github.com/el-j/run-zero" class="btn-github" target="_blank" rel="noopener" aria-label="GitHub Repository">
+      <a
+        href="https://github.com/el-j/run-zero"
+        class="btn-github"
+        target="_blank"
+        rel="noopener"
+        aria-label="GitHub Repository"
+      >
         <svg height="16" width="16" viewBox="0 0 16 16" fill="currentColor">
-          <path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"></path>
+          <path
+            d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"
+          ></path>
         </svg>
       </a>
     </div>
 
     <!-- Mobile Hamburger Toggle -->
-    <button class="mobile-toggle" id="mobile-toggle" aria-label="Toggle navigation menu">
-      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+    <button
+      class="mobile-toggle"
+      id="mobile-toggle"
+      aria-label="Toggle navigation menu"
+    >
+      <svg
+        width="20"
+        height="20"
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="currentColor"
+        stroke-width="2"
+      >
         <line x1="3" y1="12" x2="21" y2="12"></line>
         <line x1="3" y1="6" x2="21" y2="6"></line>
         <line x1="3" y1="18" x2="21" y2="18"></line>
@@ -62,12 +116,22 @@ const baseUrl = import.meta.env.BASE_URL.replace(/\/$/, '');
   <div class="mobile-drawer" id="mobile-drawer">
     <a href={`${baseUrl}/`} class="nav-link">// Overview</a>
     <a href={`${baseUrl}/#features`} class="nav-link">// Architecture</a>
-    <a href={`${baseUrl}/#dashboard`} class="nav-link">// Real-Time Dashboard (:49505)</a>
+    <a href={`${baseUrl}/#dashboard`} class="nav-link"
+      >// Real-Time Dashboard (:49505)</a
+    >
     <a href={`${baseUrl}/#routing`} class="nav-link">// Auto-Routing</a>
     <a href={`${baseUrl}/#comparison`} class="nav-link">// Benchmarks</a>
     <a href={`${baseUrl}/docs/`} class="nav-link">// Full Documentation</a>
-    <a href={`${baseUrl}/versions/`} class="nav-link">// All Versions &amp; Archive</a>
-    <a href="https://github.com/el-j/run-zero" class="btn-github" target="_blank" rel="noopener" style="justify-content: center; margin-top: 12px;">GitHub Repository ↗</a>
+    <a href={`${baseUrl}/versions/`} class="nav-link"
+      >// All Versions &amp; Archive</a
+    >
+    <a
+      href="https://github.com/el-j/run-zero"
+      class="btn-github"
+      target="_blank"
+      rel="noopener"
+      style="justify-content: center; margin-top: 12px;">GitHub Repository ↗</a
+    >
   </div>
 </header>
 
@@ -152,11 +216,12 @@ const baseUrl = import.meta.env.BASE_URL.replace(/\/$/, '');
     padding: 6px 0;
     white-space: nowrap;
   }
-  .nav-link:hover, .nav-link.active {
+  .nav-link:hover,
+  .nav-link.active {
     color: var(--crimson-light);
   }
   .nav-link.active::after {
-    content: '';
+    content: "";
     position: absolute;
     bottom: -2px;
     left: 0;
@@ -272,8 +337,15 @@ const baseUrl = import.meta.env.BASE_URL.replace(/\/$/, '');
       padding: 0 16px;
       gap: 12px;
     }
-    .nav-menu, .nav-actions { display: none; }
-    .mobile-toggle { display: flex; align-items: center; justify-content: center; }
+    .nav-menu,
+    .nav-actions {
+      display: none;
+    }
+    .mobile-toggle {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
     .brand-group {
       gap: 10px;
       flex: 1;
@@ -296,16 +368,16 @@ const baseUrl = import.meta.env.BASE_URL.replace(/\/$/, '');
 </style>
 
 <script>
-  const toggleBtn = document.getElementById('mobile-toggle');
-  const drawer = document.getElementById('mobile-drawer');
+  const toggleBtn = document.getElementById("mobile-toggle");
+  const drawer = document.getElementById("mobile-drawer");
 
   if (toggleBtn && drawer) {
-    toggleBtn.addEventListener('click', () => {
-      drawer.classList.toggle('open');
+    toggleBtn.addEventListener("click", () => {
+      drawer.classList.toggle("open");
     });
-    drawer.querySelectorAll('a').forEach(link => {
-      link.addEventListener('click', () => {
-        drawer.classList.remove('open');
+    drawer.querySelectorAll("a").forEach((link) => {
+      link.addEventListener("click", () => {
+        drawer.classList.remove("open");
       });
     });
   }

@@ -9,7 +9,10 @@
   </div>
 
   <p class="lead">
-    RunZero features a built-in, lightweight real-time Web UI Dashboard and Host VM Bridge. Monitor active ephemeral runners, GitHub API quotas, hybrid routing distributions, and cache storage with zero external SaaS dependencies.
+    RunZero features a built-in, lightweight real-time Web UI Dashboard and Host
+    VM Bridge. Monitor active ephemeral runners, GitHub API quotas, hybrid
+    routing distributions, and cache storage with zero external SaaS
+    dependencies.
   </p>
 
   <!-- Web Dashboard Section -->
@@ -19,7 +22,9 @@
       <h3>1. Real-Time Web Dashboard (Port 49505)</h3>
     </div>
     <p>
-      The Web Dashboard starts automatically alongside the autoscaler daemon on <code>http://localhost:49505</code>.
+      The Web Dashboard starts automatically alongside the autoscaler daemon on <code
+        >http://localhost:49505</code
+      >.
     </p>
 
     <div class="code-block-wrap">
@@ -35,12 +40,32 @@
 
     <h4>Key Dashboard Capabilities</h4>
     <ul class="styled-list">
-      <li><strong>Live Ephemeral Runner Fleet:</strong> Real-time status halos, active duration stopwatches, target repo/workflow name, and runtime engine (Docker vs OrbStack / WSL2 / Multipass VM).</li>
-      <li><strong>Server-Sent Events (SSE) Stream:</strong> Instant UI updates delivered via <code>/api/events</code> with zero page polling and zero socket bloat.</li>
-      <li><strong>GitHub API Quota Tracker:</strong> Visual gauge tracking live GitHub REST API rate-limit headroom.</li>
-      <li><strong>Hybrid Routing Breakdown:</strong> Real-time counts of jobs routed to Docker vs VM backends (Services/DIND, Browser E2E, Systemd).</li>
-      <li><strong>Proxy Cache Analytics:</strong> Disk usage breakdown across NPM (Verdaccio), Go (Athens), APT, Docker, and Toolcache directories, with one-click purge actions.</li>
-      <li><strong>Streaming Terminal Log Viewer:</strong> Live tailing ring buffer of autoscaler daemon logs with auto-scroll and pause controls.</li>
+      <li>
+        <strong>Live Ephemeral Runner Fleet:</strong> Real-time status halos, active
+        duration stopwatches, target repo/workflow name, and runtime engine (Docker
+        vs OrbStack / WSL2 / Multipass VM).
+      </li>
+      <li>
+        <strong>Server-Sent Events (SSE) Stream:</strong> Instant UI updates delivered
+        via <code>/api/events</code> with zero page polling and zero socket bloat.
+      </li>
+      <li>
+        <strong>GitHub API Quota Tracker:</strong> Visual gauge tracking live GitHub
+        REST API rate-limit headroom.
+      </li>
+      <li>
+        <strong>Hybrid Routing Breakdown:</strong> Real-time counts of jobs routed
+        to Docker vs VM backends (Services/DIND, Browser E2E, Systemd).
+      </li>
+      <li>
+        <strong>Proxy Cache Analytics:</strong> Disk usage breakdown across NPM (Verdaccio),
+        Go (Athens), APT, Docker, and Toolcache directories, with one-click purge
+        actions.
+      </li>
+      <li>
+        <strong>Streaming Terminal Log Viewer:</strong> Live tailing ring buffer of
+        autoscaler daemon logs with auto-scroll and pause controls.
+      </li>
     </ul>
 
     <h4>Dashboard Configuration Options</h4>
@@ -81,7 +106,13 @@
       <h3>2. Host VM Bridge (Port 49504)</h3>
     </div>
     <p>
-      When running RunZero's autoscaler inside a Docker container (<code>make start-container</code>), native virtualization CLI tools like <code>orbctl</code>, <code>wsl.exe</code>, or <code>multipass</code> are not directly executable within the container. The <strong>Host VM Bridge</strong> bridges this gap by exposing a zero-dependency HTTP control daemon on the host.
+      When running RunZero's autoscaler inside a Docker container (<code
+        >make start-container</code
+      >), native virtualization CLI tools like <code>orbctl</code>, <code
+        >wsl.exe</code
+      >, or <code>multipass</code> are not directly executable within the container.
+      The <strong>Host VM Bridge</strong> bridges this gap by exposing a zero-dependency
+      HTTP control daemon on the host.
     </p>
 
     <div class="code-block-wrap">
@@ -120,7 +151,9 @@
           <tr>
             <td><code>HOST_VM_BRIDGE_URL</code></td>
             <td><code>http://host.docker.internal:49504</code></td>
-            <td>URL the containerized autoscaler uses to reach the host bridge.</td>
+            <td
+              >URL the containerized autoscaler uses to reach the host bridge.</td
+            >
           </tr>
         </tbody>
       </table>
@@ -170,7 +203,9 @@
     margin: 0;
     color: #fff;
   }
-  .sub-icon { font-size: 1.4rem; }
+  .sub-icon {
+    font-size: 1.4rem;
+  }
   .doc-sub-card h4 {
     font-size: 1.05rem;
     margin: 24px 0 12px;
@@ -218,7 +253,8 @@
     border-collapse: collapse;
     font-size: 0.9rem;
   }
-  .doc-table th, .doc-table td {
+  .doc-table th,
+  .doc-table td {
     padding: 10px 14px;
     text-align: left;
     border-bottom: 1px solid var(--border-subtle);

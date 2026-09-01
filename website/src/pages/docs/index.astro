@@ -1,35 +1,63 @@
 ---
-import Layout from '../../layouts/Layout.astro';
-import DocsSidebar from '../../components/docs/DocsSidebar.astro';
-import DocsQuickstart from '../../components/docs/DocsQuickstart.astro';
-import DocsDashboard from '../../components/docs/DocsDashboard.astro';
-import DocsDrivers from '../../components/docs/DocsDrivers.astro';
-import DocsHybridRouting from '../../components/docs/DocsHybridRouting.astro';
-import DocsCaching from '../../components/docs/DocsCaching.astro';
-import DocsDependencies from '../../components/docs/DocsDependencies.astro';
-import DocsZombieHealing from '../../components/docs/DocsZombieHealing.astro';
-import DocsEnvReference from '../../components/docs/DocsEnvReference.astro';
-import DocsCliReference from '../../components/docs/DocsCliReference.astro';
-import DocsFaq from '../../components/docs/DocsFaq.astro';
+import Layout from "../../layouts/Layout.astro";
+import DocsSidebar from "../../components/docs/DocsSidebar.astro";
+import DocsQuickstart from "../../components/docs/DocsQuickstart.astro";
+import DocsDashboard from "../../components/docs/DocsDashboard.astro";
+import DocsDrivers from "../../components/docs/DocsDrivers.astro";
+import DocsHybridRouting from "../../components/docs/DocsHybridRouting.astro";
+import DocsCaching from "../../components/docs/DocsCaching.astro";
+import DocsDependencies from "../../components/docs/DocsDependencies.astro";
+import DocsZombieHealing from "../../components/docs/DocsZombieHealing.astro";
+import DocsEnvReference from "../../components/docs/DocsEnvReference.astro";
+import DocsCliReference from "../../components/docs/DocsCliReference.astro";
+import DocsFaq from "../../components/docs/DocsFaq.astro";
 ---
 
-<Layout title="Documentation — RunZero" description="Complete installation, configuration, driver deep dive, and CLI guide for RunZero." currentPath="/docs">
+<Layout
+  title="Documentation — RunZero"
+  description="Complete installation, configuration, driver deep dive, and CLI guide for RunZero."
+  currentPath="/docs"
+>
   <div class="ambient-crimson"></div>
 
   <div class="container">
     <!-- Mobile Table of Contents Bar -->
     <div class="mobile-docs-bar">
-      <button id="mobile-docs-toggle" class="btn-mobile-docs" aria-expanded="false" aria-controls="docs-sidebar">
-        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+      <button
+        id="mobile-docs-toggle"
+        class="btn-mobile-docs"
+        aria-expanded="false"
+        aria-controls="docs-sidebar"
+      >
+        <svg
+          width="18"
+          height="18"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          stroke-width="2"
+        >
           <path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"></path>
-          <path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"></path>
+          <path
+            d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"
+          ></path>
         </svg>
         <span>Table of Contents</span>
-        <svg class="chevron" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+        <svg
+          class="chevron"
+          width="14"
+          height="14"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          stroke-width="2.5"
+        >
           <path d="M6 9l6 6 6-6"></path>
         </svg>
       </button>
-      <span class="active-section-label" id="mobile-active-section">Quick Start</span>
+      <span class="active-section-label" id="mobile-active-section"
+        >Quick Start</span
+      >
     </div>
 
     <div class="docs-layout">
@@ -40,7 +68,9 @@ import DocsFaq from '../../components/docs/DocsFaq.astro';
       <main class="docs-content">
         <h1>RunZero Documentation</h1>
         <p class="lead">
-          Everything you need to know about configuring, running, and scaling your local GitHub Actions runner fleet with Docker containers, dedicated Linux Virtual Machines, and intelligent proxy caching.
+          Everything you need to know about configuring, running, and scaling
+          your local GitHub Actions runner fleet with Docker containers,
+          dedicated Linux Virtual Machines, and intelligent proxy caching.
         </p>
 
         <DocsQuickstart />
@@ -225,63 +255,72 @@ import DocsFaq from '../../components/docs/DocsFaq.astro';
     main.docs-content {
       padding: 20px 8px 64px;
     }
-    .docs-content :global(h1) { font-size: 2.2rem; }
-    .docs-content :global(h2) { font-size: 1.5rem; }
-    .docs-content :global(.lead) { font-size: 1.05rem; }
-    .docs-content :global(pre.code-block) { font-size: 0.8rem; padding: 14px; }
+    .docs-content :global(h1) {
+      font-size: 2.2rem;
+    }
+    .docs-content :global(h2) {
+      font-size: 1.5rem;
+    }
+    .docs-content :global(.lead) {
+      font-size: 1.05rem;
+    }
+    .docs-content :global(pre.code-block) {
+      font-size: 0.8rem;
+      padding: 14px;
+    }
   }
 </style>
 
 <script>
-  const toggleBtn = document.getElementById('mobile-docs-toggle');
-  const sidebar = document.getElementById('docs-sidebar');
-  const backdrop = document.getElementById('sidebar-backdrop');
-  const closeBtn = document.getElementById('sidebar-close-btn');
-  const activeLabel = document.getElementById('mobile-active-section');
-  const sidebarLinks = document.querySelectorAll('.sidebar-link');
-  const sections = document.querySelectorAll('main.docs-content h2[id]');
+  const toggleBtn = document.getElementById("mobile-docs-toggle");
+  const sidebar = document.getElementById("docs-sidebar");
+  const backdrop = document.getElementById("sidebar-backdrop");
+  const closeBtn = document.getElementById("sidebar-close-btn");
+  const activeLabel = document.getElementById("mobile-active-section");
+  const sidebarLinks = document.querySelectorAll(".sidebar-link");
+  const sections = document.querySelectorAll("main.docs-content h2[id]");
 
   function openSidebar() {
-    if (sidebar) sidebar.classList.add('drawer-open');
-    if (backdrop) backdrop.classList.add('show');
-    if (toggleBtn) toggleBtn.setAttribute('aria-expanded', 'true');
+    if (sidebar) sidebar.classList.add("drawer-open");
+    if (backdrop) backdrop.classList.add("show");
+    if (toggleBtn) toggleBtn.setAttribute("aria-expanded", "true");
   }
 
   function closeSidebar() {
-    if (sidebar) sidebar.classList.remove('drawer-open');
-    if (backdrop) backdrop.classList.remove('show');
-    if (toggleBtn) toggleBtn.setAttribute('aria-expanded', 'false');
+    if (sidebar) sidebar.classList.remove("drawer-open");
+    if (backdrop) backdrop.classList.remove("show");
+    if (toggleBtn) toggleBtn.setAttribute("aria-expanded", "false");
   }
 
-  if (toggleBtn) toggleBtn.addEventListener('click', openSidebar);
-  if (closeBtn) closeBtn.addEventListener('click', closeSidebar);
-  if (backdrop) backdrop.addEventListener('click', closeSidebar);
+  if (toggleBtn) toggleBtn.addEventListener("click", openSidebar);
+  if (closeBtn) closeBtn.addEventListener("click", closeSidebar);
+  if (backdrop) backdrop.addEventListener("click", closeSidebar);
 
-  sidebarLinks.forEach(link => {
-    link.addEventListener('click', () => {
+  sidebarLinks.forEach((link) => {
+    link.addEventListener("click", () => {
       closeSidebar();
     });
   });
 
   // Active section scroll tracking
-  window.addEventListener('scroll', () => {
-    let currentId = '';
-    let currentTitle = '';
+  window.addEventListener("scroll", () => {
+    let currentId = "";
+    let currentTitle = "";
     const scrollPos = window.scrollY + 140;
 
-    sections.forEach(section => {
+    sections.forEach((section) => {
       const top = (section as HTMLElement).offsetTop;
       if (scrollPos >= top) {
-        currentId = section.getAttribute('id') || '';
-        currentTitle = section.textContent || '';
+        currentId = section.getAttribute("id") || "";
+        currentTitle = section.textContent || "";
       }
     });
 
     if (currentId) {
-      sidebarLinks.forEach(link => {
-        link.classList.remove('active');
-        if (link.getAttribute('href') === `#${currentId}`) {
-          link.classList.add('active');
+      sidebarLinks.forEach((link) => {
+        link.classList.remove("active");
+        if (link.getAttribute("href") === `#${currentId}`) {
+          link.classList.add("active");
         }
       });
       if (activeLabel && currentTitle) {
