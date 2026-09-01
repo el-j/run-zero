@@ -186,6 +186,45 @@ class TestDockerDriver(unittest.TestCase):
         self.assertIsNone(name)
 
     @patch("subprocess.run")
+    def test_ensure_runtime_assets_returns_true_when_image_exists(self, mock_run):
+        mock_run.return_value = MagicMock(returncode=0)
+        with patch.object(self.driver, "_build_runner_image_async") as mock_async_build:
+            self.assertTrue(self.driver.ensure_runtime_assets("amd64"))
+        mock_async_build.assert_not_called()
+
+    @patch("subprocess.run")
+    def test_ensure_runtime_assets_triggers_background_build_when_missing(self, mock_run):
+        mock_run.return_value = MagicMock(returncode=1)
+        with patch.object(self.driver, "_build_runner_image_async") as mock_async_build:
+            ready = self.driver.ensure_runtime_assets("amd64")
+        self.assertFalse(ready)
+        mock_async_build.assert_called_once_with("amd64")
+
+    @patch("subprocess.run")
+    def test_spawn_runner_skips_launch_and_starts_build_when_image_missing(self, mock_run):
+        mock_run.return_value = MagicMock(returncode=1)
+        with patch.object(self.driver, "_build_runner_image_async") as mock_async_build:
+            name = self.driver.spawn_runner(repo="el-j/run-zero", arch="amd64", access_token="secret-pat")
+        self.assertIsNone(name)
+        mock_async_build.assert_called_once_with("amd64")
+        # Only docker image inspect should have run; docker run is skipped until image is ready.
+        called_cmd = mock_run.call_args_list[0][0][0]
+        self.assertEqual(called_cmd[:3], ["docker", "image", "inspect"])
+
+    @patch("subprocess.run")
+    def test_spawn_runner_missing_image_error_triggers_background_build(self, mock_run):
+        mock_run.side_effect = subprocess.CalledProcessError(
+            1,
+            "docker",
+            stderr=b"Unable to find image 'local-github-runner:amd64' locally",
+        )
+        with patch.object(self.driver, "ensure_runtime_assets", return_value=True), \
+             patch.object(self.driver, "_build_runner_image_async") as mock_async_build:
+            name = self.driver.spawn_runner(repo="el-j/run-zero", arch="amd64", access_token="secret-pat")
+        self.assertIsNone(name)
+        mock_async_build.assert_called_once_with("amd64")
+
+    @patch("subprocess.run")
     def test_prune_and_destroy(self, mock_run):
         mock_run.return_value = MagicMock(returncode=0)
         runners = [

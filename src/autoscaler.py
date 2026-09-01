@@ -83,6 +83,17 @@ def resolve_job_arch(job_labels: List[str]) -> str:
     return "amd64"
 
 
+def ensure_driver_runtime_assets(driver: Any, arch: str) -> bool:
+    """Ensure per-arch driver prerequisites exist before attempting to spawn."""
+    ensure_fn = getattr(driver, "ensure_runtime_assets", None)
+    if callable(ensure_fn):
+        try:
+            return bool(ensure_fn(arch=arch))
+        except TypeError:
+            return bool(ensure_fn(arch))
+    return True
+
+
 def main():
     """Entrypoint: validate config, start the dashboard, then run the poll-scale-reconcile loop forever.
 
@@ -205,6 +216,8 @@ def main():
                 needed = min(MIN_RUNNERS - active_count, MAX_RUNNERS - active_count)
                 for i in range(needed):
                     arch = architectures[i % len(architectures)]
+                    if not ensure_driver_runtime_assets(default_driver, arch):
+                        continue
                     spawned_id = default_driver.spawn_runner(
                         org=ORG,
                         arch=arch,
@@ -252,6 +265,9 @@ def main():
                     arch = resolve_job_arch(job.get("labels", []))
 
                     dashboard_state.record_routing_decision(driver_to_use.name(), job.get("name", ""))
+
+                    if not ensure_driver_runtime_assets(driver_to_use, arch):
+                        continue
 
                     spawned_id = driver_to_use.spawn_runner(
                         repo=repo,

@@ -443,6 +443,40 @@ echo "Base image provisioning complete."
         self._build_threads[orb_arch] = thread
         thread.start()
 
+    def ensure_runtime_assets(self, arch: str = "arm64") -> bool:
+        """Ensure the per-arch golden VM base image exists, triggering async build when missing."""
+        orb_arch = "arm64" if arch == "arm64" else "amd64"
+        base_name = self.base_image_name(orb_arch)
+
+        if self.base_image_exists(orb_arch):
+            return True
+
+        with self._building_lock:
+            already_building = orb_arch in self._building_arches
+            cooldown_remaining = self._build_cooldown_remaining(orb_arch)
+
+        if not already_building and cooldown_remaining <= 0:
+            print(
+                f"[Autoscaler:OrbStack-VM] 🏗️  Golden base image '{base_name}' not found. "
+                f"Building it in the background (one-time setup, ~15-25 min) -- "
+                f"other repos/engines keep being served meanwhile. This job's "
+                f"VM will be spawned on a later poll once the image is ready."
+            )
+            self._build_base_image_async(orb_arch)
+        elif already_building:
+            print(
+                f"[Autoscaler:OrbStack-VM] Golden base image '{base_name}' is currently building. "
+                "This queued job will be retried on the next poll."
+            )
+        else:
+            print(
+                f"[Autoscaler:OrbStack-VM] Golden base image '{base_name}' is missing, but build retry is "
+                f"cooling down for {int(cooldown_remaining)}s after a previous failure.",
+                file=sys.stderr,
+            )
+
+        return False
+
     def join_background_build_threads(self, timeout: float = 10.0) -> bool:
         """Block until every background build_base_image() thread started via
         `_build_base_image_async` has finished, up to `timeout` seconds each.
@@ -549,20 +583,9 @@ CARGOCFG
             api_base = f"https://api.github.com/orgs/{org}/actions/runners"
             runner_url = f"https://github.com/{org}"
 
-        base_name = self.base_image_name(orb_arch)
-        if not self.base_image_exists(orb_arch):
-            with self._building_lock:
-                already_building = orb_arch in self._building_arches
-                cooldown_remaining = self._build_cooldown_remaining(orb_arch)
-            if not already_building and cooldown_remaining <= 0:
-                print(
-                    f"[Autoscaler:OrbStack-VM] 🏗️  Golden base image '{base_name}' not found. "
-                    f"Building it in the background (one-time setup, ~15-25 min) -- "
-                    f"other repos/engines keep being served meanwhile. This job's "
-                    f"VM will be spawned on a later poll once the image is ready."
-                )
-                self._build_base_image_async(orb_arch)
+        if not self.ensure_runtime_assets(orb_arch):
             return None
+        base_name = self.base_image_name(orb_arch)
 
         reg_and_run = registration_and_run_snippet(
             api_base, runner_url, access_token or "", vm_name, runner_labels, proxy_env_block, cache_mount_block

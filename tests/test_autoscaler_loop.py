@@ -279,6 +279,45 @@ class TestAutoscalerLoop(unittest.TestCase):
             self.assertEqual(mock_driver.spawn_runner.call_count, 2)
 
     @patch("autoscaler.ACCESS_TOKEN", "fake-token")
+    @patch("autoscaler.CACHE_ENABLED", True)
+    @patch("autoscaler.DASHBOARD_ENABLED", False)
+    @patch("autoscaler.MAX_RUNNERS", 2)
+    @patch("autoscaler.discover_repositories", return_value=["el-j/run-zero"])
+    @patch("autoscaler.reconcile_zombie_runners")
+    @patch("autoscaler.get_queued_job_details")
+    @patch("autoscaler.time.sleep")
+    def test_main_loop_skips_spawn_while_driver_assets_not_ready(
+        self, mock_sleep, mock_jobs, mock_reconcile, mock_discover
+    ):
+        mock_jobs.return_value = [
+            {"id": 1, "name": "unit-test-1", "labels": ["self-hosted"]},
+        ]
+
+        def stop_after_one_loop(*a, **kw):
+            autoscaler.running = False
+
+        mock_sleep.side_effect = stop_after_one_loop
+
+        with patch.object(autoscaler, "HOST_CACHE_DIR", self.temp_cache), \
+             patch("autoscaler.get_driver") as mock_get_driver, \
+             patch("autoscaler.get_available_drivers") as mock_avail, \
+             patch("autoscaler.select_driver_for_job") as mock_select_driver:
+            mock_driver = MagicMock()
+            mock_driver.name.return_value = "docker"
+            mock_driver.list_runners.return_value = []
+            mock_driver.ensure_runtime_assets.return_value = False
+
+            mock_get_driver.return_value = mock_driver
+            mock_avail.return_value = {"docker": mock_driver}
+            mock_select_driver.return_value = (mock_driver, "container")
+
+            autoscaler.running = True
+            autoscaler.main()
+
+            mock_driver.ensure_runtime_assets.assert_called_once()
+            mock_driver.spawn_runner.assert_not_called()
+
+    @patch("autoscaler.ACCESS_TOKEN", "fake-token")
     @patch("autoscaler.CACHE_ENABLED", False)
     @patch("autoscaler.DASHBOARD_ENABLED", True)
     @patch("autoscaler.discover_repositories", return_value=[])
