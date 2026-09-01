@@ -22,6 +22,13 @@ IDLE_ORPHAN_TIMEOUT_SECONDS = 600
 UNREGISTERED_ORPHAN_TIMEOUT_SECONDS = 180
 
 
+def _runner_name_matches(local_name: str, gh_name: str) -> bool:
+    """Match exact names and legacy suffix variants used by older start.sh images."""
+    if not local_name or not gh_name:
+        return False
+    return gh_name == local_name or gh_name.startswith(f"{local_name}-")
+
+
 def reconcile_zombie_runners(repos: List[str], access_token: Optional[str] = None) -> None:
     """Find and unstick runners GitHub still thinks are busy but that are actually dead.
 
@@ -106,11 +113,11 @@ def reconcile_idle_orphans(
                     gh_runners = r_list
                     break
 
-        gh_match = next((r for r in gh_runners if r.get("name") == runner.name), None)
+        gh_match = next((r for r in gh_runners if _runner_name_matches(runner.name, str(r.get("name", "")))), None)
         if not gh_match:
             # Fallback search across all tracked repos
             for r_list in gh_runners_by_repo.values():
-                m = next((r for r in r_list if r.get("name") == runner.name), None)
+                m = next((r for r in r_list if _runner_name_matches(runner.name, str(r.get("name", "")))), None)
                 if m:
                     gh_match = m
                     break

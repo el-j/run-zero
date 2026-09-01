@@ -98,6 +98,27 @@ class TestReconciler(unittest.TestCase):
         driver.destroy_runner.assert_not_called()
 
     @patch("reconciler.github_request")
+    def test_reconcile_idle_orphans_accepts_legacy_suffixed_runner_name(self, mock_gh):
+        # Older runner images appended a random suffix in start.sh even when
+        # RUNNER_NAME was already unique and explicit. Reconciler must still
+        # associate that GitHub runner with the local container and avoid
+        # destroying an active busy runner.
+        mock_gh.return_value = {
+            "runners": [
+                {"id": 55, "name": "local-runner-arm64-el-j-run-zero-abc123-legacy1", "busy": True}
+            ]
+        }
+        driver = MagicMock()
+        reconcile_idle_orphans(
+            ["el-j/run-zero"],
+            [self._runner(age_seconds=3600)],
+            {"docker": driver},
+            access_token="token",
+            now=1_000_000.0
+        )
+        driver.destroy_runner.assert_not_called()
+
+    @patch("reconciler.github_request")
     def test_reconcile_idle_orphans_destroys_even_if_never_registered(self, mock_gh):
         # The container came up but the runner process never made it into
         # GitHub's runner list at all -- still an orphan, not a reason to skip.
