@@ -177,6 +177,12 @@ body {
   color: var(--text-main);
 }
 
+.stat-meta {
+  margin-top: 2px;
+  font-size: 10px;
+  color: var(--text-dim);
+}
+
 .quota-bar-wrapper {
   width: 50px;
   height: 4px;
@@ -531,6 +537,15 @@ body {
   font-weight: 600;
 }
 
+.runner-links {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 4px;
+  margin-bottom: 4px;
+  flex-wrap: wrap;
+}
+
 /* ==============================================================================
    Queue & Repos List
    ============================================================================== */
@@ -544,16 +559,49 @@ body {
   display: flex;
   justify-content: space-between;
   align-items: center;
+  gap: 12px;
   padding: 10px 14px;
   background: rgba(255, 255, 255, 0.02);
   border: 1px solid var(--border-subtle);
   border-radius: var(--radius-sm);
 }
 
+.repo-main {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
 .repo-name {
   font-size: 13px;
   font-weight: 600;
   color: var(--text-main);
+  word-break: break-all;
+}
+
+.repo-links {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.quick-link {
+  font-size: 11px;
+  color: var(--accent-cyan);
+  text-decoration: none;
+  border-bottom: 1px dashed rgba(0, 240, 255, 0.45);
+}
+
+.quick-link:hover {
+  color: #9af7ff;
+  border-bottom-color: rgba(154, 247, 255, 0.75);
+}
+
+.link-sep {
+  color: var(--text-dim);
+  font-size: 10px;
 }
 
 .repo-queue-badge {
@@ -721,6 +769,68 @@ body {
 }
 
 .tag-status.online { background: var(--accent-emerald); }
+
+/* ==============================================================================
+   Actions Billing Panel
+   ============================================================================== */
+.billing-grid {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.billing-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 8px 10px;
+  background: rgba(255, 255, 255, 0.02);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-sm);
+  gap: 8px;
+}
+
+.billing-label {
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+.billing-value {
+  font-size: 12px;
+  color: #fff;
+  text-align: right;
+  word-break: break-all;
+}
+
+.billing-status {
+  margin-top: 10px;
+  font-size: 11px;
+  color: var(--text-dim);
+}
+
+.billing-status.ok {
+  color: var(--accent-emerald);
+}
+
+.billing-status.error {
+  color: var(--accent-amber);
+}
+
+.billing-hint {
+  margin-top: 10px;
+  padding: 10px 12px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border-subtle);
+  background: rgba(255, 255, 255, 0.02);
+  font-size: 11px;
+  color: var(--text-muted);
+  line-height: 1.55;
+}
+
+.billing-hint a {
+  color: var(--accent-cyan);
+  text-decoration: underline;
+}
 
 /* ==============================================================================
    Buttons & Controls

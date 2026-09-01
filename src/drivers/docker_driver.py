@@ -101,10 +101,26 @@ class DockerDriver(RunnerDriver):
             f"[Autoscaler:Docker] 🏗️  Building missing golden runner image '{image_tag}' "
             f"from '{build_context_dir}'..."
         )
+
+        # Cross-platform builds (e.g. linux/amd64 on Apple Silicon hosts)
+        # require BuildKit/buildx. Falling back to legacy `docker build`
+        # here produces misleading platform errors and never yields a usable
+        # tag for the requested architecture.
+        has_buildx = subprocess.run(["docker", "buildx", "version"], capture_output=True).returncode == 0
+        if not has_buildx:
+            print(
+                "[Autoscaler:Docker] Error: docker buildx is not available in the autoscaler runtime. "
+                "Install docker-buildx-plugin in the autoscaler image so missing runner images can be "
+                "built automatically for the requested platform.",
+                file=sys.stderr,
+            )
+            return False
+
         try:
             subprocess.run(
                 [
-                    "docker", "build",
+                    "docker", "buildx", "build",
+                    "--load",
                     "--platform", f"linux/{normalized_arch}",
                     "--build-arg", f"TARGETARCH={normalized_arch}",
                     "-t", image_tag,

@@ -7,6 +7,7 @@ import urllib.error
 from io import BytesIO
 from unittest.mock import MagicMock, patch
 
+import github_api
 from github_api import get_queued_job_details, get_workflow_text_for_run, github_request
 
 
@@ -15,30 +16,103 @@ class TestGitHubApi(unittest.TestCase):
         # _workflow_text_cache is module-level and keyed by run_id -- several
         # tests reuse run_id 101, so a hit cached by one test would silently
         # skip the HTTP call (and its mock) in the next unless cleared.
-        import github_api
         github_api._workflow_text_cache.clear()
+        github_api.rate_limit_remaining = None
+        github_api.rate_limit_total = None
+        github_api.rate_limit_used = None
+        github_api.rate_limit_resource = None
+        github_api.rate_limit_reset = None
 
     @patch("urllib.request.urlopen")
     def test_github_request_success(self, mock_urlopen):
         mock_resp = MagicMock()
         mock_resp.read.return_value = b'{"status": "ok"}'
-        mock_resp.headers = {"x-ratelimit-remaining": "4990", "x-ratelimit-reset": "1700000000"}
+        mock_resp.headers = {
+            "x-ratelimit-remaining": "4990",
+            "x-ratelimit-limit": "5432",
+            "x-ratelimit-reset": "1700000000"
+        }
         mock_resp.__enter__.return_value = mock_resp
         mock_urlopen.return_value = mock_resp
 
         result = github_request("/test", access_token="secret")
         self.assertEqual(result, {"status": "ok"})
+        self.assertEqual(github_api.rate_limit_remaining, 4990)
+        self.assertEqual(github_api.rate_limit_total, 5432)
 
     @patch("urllib.request.urlopen")
     def test_github_request_http_error(self, mock_urlopen):
         error = urllib.error.HTTPError(
             url="/test", code=403, msg="Forbidden",
-            hdrs={"x-ratelimit-remaining": "0", "x-ratelimit-reset": "1700000000"},
+            hdrs={
+                "x-ratelimit-remaining": "0",
+                "x-ratelimit-limit": "7777",
+                "x-ratelimit-reset": "1700000000"
+            },
             fp=BytesIO(b"")
         )
         mock_urlopen.side_effect = error
         result = github_request("/test", access_token="secret")
         self.assertIsNone(result)
+        self.assertEqual(github_api.rate_limit_total, 7777)
+
+    @patch("urllib.request.urlopen")
+    def test_refresh_rate_limit_uses_rate_limit_payload(self, mock_urlopen):
+        from github_api import refresh_rate_limit
+
+        mock_resp = MagicMock()
+        mock_resp.read.return_value = (
+            b'{"resources":{"core":{"limit":9999,"remaining":8765,"used":1234,"reset":1700001111}}}'
+        )
+        mock_resp.headers = {}
+        mock_resp.__enter__.return_value = mock_resp
+        mock_urlopen.return_value = mock_resp
+
+        ok = refresh_rate_limit(access_token="secret")
+        self.assertTrue(ok)
+        self.assertEqual(github_api.rate_limit_total, 9999)
+        self.assertEqual(github_api.rate_limit_remaining, 8765)
+        self.assertEqual(github_api.rate_limit_used, 1234)
+        self.assertEqual(github_api.rate_limit_reset, 1700001111)
+        self.assertEqual(github_api.rate_limit_resource, "core")
+
+    @patch("github_api.github_request")
+    def test_refresh_actions_billing_owner_user_scope(self, mock_gh):
+        mock_gh.return_value = {
+            "total_minutes_used": 400,
+            "total_paid_minutes_used": 120,
+            "included_minutes": 3000,
+        }
+
+        ok = github_api.refresh_actions_billing(access_token="secret", owner="el-j")
+        self.assertTrue(ok)
+        self.assertEqual(github_api.actions_billing["scope_type"], "user")
+        self.assertEqual(github_api.actions_billing["scope_name"], "el-j")
+        self.assertEqual(github_api.actions_billing["minutes_remaining"], 2880)
+
+    @patch("github_api.github_request")
+    def test_refresh_actions_billing_owner_fallbacks_to_org_scope(self, mock_gh):
+        mock_gh.side_effect = [
+            None,
+            {
+                "total_minutes_used": 900,
+                "total_paid_minutes_used": 150,
+                "included_minutes": 50000,
+            },
+        ]
+
+        ok = github_api.refresh_actions_billing(access_token="secret", owner="my-org")
+        self.assertTrue(ok)
+        self.assertEqual(github_api.actions_billing["scope_type"], "org")
+        self.assertEqual(github_api.actions_billing["scope_name"], "my-org")
+
+    @patch("github_api.github_request")
+    def test_refresh_actions_billing_error_sets_status_error(self, mock_gh):
+        mock_gh.return_value = None
+
+        ok = github_api.refresh_actions_billing(access_token="secret", org="my-org")
+        self.assertFalse(ok)
+        self.assertEqual(github_api.actions_billing["status"], "error")
 
     @patch("urllib.request.urlopen")
     def test_github_request_generic_exception(self, mock_urlopen):
@@ -61,6 +135,8 @@ class TestGitHubApi(unittest.TestCase):
         self.assertEqual(jobs[0]["run_id"], 101)
         self.assertIn("browser", jobs[0]["labels"])
         self.assertIsNone(jobs[0]["declares_services"])
+        self.assertEqual(jobs[0]["run_url"], "https://github.com/el-j/run-zero/actions/runs/101")
+        self.assertEqual(jobs[0]["job_url"], "https://github.com/el-j/run-zero/actions/runs/101/job/201")
 
     @patch("github_api.github_request")
     def test_get_queued_job_details_empty(self, mock_gh):

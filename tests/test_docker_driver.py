@@ -258,17 +258,27 @@ class TestDockerDriver(unittest.TestCase):
 
     @patch("subprocess.run")
     def test_build_runner_image_success_runs_docker_build(self, mock_run):
-        mock_run.return_value = MagicMock(returncode=0)
+        mock_run.side_effect = [MagicMock(returncode=0), MagicMock(returncode=0)]
         with patch.object(self.driver, "_image_exists", return_value=False), \
              patch.object(self.driver, "_resolve_build_context_dir", return_value="/tmp/dockerctx"):
             self.assertTrue(self.driver._build_runner_image("amd64"))
-        cmd = mock_run.call_args[0][0]
-        self.assertEqual(cmd[:2], ["docker", "build"])
+        cmd = mock_run.call_args_list[1][0][0]
+        self.assertEqual(cmd[:3], ["docker", "buildx", "build"])
         self.assertIn("--platform", cmd)
 
     @patch("subprocess.run")
+    def test_build_runner_image_returns_false_when_buildx_missing(self, mock_run):
+        mock_run.return_value = MagicMock(returncode=1)
+        with patch.object(self.driver, "_image_exists", return_value=False), \
+             patch.object(self.driver, "_resolve_build_context_dir", return_value="/tmp/dockerctx"):
+            self.assertFalse(self.driver._build_runner_image("amd64"))
+
+    @patch("subprocess.run")
     def test_build_runner_image_failure_returns_false(self, mock_run):
-        mock_run.side_effect = subprocess.CalledProcessError(1, "docker", stderr=b"build failed")
+        mock_run.side_effect = [
+            MagicMock(returncode=0),
+            subprocess.CalledProcessError(1, "docker", stderr=b"build failed"),
+        ]
         with patch.object(self.driver, "_image_exists", return_value=False), \
              patch.object(self.driver, "_resolve_build_context_dir", return_value="/tmp/dockerctx"):
             self.assertFalse(self.driver._build_runner_image("amd64"))

@@ -6,17 +6,20 @@ Dual-Engine Fleet supporting ultra-fast Docker containers and dedicated Virtual 
 Includes persistent multi-language package caching, proxy registries, real-time observability dashboard, and adaptive rate-limiting.
 """
 
+from __future__ import annotations
+
 import os
 import signal
 import sys
 import time
-from typing import Any, Dict, List, Optional
+from typing import Any
 
+import github_api
 from cache_manager import init_cache_dirs
 from dashboard import DashboardServer, dashboard_state
 from discovery import discover_repositories
 from drivers import RunnerInfo, get_available_drivers, get_driver
-from github_api import get_queued_job_details, rate_limit_remaining
+from github_api import get_queued_job_details, refresh_actions_billing, refresh_rate_limit
 from reconciler import reconcile_idle_orphans, reconcile_zombie_runners
 from router import select_driver_for_job
 
@@ -41,6 +44,8 @@ HOST_CACHE_DIR = os.getenv("HOST_CACHE_DIR", "")
 MIN_RUNNERS = int(os.getenv("MIN_RUNNERS", "0"))
 MAX_RUNNERS = int(os.getenv("MAX_RUNNERS", "4"))
 POLL_INTERVAL = int(os.getenv("POLL_INTERVAL", "10"))
+RATE_LIMIT_REFRESH_INTERVAL = int(os.getenv("RATE_LIMIT_REFRESH_INTERVAL", "60"))
+ACTIONS_BILLING_REFRESH_INTERVAL = int(os.getenv("ACTIONS_BILLING_REFRESH_INTERVAL", "300"))
 
 # Dashboard settings
 DASHBOARD_ENABLED = os.getenv("DASHBOARD_ENABLED", "true").lower() in ("true", "1", "yes")
@@ -59,7 +64,7 @@ def log_print(msg: str, file: Any = None) -> None:
     dashboard_state.append_log(msg)
 
 
-def get_target_architectures() -> List[str]:
+def get_target_architectures() -> list[str]:
     """Determine list of architectures to rotate through for pool."""
     if RUNNER_ARCH == "both":
         return ["arm64", "amd64"]
@@ -72,7 +77,7 @@ def get_target_architectures() -> List[str]:
 ARM_LABELS = ("arm64", "aarch64", "arm")
 
 
-def resolve_job_arch(job_labels: List[str]) -> str:
+def resolve_job_arch(job_labels: list[str]) -> str:
     """Pick the architecture for a job, mirroring GitHub-hosted runner defaults."""
     if RUNNER_ARCH in ("amd64", "x64", "x86_64"):
         return "amd64"
@@ -128,7 +133,7 @@ def main():
     # Initialize dashboard state config
     dashboard_state.version = __version__
     dashboard_state.default_engine = default_driver.name()
-    dashboard_state.available_drivers = list(available_drivers.keys())
+    dashboard_state.available_drivers = list(available_drivers)
     dashboard_state.hybrid_routing_enabled = AUTO_ROUTE_VM
     dashboard_state.target_architectures = architectures
     dashboard_state.cache_dir = HOST_CACHE_DIR
@@ -136,18 +141,18 @@ def main():
     dashboard_state.max_concurrency = MAX_RUNNERS
     dashboard_state.min_runners = MIN_RUNNERS
 
-    dashboard_server: Optional[DashboardServer] = None
+    dashboard_server: DashboardServer | None = None
     if DASHBOARD_ENABLED:
         try:
             dashboard_server = DashboardServer(host=DASHBOARD_HOST, port=DASHBOARD_PORT)
             dashboard_server.start(blocking=False)
-        except Exception as e:
+        except Exception as e:  # noqa: BLE001
             log_print(f"[Autoscaler] Warning: Could not start Dashboard server: {e}", file=sys.stderr)
 
     log_print("=" * 65)
     log_print(f" ⚡ RunZero v{__version__} — Dual-Engine Local GitHub Runner Autoscaler")
     log_print(f" Default Engine:   {default_driver.name().upper()}")
-    log_print(f" Available Drivers: {', '.join([k.upper() for k in available_drivers.keys()])}")
+    log_print(f" Available Drivers: {', '.join(k.upper() for k in available_drivers)}")
     log_print(f" Hybrid Routing:   {'Enabled (Auto-detecting VM vs Container jobs)' if AUTO_ROUTE_VM else 'Disabled'}")
     log_print(f" Architectures:    {', '.join([a.upper() for a in architectures])}")
     log_print(f" Cache Directory:  {HOST_CACHE_DIR} ({'Enabled' if CACHE_ENABLED else 'Disabled'})")
@@ -166,11 +171,26 @@ def main():
     signal.signal(signal.SIGINT, signal_handler)
     signal.signal(signal.SIGTERM, signal_handler)
 
-    tracked_repos: List[str] = []
+    tracked_repos: list[str] = []
+    runner_job_meta: dict[str, dict[str, Any]] = {}
     last_discovery_time = 0.0
+    last_rate_limit_refresh = 0.0
+    last_actions_billing_refresh = 0.0
 
     while running:
         now = time.time()
+
+        if now - last_rate_limit_refresh >= max(10, RATE_LIMIT_REFRESH_INTERVAL):
+            refresh_rate_limit(access_token=ACCESS_TOKEN)
+            last_rate_limit_refresh = now
+
+        if now - last_actions_billing_refresh >= max(30, ACTIONS_BILLING_REFRESH_INTERVAL):
+            billing_owner = OWNER
+            if not ORG and not billing_owner and tracked_repos:
+                billing_owner = tracked_repos[0].split("/", 1)[0] if "/" in tracked_repos[0] else ""
+            refresh_actions_billing(access_token=ACCESS_TOKEN, owner=billing_owner, org=ORG)
+            last_actions_billing_refresh = now
+
         # Refresh tracked repositories periodically
         if not ORG and (now - last_discovery_time > DISCOVERY_INTERVAL or not tracked_repos):
             discovered = discover_repositories(
@@ -184,20 +204,29 @@ def main():
             if discovered:
                 tracked_repos = discovered
                 log_print(f"[Autoscaler] Monitoring {len(tracked_repos)} active repository(ies):")
-                for r in tracked_repos:
-                    log_print(f"  • {r}")
-                log_print(f"[Autoscaler] GitHub API Quota remaining: {rate_limit_remaining}/5000")
+                for repo_name in tracked_repos:
+                    log_print(f"  • {repo_name}")
+                quota_remaining = github_api.rate_limit_remaining
+                quota_total = github_api.rate_limit_total
+                quota_resource = github_api.rate_limit_resource or "unknown"
+                if quota_remaining is None or quota_total is None:
+                    log_print("[Autoscaler] GitHub API Quota remaining: unknown/unknown")
+                else:
+                    log_print(
+                        f"[Autoscaler] GitHub API Quota remaining: "
+                        f"{quota_remaining}/{quota_total} ({quota_resource})"
+                    )
 
             if tracked_repos:
                 reconcile_zombie_runners(tracked_repos, access_token=ACCESS_TOKEN)
 
         # Collect active runners across all drivers
-        all_runners: List[RunnerInfo] = []
-        for d in available_drivers.values():
-            runners = d.list_runners()
-            d.prune_exited(runners)
-            all_runners.extend(d.list_runners())
-            ensure_stopped = getattr(d, "ensure_base_images_stopped", None)
+        all_runners: list[RunnerInfo] = []
+        for driver_instance in available_drivers.values():
+            runners = driver_instance.list_runners()
+            driver_instance.prune_exited(runners)
+            all_runners.extend(driver_instance.list_runners())
+            ensure_stopped = getattr(driver_instance, "ensure_base_images_stopped", None)
             if callable(ensure_stopped):
                 ensure_stopped()
 
@@ -207,8 +236,8 @@ def main():
         active_runners = [r for r in all_runners if r.state in ("running", "pending")]
         active_count = len(active_runners)
 
-        queued_jobs_by_repo: Dict[str, List[Dict[str, Any]]] = {}
-        all_queued_jobs: List[Dict[str, Any]] = []
+        queued_jobs_by_repo: dict[str, list[dict[str, Any]]] = {}
+        all_queued_jobs: list[dict[str, Any]] = []
 
         if ORG:
             # For organizations: scale based on MIN_RUNNERS
@@ -261,7 +290,7 @@ def main():
                     if len(active_runners) >= MAX_RUNNERS or needed <= 0:
                         break
 
-                    driver_to_use, mode = select_driver_for_job(job, default_driver, available_drivers, AUTO_ROUTE_VM)
+                    driver_to_use, _ = select_driver_for_job(job, default_driver, available_drivers, AUTO_ROUTE_VM)
                     arch = resolve_job_arch(job.get("labels", []))
 
                     dashboard_state.record_routing_decision(driver_to_use.name(), job.get("name", ""))
@@ -278,6 +307,12 @@ def main():
                     )
                     if spawned_id:
                         needed -= 1
+                        runner_job_meta[spawned_id] = {
+                            "job_id": job.get("id"),
+                            "run_id": job.get("run_id"),
+                            "job_url": job.get("job_url", ""),
+                            "run_url": job.get("run_url", ""),
+                        }
                         active_runners.append(RunnerInfo(
                             id=spawned_id,
                             name=spawned_id,
@@ -288,13 +323,30 @@ def main():
                             backend=driver_to_use.name()
                         ))
 
+        # Attach best-effort GitHub job links to currently active runner cards.
+        current_runner_names = {runner.name for runner in active_runners}
+        runner_job_meta = {k: v for k, v in runner_job_meta.items() if k in current_runner_names}
+
+        runners_for_dashboard: list[dict[str, Any]] = []
+        for runner in all_runners:
+            d = runner.to_dict()
+            meta = runner_job_meta.get(runner.name, {})
+            if meta:
+                d.update(meta)
+            runners_for_dashboard.append(d)
+
         # Push telemetry update to Dashboard
         dashboard_state.update_fleet(
-            runners=all_runners,
-            rate_limit=rate_limit_remaining,
+            runners=runners_for_dashboard,
+            rate_limit=github_api.rate_limit_remaining,
+            rate_limit_total=github_api.rate_limit_total,
+            rate_limit_used=github_api.rate_limit_used,
+            rate_limit_resource=github_api.rate_limit_resource,
+            rate_limit_reset=github_api.rate_limit_reset,
+            actions_billing=github_api.actions_billing,
             queued_jobs=all_queued_jobs,
             monitored_repos=tracked_repos,
-            available_drivers=list(available_drivers.keys()),
+            available_drivers=list(available_drivers),
             default_engine=default_driver.name(),
             version=__version__
         )
@@ -306,8 +358,8 @@ def main():
             time.sleep(1)
 
     log_print("[Autoscaler] Stopping managed runners on shutdown...")
-    for d in available_drivers.values():
-        d.cleanup_all()
+    for driver_instance in available_drivers.values():
+        driver_instance.cleanup_all()
     if dashboard_server:
         dashboard_server.stop()
     log_print("[Autoscaler] Shutdown complete.")

@@ -97,6 +97,48 @@
         </tbody>
       </table>
     </div>
+
+    <h4 id="actions-billing-setup">GitHub Actions Minutes Panel Setup</h4>
+    <p>
+      The dashboard's <strong>GitHub Actions Minutes</strong> panel uses GitHub billing
+      endpoints and does not reuse API rate-limit values. Configure account scope and
+      token permissions correctly to populate this panel with real data.
+    </p>
+
+    <div class="code-block-wrap">
+      <div class="code-block-header">
+        <span>ENV // MINUTES PANEL SETUP</span>
+      </div>
+      <pre><code><span class="c"># Personal scope</span>
+<span class="cmd">OWNER=your-username</span>
+<span class="c"># Organization scope (optional)</span>
+<span class="cmd"># ORG=your-org-name</span>
+
+<span class="c"># Token used by autoscaler API + billing lookups</span>
+<span class="cmd">ACCESS_TOKEN=ghp_xxx</span>
+
+<span class="c"># Optional polling cadence for billing panel</span>
+<span class="cmd">ACTIONS_BILLING_REFRESH_INTERVAL=300</span></code></pre>
+    </div>
+
+    <ul class="styled-list">
+      <li>
+        <strong>Primary runner operations:</strong> Token needs repository access for queue
+        discovery and runner registration.
+      </li>
+      <li>
+        <strong>Minutes panel:</strong> Token also needs billing-read access for the target
+        owner/org scope.
+      </li>
+      <li>
+        <strong>Validation:</strong> If permissions are insufficient, panel status shows
+        a clear error instead of fake numbers.
+      </li>
+    </ul>
+
+    <p>
+      Full HOWTO: <a href="https://github.com/el-j/run-zero/blob/develop/ACTIONS_BILLING_HOWTO.md" target="_blank" rel="noopener">ACTIONS_BILLING_HOWTO.md</a>
+    </p>
   </div>
 
   <!-- Host VM Bridge Section -->
