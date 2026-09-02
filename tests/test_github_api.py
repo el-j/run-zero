@@ -279,6 +279,90 @@ class TestGitHubApi(unittest.TestCase):
         result = github_request("/test", access_token="secret")
         self.assertIsNone(result)
 
+    def test_update_rate_limit_from_headers_captures_used_and_resource(self):
+        github_api._update_rate_limit_from_headers({
+            "x-ratelimit-remaining": "10",
+            "x-ratelimit-limit": "100",
+            "x-ratelimit-used": "90",
+            "x-ratelimit-resource": "search",
+            "x-ratelimit-reset": "1700001234",
+        })
+        self.assertEqual(github_api.rate_limit_used, 90)
+        self.assertEqual(github_api.rate_limit_resource, "search")
+
+    def test_update_rate_limit_from_payload_handles_non_dict_and_invalid_resource(self):
+        github_api._update_rate_limit_from_payload(["not", "a", "dict"])
+        self.assertIsNone(github_api.rate_limit_remaining)
+
+        github_api._update_rate_limit_from_payload({"resources": {"core": "oops"}})
+        self.assertIsNone(github_api.rate_limit_total)
+
+    def test_update_rate_limit_from_payload_falls_back_to_core_and_rate(self):
+        github_api.rate_limit_resource = "search"
+        github_api._update_rate_limit_from_payload({
+            "resources": {
+                "core": {"limit": 999, "remaining": 333, "used": 666, "reset": 1700002222}
+            }
+        })
+        self.assertEqual(github_api.rate_limit_resource, "core")
+        self.assertEqual(github_api.rate_limit_remaining, 333)
+
+        github_api.rate_limit_resource = "search"
+        github_api._update_rate_limit_from_payload({
+            "resources": {},
+            "rate": {"limit": 5000, "remaining": 4900, "used": 100, "reset": 1700003333},
+        })
+        self.assertEqual(github_api.rate_limit_remaining, 4900)
+        self.assertEqual(github_api.rate_limit_used, 100)
+
+    def test_update_rate_limit_from_payload_tolerates_bad_numeric_values(self):
+        github_api._update_rate_limit_from_payload({
+            "resources": {
+                "core": {"limit": "bad", "remaining": "bad", "used": "bad", "reset": "bad"}
+            }
+        })
+        self.assertIsNone(github_api.rate_limit_total)
+
+    def test_normalize_actions_billing_tolerates_non_numeric_values(self):
+        normalized = github_api._normalize_actions_billing(
+            {"total_minutes_used": "x", "total_paid_minutes_used": "y", "included_minutes": "z"},
+            "user",
+            "el-j",
+        )
+        self.assertIsNotNone(normalized)
+        self.assertIsNone(normalized["included_minutes"])
+        self.assertIsNone(normalized["total_minutes_used"])
+        self.assertIsNone(normalized["total_paid_minutes_used"])
+        self.assertIsNone(normalized["minutes_remaining"])
+
+    @patch("github_api.github_request")
+    def test_refresh_actions_billing_org_scope_success(self, mock_gh):
+        mock_gh.return_value = {
+            "total_minutes_used": 12,
+            "total_paid_minutes_used": 4,
+            "included_minutes": 3000,
+        }
+        ok = github_api.refresh_actions_billing(access_token="secret", org="my-org")
+        self.assertTrue(ok)
+        self.assertEqual(github_api.actions_billing["scope_type"], "org")
+
+    @patch("github_api.github_request")
+    def test_refresh_actions_billing_owner_fallback_error_uses_unknown_scope(self, mock_gh):
+        mock_gh.side_effect = [None, None]
+        ok = github_api.refresh_actions_billing(access_token="secret", owner="owner-only")
+        self.assertFalse(ok)
+        self.assertEqual(github_api.actions_billing["scope_type"], "unknown")
+        self.assertEqual(github_api.actions_billing["scope_name"], "owner-only")
+
+    @patch("urllib.request.urlopen")
+    def test_github_request_rate_limit_error_without_reset_uses_unknown_reset_time(self, mock_urlopen):
+        error = urllib.error.HTTPError(
+            url="/test", code=403, msg="Forbidden", hdrs={"x-ratelimit-remaining": "0"}, fp=BytesIO(b"")
+        )
+        mock_urlopen.side_effect = error
+        result = github_request("/test", access_token="secret")
+        self.assertIsNone(result)
+
     @patch("github_api.github_request")
     def test_get_workflow_text_for_run_decode_error_returns_none(self, mock_gh):
         mock_gh.side_effect = [

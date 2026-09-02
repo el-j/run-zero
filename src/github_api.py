@@ -69,8 +69,6 @@ def _update_rate_limit_from_payload(payload: Any) -> None:
     rate_obj = payload.get("rate")
     if resource_data is None and isinstance(rate_obj, dict):
         resource_data = rate_obj
-        if not resource_key:
-            resource_key = "core"
 
     if not isinstance(resource_data, dict):
         return

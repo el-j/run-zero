@@ -6,10 +6,14 @@ import unittest
 from unittest.mock import MagicMock, patch
 
 from drivers import RunnerInfo
-from reconciler import reconcile_idle_orphans, reconcile_zombie_runners
+from reconciler import _runner_name_matches, reconcile_idle_orphans, reconcile_zombie_runners
 
 
 class TestReconciler(unittest.TestCase):
+    def test_runner_name_matches_rejects_empty_inputs(self):
+        self.assertFalse(_runner_name_matches("", "local-runner-1"))
+        self.assertFalse(_runner_name_matches("local-runner-1", ""))
+
     @patch("reconciler.github_request")
     def test_reconcile_zombie_runners(self, mock_gh):
         mock_gh.side_effect = [

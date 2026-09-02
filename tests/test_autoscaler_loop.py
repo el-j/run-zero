@@ -11,6 +11,7 @@ import unittest
 from unittest.mock import MagicMock, patch
 
 import autoscaler
+from drivers import RunnerInfo
 
 
 class TestAutoscalerLoop(unittest.TestCase):
@@ -392,6 +393,182 @@ class TestAutoscalerLoop(unittest.TestCase):
         mock_dashboard_cls.assert_called_once()
         mock_dashboard_instance.start.assert_called_once_with(blocking=False)
         mock_dashboard_instance.stop.assert_called_once()
+
+    @patch("autoscaler.ACCESS_TOKEN", "fake-token")
+    @patch("autoscaler.OWNER", "")
+    @patch("autoscaler.ORG", "")
+    @patch("autoscaler.CACHE_ENABLED", True)
+    @patch("autoscaler.DASHBOARD_ENABLED", False)
+    @patch("autoscaler.RATE_LIMIT_REFRESH_INTERVAL", 99999)
+    @patch("autoscaler.ACTIONS_BILLING_REFRESH_INTERVAL", 0)
+    @patch("autoscaler.discover_repositories", return_value=["el-j/run-zero"])
+    @patch("autoscaler.get_queued_job_details")
+    @patch("autoscaler.reconcile_zombie_runners")
+    @patch("autoscaler.time.sleep")
+    @patch("autoscaler.refresh_actions_billing")
+    @patch("autoscaler.refresh_rate_limit")
+    def test_main_loop_merges_runner_job_meta_and_logs_known_quota(
+        self,
+        _mock_refresh_rate,
+        mock_refresh_billing,
+        mock_sleep,
+        _mock_reconcile,
+        mock_jobs,
+        _mock_discover,
+    ):
+        # Ensure known quota branch emits the detailed remaining/total log.
+        autoscaler.github_api.rate_limit_remaining = 42
+        autoscaler.github_api.rate_limit_total = 5000
+        autoscaler.github_api.rate_limit_resource = "core"
+
+        existing = RunnerInfo(
+            id="runner-1",
+            name="runner-1",
+            status="running",
+            state="running",
+            target_repo="el-j/run-zero",
+            target_arch="amd64",
+            backend="docker",
+        )
+
+        mock_jobs.return_value = [
+            {"id": 1, "run_id": 11, "name": "unit", "labels": ["self-hosted"], "job_url": "j", "run_url": "r"},
+            {"id": 2, "run_id": 12, "name": "unit-2", "labels": ["self-hosted"], "job_url": "j2", "run_url": "r2"},
+        ]
+
+        def stop_after_loop(*_args, **_kwargs):
+            autoscaler.running = False
+
+        mock_sleep.side_effect = stop_after_loop
+
+        with patch.object(autoscaler, "HOST_CACHE_DIR", self.temp_cache), \
+             patch("autoscaler.get_driver") as mock_get_driver, \
+             patch("autoscaler.get_available_drivers") as mock_avail, \
+             patch("autoscaler.select_driver_for_job") as mock_select_driver, \
+             patch("autoscaler.dashboard_state.update_fleet") as mock_update_fleet, \
+             patch("autoscaler.log_print") as mock_log_print:
+            mock_driver = MagicMock()
+            mock_driver.name.return_value = "docker"
+            mock_driver.list_runners.return_value = [existing]
+            # Reuse same id as existing runner so metadata merge path is exercised.
+            mock_driver.spawn_runner.return_value = "runner-1"
+
+            mock_get_driver.return_value = mock_driver
+            mock_avail.return_value = {"docker": mock_driver}
+            mock_select_driver.return_value = (mock_driver, "container")
+
+            autoscaler.running = True
+            autoscaler.main()
+
+        self.assertTrue(
+            any("GitHub API Quota remaining: 42/5000 (core)" in call.args[0] for call in mock_log_print.call_args_list)
+        )
+        # On the first loop billing refresh runs before discovery, so OWNER remains empty.
+        mock_refresh_billing.assert_called_once_with(access_token="fake-token", owner="", org="")
+
+        runners_payload = mock_update_fleet.call_args.kwargs["runners"]
+        self.assertEqual(len(runners_payload), 1)
+        self.assertEqual(runners_payload[0]["job_id"], 1)
+        self.assertEqual(runners_payload[0]["run_id"], 11)
+
+    @patch("autoscaler.ACCESS_TOKEN", "fake-token")
+    @patch("autoscaler.OWNER", "")
+    @patch("autoscaler.ORG", "")
+    @patch("autoscaler.CACHE_ENABLED", True)
+    @patch("autoscaler.DASHBOARD_ENABLED", False)
+    @patch("autoscaler.DISCOVERY_INTERVAL", 99999)
+    @patch("autoscaler.RATE_LIMIT_REFRESH_INTERVAL", 99999)
+    @patch("autoscaler.ACTIONS_BILLING_REFRESH_INTERVAL", 0)
+    @patch("autoscaler.discover_repositories", return_value=["el-j/run-zero"])
+    @patch("autoscaler.get_queued_job_details", return_value=[])
+    @patch("autoscaler.reconcile_zombie_runners")
+    @patch("autoscaler.time.time")
+    @patch("autoscaler.time.sleep")
+    @patch("autoscaler.refresh_actions_billing")
+    @patch("autoscaler.refresh_rate_limit")
+    def test_main_loop_refreshes_billing_with_derived_owner(
+        self,
+        _mock_refresh_rate,
+        mock_refresh_billing,
+        mock_sleep,
+        mock_time,
+        _mock_reconcile,
+        _mock_jobs,
+        _mock_discover,
+    ):
+        tick = {"value": -31}
+
+        def fake_time():
+            tick["value"] += 31
+            return tick["value"]
+
+        mock_time.side_effect = fake_time
+        sleep_calls = {"count": 0}
+
+        def stop_after_two_repo_sleeps(*_args, **_kwargs):
+            sleep_calls["count"] += 1
+            if sleep_calls["count"] >= 2:
+                autoscaler.running = False
+
+        mock_sleep.side_effect = stop_after_two_repo_sleeps
+
+        with patch.object(autoscaler, "HOST_CACHE_DIR", self.temp_cache), \
+             patch("autoscaler.POLL_INTERVAL", 0), \
+             patch("autoscaler.get_driver") as mock_get_driver, \
+             patch("autoscaler.get_available_drivers") as mock_avail:
+            mock_driver = MagicMock()
+            mock_driver.name.return_value = "docker"
+            mock_driver.list_runners.return_value = []
+            mock_get_driver.return_value = mock_driver
+            mock_avail.return_value = {"docker": mock_driver}
+
+            autoscaler.running = True
+            autoscaler.main()
+
+        self.assertGreaterEqual(mock_refresh_billing.call_count, 1)
+        self.assertIn(
+            (("access_token", "fake-token"), ("org", ""), ("owner", "el-j")),
+            [tuple(sorted(call.kwargs.items())) for call in mock_refresh_billing.call_args_list],
+        )
+
+    @patch("autoscaler.ACCESS_TOKEN", "fake-token")
+    @patch("autoscaler.CACHE_ENABLED", True)
+    @patch("autoscaler.DASHBOARD_ENABLED", False)
+    @patch("autoscaler.discover_repositories", return_value=["el-j/run-zero"])
+    @patch("autoscaler.get_queued_job_details", return_value=[])
+    @patch("autoscaler.reconcile_zombie_runners")
+    @patch("autoscaler.time.sleep")
+    def test_main_loop_logs_unknown_quota_when_values_missing(
+        self,
+        mock_sleep,
+        _mock_reconcile,
+        _mock_jobs,
+        _mock_discover,
+    ):
+        autoscaler.github_api.rate_limit_remaining = None
+        autoscaler.github_api.rate_limit_total = None
+
+        def stop_after_one_loop(*_args, **_kwargs):
+            autoscaler.running = False
+
+        mock_sleep.side_effect = stop_after_one_loop
+
+        with patch.object(autoscaler, "HOST_CACHE_DIR", self.temp_cache), \
+             patch("autoscaler.get_driver") as mock_get_driver, \
+             patch("autoscaler.get_available_drivers") as mock_avail, \
+             patch("autoscaler.log_print") as mock_log_print:
+            mock_driver = MagicMock()
+            mock_driver.name.return_value = "docker"
+            mock_driver.list_runners.return_value = []
+            mock_get_driver.return_value = mock_driver
+            mock_avail.return_value = {"docker": mock_driver}
+
+            autoscaler.running = True
+            autoscaler.main()
+
+        self.assertTrue(
+            any("GitHub API Quota remaining: unknown/unknown" in call.args[0] for call in mock_log_print.call_args_list)
+        )
 
 
 if __name__ == "__main__":
