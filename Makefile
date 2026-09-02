@@ -391,9 +391,9 @@ test: ## Run local unit tests directly
 install-hooks: ## Install RunZero pre-commit quality guard into .git/hooks/pre-commit
 	@echo "$(CYAN)Installing RunZero pre-commit hook...$(RESET)"
 	@mkdir -p .git/hooks
-	@cp scripts/pre-commit.sh .git/hooks/pre-commit
+	@printf '%s\n' '#!/usr/bin/env bash' 'set -euo pipefail' '' 'PROJECT_ROOT="$$(git rev-parse --show-toplevel 2>/dev/null || pwd)"' 'exec "$$PROJECT_ROOT/scripts/pre-commit.sh"' > .git/hooks/pre-commit
 	@chmod +x .git/hooks/pre-commit
-	@echo "$(GREEN)Pre-commit hook installed successfully! Every git commit will now be guarded.$(RESET)"
+	@echo "$(GREEN)Pre-commit hook installed successfully! It now always runs scripts/pre-commit.sh.$(RESET)"
 
 .PHONY: pre-commit
 pre-commit: ## Run the RunZero pre-commit quality guard manually
