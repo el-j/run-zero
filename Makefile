@@ -7,6 +7,7 @@
 .DEFAULT_GOAL := help
 
 CACHE_DIR := $(HOME)/.local-github-runner/cache
+WEBSITE_DIR := website
 AUTOSCALER_PID_FILE := .autoscaler.pid
 AUTOSCALER_LOG_FILE := .autoscaler.log
 BRIDGE_PID_FILE := .bridge.pid
@@ -390,9 +391,9 @@ test: ## Run local unit tests directly
 install-hooks: ## Install RunZero pre-commit quality guard into .git/hooks/pre-commit
 	@echo "$(CYAN)Installing RunZero pre-commit hook...$(RESET)"
 	@mkdir -p .git/hooks
-	@cp scripts/pre-commit.sh .git/hooks/pre-commit
+	@printf '%s\n' '#!/usr/bin/env bash' 'set -euo pipefail' '' 'PROJECT_ROOT="$$(git rev-parse --show-toplevel 2>/dev/null || pwd)"' 'exec "$$PROJECT_ROOT/scripts/pre-commit.sh"' > .git/hooks/pre-commit
 	@chmod +x .git/hooks/pre-commit
-	@echo "$(GREEN)Pre-commit hook installed successfully! Every git commit will now be guarded.$(RESET)"
+	@echo "$(GREEN)Pre-commit hook installed successfully! It now always runs scripts/pre-commit.sh.$(RESET)"
 
 .PHONY: pre-commit
 pre-commit: ## Run the RunZero pre-commit quality guard manually
@@ -404,6 +405,85 @@ lint: ## Run Flake8 linter and Mypy static type checker
 	@flake8 src/ tests/ --max-line-length=160 --extend-ignore=E501,W503,E402 || echo "Install flake8 for full linting."
 	@echo "$(CYAN)Running Mypy type checker...$(RESET)"
 	@MYPYPATH=src mypy src/ --ignore-missing-imports || echo "Install mypy for full typechecking."
+
+.PHONY: deps-check
+deps-check: ## Check dependency update opportunities (Python env + website Node packages)
+	@echo "$(CYAN)Checking Python environment dependency updates...$(RESET)"
+	@if command -v python3 >/dev/null 2>&1; then \
+		python3 -m pip list --outdated --format=columns 2>/dev/null || echo "Unable to query Python package updates in current environment."; \
+	else \
+		echo "python3 not found; skipping Python dependency check."; \
+	fi
+	@echo "$(CYAN)Checking website Node package updates (npm outdated + ncu)...$(RESET)"
+	@if command -v npm >/dev/null 2>&1; then \
+		(cd $(WEBSITE_DIR) && npm outdated || true); \
+		if command -v ncu >/dev/null 2>&1; then \
+			(cd $(WEBSITE_DIR) && ncu); \
+		else \
+			(cd $(WEBSITE_DIR) && npx -y npm-check-updates); \
+		fi; \
+	else \
+		echo "npm not found; skipping Node dependency check."; \
+	fi
+
+.PHONY: deps-update
+deps-update: ## Apply dependency updates where possible (website package.json via ncu)
+	@echo "$(CYAN)Updating website Node dependencies...$(RESET)"
+	@if command -v npm >/dev/null 2>&1; then \
+		if command -v ncu >/dev/null 2>&1; then \
+			(cd $(WEBSITE_DIR) && ncu -u); \
+		else \
+			(cd $(WEBSITE_DIR) && npx -y npm-check-updates -u); \
+		fi; \
+		(cd $(WEBSITE_DIR) && npm install); \
+	else \
+		echo "npm not found; cannot update website dependencies automatically."; \
+	fi
+	@echo "$(YELLOW)Python dependency updates are environment-specific; use your venv manager (pip/uv/poetry) to apply upgrades intentionally.$(RESET)"
+
+.PHONY: fmt-check
+fmt-check: ## Check formatting for Python and website sources
+	@echo "$(CYAN)Checking Python formatting...$(RESET)"
+	@if command -v ruff >/dev/null 2>&1; then \
+		ruff format --check --line-length=160 src/ tests/; \
+	elif command -v black >/dev/null 2>&1; then \
+		black --check --line-length=160 src/ tests/; \
+	else \
+		echo "Install ruff or black for Python format checks."; \
+	fi
+	@echo "$(CYAN)Checking website formatting with Prettier...$(RESET)"
+	@if command -v npm >/dev/null 2>&1; then \
+		(cd $(WEBSITE_DIR) && { npm ls prettier-plugin-astro >/dev/null 2>&1 || npm install; } && \
+			npm exec prettier -- --plugin=prettier-plugin-astro --check "src/**/*.{astro,js,ts,css,md,json}" "public/**/*.{css,md,json}"); \
+	else \
+		echo "npm not found; skipping website format checks."; \
+	fi
+
+.PHONY: fmt
+fmt: ## Auto-format Python and website sources
+	@echo "$(CYAN)Formatting Python sources...$(RESET)"
+	@if command -v ruff >/dev/null 2>&1; then \
+		ruff format --line-length=160 src/ tests/; \
+	elif command -v black >/dev/null 2>&1; then \
+		black --line-length=160 src/ tests/; \
+	else \
+		echo "Install ruff or black for Python auto-formatting."; \
+	fi
+	@echo "$(CYAN)Formatting website sources with Prettier...$(RESET)"
+	@if command -v npm >/dev/null 2>&1; then \
+		(cd $(WEBSITE_DIR) && { npm ls prettier-plugin-astro >/dev/null 2>&1 || npm install; } && \
+			npm exec prettier -- --plugin=prettier-plugin-astro --write "src/**/*.{astro,js,ts,css,md,json}" "public/**/*.{css,md,json}"); \
+	else \
+		echo "npm not found; skipping website auto-formatting."; \
+	fi
+
+.PHONY: nice
+nice: deps-check lint fmt-check ## Safe quality pass: check dependency updates + lint + format verification
+	@echo "$(GREEN)Nice pass complete.$(RESET)"
+
+.PHONY: very-nice
+very-nice: deps-update lint-fix fmt lint fmt-check ## Aggressive quality pass: update deps, auto-fix formatting, then re-verify
+	@echo "$(GREEN)Very nice pass complete.$(RESET)"
 
 .PHONY: lint-fix
 lint-fix: ## Auto-fix Python formatting and strip trailing whitespace

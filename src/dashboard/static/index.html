@@ -27,11 +27,12 @@
       <div class="header-stat">
         <span class="stat-label">API Quota</span>
         <div class="stat-val-group">
-          <span id="stat-rate-limit" class="stat-value font-mono">5000/5000</span>
+          <span id="stat-rate-limit" class="stat-value font-mono">--/--</span>
           <div class="quota-bar-wrapper">
-            <div id="stat-rate-limit-bar" class="quota-bar" style="width: 100%;"></div>
+            <div id="stat-rate-limit-bar" class="quota-bar" style="width: 0%;"></div>
           </div>
         </div>
+        <span id="stat-rate-meta" class="stat-meta font-mono">used -- • reset --:--:-- • unknown</span>
       </div>
 
       <div class="header-stat">
@@ -290,6 +291,45 @@
                   <span>Docker Mirror (49502)</span>
                 </span>
               </div>
+            </div>
+          </div>
+        </section>
+
+        <!-- Driver Runtime Status -->
+        <section class="panel" id="panel-actions-billing">
+          <div class="panel-header">
+            <h2 class="panel-title">GitHub Actions Minutes</h2>
+          </div>
+          <div class="panel-body">
+            <div class="billing-grid">
+              <div class="billing-row">
+                <span class="billing-label">Scope</span>
+                <span id="actions-scope" class="billing-value font-mono">unknown</span>
+              </div>
+              <div class="billing-row">
+                <span class="billing-label">Included Minutes</span>
+                <span id="actions-included" class="billing-value font-mono">--</span>
+              </div>
+              <div class="billing-row">
+                <span class="billing-label">Total Minutes Used</span>
+                <span id="actions-total-used" class="billing-value font-mono">--</span>
+              </div>
+              <div class="billing-row">
+                <span class="billing-label">Paid Minutes Used</span>
+                <span id="actions-paid-used" class="billing-value font-mono">--</span>
+              </div>
+              <div class="billing-row">
+                <span class="billing-label">Included Remaining</span>
+                <span id="actions-remaining" class="billing-value font-mono">--</span>
+              </div>
+              <div class="billing-row">
+                <span class="billing-label">Last Sync</span>
+                <span id="actions-updated" class="billing-value font-mono">--</span>
+              </div>
+            </div>
+            <div id="actions-status" class="billing-status">Waiting for billing sync...</div>
+            <div class="billing-hint">
+              Setup hint: use <span class="font-mono">ACCESS_TOKEN</span> with repository access plus billing-read permission for your target owner/org. See <a href="/docs/#actions-billing-setup" target="_blank" rel="noopener noreferrer">docs setup guide</a>.
             </div>
           </div>
         </section>

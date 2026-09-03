@@ -17,6 +17,14 @@ class TestDashboardState(unittest.TestCase):
     def setUp(self):
         self.state = DashboardState(max_log_lines=50)
 
+    def test_quota_defaults_are_unknown_until_first_github_sync(self):
+        snapshot = self.state.get_snapshot()
+        self.assertIsNone(snapshot["github"]["rate_limit_remaining"])
+        self.assertIsNone(snapshot["github"]["rate_limit_total"])
+        self.assertIsNone(snapshot["github"]["rate_limit_used"])
+        self.assertIsNone(snapshot["github"]["rate_limit_resource"])
+        self.assertIsNone(snapshot["github"]["rate_limit_reset"])
+
     def test_append_log(self):
         self.state.append_log("Test log line 1")
         self.assertEqual(len(self.state.log_buffer), 1)
@@ -60,11 +68,21 @@ class TestDashboardState(unittest.TestCase):
             queued_jobs=[{"repo": "owner/repo", "name": "build"}],
             monitored_repos=["owner/repo"],
             available_drivers=["docker", "orbstack-vm"],
+            actions_billing={
+                "scope_type": "user",
+                "scope_name": "el-j",
+                "included_minutes": 3000,
+                "total_minutes_used": 400,
+                "total_paid_minutes_used": 120,
+                "minutes_remaining": 2880,
+                "status": "ok",
+            },
             default_engine="docker",
             version="0.1.0"
         )
         snapshot = self.state.get_snapshot()
         self.assertEqual(snapshot["github"]["rate_limit_remaining"], 4800)
+        self.assertEqual(snapshot["github"]["actions_billing"]["scope_name"], "el-j")
         self.assertEqual(snapshot["github"]["queued_jobs_count"], 1)
         self.assertEqual(len(snapshot["runners"]), 1)
         self.assertEqual(snapshot["default_engine"], "docker")

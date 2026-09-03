@@ -288,6 +288,24 @@ make logs           # Stream live autoscaler logs
 make stop           # (or make down)
 ```
 
+### 6. Enable GitHub Actions Minutes Panel (Optional but Recommended)
+The dashboard has a dedicated `GitHub Actions Minutes` panel. It requires billing API access for the selected owner or org.
+
+1. Configure your scope in `.env`:
+```env
+OWNER=your-username
+# ORG=your-org-name
+```
+2. Use `ACCESS_TOKEN` with repository access and billing-read access for that target scope.
+3. Rebuild/restart:
+```bash
+docker compose build autoscaler
+make restart
+```
+4. Open dashboard: `http://localhost:49505` and verify panel status says `Billing synced from GitHub.`
+
+Full setup guide: [ACTIONS_BILLING_HOWTO.md](ACTIONS_BILLING_HOWTO.md)
+
 ---
 
 ## 🧪 Testing & Quality Suite

@@ -49,6 +49,7 @@ services:
       - HOST_VM_BRIDGE_URL=${HOST_VM_BRIDGE_URL:-http://host.docker.internal:49504}
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
+      - ./:/workspace:ro
       # cache_manager.py's init_cache_dirs() runs INSIDE this container and calls
       # os.makedirs()/os.chmod() on HOST_CACHE_DIR to prepare per-language cache
       # subdirectories, then hands their paths straight to `docker run -v host:container`

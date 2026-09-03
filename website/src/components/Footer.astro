@@ -1,12 +1,17 @@
 ---
-const baseUrl = import.meta.env.BASE_URL.replace(/\/$/, '');
+const baseUrl = import.meta.env.BASE_URL.replace(/\/$/, "");
 ---
 
 <footer class="site-footer">
   <div class="container">
     <div class="footer-inner">
       <div class="footer-brand">
-        <img src={`${baseUrl}/favicon.svg`} alt="RunZero Logo" width="24" height="24" />
+        <img
+          src={`${baseUrl}/favicon.svg`}
+          alt="RunZero Logo"
+          width="24"
+          height="24"
+        />
         <strong>RunZero</strong>
         <span class="footer-dim">• Dual-Engine Fleet</span>
       </div>
@@ -14,14 +19,32 @@ const baseUrl = import.meta.env.BASE_URL.replace(/\/$/, '');
       <div class="footer-links">
         <a href={`${baseUrl}/`} class="footer-link">Home</a>
         <a href={`${baseUrl}/docs/`} class="footer-link">Documentation</a>
-        <a href="https://github.com/el-j/run-zero" class="footer-link" target="_blank" rel="noopener">GitHub</a>
-        <a href="https://github.com/el-j/run-zero/releases" class="footer-link" target="_blank" rel="noopener">Releases</a>
-        <a href="https://github.com/el-j/run-zero/issues" class="footer-link" target="_blank" rel="noopener">Report Issue</a>
+        <a
+          href="https://github.com/el-j/run-zero"
+          class="footer-link"
+          target="_blank"
+          rel="noopener">GitHub</a
+        >
+        <a
+          href="https://github.com/el-j/run-zero/releases"
+          class="footer-link"
+          target="_blank"
+          rel="noopener">Releases</a
+        >
+        <a
+          href="https://github.com/el-j/run-zero/issues"
+          class="footer-link"
+          target="_blank"
+          rel="noopener">Report Issue</a
+        >
       </div>
     </div>
 
     <div class="footer-copy">
-      <p>MIT Licensed • Built for ultra-fast local CI with OrbStack, Docker Desktop, Windows WSL2, and Linux.</p>
+      <p>
+        MIT Licensed • Built for ultra-fast local CI with OrbStack, Docker
+        Desktop, Windows WSL2, and Linux.
+      </p>
     </div>
   </div>
 </footer>

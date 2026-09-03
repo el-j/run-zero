@@ -16,7 +16,11 @@
       <button class="wtab-btn" data-tab="multipass">[4] MULTIPASS</button>
     </div>
 
-    <button class="btn-copy-code" id="btn-copy-code" aria-label="Copy terminal commands">
+    <button
+      class="btn-copy-code"
+      id="btn-copy-code"
+      aria-label="Copy terminal commands"
+    >
       <span class="copy-icon">⎘</span>
       <span class="copy-text">COPY</span>
     </button>
@@ -33,7 +37,8 @@
       <span>07</span>
       <span>08</span>
     </div>
-    <pre class="terminal-pre"><code id="terminal-code"><span class="c"># 1. Clone repository and run interactive setup wizard</span>
+    <pre
+      class="terminal-pre"><code id="terminal-code"><span class="c"># 1. Clone repository and run interactive setup wizard</span>
 <span class="prompt">❯</span> <span class="cmd">git clone</span> git@github.com:el-j/run-zero.git
 <span class="prompt">❯</span> <span class="cmd">cd</span> run-zero &amp;&amp; <span class="cmd">make env</span>
 
@@ -45,7 +50,9 @@
   </div>
 
   <div class="workbench-footer">
-    <span class="footer-telemetry">⚡ COST: $0.00 // ENGINE: AUTO_DETECT // IDLE_RAM: 20MB // BOOT: 0.3s</span>
+    <span class="footer-telemetry"
+      >⚡ COST: $0.00 // ENGINE: AUTO_DETECT // IDLE_RAM: 20MB // BOOT: 0.3s</span
+    >
   </div>
 </div>
 
@@ -57,18 +64,26 @@
     border: 1px solid var(--border-card);
     border-radius: var(--radius-lg);
     overflow: hidden;
-    box-shadow: 0 30px 60px -15px rgba(0, 0, 0, 0.9), 0 0 30px -10px var(--crimson-dim);
+    box-shadow:
+      0 30px 60px -15px rgba(0, 0, 0, 0.9),
+      0 0 30px -10px var(--crimson-dim);
     text-align: left;
     position: relative;
   }
   .terminal-workbench::after {
-    content: '';
+    content: "";
     position: absolute;
     top: 0;
     left: 0;
     right: 0;
     height: 1px;
-    background: linear-gradient(90deg, transparent, var(--crimson), var(--solar), transparent);
+    background: linear-gradient(
+      90deg,
+      transparent,
+      var(--crimson),
+      var(--solar),
+      transparent
+    );
   }
 
   .workbench-header {
@@ -175,9 +190,18 @@
     flex: 1;
     overflow-x: auto;
   }
-  .terminal-pre .c { color: #52617a; }
-  .terminal-pre .prompt { color: var(--crimson); font-weight: bold; margin-right: 4px; }
-  .terminal-pre .cmd { color: #fff; font-weight: 600; }
+  .terminal-pre .c {
+    color: #52617a;
+  }
+  .terminal-pre .prompt {
+    color: var(--crimson);
+    font-weight: bold;
+    margin-right: 4px;
+  }
+  .terminal-pre .cmd {
+    color: #fff;
+    font-weight: 600;
+  }
 
   .workbench-footer {
     padding: 8px 16px;
@@ -192,9 +216,15 @@
   }
 
   @media (max-width: 768px) {
-    .workbench-tabs { display: none; }
-    .line-numbers { display: none; }
-    .workbench-body { padding: 16px; }
+    .workbench-tabs {
+      display: none;
+    }
+    .line-numbers {
+      display: none;
+    }
+    .workbench-body {
+      padding: 16px;
+    }
   }
 </style>
 
@@ -232,19 +262,19 @@ RUNNER_ARCH=amd64
 RUNNER_BACKEND=multipass
 
 # Launch runners:
-❯ make start`
+❯ make start`,
   };
 
-  const tabs = document.querySelectorAll('.wtab-btn');
-  const codeBox = document.getElementById('terminal-code');
-  const copyBtn = document.getElementById('btn-copy-code');
+  const tabs = document.querySelectorAll(".wtab-btn");
+  const codeBox = document.getElementById("terminal-code");
+  const copyBtn = document.getElementById("btn-copy-code");
 
   if (tabs && codeBox) {
-    tabs.forEach(tab => {
-      tab.addEventListener('click', () => {
-        tabs.forEach(t => t.classList.remove('active'));
-        tab.classList.add('active');
-        const target = tab.getAttribute('data-tab');
+    tabs.forEach((tab) => {
+      tab.addEventListener("click", () => {
+        tabs.forEach((t) => t.classList.remove("active"));
+        tab.classList.add("active");
+        const target = tab.getAttribute("data-tab");
         if (target && snippets[target]) {
           codeBox.innerHTML = snippets[target]
             .replace(/^(#.*)$/gm, '<span class="c">$1</span>')
@@ -255,18 +285,20 @@ RUNNER_BACKEND=multipass
   }
 
   if (copyBtn && codeBox) {
-    copyBtn.addEventListener('click', () => {
-      const rawText = codeBox.textContent ? codeBox.textContent.replace(/^❯ /gm, '') : '';
+    copyBtn.addEventListener("click", () => {
+      const rawText = codeBox.textContent
+        ? codeBox.textContent.replace(/^❯ /gm, "")
+        : "";
       navigator.clipboard.writeText(rawText).then(() => {
-        const textSpan = copyBtn.querySelector('.copy-text');
+        const textSpan = copyBtn.querySelector(".copy-text");
         if (textSpan) {
-          textSpan.textContent = 'COPIED!';
-          copyBtn.style.color = 'var(--crimson-light)';
-          copyBtn.style.borderColor = 'var(--border-crimson)';
+          textSpan.textContent = "COPIED!";
+          copyBtn.style.color = "var(--crimson-light)";
+          copyBtn.style.borderColor = "var(--border-crimson)";
           setTimeout(() => {
-            textSpan.textContent = 'COPY';
-            copyBtn.style.color = '';
-            copyBtn.style.borderColor = '';
+            textSpan.textContent = "COPY";
+            copyBtn.style.color = "";
+            copyBtn.style.borderColor = "";
           }, 2000);
         }
       });

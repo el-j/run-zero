@@ -1,12 +1,18 @@
 ---
-import Layout from '../../layouts/Layout.astro';
-import versionsData from '../../../public/versions.json';
+import Layout from "../../layouts/Layout.astro";
+import versionsData from "../../../public/versions.json";
 
-const baseUrl = import.meta.env.BASE_URL.replace(/\/$/, '');
-const currentDocsBaseUrl = versionsData[0]?.url.replace(/\/v\d+\.\d+\.\d+\/$/, '') || baseUrl;
+const baseUrl = import.meta.env.BASE_URL.replace(/\/$/, "");
+const currentDocsBaseUrl =
+  versionsData[0]?.url.replace(/\/v\d+\.\d+\.\d+\/$/, "") || baseUrl;
 ---
 
-<Layout title="Releases & Version Archive — RunZero" description="Archive of all RunZero documentation releases and release notes." currentPath="/versions" currentVersion={import.meta.env.PUBLIC_DOCS_VERSION || 'main'}>
+<Layout
+  title="Releases & Version Archive — RunZero"
+  description="Archive of all RunZero documentation releases and release notes."
+  currentPath="/versions"
+  currentVersion={import.meta.env.PUBLIC_DOCS_VERSION || "main"}
+>
   <div class="ambient-crimson"></div>
   <div class="ambient-solar"></div>
 
@@ -14,13 +20,18 @@ const currentDocsBaseUrl = versionsData[0]?.url.replace(/\/v\d+\.\d+\.\d+\/$/, '
     <section class="versions-section">
       <div class="section-header">
         <h1>Documentation Releases &amp; Version Archive</h1>
-        <p>Browse version-pinned documentation snapshots for specific RunZero releases, or jump to GitHub release changelogs.</p>
+        <p>
+          Browse version-pinned documentation snapshots for specific RunZero
+          releases, or jump to GitHub release changelogs.
+        </p>
       </div>
 
       <div class="callout info current-docs-callout">
         <div class="callout-title">⚡ Current Documentation</div>
         <p>
-          The live documentation at <code>/run-zero/</code> tracks the latest site deployed from <code>main</code>. Use the release snapshots below when you need docs that match an older installed version.
+          The live documentation at <code>/run-zero/</code> tracks the latest site
+          deployed from <code>main</code>. Use the release snapshots below when
+          you need docs that match an older installed version.
         </p>
         <div class="card-actions" style="margin-top: 18px;">
           <a href={`${currentDocsBaseUrl}/`} class="btn-crimson">
@@ -30,34 +41,50 @@ const currentDocsBaseUrl = versionsData[0]?.url.replace(/\/v\d+\.\d+\.\d+\/$/, '
       </div>
 
       <div class="versions-grid">
-        {versionsData.map((v) => (
-          <div class={`version-card ${v.status === 'latest' ? 'highlight-latest' : ''}`}>
-            <div class="card-top">
-              <div class="version-header">
-                <h3>{v.version}</h3>
-                <span class={`status-badge ${v.status}`}>{v.status === 'latest' ? '⚡ Latest Release' : 'Archived'}</span>
+        {
+          versionsData.map((v) => (
+            <div
+              class={`version-card ${v.status === "latest" ? "highlight-latest" : ""}`}
+            >
+              <div class="card-top">
+                <div class="version-header">
+                  <h3>{v.version}</h3>
+                  <span class={`status-badge ${v.status}`}>
+                    {v.status === "latest" ? "⚡ Latest Release" : "Archived"}
+                  </span>
+                </div>
+                <span class="release-date">Released on {v.releaseDate}</span>
               </div>
-              <span class="release-date">Released on {v.releaseDate}</span>
-            </div>
 
-            <p class="version-notes">{v.notes}</p>
+              <p class="version-notes">{v.notes}</p>
 
-            <div class="card-actions">
-              <a href={v.docsUrl} class="btn-crimson">
-                Browse {v.version} Docs →
-              </a>
-              <a href={v.changelogUrl} class="btn-ghost" target="_blank" rel="noopener">
-                Changelog on GitHub ↗
-              </a>
+              <div class="card-actions">
+                <a href={v.docsUrl} class="btn-crimson">
+                  Browse {v.version} Docs →
+                </a>
+                <a
+                  href={v.changelogUrl}
+                  class="btn-ghost"
+                  target="_blank"
+                  rel="noopener"
+                >
+                  Changelog on GitHub ↗
+                </a>
+              </div>
             </div>
-          </div>
-        ))}
+          ))
+        }
       </div>
 
       <div class="callout info" style="margin-top: 48px;">
-        <div class="callout-title">💡 How Multi-Version Documentation Works in RunZero</div>
+        <div class="callout-title">
+          💡 How Multi-Version Documentation Works in RunZero
+        </div>
         <p>
-          Each stable SemVer release gets its own static snapshot under <code>/{'{version}'}/</code> on the <code>gh-pages</code> branch, while the root of the site continues to serve the current docs built from <code>main</code>.
+          Each stable SemVer release gets its own static snapshot under <code
+            >/{"{version}"}/</code
+          > on the <code>gh-pages</code> branch, while the root of the site continues
+          to serve the current docs built from <code>main</code>.
         </p>
       </div>
     </section>
