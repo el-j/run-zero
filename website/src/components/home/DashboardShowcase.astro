@@ -1,6 +1,6 @@
 ---
 // Dashboard Showcase Component (Martian Cyberpunk Edition)
-const baseUrl = import.meta.env.BASE_URL.replace(/\/$/, '');
+const baseUrl = import.meta.env.BASE_URL.replace(/\/$/, "");
 ---
 
 <section class="dashboard-showcase" id="dashboard">
@@ -14,7 +14,11 @@ const baseUrl = import.meta.env.BASE_URL.replace(/\/$/, '');
       <h2>Real-Time Fleet &amp; Telemetry Dashboard</h2>
       <span class="pulse-badge">PORT :49505</span>
     </div>
-    <p>Zero external SaaS dashboards. RunZero provides a built-in, 100% self-hosted real-time Web UI for instant fleet status, hybrid routing telemetry, cache analytics, and log streaming.</p>
+    <p>
+      Zero external SaaS dashboards. RunZero provides a built-in, 100%
+      self-hosted real-time Web UI for instant fleet status, hybrid routing
+      telemetry, cache analytics, and log streaming.
+    </p>
   </div>
 
   <!-- Interactive Mock UI Window -->
@@ -40,26 +44,49 @@ const baseUrl = import.meta.env.BASE_URL.replace(/\/$/, '');
       <div class="mock-kpi-grid">
         <div class="mock-kpi-card">
           <div class="kpi-label">ACTIVE RUNNERS</div>
-          <div class="kpi-val"><span class="accent-cyan">3</span> <span class="kpi-sub">/ 10 max</span></div>
-          <div class="kpi-bar"><div class="kpi-fill cyan" style="width: 30%;"></div></div>
+          <div class="kpi-val">
+            <span class="accent-cyan">3</span>
+            <span class="kpi-sub">/ 10 max</span>
+          </div>
+          <div class="kpi-bar">
+            <div class="kpi-fill cyan" style="width: 30%;"></div>
+          </div>
         </div>
 
         <div class="mock-kpi-card">
           <div class="kpi-label">GITHUB API QUOTA</div>
-          <div class="kpi-val"><span class="accent-emerald">4,982</span> <span class="kpi-sub">/ 5,000</span></div>
-          <div class="kpi-bar"><div class="kpi-fill emerald" style="width: 99.6%;"></div></div>
+          <div class="kpi-val">
+            <span class="accent-emerald">4,982</span>
+            <span class="kpi-sub">/ 5,000</span>
+          </div>
+          <div class="kpi-bar">
+            <div class="kpi-fill emerald" style="width: 99.6%;"></div>
+          </div>
         </div>
 
         <div class="mock-kpi-card">
           <div class="kpi-label">HYBRID ROUTING</div>
-          <div class="kpi-val"><span class="accent-purple">62%</span> <span class="kpi-sub">Docker</span> · <span class="accent-amber">38%</span> <span class="kpi-sub">VM</span></div>
-          <div class="kpi-bar"><div class="kpi-fill purple" style="width: 62%;"></div></div>
+          <div class="kpi-val">
+            <span class="accent-purple">62%</span>
+            <span class="kpi-sub">Docker</span> · <span class="accent-amber"
+              >38%</span
+            >
+            <span class="kpi-sub">VM</span>
+          </div>
+          <div class="kpi-bar">
+            <div class="kpi-fill purple" style="width: 62%;"></div>
+          </div>
         </div>
 
         <div class="mock-kpi-card">
           <div class="kpi-label">PROXY CACHE USAGE</div>
-          <div class="kpi-val"><span class="accent-cyan">14.8 GB</span> <span class="kpi-sub">saved</span></div>
-          <div class="kpi-bar"><div class="kpi-fill solar" style="width: 45%;"></div></div>
+          <div class="kpi-val">
+            <span class="accent-cyan">14.8 GB</span>
+            <span class="kpi-sub">saved</span>
+          </div>
+          <div class="kpi-bar">
+            <div class="kpi-fill solar" style="width: 45%;"></div>
+          </div>
         </div>
       </div>
 
@@ -76,7 +103,9 @@ const baseUrl = import.meta.env.BASE_URL.replace(/\/$/, '');
               <div class="runner-badge docker">DOCKER</div>
               <div class="runner-info">
                 <div class="runner-name">local-runner-arm64-1</div>
-                <div class="runner-repo">el-j/run-zero · <span class="time-active">00:42s</span></div>
+                <div class="runner-repo">
+                  el-j/run-zero · <span class="time-active">00:42s</span>
+                </div>
               </div>
               <span class="runner-status-pill running">RUNNING JOB</span>
             </div>
@@ -85,7 +114,9 @@ const baseUrl = import.meta.env.BASE_URL.replace(/\/$/, '');
               <div class="runner-badge vm">ORBSTACK VM</div>
               <div class="runner-info">
                 <div class="runner-name">local-runner-amd64-vm-2</div>
-                <div class="runner-repo">el-j/webapp-e2e · <span class="time-active">01:18s</span></div>
+                <div class="runner-repo">
+                  el-j/webapp-e2e · <span class="time-active">01:18s</span>
+                </div>
               </div>
               <span class="runner-status-pill vm-pill">PLAYWRIGHT E2E</span>
             </div>
@@ -94,7 +125,9 @@ const baseUrl = import.meta.env.BASE_URL.replace(/\/$/, '');
               <div class="runner-badge docker">DOCKER</div>
               <div class="runner-info">
                 <div class="runner-name">local-runner-arm64-standby</div>
-                <div class="runner-repo">fleet-standby · <span class="time-active">00:05s</span></div>
+                <div class="runner-repo">
+                  fleet-standby · <span class="time-active">00:05s</span>
+                </div>
               </div>
               <span class="runner-status-pill idle">IDLE (MIN 1)</span>
             </div>
@@ -109,7 +142,9 @@ const baseUrl = import.meta.env.BASE_URL.replace(/\/$/, '');
           </div>
           <div class="telemetry-breakdown-list">
             <div class="breakdown-item">
-              <span class="b-label">Docker Containers (Unit Tests &amp; Builds)</span>
+              <span class="b-label"
+                >Docker Containers (Unit Tests &amp; Builds)</span
+              >
               <span class="b-val">128 jobs (62%)</span>
             </div>
             <div class="breakdown-item">
@@ -139,7 +174,10 @@ const baseUrl = import.meta.env.BASE_URL.replace(/\/$/, '');
       <div class="bullet-icon">📡</div>
       <div class="bullet-content">
         <h4>Server-Sent Events (SSE)</h4>
-        <p>Ultra-low overhead real-time updates broadcast instantly to your browser without polling.</p>
+        <p>
+          Ultra-low overhead real-time updates broadcast instantly to your
+          browser without polling.
+        </p>
       </div>
     </div>
 
@@ -147,7 +185,10 @@ const baseUrl = import.meta.env.BASE_URL.replace(/\/$/, '');
       <div class="bullet-icon">🌉</div>
       <div class="bullet-content">
         <h4>Host VM Bridge (:49504)</h4>
-        <p>Containerize your autoscaler daemon while retaining full OrbStack, WSL2, and Multipass VM capabilities.</p>
+        <p>
+          Containerize your autoscaler daemon while retaining full OrbStack,
+          WSL2, and Multipass VM capabilities.
+        </p>
       </div>
     </div>
 
@@ -155,7 +196,10 @@ const baseUrl = import.meta.env.BASE_URL.replace(/\/$/, '');
       <div class="bullet-icon">📦</div>
       <div class="bullet-content">
         <h4>100% Offline &amp; Self-Hosted</h4>
-        <p>Zero external telemetry or cloud dependencies. All UI fonts, assets, and metrics stay on your machine.</p>
+        <p>
+          Zero external telemetry or cloud dependencies. All UI fonts, assets,
+          and metrics stay on your machine.
+        </p>
       </div>
     </div>
   </div>
@@ -177,7 +221,9 @@ const baseUrl = import.meta.env.BASE_URL.replace(/\/$/, '');
     letter-spacing: 0.08em;
     margin-bottom: 12px;
   }
-  .tag-accent { color: var(--text-dim); }
+  .tag-accent {
+    color: var(--text-dim);
+  }
 
   .section-heading-group {
     margin-bottom: 36px;
@@ -216,7 +262,9 @@ const baseUrl = import.meta.env.BASE_URL.replace(/\/$/, '');
     background: #080c14;
     border: 1px solid rgba(0, 240, 255, 0.2);
     border-radius: var(--radius-lg);
-    box-shadow: 0 30px 80px -15px rgba(0, 0, 0, 0.9), 0 0 30px -10px rgba(0, 240, 255, 0.15);
+    box-shadow:
+      0 30px 80px -15px rgba(0, 0, 0, 0.9),
+      0 0 30px -10px rgba(0, 240, 255, 0.15);
     overflow: hidden;
     margin-bottom: 48px;
   }
@@ -240,9 +288,15 @@ const baseUrl = import.meta.env.BASE_URL.replace(/\/$/, '');
     height: 11px;
     border-radius: 50%;
   }
-  .dot.red { background: #ff5f56; }
-  .dot.yellow { background: #ffbd2e; }
-  .dot.green { background: #27c93f; }
+  .dot.red {
+    background: #ff5f56;
+  }
+  .dot.yellow {
+    background: #ffbd2e;
+  }
+  .dot.green {
+    background: #27c93f;
+  }
 
   .window-address-bar {
     flex: 1;
@@ -258,8 +312,14 @@ const baseUrl = import.meta.env.BASE_URL.replace(/\/$/, '');
     font-size: 0.8rem;
     color: #cbd5e1;
   }
-  .lock-icon { font-size: 0.75rem; }
-  .url-text { color: #00f0ff; font-weight: 600; flex: 1; }
+  .lock-icon {
+    font-size: 0.75rem;
+  }
+  .url-text {
+    color: #00f0ff;
+    font-weight: 600;
+    flex: 1;
+  }
   .badge-live {
     font-size: 0.65rem;
     color: #10b981;
@@ -323,10 +383,18 @@ const baseUrl = import.meta.env.BASE_URL.replace(/\/$/, '');
     color: #64748b;
     font-weight: 500;
   }
-  .accent-cyan { color: #00f0ff; }
-  .accent-emerald { color: #10b981; }
-  .accent-purple { color: #b057ff; }
-  .accent-amber { color: #f59e0b; }
+  .accent-cyan {
+    color: #00f0ff;
+  }
+  .accent-emerald {
+    color: #10b981;
+  }
+  .accent-purple {
+    color: #b057ff;
+  }
+  .accent-amber {
+    color: #f59e0b;
+  }
 
   .kpi-bar {
     height: 4px;
@@ -334,11 +402,21 @@ const baseUrl = import.meta.env.BASE_URL.replace(/\/$/, '');
     border-radius: 2px;
     overflow: hidden;
   }
-  .kpi-fill { height: 100%; }
-  .kpi-fill.cyan { background: #00f0ff; }
-  .kpi-fill.emerald { background: #10b981; }
-  .kpi-fill.purple { background: #b057ff; }
-  .kpi-fill.solar { background: #f59e0b; }
+  .kpi-fill {
+    height: 100%;
+  }
+  .kpi-fill.cyan {
+    background: #00f0ff;
+  }
+  .kpi-fill.emerald {
+    background: #10b981;
+  }
+  .kpi-fill.purple {
+    background: #b057ff;
+  }
+  .kpi-fill.solar {
+    background: #f59e0b;
+  }
 
   .mock-middle-grid {
     display: grid;
@@ -398,13 +476,33 @@ const baseUrl = import.meta.env.BASE_URL.replace(/\/$/, '');
     padding: 2px 6px;
     border-radius: 3px;
   }
-  .runner-badge.docker { background: rgba(0, 240, 255, 0.15); color: #00f0ff; }
-  .runner-badge.vm { background: rgba(176, 87, 255, 0.15); color: #b057ff; }
+  .runner-badge.docker {
+    background: rgba(0, 240, 255, 0.15);
+    color: #00f0ff;
+  }
+  .runner-badge.vm {
+    background: rgba(176, 87, 255, 0.15);
+    color: #b057ff;
+  }
 
-  .runner-info { flex: 1; }
-  .runner-name { font-family: var(--font-mono); font-size: 0.78rem; font-weight: 700; color: #fff; }
-  .runner-repo { font-size: 0.7rem; color: #94a3b8; }
-  .time-active { color: #00f0ff; font-family: var(--font-mono); font-weight: 600; }
+  .runner-info {
+    flex: 1;
+  }
+  .runner-name {
+    font-family: var(--font-mono);
+    font-size: 0.78rem;
+    font-weight: 700;
+    color: #fff;
+  }
+  .runner-repo {
+    font-size: 0.7rem;
+    color: #94a3b8;
+  }
+  .time-active {
+    color: #00f0ff;
+    font-family: var(--font-mono);
+    font-weight: 600;
+  }
 
   .runner-status-pill {
     font-family: var(--font-mono);
@@ -413,9 +511,18 @@ const baseUrl = import.meta.env.BASE_URL.replace(/\/$/, '');
     padding: 2px 8px;
     border-radius: 4px;
   }
-  .runner-status-pill.running { background: rgba(16, 185, 129, 0.15); color: #10b981; }
-  .runner-status-pill.vm-pill { background: rgba(176, 87, 255, 0.15); color: #b057ff; }
-  .runner-status-pill.idle { background: rgba(100, 116, 139, 0.15); color: #94a3b8; }
+  .runner-status-pill.running {
+    background: rgba(16, 185, 129, 0.15);
+    color: #10b981;
+  }
+  .runner-status-pill.vm-pill {
+    background: rgba(176, 87, 255, 0.15);
+    color: #b057ff;
+  }
+  .runner-status-pill.idle {
+    background: rgba(100, 116, 139, 0.15);
+    color: #94a3b8;
+  }
 
   .telemetry-breakdown-list {
     display: flex;
@@ -431,11 +538,23 @@ const baseUrl = import.meta.env.BASE_URL.replace(/\/$/, '');
     background: rgba(0, 0, 0, 0.25);
     border-radius: 4px;
   }
-  .b-label { color: #94a3b8; }
-  .b-val { font-family: var(--font-mono); font-weight: 700; color: #fff; }
-  .highlight-purple { color: #b057ff; }
-  .highlight-amber { color: #f59e0b; }
-  .highlight-cyan { color: #00f0ff; }
+  .b-label {
+    color: #94a3b8;
+  }
+  .b-val {
+    font-family: var(--font-mono);
+    font-weight: 700;
+    color: #fff;
+  }
+  .highlight-purple {
+    color: #b057ff;
+  }
+  .highlight-amber {
+    color: #f59e0b;
+  }
+  .highlight-cyan {
+    color: #00f0ff;
+  }
 
   .action-bar-mini {
     display: flex;

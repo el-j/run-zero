@@ -21,7 +21,7 @@ class TestShellScripts(unittest.TestCase):
         if not os.path.isfile(script_path):
             self.skipTest("start.sh not available in temp sandbox directory")
 
-        res = subprocess.run(["bash", "-n", script_path], capture_output=True, text=True)
+        res = subprocess.run(["bash", "-n", script_path], capture_output=True, text=True, check=False)
         self.assertEqual(res.returncode, 0, f"Syntax error in start.sh: {res.stderr}")
 
     def test_setup_env_sh_syntax(self):
@@ -32,7 +32,7 @@ class TestShellScripts(unittest.TestCase):
         if not os.path.isfile(script_path):
             self.skipTest("setup_env.sh not available in temp sandbox directory")
 
-        res = subprocess.run(["bash", "-n", script_path], capture_output=True, text=True)
+        res = subprocess.run(["bash", "-n", script_path], capture_output=True, text=True, check=False)
         self.assertEqual(res.returncode, 0, f"Syntax error in setup_env.sh: {res.stderr}")
 
     def test_setup_env_sh_non_interactive(self):
@@ -45,7 +45,7 @@ class TestShellScripts(unittest.TestCase):
 
         env = os.environ.copy()
         env["NON_INTERACTIVE"] = "true"
-        res = subprocess.run(["bash", script_path], capture_output=True, text=True, env=env)
+        res = subprocess.run(["bash", script_path], capture_output=True, text=True, env=env, check=False)
         self.assertEqual(res.returncode, 0, f"Error running setup_env.sh: {res.stderr}")
 
     def test_pre_commit_sh_syntax(self):
@@ -54,7 +54,7 @@ class TestShellScripts(unittest.TestCase):
             script_path = os.path.abspath("scripts/pre-commit.sh")
         if not os.path.isfile(script_path):
             self.skipTest("pre-commit.sh not found")
-        res = subprocess.run(["bash", "-n", script_path], capture_output=True, text=True)
+        res = subprocess.run(["bash", "-n", script_path], capture_output=True, text=True, check=False)
         self.assertEqual(res.returncode, 0, f"Syntax error in pre-commit.sh: {res.stderr}")
 
     def test_provision_toolchain_sh_syntax(self):
@@ -63,7 +63,7 @@ class TestShellScripts(unittest.TestCase):
             script_path = os.path.abspath("docker/provision-toolchain.sh")
         if not os.path.isfile(script_path):
             self.skipTest("provision-toolchain.sh not found")
-        res = subprocess.run(["bash", "-n", script_path], capture_output=True, text=True)
+        res = subprocess.run(["bash", "-n", script_path], capture_output=True, text=True, check=False)
         self.assertEqual(res.returncode, 0, f"Syntax error in provision-toolchain.sh: {res.stderr}")
 
     def test_start_sh_fallback_cache_dirs_match_cache_manager(self):

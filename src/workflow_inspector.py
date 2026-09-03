@@ -21,11 +21,110 @@ the job whose rendered `name:` is X have a `services:` or `container:` key
 as a direct child?"
 """
 
-from typing import Optional
+from collections.abc import Iterator
+from typing import Dict, List, Optional
 
 
 def _indent(line: str) -> int:
     return len(line) - len(line.lstrip(" "))
+
+
+def _unquote(value: str) -> str:
+    value = value.strip()
+    if value.startswith(("'", '"')) and value.endswith(value[0]) and len(value) >= 2:
+        return value[1:-1]
+    return value
+
+
+def _matrix_base(name: str) -> str:
+    """Strip a trailing matrix suffix: "Job Name (x, y)" -> "Job Name"."""
+    return name.split(" (", 1)[0].strip()
+
+
+def _looks_like_job_key(line: str, expected_indent: int) -> Optional[str]:
+    stripped = line.strip()
+    if not stripped or stripped.startswith("#"):
+        return None
+    if _indent(line) != expected_indent:
+        return None
+    if stripped.startswith("-"):
+        return None
+    if not stripped.endswith(":"):
+        return None
+    key = stripped[:-1].strip()
+    if not key or " " in key:
+        return None
+    return key
+
+
+def _iter_jobs(workflow_text: str) -> Iterator[Dict[str, object]]:
+    """Yield parsed job blocks from a workflow file's `jobs:` mapping."""
+    lines = workflow_text.splitlines()
+    jobs_idx: Optional[int] = None
+    jobs_indent = 0
+    for i, line in enumerate(lines):
+        stripped = line.strip()
+        if stripped.startswith("jobs:"):
+            jobs_idx = i
+            jobs_indent = _indent(line)
+            break
+
+    if jobs_idx is None:
+        return
+
+    child_indent = jobs_indent + 2
+    i = jobs_idx + 1
+    while i < len(lines):
+        line = lines[i]
+        stripped = line.strip()
+        if stripped and _indent(line) <= jobs_indent:
+            break
+
+        key = _looks_like_job_key(line, child_indent)
+        if not key:
+            i += 1
+            continue
+
+        job_indent = _indent(line)
+        j = i + 1
+        name_value: Optional[str] = None
+        has_services = False
+        while j < len(lines):
+            current = lines[j]
+            current_stripped = current.strip()
+            if current_stripped and _indent(current) <= job_indent:
+                break
+
+            current_indent = _indent(current)
+            if current_indent == job_indent + 2:
+                if current_stripped.startswith("name:"):
+                    raw = current_stripped[len("name:"):]
+                    name_value = _unquote(raw)
+                elif current_stripped.startswith("services:") or current_stripped.startswith("container:"):
+                    has_services = True
+
+            j += 1
+
+        yield {
+            "job_id": key,
+            "job_name": name_value,
+            "has_services": has_services,
+        }
+        i = j
+
+
+def _job_matches_target(target: str, job_id: str, job_name: Optional[str]) -> bool:
+    candidates: List[str] = [job_id]
+    if job_name:
+        candidates.append(job_name)
+
+    target_base = _matrix_base(target)
+    for candidate in candidates:
+        cand = candidate.strip()
+        cand_base = _matrix_base(cand)
+        if target == cand or target_base == cand or target_base == cand_base:
+            return True
+    return False
 
 
 def job_uses_services_or_container(workflow_text: str, job_name: str) -> Optional[bool]:
@@ -37,44 +136,15 @@ def job_uses_services_or_container(workflow_text: str, job_name: str) -> Optiona
     if not workflow_text or not job_name:
         return None
 
-    lines = workflow_text.splitlines()
     target = job_name.strip()
+    matched: List[bool] = []
+    for job in _iter_jobs(workflow_text):
+        job_id = str(job["job_id"])
+        rendered_name = job.get("job_name")
+        if _job_matches_target(target, job_id, rendered_name if isinstance(rendered_name, str) else None):
+            matched.append(bool(job["has_services"]))
 
-    for i, line in enumerate(lines):
-        stripped = line.strip()
-        # A job's own `name:` is a direct mapping key (no leading "- "),
-        # unlike a step's `name:` inside `steps:` (always a list item, "- name: ...").
-        if stripped.startswith("- ") or not stripped.startswith("name:"):
-            continue
-
-        value = stripped[len("name:"):].strip()
-        if value.startswith(("'", '"')) and value.endswith(value[0]) and len(value) >= 2:
-            value = value[1:-1]
-
-        if value != target:
-            continue
-
-        job_indent = _indent(line)
-        if _block_has_services_key(lines, i + 1, job_indent, direction=1):
-            return True
-        if _block_has_services_key(lines, i - 1, job_indent, direction=-1):
-            return True
-        return False
+    if matched:
+        return any(matched)
 
     return None
-
-
-def _block_has_services_key(lines: list, start: int, job_indent: int, direction: int) -> bool:
-    j = start
-    while 0 <= j < len(lines):
-        line = lines[j]
-        if line.strip():
-            ind = _indent(line)
-            if ind < job_indent:
-                break
-            if ind == job_indent and (
-                line.strip().startswith("services:") or line.strip().startswith("container:")
-            ):
-                return True
-        j += direction
-    return False

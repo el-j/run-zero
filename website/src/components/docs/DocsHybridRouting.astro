@@ -4,9 +4,12 @@
 
 <h2 id="hybrid-routing">Hybrid Auto-Routing</h2>
 <p>
-  With <code>RUNNER_BACKEND=auto</code> and <code>AUTO_ROUTE_VM=true</code>, you don't need to choose a single engine. The autoscaler inspects workflow labels and job names:
+  With <code>RUNNER_BACKEND=auto</code> and <code>AUTO_ROUTE_VM=true</code>, you
+  don't need to choose a single engine. The autoscaler inspects workflow labels
+  and job names:
 </p>
-<pre class="code-block"><code># Standard unit test runs in ultra-fast Docker container (~0.3s)
+<pre
+  class="code-block"><code># Standard unit test runs in ultra-fast Docker container (~0.3s)
 jobs:
   test:
     runs-on: [ self-hosted, local ]

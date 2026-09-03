@@ -11,6 +11,7 @@
   const connectionText = document.getElementById('connection-status-text');
   const statRateLimit = document.getElementById('stat-rate-limit');
   const statRateLimitBar = document.getElementById('stat-rate-limit-bar');
+  const statRateMeta = document.getElementById('stat-rate-meta');
   const statUptime = document.getElementById('stat-uptime');
   const statEngine = document.getElementById('stat-default-engine');
   const statVersion = document.getElementById('stat-version');
@@ -53,9 +54,70 @@
   const szCargo = document.getElementById('sz-cargo');
   const szToolcache = document.getElementById('sz-toolcache');
   const driversStatusList = document.getElementById('drivers-status-list');
+  const actionsScope = document.getElementById('actions-scope');
+  const actionsIncluded = document.getElementById('actions-included');
+  const actionsTotalUsed = document.getElementById('actions-total-used');
+  const actionsPaidUsed = document.getElementById('actions-paid-used');
+  const actionsRemaining = document.getElementById('actions-remaining');
+  const actionsUpdated = document.getElementById('actions-updated');
+  const actionsStatus = document.getElementById('actions-status');
 
   let eventSource = null;
   let retryTimeout = null;
+  let reconnectAttempt = 0;
+  let statusProbeTimer = null;
+
+  function backoffMs(attempt) {
+    const base = Math.min(30000, 1000 * Math.pow(2, Math.max(0, attempt - 1)));
+    const jitter = Math.floor(Math.random() * 500);
+    return base + jitter;
+  }
+
+  function stopStatusProbe() {
+    if (statusProbeTimer) {
+      clearInterval(statusProbeTimer);
+      statusProbeTimer = null;
+    }
+  }
+
+  function startStatusProbe() {
+    if (statusProbeTimer) {
+      return;
+    }
+    statusProbeTimer = setInterval(function () {
+      fetch('/api/status', { cache: 'no-store' })
+        .then(function (res) {
+          if (!res.ok) {
+            throw new Error(`status ${res.status}`);
+          }
+          return res.json();
+        })
+        .then(function (state) {
+          renderState(state);
+          if (!eventSource || eventSource.readyState === EventSource.CLOSED) {
+            connectSSE();
+          }
+        })
+        .catch(function () {
+          // keep waiting for stack recovery
+        });
+    }, 4000);
+  }
+
+  function scheduleReconnect() {
+    if (retryTimeout) {
+      return;
+    }
+    reconnectAttempt += 1;
+    const waitMs = backoffMs(reconnectAttempt);
+    const seconds = (waitMs / 1000).toFixed(1);
+    setConnectionStatus('error', `RECONNECTING IN ${seconds}s`);
+    startStatusProbe();
+    retryTimeout = setTimeout(function () {
+      retryTimeout = null;
+      connectSSE();
+    }, waitMs);
+  }
 
   // Initialize SSE Connection
   function connectSSE() {
@@ -69,6 +131,8 @@
 
     eventSource.onopen = function () {
       setConnectionStatus('online', 'LIVE OBSERVABILITY');
+      reconnectAttempt = 0;
+      stopStatusProbe();
       if (retryTimeout) {
         clearTimeout(retryTimeout);
         retryTimeout = null;
@@ -94,11 +158,10 @@
     });
 
     eventSource.onerror = function () {
-      setConnectionStatus('error', 'RECONNECTING');
-      eventSource.close();
-      if (!retryTimeout) {
-        retryTimeout = setTimeout(connectSSE, 3000);
+      if (eventSource) {
+        eventSource.close();
       }
+      scheduleReconnect();
     };
   }
 
@@ -112,6 +175,79 @@
     }
   }
 
+  function toRepoUrl(repoFullName) {
+    const repo = String(repoFullName || '').trim();
+    if (!repo || !repo.includes('/')) {
+      return '';
+    }
+    return `https://github.com/${repo}`;
+  }
+
+  function toSafeGithubUrl(url) {
+    const u = String(url || '');
+    return u.startsWith('https://github.com/') ? u : '';
+  }
+
+  function formatReset(resetEpoch) {
+    const epoch = Number(resetEpoch || 0);
+    if (!epoch || Number.isNaN(epoch)) {
+      return '--:--:--';
+    }
+    const remainingSec = Math.max(0, Math.floor(epoch - (Date.now() / 1000)));
+    const h = Math.floor(remainingSec / 3600);
+    const m = Math.floor((remainingSec % 3600) / 60);
+    const s = remainingSec % 60;
+    return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
+  }
+
+  function toNullableNumber(value) {
+    if (value === null || value === undefined || value === '') {
+      return null;
+    }
+    const n = Number(value);
+    return Number.isFinite(n) ? n : null;
+  }
+
+  function formatInteger(value) {
+    const n = toNullableNumber(value);
+    return n === null ? '--' : n.toLocaleString();
+  }
+
+  function formatUnixTimestamp(value) {
+    const n = toNullableNumber(value);
+    if (n === null || n <= 0) {
+      return '--';
+    }
+    return new Date(n * 1000).toLocaleString();
+  }
+
+  function renderActionsBilling(actionsBilling) {
+    if (!actionsScope) return;
+
+    const data = actionsBilling || {};
+    const scopeType = String(data.scope_type || 'unknown').toUpperCase();
+    const scopeName = String(data.scope_name || 'unknown');
+    const status = String(data.status || 'unknown').toLowerCase();
+    const errorMsg = data.error ? String(data.error) : '';
+
+    actionsScope.textContent = `${scopeType}:${scopeName}`;
+    actionsIncluded.textContent = formatInteger(data.included_minutes);
+    actionsTotalUsed.textContent = formatInteger(data.total_minutes_used);
+    actionsPaidUsed.textContent = formatInteger(data.total_paid_minutes_used);
+    actionsRemaining.textContent = formatInteger(data.minutes_remaining);
+    actionsUpdated.textContent = formatUnixTimestamp(data.updated_at);
+
+    if (status === 'ok') {
+      actionsStatus.textContent = 'Billing synced from GitHub.';
+      actionsStatus.classList.remove('error');
+      actionsStatus.classList.add('ok');
+    } else {
+      actionsStatus.textContent = errorMsg || 'Billing unavailable. Check token scopes/permissions.';
+      actionsStatus.classList.remove('ok');
+      actionsStatus.classList.add('error');
+    }
+  }
+
   // Render complete state snapshot
   function renderState(state) {
     if (!state) return;
@@ -122,12 +258,27 @@
     statUptime.textContent = state.uptime || '00:00:00';
 
     const github = state.github || {};
-    const rateLimitRem = github.rate_limit_remaining || 0;
-    const rateLimitTot = github.rate_limit_total || 5000;
-    statRateLimit.textContent = `${rateLimitRem}/${rateLimitTot}`;
-    const pct = Math.min(100, Math.max(0, (rateLimitRem / rateLimitTot) * 100));
+    const rateLimitRem = toNullableNumber(github.rate_limit_remaining);
+    const rateLimitTot = toNullableNumber(github.rate_limit_total);
+    const rateLimitUsed = toNullableNumber(github.rate_limit_used);
+    const rateLimitResource = github.rate_limit_resource || 'unknown';
+    const rateLimitReset = toNullableNumber(github.rate_limit_reset);
+    if (rateLimitRem === null || rateLimitTot === null) {
+      statRateLimit.textContent = '--/--';
+    } else {
+      statRateLimit.textContent = `${rateLimitRem}/${rateLimitTot}`;
+    }
+    if (statRateMeta) {
+      const usedText = rateLimitUsed === null ? '--' : String(rateLimitUsed);
+      statRateMeta.textContent = `used ${usedText} • reset ${formatReset(rateLimitReset)} • ${rateLimitResource}`;
+    }
+    const pct = (rateLimitRem === null || rateLimitTot === null || rateLimitTot <= 0)
+      ? 0
+      : Math.min(100, Math.max(0, (rateLimitRem / rateLimitTot) * 100));
     statRateLimitBar.style.width = `${pct}%`;
-    if (pct < 20) {
+    if (rateLimitRem === null || rateLimitTot === null) {
+      statRateLimitBar.style.backgroundColor = 'var(--text-dim)';
+    } else if (pct < 20) {
       statRateLimitBar.style.backgroundColor = 'var(--accent-red)';
     } else if (pct < 50) {
       statRateLimitBar.style.backgroundColor = 'var(--accent-amber)';
@@ -186,6 +337,9 @@
     // Driver availability
     renderDrivers(state.available_drivers || []);
 
+    // Actions billing
+    renderActionsBilling(github.actions_billing || {});
+
     // Render recent logs if empty
     if (logTerminal.children.length === 0 && state.recent_logs && state.recent_logs.length > 0) {
       state.recent_logs.forEach(appendLog);
@@ -209,6 +363,23 @@
       const engineTagClass = isVm ? 'tag-vm' : 'tag-docker';
       const engineName = isVm ? (r.backend || 'VM').toUpperCase() : 'DOCKER';
       const archName = (r.target_arch || 'ARM64').toUpperCase();
+      const repoUrl = toRepoUrl(r.target_repo);
+      const runUrl = toSafeGithubUrl(r.run_url);
+      const jobUrl = toSafeGithubUrl(r.job_url);
+      let runnerLinks = '';
+      if (repoUrl || runUrl || jobUrl) {
+        const links = [];
+        if (repoUrl) {
+          links.push(`<a class="quick-link" href="${escapeHtml(repoUrl)}" target="_blank" rel="noopener noreferrer">Repository</a>`);
+        }
+        if (runUrl) {
+          links.push(`<a class="quick-link" href="${escapeHtml(runUrl)}" target="_blank" rel="noopener noreferrer">Workflow run</a>`);
+        }
+        if (jobUrl) {
+          links.push(`<a class="quick-link" href="${escapeHtml(jobUrl)}" target="_blank" rel="noopener noreferrer">Queued job</a>`);
+        }
+        runnerLinks = `<div class="runner-links">${links.join('<span class="link-sep">•</span>')}</div>`;
+      }
 
       return `
         <div class="runner-card">
@@ -226,6 +397,7 @@
             <span>📦</span>
             <span>${escapeHtml(r.target_repo || 'Standby Pool')}</span>
           </div>
+          ${runnerLinks}
           <div class="runner-card-top">
             <span class="stat-label">STATUS: <b>${escapeHtml((r.state || 'running').toUpperCase())}</b></span>
             <span class="runner-duration font-mono">⏱️ ${escapeHtml(r.duration || 'active')}</span>
@@ -245,17 +417,41 @@
     const queuedByRepo = {};
     queuedJobs.forEach(j => {
       const repo = j.repo || '';
-      queuedByRepo[repo] = (queuedByRepo[repo] || 0) + 1;
+      if (!queuedByRepo[repo]) {
+        queuedByRepo[repo] = { count: 0, sample: j };
+      }
+      queuedByRepo[repo].count += 1;
     });
 
     reposList.innerHTML = repos.map(repo => {
-      const qCount = queuedByRepo[repo] || 0;
+      const queuedInfo = queuedByRepo[repo] || { count: 0, sample: null };
+      const qCount = queuedInfo.count;
       const qClass = qCount > 0 ? 'queue-active' : 'queue-idle';
       const qText = qCount > 0 ? `${qCount} queued job(s)` : 'idle';
+      const repoUrl = toRepoUrl(repo);
+      const sample = queuedInfo.sample || {};
+      const runUrl = toSafeGithubUrl(sample.run_url);
+      const jobUrl = toSafeGithubUrl(sample.job_url);
+      const linkChunks = [];
+      if (repoUrl) {
+        linkChunks.push(`<a class="quick-link" href="${escapeHtml(repoUrl)}" target="_blank" rel="noopener noreferrer">Repository</a>`);
+      }
+      if (runUrl) {
+        linkChunks.push(`<a class="quick-link" href="${escapeHtml(runUrl)}" target="_blank" rel="noopener noreferrer">Open run</a>`);
+      }
+      if (jobUrl) {
+        linkChunks.push(`<a class="quick-link" href="${escapeHtml(jobUrl)}" target="_blank" rel="noopener noreferrer">Open queued job</a>`);
+      }
+      const quickLinks = linkChunks.length > 0
+        ? `<div class="repo-links">${linkChunks.join('<span class="link-sep">•</span>')}</div>`
+        : '';
 
       return `
         <div class="repo-row">
-          <span class="repo-name font-mono">${escapeHtml(repo)}</span>
+          <div class="repo-main">
+            <span class="repo-name font-mono">${escapeHtml(repo)}</span>
+            ${quickLinks}
+          </div>
           <span class="repo-queue-badge ${qClass}">${qText}</span>
         </div>
       `;
@@ -392,4 +588,15 @@
 
   // Start SSE connection on load
   connectSSE();
+
+  window.addEventListener('beforeunload', function () {
+    if (eventSource) {
+      eventSource.close();
+    }
+    if (retryTimeout) {
+      clearTimeout(retryTimeout);
+      retryTimeout = null;
+    }
+    stopStatusProbe();
+  });
 })();
