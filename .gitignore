@@ -9,6 +9,7 @@ __pycache__/
 .mypy_cache
 __pycache__/
 mutants/
+reports/mutation/
 node_modules/
 .output
 dist

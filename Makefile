@@ -506,3 +506,21 @@ run-dev: check-env init-cache ## Run local autoscaler in foreground for interact
 
 
 
+
+.PHONY: mutation-report mutation-dashboard
+mutation-report: ## Export mutation stats and generate weekly trend dashboard artifacts
+	@echo "$(CYAN)Generating mutation trend dashboard artifacts...$(RESET)"
+	@mkdir -p reports/mutation
+	@docker run --rm -v "$$(pwd):/app" -w /app python:3.11-slim bash -c "\
+		pip install --quiet mutmut pytest >/dev/null && \
+		PYTHONPATH=src mutmut results > reports/mutation/mutmut-results.txt && \
+		PYTHONPATH=src mutmut export-cicd-stats"
+	@python3 scripts/generate_mutation_report.py \
+		--stats mutants/mutmut-cicd-stats.json \
+		--results reports/mutation/mutmut-results.txt \
+		--history reports/mutation/history.json \
+		--output reports/mutation/latest.md
+	@echo "$(GREEN)Mutation dashboard generated at reports/mutation/latest.md$(RESET)"
+
+mutation-dashboard: mutation-report ## Alias for mutation-report
+	@true

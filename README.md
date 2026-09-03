@@ -317,6 +317,7 @@ RunZero includes a 100% verified test suite with type checking, linting, and mut
 | `make test` | Run fast local unit tests directly (90 tests in ~1.0s) |
 | `make test-suite` | Run Flake8 linter, Mypy static type checker, and Pytest coverage |
 | `make mutation-test` | Run Mutmut mutation testing suite across all drivers and autoscaler |
+| `make mutation-report` | Export mutmut stats and generate weekly mutation trend dashboard artifacts |
 
 The suite is layered:
 
@@ -330,6 +331,8 @@ The suite is layered:
 - **Mutation testing** (`make mutation-test`) — proves the test suite actually fails when `src/`
   logic breaks, not just that it executes the line. See [`MUTATION_TESTING.md`](MUTATION_TESTING.md)
   for how it's configured and wired into CI.
+- **Mutation reporting** (`make mutation-report`) — exports machine-readable totals and writes a
+  rolling weekly trend dashboard to `reports/mutation/latest.md`.
 
 ---
 
@@ -347,6 +350,7 @@ The suite is layered:
 | `make lint` | Run Flake8 linter and Mypy static type checker |
 | `make lint-fix` | Auto-fix Python code formatting and strip trailing whitespace |
 | `make mutation-test` | Run Mutmut mutation testing suite |
+| `make mutation-report` | Generate mutation trend dashboard and export stats artifacts |
 | `make build-vm-base` | Build golden OrbStack VM base image for near-instant VM spins |
 | `make website-dev` | Start Astro documentation website development server |
 | `make website-build` | Build Astro static website and synchronize to `docs/` |

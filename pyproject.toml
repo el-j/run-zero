@@ -43,6 +43,12 @@ check_untyped_defs = true
 # worked. `paths_to_mutate` (mutmut 2.x's key) still works via mutmut 3.x's
 # back-compat shim but is deprecated in favor of `source_paths`.
 source_paths = ["src/"]
+# Equivalent-mutant policy: skip low-signal modules that are mostly templates
+# or version metadata rather than runtime decision logic.
+do_not_mutate = [
+    "src/drivers/orbstack_templates.py",
+    "src/version.py",
+]
 # tests/test_blackbox_cli.py shells out to the real `make` binary, and
 # OrbStackVMDriver reads docker/provision-toolchain.sh from disk -- both
 # resolve their path via `__file__`, which lands inside mutmut's mutants/

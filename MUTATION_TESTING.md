@@ -10,12 +10,16 @@ tests. A mutant that still passes ("survived") means no test actually asserts on
 
 ```bash
 make mutation-test
+make mutation-report
 ```
 
 This runs mutmut inside a disposable `python:3.11-slim` container (same pattern as
 `make test-suite`), so it needs nothing installed on the host beyond Docker. It is intentionally
 **not** part of `make test-suite` or the default CI job -- a full mutation run is far slower than
 the unit-test suite (see [CI wiring](#ci-wiring) below).
+
+`make mutation-report` exports `mutmut` CI stats and generates a rolling trend dashboard at
+`reports/mutation/latest.md`, plus trend history at `reports/mutation/history.json`.
 
 ## Configuration notes
 
@@ -50,6 +54,28 @@ Wired into `.github/workflows/mutation-test.yml`:
 
 The `make mutation-test` target no longer swallows mutmut's exit code with `|| true` -- a
 mutant-survival regression now fails the job for real.
+
+In addition, the workflow now always runs `make mutation-report` and uploads a `mutation-report`
+artifact containing:
+
+- `reports/mutation/latest.md` (human-readable dashboard)
+- `reports/mutation/history.json` (rolling trend points)
+- `reports/mutation/mutmut-results.txt` (raw status output)
+- `mutants/mutmut-cicd-stats.json` (machine-readable totals)
+
+The dashboard is also appended to GitHub Actions' job summary for weekly drift visibility.
+
+## Equivalent-mutant policy
+
+Use the following policy when triaging survivors:
+
+- `Missing assertion gap`: changed behavior is externally observable and should fail a test.
+- `Equivalent mutant`: mutation only changes diagnostics, log text, or non-functional literals.
+
+To reduce low-value noise, mutmut is configured with narrow `do_not_mutate` **file globs** for
+template-heavy and version-metadata modules (currently `src/drivers/orbstack_templates.py` and
+`src/version.py`). This keeps triage focused on control-flow and behavior mutations that can impact
+real workloads.
 
 ## Baseline
 
