@@ -17,13 +17,55 @@ class TestDashboardState(unittest.TestCase):
     def setUp(self):
         self.state = DashboardState(max_log_lines=50)
 
-    def test_quota_defaults_are_unknown_until_first_github_sync(self):
-        snapshot = self.state.get_snapshot()
-        self.assertIsNone(snapshot["github"]["rate_limit_remaining"])
-        self.assertIsNone(snapshot["github"]["rate_limit_total"])
-        self.assertIsNone(snapshot["github"]["rate_limit_used"])
-        self.assertIsNone(snapshot["github"]["rate_limit_resource"])
-        self.assertIsNone(snapshot["github"]["rate_limit_reset"])
+    def test_init_defaults_are_stable(self):
+        self.assertEqual(self.state.max_log_lines, 50)
+        self.assertEqual(self.state.log_buffer.maxlen, 50)
+        self.assertEqual(self.state.version, "0.1.0")
+        self.assertEqual(self.state.autoscaler_status, "running")
+        self.assertEqual(self.state.default_engine, "docker")
+        self.assertEqual(self.state.available_drivers, ["docker"])
+        self.assertTrue(self.state.hybrid_routing_enabled)
+        self.assertEqual(self.state.target_architectures, ["arm64", "amd64"])
+        self.assertEqual(self.state.max_concurrency, 4)
+        self.assertEqual(self.state.min_runners, 0)
+        self.assertIsNone(self.state.github_rate_limit_remaining)
+        self.assertIsNone(self.state.github_rate_limit_total)
+        self.assertEqual(self.state.total_queued_jobs, 0)
+        self.assertEqual(self.state.active_runners, [])
+        self.assertEqual(self.state.routing_docker_jobs, 0)
+        self.assertEqual(self.state.routing_vm_jobs, 0)
+        self.assertEqual(
+            self.state.routing_triggers,
+            {
+                "services": 0,
+                "dind": 0,
+                "browser": 0,
+                "e2e": 0,
+                "systemd": 0,
+                "custom_label": 0,
+            },
+        )
+
+    def test_init_cache_size_keys_exist(self):
+        expected_keys = {
+            "npm",
+            "yarn",
+            "pnpm",
+            "pip",
+            "uv",
+            "go-mod",
+            "go-build",
+            "cargo",
+            "toolcache",
+            "total_host",
+            "verdaccio",
+            "athens",
+            "docker_mirror",
+            "apt_cacher",
+        }
+        self.assertEqual(set(self.state.cache_sizes.keys()), expected_keys)
+        for value in self.state.cache_sizes.values():
+            self.assertEqual(value, "0 B")
 
     def test_append_log(self):
         self.state.append_log("Test log line 1")
@@ -60,7 +102,7 @@ class TestDashboardState(unittest.TestCase):
             "target_repo": "owner/repo",
             "target_arch": "arm64",
             "backend": "docker",
-            "created_at": 1000.0
+            "created_at": 1000.0,
         }
         self.state.update_fleet(
             runners=[mock_runner],
@@ -68,21 +110,11 @@ class TestDashboardState(unittest.TestCase):
             queued_jobs=[{"repo": "owner/repo", "name": "build"}],
             monitored_repos=["owner/repo"],
             available_drivers=["docker", "orbstack-vm"],
-            actions_billing={
-                "scope_type": "user",
-                "scope_name": "el-j",
-                "included_minutes": 3000,
-                "total_minutes_used": 400,
-                "total_paid_minutes_used": 120,
-                "minutes_remaining": 2880,
-                "status": "ok",
-            },
             default_engine="docker",
-            version="0.1.0"
+            version="0.1.0",
         )
         snapshot = self.state.get_snapshot()
         self.assertEqual(snapshot["github"]["rate_limit_remaining"], 4800)
-        self.assertEqual(snapshot["github"]["actions_billing"]["scope_name"], "el-j")
         self.assertEqual(snapshot["github"]["queued_jobs_count"], 1)
         self.assertEqual(len(snapshot["runners"]), 1)
         self.assertEqual(snapshot["default_engine"], "docker")
@@ -121,27 +153,40 @@ class TestDashboardStateGaps(unittest.TestCase):
     def test_update_fleet_accepts_plain_dict_runner(self):
         self.state.update_fleet(
             runners=[{"id": "r1", "name": "r1", "status": "running", "state": "running"}],
-            rate_limit=5000, queued_jobs=[], monitored_repos=[], available_drivers=["docker"]
+            rate_limit=5000,
+            queued_jobs=[],
+            monitored_repos=[],
+            available_drivers=["docker"],
         )
         self.assertEqual(self.state.active_runners[0]["id"], "r1")
         # No created_at on the dict -> falls back to "active".
         self.assertEqual(self.state.active_runners[0]["duration"], "active")
+
+    def test_update_fleet_default_engine_stays_docker_when_omitted(self):
+        self.state.default_engine = "orbstack-vm"
+        self.state.update_fleet(
+            runners=[],
+            rate_limit=4999,
+            queued_jobs=[],
+            monitored_repos=[],
+            available_drivers=["docker"],
+        )
+        self.assertEqual(self.state.default_engine, "docker")
+        self.assertEqual(self.state.github_rate_limit_remaining, 4999)
 
     def test_update_fleet_accepts_arbitrary_object_runner(self):
         class Plain:
             def __str__(self):
                 return "weird-runner"
 
-        self.state.update_fleet(
-            runners=[Plain()], rate_limit=5000, queued_jobs=[], monitored_repos=[], available_drivers=["docker"]
-        )
+        self.state.update_fleet(runners=[Plain()], rate_limit=5000, queued_jobs=[], monitored_repos=[], available_drivers=["docker"])
         self.assertEqual(self.state.active_runners[0]["id"], "weird-runner")
 
     def test_format_bytes_scales_through_kb_mb_gb(self):
         self.assertEqual(self.state._format_bytes(500), "500 B")
         self.assertIn("KB", self.state._format_bytes(2048))
-        self.assertIn("MB", self.state._format_bytes(5 * 1024 ** 2))
-        self.assertIn("GB", self.state._format_bytes(3 * 1024 ** 3))
+        self.assertIn("MB", self.state._format_bytes(5 * 1024**2))
+        self.assertIn("GB", self.state._format_bytes(3 * 1024**3))
 
     def test_get_dir_size_walks_real_files(self):
         sub = os.path.join(self.temp_cache, "npm")
@@ -175,6 +220,52 @@ class TestDashboardStateGaps(unittest.TestCase):
         self.assertEqual(result["cleared"], ["pip"])
         self.assertTrue(os.path.isdir(pip_dir))
         self.assertEqual(os.listdir(pip_dir), [])
+
+    def test_clean_cache_default_argument_clears_all(self):
+        npm_dir = os.path.join(self.temp_cache, "npm")
+        yarn_dir = os.path.join(self.temp_cache, "yarn")
+        os.makedirs(npm_dir, exist_ok=True)
+        os.makedirs(yarn_dir, exist_ok=True)
+        with open(os.path.join(npm_dir, "a.txt"), "w") as f:
+            f.write("x")
+        with open(os.path.join(yarn_dir, "b.txt"), "w") as f:
+            f.write("x")
+
+        result = self.state.clean_cache()
+        self.assertIn("npm", result["cleared"])
+        self.assertIn("yarn", result["cleared"])
+        self.assertEqual(os.listdir(npm_dir), [])
+        self.assertEqual(os.listdir(yarn_dir), [])
+
+    def test_refresh_cache_metrics_uses_fallback_when_cache_dir_empty(self):
+        fallback_root = tempfile.mkdtemp()
+        try:
+            npm_dir = os.path.join(fallback_root, "npm")
+            os.makedirs(npm_dir, exist_ok=True)
+            with open(os.path.join(npm_dir, "pkg.tgz"), "wb") as f:
+                f.write(b"x" * 2048)
+
+            self.state.cache_dir = ""
+            with patch("os.path.expanduser", return_value=fallback_root):
+                self.state._refresh_cache_metrics()
+
+            self.assertIn("KB", self.state.cache_sizes["npm"])
+            self.assertNotEqual(self.state.cache_sizes["total_host"], "0 B")
+        finally:
+            shutil.rmtree(fallback_root, ignore_errors=True)
+
+    def test_get_snapshot_uptime_floor_and_format(self):
+        # Explicitly guard the floor at 0 and the minute/hour divmod math.
+        self.state.start_time = 1000.0
+        with patch("time.time", return_value=999.0):
+            snapshot = self.state.get_snapshot()
+            self.assertEqual(snapshot["uptime_seconds"], 0)
+            self.assertEqual(snapshot["uptime"], "0h 0m 0s")
+
+        with patch("time.time", return_value=4661.0):
+            snapshot = self.state.get_snapshot()
+            self.assertEqual(snapshot["uptime_seconds"], 3661)
+            self.assertEqual(snapshot["uptime"], "1h 1m 1s")
 
 
 class TestDashboardServer(unittest.TestCase):
@@ -257,12 +348,7 @@ class TestDashboardServer(unittest.TestCase):
 
     def test_action_clean_cache(self):
         payload = json.dumps({"category": "npm"}).encode("utf-8")
-        req = urllib.request.Request(
-            f"{self.base_url}/api/actions/clean-cache",
-            data=payload,
-            headers={"Content-Type": "application/json"},
-            method="POST"
-        )
+        req = urllib.request.Request(f"{self.base_url}/api/actions/clean-cache", data=payload, headers={"Content-Type": "application/json"}, method="POST")
         with urllib.request.urlopen(req, timeout=3.0) as resp:
             data = json.loads(resp.read().decode("utf-8"))
             self.assertEqual(resp.status, 200)
@@ -275,12 +361,7 @@ class TestDashboardServer(unittest.TestCase):
         mock_get_avail.return_value = {"docker": mock_driver}
 
         payload = b"{}"
-        req = urllib.request.Request(
-            f"{self.base_url}/api/actions/prune",
-            data=payload,
-            headers={"Content-Type": "application/json"},
-            method="POST"
-        )
+        req = urllib.request.Request(f"{self.base_url}/api/actions/prune", data=payload, headers={"Content-Type": "application/json"}, method="POST")
         with urllib.request.urlopen(req, timeout=3.0) as resp:
             data = json.loads(resp.read().decode("utf-8"))
             self.assertEqual(resp.status, 200)
@@ -290,12 +371,7 @@ class TestDashboardServer(unittest.TestCase):
     @patch("drivers.get_available_drivers")
     def test_action_prune_exception_returns_500(self, mock_get_avail):
         mock_get_avail.side_effect = RuntimeError("driver discovery failed")
-        req = urllib.request.Request(
-            f"{self.base_url}/api/actions/prune",
-            data=b"{}",
-            headers={"Content-Type": "application/json"},
-            method="POST"
-        )
+        req = urllib.request.Request(f"{self.base_url}/api/actions/prune", data=b"{}", headers={"Content-Type": "application/json"}, method="POST")
         with self.assertRaises(urllib.error.HTTPError) as cm:
             urllib.request.urlopen(req, timeout=3.0)
         self.assertEqual(cm.exception.code, 500)
@@ -327,10 +403,7 @@ class TestDashboardServer(unittest.TestCase):
 
     def test_malformed_json_body_defaults_to_empty(self):
         req = urllib.request.Request(
-            f"{self.base_url}/api/actions/clean-cache",
-            data=b"not valid json{{{",
-            headers={"Content-Type": "application/json"},
-            method="POST"
+            f"{self.base_url}/api/actions/clean-cache", data=b"not valid json{{{", headers={"Content-Type": "application/json"}, method="POST"
         )
         with urllib.request.urlopen(req, timeout=3.0) as resp:
             data = json.loads(resp.read().decode("utf-8"))
@@ -341,10 +414,7 @@ class TestDashboardServer(unittest.TestCase):
     def test_post_with_no_body_defaults_to_empty_dict(self):
         # _read_json() with Content-Length 0 (no body at all, not even "{}")
         # must return {} rather than erroring.
-        req = urllib.request.Request(
-            f"{self.base_url}/api/actions/clean-cache",
-            method="POST"
-        )
+        req = urllib.request.Request(f"{self.base_url}/api/actions/clean-cache", method="POST")
         with urllib.request.urlopen(req, timeout=3.0) as resp:
             data = json.loads(resp.read().decode("utf-8"))
             self.assertEqual(resp.status, 200)
