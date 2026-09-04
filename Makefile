@@ -402,7 +402,7 @@ pre-commit: ## Run the RunZero pre-commit quality guard manually
 .PHONY: lint
 lint: ## Run Flake8 linter and Mypy static type checker
 	@echo "$(CYAN)Running Flake8 linter...$(RESET)"
-	@flake8 src/ tests/ --max-line-length=160 --extend-ignore=E501,W503,E402 || echo "Install flake8 for full linting."
+	@flake8 src/ tests/ --max-line-length=160 --extend-ignore=E203,E501,W503,E402 || echo "Install flake8 for full linting."
 	@echo "$(CYAN)Running Mypy type checker...$(RESET)"
 	@MYPYPATH=src mypy src/ --ignore-missing-imports || echo "Install mypy for full typechecking."
 

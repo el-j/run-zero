@@ -215,12 +215,17 @@ class TestReconciler(unittest.TestCase):
             )
         ]
 
-        mock_gh.return_value = {"runners": []}
+        # Ensure runner is registered in GitHub so idle_timeout comparison is used.
+        mock_gh.return_value = {
+            "runners": [
+                {"id": 99, "name": "local-runner-test-1", "busy": False}
+            ]
+        }
         drivers = {"docker": MagicMock()}
 
         with patch("reconciler.print"):
-            # With now - created_at = 600 seconds exactly, and idle_timeout = 600,
-            # condition should be FALSE (600 > 600 is False), so NO destroy
+            # With now - created_at = 600 exactly and idle_timeout = 600,
+            # condition must be FALSE (strict >), so NO destroy.
             reconcile_idle_orphans(["test/repo"], runners, drivers, idle_timeout_seconds=600, unregistered_timeout_seconds=180, now=now)
 
         # Verify destroy was NOT called (runner is exactly at timeout, not over it)
