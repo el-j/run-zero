@@ -22,3 +22,25 @@ jobs:
 
       - name: Run mutation testing suite
         run: make mutation-test
+
+      - name: Generate mutation dashboard artifacts
+        if: always()
+        run: make mutation-report
+
+      - name: Publish mutation artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: mutation-report
+          path: |
+            reports/mutation/
+            mutants/mutmut-cicd-stats.json
+
+      - name: Append mutation summary to workflow
+        if: always()
+        run: |
+          if [ -f reports/mutation/latest.md ]; then
+            cat reports/mutation/latest.md >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "Mutation report was not generated." >> "$GITHUB_STEP_SUMMARY"
+          fi

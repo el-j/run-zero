@@ -53,18 +53,17 @@ if [ -n "$PY_FILES" ]; then
     echo "$PY_FILES" | xargs ruff format --line-length=160 2>/dev/null || true
   elif command -v docker >/dev/null 2>&1 && docker ps >/dev/null 2>&1; then
     echo -e "  • Using containerized ${BOLD}ruff${RESET} to auto-fix Python code..."
-      PY_FILES_ARGS=$(echo "$PY_FILES" | tr '\n' ' ')
     docker run --rm -v "$PROJECT_ROOT:/app" -w /app python:3.11-slim bash -c "\
       pip install --quiet ruff && \
-        ruff check --fix --line-length=160 $PY_FILES_ARGS && \
-        ruff format --line-length=160 $PY_FILES_ARGS" 2>/dev/null || true
+      ruff check --fix --line-length=160 src/ tests/ && \
+      ruff format --line-length=160 src/ tests/" 2>/dev/null || true
   elif command -v autopep8 >/dev/null 2>&1; then
     echo -e "  • Using ${BOLD}autopep8${RESET} to auto-format Python code..."
     echo "$PY_FILES" | xargs autopep8 --in-place --aggressive --max-line-length=160 2>/dev/null || true
   fi
 
   # Automatically re-stage any auto-fixed files so the commit includes all fixes
-  echo "$PY_FILES" | xargs git add 2>/dev/null || true
+  git diff --name-only | xargs git add 2>/dev/null || true
 fi
 
 # ------------------------------------------------------------------------------
@@ -74,16 +73,16 @@ echo -e "${CYAN}==> 3/5 Checking Python syntax, linting (Flake8) & types (Mypy).
 RUN_IN_DOCKER=0
 
 if command -v flake8 >/dev/null 2>&1; then
-  flake8 src/ tests/ --max-line-length=160 --extend-ignore=E501,W503,E402
+  flake8 src/ tests/ --max-line-length=160 --extend-ignore=E203,E501,W503,E402
   echo -e "  ${GREEN}✓ Flake8: 0 lint errors.${RESET}"
 elif python3 -m flake8 --version >/dev/null 2>&1; then
-  python3 -m flake8 src/ tests/ --max-line-length=160 --extend-ignore=E501,W503,E402
+  python3 -m flake8 src/ tests/ --max-line-length=160 --extend-ignore=E203,E501,W503,E402
   echo -e "  ${GREEN}✓ Flake8: 0 lint errors.${RESET}"
 elif command -v docker >/dev/null 2>&1 && docker ps >/dev/null 2>&1; then
   echo -e "  • ${YELLOW}flake8/mypy not installed on host — running inside Python container...${RESET}"
   docker run --rm -v "$PROJECT_ROOT:/app" -w /app python:3.11-slim bash -c "\
     pip install --quiet flake8 mypy && \
-    flake8 src/ tests/ --max-line-length=160 --extend-ignore=E501,W503,E402 && \
+    flake8 src/ tests/ --max-line-length=160 --extend-ignore=E203,E501,W503,E402 && \
     MYPYPATH=src mypy src/ --ignore-missing-imports"
   echo -e "  ${GREEN}✓ Containerized Flake8 & Mypy: 0 errors, 100% Type Safe.${RESET}"
   RUN_IN_DOCKER=1
@@ -91,7 +90,7 @@ else
   echo -e "  ${YELLOW}Attempting to install flake8 & mypy via pip...${RESET}"
   python3 -m pip install --quiet flake8 mypy || true
   if command -v flake8 >/dev/null 2>&1; then
-    flake8 src/ tests/ --max-line-length=160 --extend-ignore=E501,W503,E402
+    flake8 src/ tests/ --max-line-length=160 --extend-ignore=E203,E501,W503,E402
     echo -e "  ${GREEN}✓ Flake8: 0 lint errors.${RESET}"
   else
     find src tests -name "*.py" -exec python3 -m py_compile {} +
@@ -126,6 +125,22 @@ done
 echo -e "${CYAN}==> 5/5 Running unit test suite...${RESET}"
 PYTHONPATH=src python3 -m unittest discover -s tests -p "test_*.py" > /dev/null
 echo -e "  ${GREEN}✓ Unit Tests: All tests passed successfully!${RESET}"
+
+# ------------------------------------------------------------------------------
+# 6. Website Lint (Oxlint)
+# ------------------------------------------------------------------------------
+echo -e "${CYAN}==> 6/6 Running website lint (Oxlint)...${RESET}"
+if [ -d "website" ] && command -v npm >/dev/null 2>&1; then
+  if [ -n "$(git diff --cached --name-only --diff-filter=ACM | grep -E '^website/.*\.(js|mjs|cjs|ts|mts|cts|jsx|tsx|astro)$' || true)" ]; then
+    (cd website && npm ls oxlint >/dev/null 2>&1 || npm install >/dev/null 2>&1)
+    (cd website && npm run lint)
+    echo -e "  ${GREEN}✓ Oxlint: Website lint checks passed.${RESET}"
+  else
+    echo -e "  ${YELLOW}No staged website JS/TS/Astro files; skipping Oxlint.${RESET}"
+  fi
+else
+  echo -e "  ${YELLOW}npm/website not available; skipping Oxlint.${RESET}"
+fi
 
 echo -e "\n${BOLD}${GREEN}✅ [RunZero Pre-Commit Guard] All quality checks passed. Proceeding with commit!${RESET}\n"
 exit 0

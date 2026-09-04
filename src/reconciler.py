@@ -29,6 +29,28 @@ def _runner_name_matches(local_name: str, gh_name: str) -> bool:
     return gh_name == local_name or gh_name.startswith(f"{local_name}-")
 
 
+def _get_in_progress_runner_names(repo: str, access_token: Optional[str] = None) -> set[str]:
+    """Return runner names currently attached to in-progress jobs for one repo."""
+    names: set[str] = set()
+    runs_data = github_request(
+        f"/repos/{repo}/actions/runs?status=in_progress&per_page=20",
+        access_token=access_token,
+    )
+    for run in (runs_data or {}).get("workflow_runs", []):
+        run_id = run.get("id")
+        if not run_id:
+            continue
+        jobs_data = github_request(
+            f"/repos/{repo}/actions/runs/{run_id}/jobs",
+            access_token=access_token,
+        )
+        for job in (jobs_data or {}).get("jobs", []):
+            runner_name = str(job.get("runner_name") or "").strip()
+            if runner_name:
+                names.add(runner_name)
+    return names
+
+
 def reconcile_zombie_runners(repos: List[str], access_token: Optional[str] = None) -> None:
     """Find and unstick runners GitHub still thinks are busy but that are actually dead.
 
@@ -100,6 +122,8 @@ def reconcile_idle_orphans(
         data = github_request(f"/repos/{repo}/actions/runners", access_token=access_token)
         gh_runners_by_repo[repo] = (data or {}).get("runners", [])
 
+    active_runner_names_by_repo: Dict[str, set[str]] = {}
+
     for runner in managed:
         created_at = runner.created_at if runner.created_at is not None else now
         age_seconds = now - created_at
@@ -122,8 +146,45 @@ def reconcile_idle_orphans(
                     gh_match = m
                     break
 
-        # A busy runner is actively running a job
+        # A busy runner is usually actively running a job. If it's old enough and no
+        # in-progress run still references it, treat it as stale (common after canceled
+        # runs where GitHub runner busy flags lag behind local lifecycle).
         if gh_match and gh_match.get("busy"):
+            if age_seconds <= idle_timeout_seconds:
+                continue
+
+            lookup_repo = runner.target_repo or next(
+                (
+                    repo_name
+                    for repo_name, r_list in gh_runners_by_repo.items()
+                    if any(_runner_name_matches(runner.name, str(r.get("name", ""))) for r in r_list)
+                ),
+                "",
+            )
+            if lookup_repo and lookup_repo not in active_runner_names_by_repo:
+                active_runner_names_by_repo[lookup_repo] = _get_in_progress_runner_names(
+                    lookup_repo,
+                    access_token=access_token,
+                )
+            active_runner_names = active_runner_names_by_repo.get(lookup_repo, set())
+            if runner.name in active_runner_names:
+                continue
+
+            age_minutes = int(age_seconds / 60)
+            print(
+                f"[Autoscaler] 🧹 Stale busy runner detected: {runner.name} "
+                f"(busy flag persisted, no in-progress job attached, age {age_minutes}m) — tearing down...",
+                file=sys.stderr,
+            )
+            driver = drivers.get(runner.backend)
+            if driver:
+                driver.destroy_runner(runner.id)
+            if runner.target_repo and gh_match.get("id"):
+                github_request(
+                    f"/repos/{runner.target_repo}/actions/runners/{gh_match['id']}",
+                    access_token=access_token,
+                    method="DELETE",
+                )
             continue
 
         # Case 1: Runner is NOT registered on GitHub (ephemeral run finished or failed to register)

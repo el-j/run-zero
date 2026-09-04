@@ -3,12 +3,15 @@
 *.log
 *.pid
 __pycache__/
+.ruff_cache
+.venv
 *.pyc
 .coverage
 .pytest_cache
 .mypy_cache
 __pycache__/
 mutants/
+reports/mutation/
 node_modules/
 .output
 dist
