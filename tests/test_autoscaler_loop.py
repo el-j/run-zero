@@ -570,6 +570,130 @@ class TestAutoscalerLoop(unittest.TestCase):
             any("GitHub API Quota remaining: unknown/unknown" in call.args[0] for call in mock_log_print.call_args_list)
         )
 
+    @patch("autoscaler.ACCESS_TOKEN", "fake-token")
+    @patch("autoscaler.ORG", "my-test-org")
+    @patch("autoscaler.MIN_RUNNERS", 3)
+    @patch("autoscaler.MAX_RUNNERS", 5)
+    @patch("autoscaler.CACHE_ENABLED", True)
+    @patch("autoscaler.DASHBOARD_ENABLED", False)
+    @patch("autoscaler.time.sleep")
+    def test_main_loop_org_mode_respects_min_runners_with_rotation(self, mock_sleep):
+        # In ORG mode, when no runners exist, MIN_RUNNERS determines how many
+        # to spawn. Architecture should rotate (first runner arm64, second amd64, etc.)
+        def stop_loop(*args, **kwargs):
+            autoscaler.running = False
+
+        mock_sleep.side_effect = stop_loop
+
+        with patch.object(autoscaler, "HOST_CACHE_DIR", self.temp_cache), \
+             patch.object(autoscaler, "RUNNER_ARCH", "both"), \
+             patch("autoscaler.get_driver") as mock_get_driver, \
+             patch("autoscaler.get_available_drivers") as mock_avail:
+
+            mock_driver = MagicMock()
+            mock_driver.name.return_value = "docker"
+            mock_driver.list_runners.return_value = []
+            mock_driver.spawn_runner.side_effect = ["runner-0", "runner-1", "runner-2"]
+
+            mock_get_driver.return_value = mock_driver
+            mock_avail.return_value = {"docker": mock_driver}
+
+            autoscaler.running = True
+            autoscaler.main()
+
+            # MIN_RUNNERS=3, so 3 runners should be spawned
+            self.assertEqual(mock_driver.spawn_runner.call_count, 3)
+            
+            # Verify architecture rotation (both arch available -> arm64, amd64, arm64)
+            calls = mock_driver.spawn_runner.call_args_list
+            self.assertEqual(calls[0][1]["arch"], "arm64")
+            self.assertEqual(calls[1][1]["arch"], "amd64")
+            self.assertEqual(calls[2][1]["arch"], "arm64")
+
+    @patch("autoscaler.ACCESS_TOKEN", "fake-token")
+    @patch("autoscaler.ORG", "my-test-org")
+    @patch("autoscaler.MIN_RUNNERS", 2)
+    @patch("autoscaler.MAX_RUNNERS", 3)
+    @patch("autoscaler.CACHE_ENABLED", True)
+    @patch("autoscaler.DASHBOARD_ENABLED", False)
+    @patch("autoscaler.time.sleep")
+    def test_main_loop_org_mode_stops_at_max_runners(self, mock_sleep):
+        # When MIN_RUNNERS < active_count < MAX_RUNNERS, no additional spawns.
+        # When active_count >= MAX_RUNNERS, still no spawns (MAX enforces hard cap).
+        def stop_loop(*args, **kwargs):
+            autoscaler.running = False
+
+        mock_sleep.side_effect = stop_loop
+
+        with patch.object(autoscaler, "HOST_CACHE_DIR", self.temp_cache), \
+             patch("autoscaler.get_driver") as mock_get_driver, \
+             patch("autoscaler.get_available_drivers") as mock_avail:
+
+            mock_driver = MagicMock()
+            mock_driver.name.return_value = "docker"
+            # Start with MAX_RUNNERS already running
+            mock_driver.list_runners.return_value = [
+                MagicMock(state="running", target_repo="my-test-org", backend="docker"),
+                MagicMock(state="running", target_repo="my-test-org", backend="docker"),
+                MagicMock(state="running", target_repo="my-test-org", backend="docker"),
+            ]
+
+            mock_get_driver.return_value = mock_driver
+            mock_avail.return_value = {"docker": mock_driver}
+
+            autoscaler.running = True
+            autoscaler.main()
+
+            # No additional spawns because active_count >= MAX_RUNNERS
+            mock_driver.spawn_runner.assert_not_called()
+
+    @patch("autoscaler.ACCESS_TOKEN", "fake-token")
+    @patch("autoscaler.CACHE_ENABLED", True)
+    @patch("autoscaler.DASHBOARD_ENABLED", False)
+    @patch("autoscaler.discover_repositories", return_value=["el-j/run-zero"])
+    @patch("autoscaler.reconcile_zombie_runners")
+    @patch("autoscaler.get_queued_job_details")
+    @patch("autoscaler.time.sleep")
+    def test_main_loop_repo_mode_dispatches_to_correct_driver(
+        self, mock_sleep, mock_jobs, mock_reconcile, mock_discover
+    ):
+        # select_driver_for_job may pick docker or VM driver based on labels;
+        # this test verifies the spawned runner gets the correct backend assignment
+        mock_jobs.return_value = [
+            {"id": 1, "name": "vm-job", "labels": ["self-hosted", "windows"]},
+        ]
+
+        def stop_after_one_loop(*a, **kw):
+            autoscaler.running = False
+
+        mock_sleep.side_effect = stop_after_one_loop
+
+        with patch.object(autoscaler, "HOST_CACHE_DIR", self.temp_cache), \
+             patch("autoscaler.get_driver") as mock_get_default_driver, \
+             patch("autoscaler.get_available_drivers") as mock_avail, \
+             patch("autoscaler.select_driver_for_job") as mock_select:
+
+            mock_docker_driver = MagicMock()
+            mock_docker_driver.name.return_value = "docker"
+            mock_docker_driver.list_runners.return_value = []
+            
+            mock_vm_driver = MagicMock()
+            mock_vm_driver.name.return_value = "orbstack"
+            mock_vm_driver.spawn_runner.return_value = "vm-runner-1"
+
+            mock_get_default_driver.return_value = mock_docker_driver
+            mock_avail.return_value = {"docker": mock_docker_driver, "orbstack": mock_vm_driver}
+            
+            # Simulate select_driver_for_job choosing the VM driver
+            mock_select.return_value = (mock_vm_driver, "vm")
+
+            autoscaler.running = True
+            autoscaler.main()
+
+            # Verify the VM driver was used for spawn, not the default
+            mock_vm_driver.spawn_runner.assert_called_once()
+            mock_docker_driver.spawn_runner.assert_not_called()
+
 
 if __name__ == "__main__":
     unittest.main()
