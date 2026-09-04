@@ -37,6 +37,26 @@ help: ## Display available commands
 env: ## Run interactive .env configuration wizard
 	@bash scripts/setup_env.sh
 
+.PHONY: website-install
+website-install: ## Install website Node dependencies (run from repo root)
+	@if command -v npm >/dev/null 2>&1; then \
+		echo "$(CYAN)Installing website Node dependencies...$(RESET)"; \
+		cd $(WEBSITE_DIR) && npm install; \
+	else \
+		echo "$(YELLOW)npm not found; skipping website dependency install.$(RESET)"; \
+	fi
+
+.PHONY: install
+install: init-cache website-install install-hooks ## Bootstrap local development environment from repo root
+	@echo "$(CYAN)Installing Python package and dev tools (best-effort)...$(RESET)"
+	@if command -v python3 >/dev/null 2>&1; then \
+		python3 -m pip install --quiet -e . || echo "Could not install project package in current Python environment."; \
+		python3 -m pip install --quiet ruff flake8 mypy pytest pytest-cov || echo "Could not install dev tooling in current Python environment."; \
+	else \
+		echo "$(YELLOW)python3 not found; skipping Python install.$(RESET)"; \
+	fi
+	@echo "$(GREEN)Install bootstrap complete. Next: run 'make nice'.$(RESET)"
+
 .PHONY: check-env
 check-env:
 	@if [ ! -f .env ]; then \
@@ -405,6 +425,17 @@ lint: ## Run Flake8 linter and Mypy static type checker
 	@flake8 src/ tests/ --max-line-length=160 --extend-ignore=E203,E501,W503,E402 || echo "Install flake8 for full linting."
 	@echo "$(CYAN)Running Mypy type checker...$(RESET)"
 	@MYPYPATH=src mypy src/ --ignore-missing-imports || echo "Install mypy for full typechecking."
+	@echo "$(CYAN)Running website lint checks with Oxlint...$(RESET)"
+	@if command -v npm >/dev/null 2>&1; then \
+		(cd $(WEBSITE_DIR) && { npm ls oxlint >/dev/null 2>&1 || npm install; } && npm run lint); \
+	else \
+		echo "npm not found; skipping website lint checks."; \
+	fi
+
+.PHONY: website-lint
+website-lint: ## Run Oxlint on website sources
+	@echo "$(CYAN)Running Oxlint for website sources...$(RESET)"
+	@cd $(WEBSITE_DIR) && { npm ls oxlint >/dev/null 2>&1 || npm install; } && npm run lint
 
 .PHONY: deps-check
 deps-check: ## Check dependency update opportunities (Python env + website Node packages)
@@ -481,9 +512,13 @@ fmt: ## Auto-format Python and website sources
 nice: deps-check lint fmt-check ## Safe quality pass: check dependency updates + lint + format verification
 	@echo "$(GREEN)Nice pass complete.$(RESET)"
 
+.PHONY: super-nice
+super-nice: deps-update lint-fix fmt lint fmt-check ## Aggressive quality pass: update deps, auto-fix lint/format, then re-verify
+	@echo "$(GREEN)Super nice pass complete.$(RESET)"
+
 .PHONY: very-nice
-very-nice: deps-update lint-fix fmt lint fmt-check ## Aggressive quality pass: update deps, auto-fix formatting, then re-verify
-	@echo "$(GREEN)Very nice pass complete.$(RESET)"
+very-nice: super-nice ## Backward-compatible alias for super-nice
+	@echo "$(GREEN)Very nice pass complete (alias of super-nice).$(RESET)"
 
 .PHONY: lint-fix
 lint-fix: ## Auto-fix Python formatting and strip trailing whitespace

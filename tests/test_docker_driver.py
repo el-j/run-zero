@@ -112,7 +112,7 @@ class TestDockerDriver(unittest.TestCase):
         env_pairs = [cmd[i + 1] for i, tok in enumerate(cmd) if tok == "-e"]
         dest_entries = [p for p in env_pairs if p.startswith("CACHE_MOUNT_DESTS=")]
         self.assertEqual(len(dest_entries), 1)
-        dests = dest_entries[0][len("CACHE_MOUNT_DESTS=") :].split(":")
+        dests = dest_entries[0][len("CACHE_MOUNT_DESTS="):].split(":")
         self.assertEqual(
             set(dests),
             {"/home/runner/.npm", "/home/runner/go/pkg", "/home/runner/.nuget/packages"},
@@ -233,7 +233,7 @@ class TestDockerDriver(unittest.TestCase):
         env_pairs = [cmd[i + 1] for i, tok in enumerate(cmd) if tok == "-e"]
         runner_label_env = [p for p in env_pairs if p.startswith("RUNNER_LABELS=")]
         self.assertEqual(len(runner_label_env), 1)
-        labels = runner_label_env[0][len("RUNNER_LABELS=") :].split(",")
+        labels = runner_label_env[0][len("RUNNER_LABELS="):].split(",")
         self.assertIn("self-hosted", labels)
         self.assertIn("local", labels)
         self.assertIn("x64", labels)
@@ -247,7 +247,7 @@ class TestDockerDriver(unittest.TestCase):
         env_pairs = [cmd[i + 1] for i, tok in enumerate(cmd) if tok == "-e"]
         runner_label_env = [p for p in env_pairs if p.startswith("RUNNER_LABELS=")]
         self.assertEqual(len(runner_label_env), 1)
-        labels = runner_label_env[0][len("RUNNER_LABELS=") :].split(",")
+        labels = runner_label_env[0][len("RUNNER_LABELS="):].split(",")
         self.assertIn("arm64", labels)
         self.assertNotIn("x64", labels)
 

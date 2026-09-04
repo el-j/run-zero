@@ -71,7 +71,11 @@ class TestReconciler(unittest.TestCase):
 
     @patch("reconciler.github_request")
     def test_reconcile_idle_orphans_never_touches_busy_runner(self, mock_gh):
-        mock_gh.return_value = {"runners": [{"id": 55, "name": "local-runner-arm64-el-j-run-zero-abc123", "busy": True}]}
+        mock_gh.side_effect = [
+            {"runners": [{"id": 55, "name": "local-runner-arm64-el-j-run-zero-abc123", "busy": True}]},
+            {"workflow_runs": [{"id": 999}]},
+            {"jobs": [{"runner_name": "local-runner-arm64-el-j-run-zero-abc123"}]},
+        ]
         driver = MagicMock()
         reconcile_idle_orphans(
             ["el-j/run-zero"],
@@ -159,6 +163,8 @@ class TestReconciler(unittest.TestCase):
         mock_gh.side_effect = [
             {"runners": []},  # el-j/run-zero: no match by target_repo
             {"runners": [{"id": 99, "name": "local-runner-arm64-el-j-run-zero-abc123", "busy": True}]},  # el-j/other
+            {"workflow_runs": [{"id": 999}]},
+            {"jobs": [{"runner_name": "local-runner-arm64-el-j-run-zero-abc123"}]},
         ]
         driver = MagicMock()
         runner = self._runner(age_seconds=700)
@@ -297,6 +303,72 @@ class TestReconciler(unittest.TestCase):
 
         # Should NOT destroy because runner name doesn't start with managed prefix
         drivers["docker"].destroy_runner.assert_not_called()
+
+    @patch("reconciler.github_request")
+    def test_reconcile_idle_orphans_destroys_stale_busy_runner_with_no_active_job(self, mock_gh):
+        # Busy flags can linger after canceled runs. If no in-progress job is
+        # still attached to this runner, we should reap it once it is old enough.
+        now = 1_000_000.0
+        runner = RunnerInfo(
+            id="container123",
+            name="local-runner-arm64-el-j-run-zero-stale01",
+            status="Up",
+            state="running",
+            target_repo="el-j/run-zero",
+            target_arch="arm64",
+            backend="docker",
+            created_at=now - 3600,
+        )
+        mock_gh.side_effect = [
+            {"runners": [{"id": 55, "name": runner.name, "busy": True}]},
+            {"workflow_runs": []},
+            True,
+        ]
+        driver = MagicMock()
+
+        reconcile_idle_orphans(
+            ["el-j/run-zero"],
+            [runner],
+            {"docker": driver},
+            access_token="token",
+            idle_timeout_seconds=600,
+            unregistered_timeout_seconds=180,
+            now=now,
+        )
+
+        driver.destroy_runner.assert_called_once_with("container123")
+
+    @patch("reconciler.github_request")
+    def test_reconcile_idle_orphans_keeps_busy_runner_with_active_in_progress_job(self, mock_gh):
+        now = 1_000_000.0
+        runner = RunnerInfo(
+            id="container123",
+            name="local-runner-arm64-el-j-run-zero-live01",
+            status="Up",
+            state="running",
+            target_repo="el-j/run-zero",
+            target_arch="arm64",
+            backend="docker",
+            created_at=now - 3600,
+        )
+        mock_gh.side_effect = [
+            {"runners": [{"id": 77, "name": runner.name, "busy": True}]},
+            {"workflow_runs": [{"id": 999}]},
+            {"jobs": [{"runner_name": runner.name}]},
+        ]
+        driver = MagicMock()
+
+        reconcile_idle_orphans(
+            ["el-j/run-zero"],
+            [runner],
+            {"docker": driver},
+            access_token="token",
+            idle_timeout_seconds=600,
+            unregistered_timeout_seconds=180,
+            now=now,
+        )
+
+        driver.destroy_runner.assert_not_called()
 
 
 if __name__ == "__main__":

@@ -126,5 +126,21 @@ echo -e "${CYAN}==> 5/5 Running unit test suite...${RESET}"
 PYTHONPATH=src python3 -m unittest discover -s tests -p "test_*.py" > /dev/null
 echo -e "  ${GREEN}✓ Unit Tests: All tests passed successfully!${RESET}"
 
+# ------------------------------------------------------------------------------
+# 6. Website Lint (Oxlint)
+# ------------------------------------------------------------------------------
+echo -e "${CYAN}==> 6/6 Running website lint (Oxlint)...${RESET}"
+if [ -d "website" ] && command -v npm >/dev/null 2>&1; then
+  if [ -n "$(git diff --cached --name-only --diff-filter=ACM | grep -E '^website/.*\.(js|mjs|cjs|ts|mts|cts|jsx|tsx|astro)$' || true)" ]; then
+    (cd website && npm ls oxlint >/dev/null 2>&1 || npm install >/dev/null 2>&1)
+    (cd website && npm run lint)
+    echo -e "  ${GREEN}✓ Oxlint: Website lint checks passed.${RESET}"
+  else
+    echo -e "  ${YELLOW}No staged website JS/TS/Astro files; skipping Oxlint.${RESET}"
+  fi
+else
+  echo -e "  ${YELLOW}npm/website not available; skipping Oxlint.${RESET}"
+fi
+
 echo -e "\n${BOLD}${GREEN}✅ [RunZero Pre-Commit Guard] All quality checks passed. Proceeding with commit!${RESET}\n"
 exit 0
