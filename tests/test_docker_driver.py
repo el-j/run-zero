@@ -304,6 +304,36 @@ class TestDockerDriver(unittest.TestCase):
         self.assertEqual(len(npm_bridge), 1)
         self.assertIn("verdaccio:4873", npm_bridge[0])
 
+    @patch("builtins.print")
+    @patch("subprocess.run")
+    def test_spawn_runner_warns_when_registry_mirror_missing(self, mock_run, mock_print):
+        mock_run.side_effect = [
+            MagicMock(returncode=0),  # docker image inspect
+            MagicMock(returncode=0, stdout="[]\n"),  # docker info mirrors
+            MagicMock(returncode=0),  # docker run
+        ]
+        self.driver.spawn_runner(repo="el-j/run-zero", arch="arm64", proxies_enabled=True, access_token="tok")
+        warning_calls = [
+            c for c in mock_print.call_args_list
+            if c.args and "registry mirror" in str(c.args[0]).lower()
+        ]
+        self.assertEqual(len(warning_calls), 1)
+
+    @patch("builtins.print")
+    @patch("subprocess.run")
+    def test_spawn_runner_no_warning_when_registry_mirror_configured(self, mock_run, mock_print):
+        mock_run.side_effect = [
+            MagicMock(returncode=0),  # docker image inspect
+            MagicMock(returncode=0, stdout='["http://localhost:49502"]\n'),  # docker info mirrors
+            MagicMock(returncode=0),  # docker run
+        ]
+        self.driver.spawn_runner(repo="el-j/run-zero", arch="arm64", proxies_enabled=True, access_token="tok")
+        warning_calls = [
+            c for c in mock_print.call_args_list
+            if c.args and "registry mirror" in str(c.args[0]).lower()
+        ]
+        self.assertEqual(len(warning_calls), 0)
+
     @patch("subprocess.run")
     def test_destroy_runner_returns_true_on_success(self, mock_run):
         mock_run.return_value = MagicMock(returncode=0)

@@ -359,6 +359,7 @@ The suite is layered:
 | `make apt-cacher-ui` | Open apt-cacher-ng statistics report at `http://localhost:49503/acng-report.html` |
 | `make logs` | Stream live autoscaler logs |
 | `make logs-all` | Stream live logs from all services (autoscaler + proxies) |
+| `make cache-smoke` | Validate proxy caches are reachable from host and runner network; prints Docker mirror status |
 | `make cache-size` | Display disk usage of package and tool caches |
 | `make clean-cache` | Clear all shared package/tool caches |
 | `make build` (or `make build-all`) | Build all images (`arm64` + `amd64` + autoscaler) |
@@ -386,6 +387,49 @@ The suite is layered:
 | `MIN_RUNNERS` | Minimum idle runners on standby | `0` |
 | `MAX_RUNNERS` | Maximum concurrent runner instances | `4` |
 | `POLL_INTERVAL` | Queue check interval in seconds | `10` |
+| `DISCOVERY_INTERVAL` | Auto-discovery refresh interval in seconds | `900` |
+| `RATE_LIMIT_REFRESH_INTERVAL` | GitHub API quota refresh interval in seconds | `60` |
+| `ACTIONS_BILLING_REFRESH_INTERVAL` | Actions minutes refresh interval in seconds | `300` |
+
+---
+
+## ✅ On-Prem Readiness Checklist
+
+Use this checklist before announcing your RunZero host to teammates or external users.
+
+1. Start stack and bridge.
+```bash
+make restart
+```
+2. Verify all cache proxies are reachable from both host and runner network.
+```bash
+make cache-smoke
+```
+3. Confirm runner image startup summary shows private endpoints (not public defaults).
+```bash
+make logs
+```
+Look for lines showing Verdaccio/Athens/devpi/apt-cacher/kellnr connectivity.
+
+4. Ensure host Docker daemon uses the local Docker mirror for Docker-backend jobs.
+
+Create or update `/etc/docker/daemon.json`:
+```json
+{
+   "registry-mirrors": ["http://localhost:49502"],
+   "insecure-registries": ["localhost:49502"]
+}
+```
+Then restart Docker and rerun:
+```bash
+make cache-smoke
+```
+
+5. Validate real cache growth after one representative workflow run.
+```bash
+make cache-size
+```
+You should see non-zero growth in host cache and proxy volumes over repeated runs.
 
 ---
 

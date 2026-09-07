@@ -6,6 +6,7 @@ with automatic integration with local caching proxies (Verdaccio, Athens).
 
 import json
 import os
+import shlex
 import shutil
 import subprocess
 import sys
@@ -37,6 +38,19 @@ class MultipassDriver(RunnerDriver):
             return res.returncode == 0
         except Exception:
             return False
+
+    @staticmethod
+    def _vm_cache_path(container_path: str) -> str:
+        """Translate cache destinations from /home/runner to Multipass' /home/ubuntu.
+
+        Autoscaler cache mappings are standardized around runner-container paths.
+        Multipass bootstraps the runner under ubuntu, so mirror those paths there.
+        """
+        if container_path == "/home/runner":
+            return "/home/ubuntu"
+        if container_path.startswith("/home/runner/"):
+            return container_path.replace("/home/runner/", "/home/ubuntu/", 1)
+        return container_path
 
     def spawn_runner(
         self,
@@ -89,7 +103,30 @@ CARGOCFG
             subprocess.run(["multipass", "launch", self.image, "--name", vm_name, "--cpus", "2", "--memory", "2G"], check=True, capture_output=True)
             self._runner_created_at[vm_name] = time.time()
 
-            # 2. Run bootstrap script inside the VM
+            # 2. Best-effort mount host caches into VM so tool/cache directories persist across jobs.
+            if cache_mounts:
+                for host_path, container_path in cache_mounts.items():
+                    vm_path = self._vm_cache_path(container_path)
+                    try:
+                        prep_cmd = f"sudo mkdir -p {shlex.quote(vm_path)} && sudo chown -R ubuntu:ubuntu {shlex.quote(vm_path)}"
+                        subprocess.run(
+                            ["multipass", "exec", vm_name, "--", "bash", "-lc", prep_cmd],
+                            check=True,
+                            capture_output=True,
+                        )
+                        subprocess.run(
+                            ["multipass", "mount", host_path, f"{vm_name}:{vm_path}"],
+                            check=True,
+                            capture_output=True,
+                        )
+                    except subprocess.CalledProcessError as e:
+                        stderr = e.stderr.decode(errors="replace") if e.stderr else str(e)
+                        print(
+                            f"[Autoscaler:Multipass] Warning: cache mount failed for {host_path} -> {vm_path}: {stderr}",
+                            file=sys.stderr,
+                        )
+
+            # 3. Run bootstrap script inside the VM
             setup_script = f"""
 export DEBIAN_FRONTEND=noninteractive
 {proxy_env_block}

@@ -3,6 +3,7 @@ Docker Container Execution Driver for RunZero
 Spawns and manages ephemeral runner containers with host or bridge networking.
 """
 
+import json
 import os
 import shutil
 import subprocess
@@ -36,6 +37,7 @@ class DockerDriver(RunnerDriver):
         self._building_arches: set = set()
         self._build_failure_counts: Dict[str, int] = {}
         self._build_retry_after: Dict[str, float] = {}
+        self._registry_mirror_checked = False
 
     @staticmethod
     def _normalize_arch(arch: str) -> str:
@@ -204,6 +206,54 @@ class DockerDriver(RunnerDriver):
         self._build_runner_image_async(normalized_arch)
         return False
 
+    def _warn_if_registry_mirror_missing(self) -> None:
+        """Warn once when host Docker daemon is not configured to use local mirror.
+
+        Docker-backend runners share the host daemon via /var/run/docker.sock, so
+        service image pulls and docker build layers inside jobs only hit our
+        docker-mirror cache when the host daemon advertises it as a registry mirror.
+        """
+        if self._registry_mirror_checked:
+            return
+        self._registry_mirror_checked = True
+
+        try:
+            info = subprocess.run(
+                ["docker", "info", "--format", "{{json .RegistryConfig.Mirrors}}"],
+                capture_output=True,
+                text=True,
+                timeout=5,
+            )
+        except Exception:
+            return
+
+        if info.returncode != 0:
+            return
+
+        raw_stdout = info.stdout if isinstance(info.stdout, str) else ""
+        try:
+            mirrors = json.loads(raw_stdout.strip() or "[]")
+        except (TypeError, json.JSONDecodeError):
+            return
+        if not isinstance(mirrors, list):
+            return
+
+        expected = {
+            "http://localhost:49502",
+            "https://localhost:49502",
+            "http://host.orb.internal:49502",
+            "https://host.orb.internal:49502",
+        }
+        if any(str(m).rstrip("/") in expected for m in mirrors):
+            return
+
+        print(
+            "[Autoscaler:Docker] ⚠️ Host Docker daemon has no run-zero registry mirror configured "
+            "(expected localhost:49502 or host.orb.internal:49502). Docker-backend job pulls may bypass "
+            "local cache. Configure daemon.json registry-mirrors/insecure-registries accordingly.",
+            file=sys.stderr,
+        )
+
     def name(self) -> str:
         """Return this driver's backend identifier: "docker"."""
         return "docker"
@@ -243,6 +293,9 @@ class DockerDriver(RunnerDriver):
 
         if not self.ensure_runtime_assets(normalized_arch):
             return None
+
+        if proxies_enabled:
+            self._warn_if_registry_mirror_missing()
 
         default_labels = f"self-hosted,local,{arch}"
         if arch in ("amd64", "x64", "x86_64"):

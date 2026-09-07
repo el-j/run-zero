@@ -90,6 +90,31 @@ cache-size: ## Show disk usage of the host package/tool cache only (subset of `m
 	fi
 	@echo ""
 
+.PHONY: cache-smoke
+cache-smoke: ## Validate proxy caches are reachable from host and from runner-network, and show Docker daemon mirror status
+	@echo "$(BOLD)$(CYAN)=== Cache Proxy Smoke Test ===$(RESET)"
+	@echo "$(CYAN)Checking host-published cache endpoints...$(RESET)"
+	@curl -fsS http://localhost:49501/ >/dev/null && echo "  ✓ Verdaccio (host): http://localhost:49501/" || (echo "  ✗ Verdaccio host endpoint unavailable" && exit 1)
+	@curl -fsS http://localhost:49500/ >/dev/null && echo "  ✓ Athens (host):    http://localhost:49500/" || (echo "  ✗ Athens host endpoint unavailable" && exit 1)
+	@curl -fsS http://localhost:49507/root/pypi/+simple/ >/dev/null && echo "  ✓ devpi (host):     http://localhost:49507/root/pypi/+simple/" || (echo "  ✗ devpi host endpoint unavailable" && exit 1)
+	@curl -fsS http://localhost:49503/acng-report.html >/dev/null && echo "  ✓ apt-cacher(host): http://localhost:49503/acng-report.html" || (echo "  ✗ apt-cacher host endpoint unavailable" && exit 1)
+	@curl -fsS http://localhost:49506/api/v1/cratesio/config.json >/dev/null && echo "  ✓ kellnr (host):    http://localhost:49506/api/v1/cratesio/config.json" || (echo "  ✗ kellnr host endpoint unavailable" && exit 1)
+	@curl -fsS http://localhost:49502/v2/ >/dev/null && echo "  ✓ Docker mirror:    http://localhost:49502/v2/" || (echo "  ✗ Docker mirror host endpoint unavailable" && exit 1)
+	@echo "$(CYAN)Checking cache endpoints from runner-network DNS...$(RESET)"
+	@docker network inspect runner-network >/dev/null 2>&1 || (echo "  ✗ Docker network 'runner-network' not found. Run 'make start' first." && exit 1)
+	@docker run --rm --network runner-network curlimages/curl:8.10.1 -fsS http://verdaccio:4873/ >/dev/null && echo "  ✓ Verdaccio (runner-network): http://verdaccio:4873/" || (echo "  ✗ Verdaccio runner-network endpoint unavailable" && exit 1)
+	@docker run --rm --network runner-network curlimages/curl:8.10.1 -fsS http://athens:3000/ >/dev/null && echo "  ✓ Athens (runner-network):    http://athens:3000/" || (echo "  ✗ Athens runner-network endpoint unavailable" && exit 1)
+	@docker run --rm --network runner-network curlimages/curl:8.10.1 -fsS http://devpi:3141/root/pypi/+simple/ >/dev/null && echo "  ✓ devpi (runner-network):     http://devpi:3141/root/pypi/+simple/" || (echo "  ✗ devpi runner-network endpoint unavailable" && exit 1)
+	@docker run --rm --network runner-network curlimages/curl:8.10.1 -fsS http://apt-cacher:3142/acng-report.html >/dev/null && echo "  ✓ apt-cacher (runner-network): http://apt-cacher:3142/acng-report.html" || (echo "  ✗ apt-cacher runner-network endpoint unavailable" && exit 1)
+	@docker run --rm --network runner-network curlimages/curl:8.10.1 -fsS http://kellnr:8000/api/v1/cratesio/config.json >/dev/null && echo "  ✓ kellnr (runner-network):    http://kellnr:8000/api/v1/cratesio/config.json" || (echo "  ✗ kellnr runner-network endpoint unavailable" && exit 1)
+	@echo "$(CYAN)Inspecting host Docker daemon registry mirrors...$(RESET)"
+	@mirrors=$$(docker info --format '{{json .RegistryConfig.Mirrors}}' 2>/dev/null || echo '[]'); \
+		echo "  Mirrors: $$mirrors"; \
+		echo "$$mirrors" | grep -Eq 'localhost:49502|host\.orb\.internal:49502' && \
+			echo "  ✓ Host Docker daemon mirror includes run-zero docker-mirror" || \
+			echo "  ⚠ Host Docker daemon mirror does not include run-zero docker-mirror (Docker-backend pulls may bypass cache)"
+	@echo "$(GREEN)Cache smoke test complete.$(RESET)"
+
 .PHONY: clean-cache
 clean-cache: ## Clear the persistent package/tool cache dir ($(CACHE_DIR)) only -- see `make clean-caches` to also clear proxy volumes and images
 	@echo "$(YELLOW)Clearing local runner caches at $(CACHE_DIR)...$(RESET)"

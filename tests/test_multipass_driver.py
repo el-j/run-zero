@@ -84,6 +84,38 @@ class TestMultipassDriver(unittest.TestCase):
 
     @patch("subprocess.Popen")
     @patch("subprocess.run")
+    def test_spawn_runner_mounts_cache_dirs_when_provided(self, mock_run, mock_popen):
+        mock_run.return_value = MagicMock(returncode=0)
+        self.driver.spawn_runner(
+            repo="el-j/run-zero",
+            arch="arm64",
+            access_token="token",
+            cache_mounts={
+                "/host/npm": "/home/runner/.npm",
+                "/host/toolcache/arm64": "/opt/hostedtoolcache",
+            },
+        )
+        run_cmds = [c[0][0] for c in mock_run.call_args_list]
+        mount_cmds = [cmd for cmd in run_cmds if len(cmd) >= 2 and cmd[0] == "multipass" and cmd[1] == "mount"]
+        self.assertEqual(len(mount_cmds), 2)
+        self.assertTrue(any(cmd[2] == "/host/npm" and cmd[3].endswith(":/home/ubuntu/.npm") for cmd in mount_cmds))
+        self.assertTrue(any(cmd[2] == "/host/toolcache/arm64" and cmd[3].endswith(":/opt/hostedtoolcache") for cmd in mount_cmds))
+
+        prep_exec_cmds = [
+            cmd
+            for cmd in run_cmds
+            if len(cmd) >= 7 and cmd[0] == "multipass" and cmd[1] == "exec" and cmd[3] == "--" and cmd[4] == "bash" and cmd[5] == "-lc"
+        ]
+        self.assertTrue(any("/home/ubuntu/.npm" in cmd[6] for cmd in prep_exec_cmds))
+        self.assertTrue(any("/opt/hostedtoolcache" in cmd[6] for cmd in prep_exec_cmds))
+
+    def test_vm_cache_path_translation(self):
+        self.assertEqual(self.driver._vm_cache_path("/home/runner/.npm"), "/home/ubuntu/.npm")
+        self.assertEqual(self.driver._vm_cache_path("/home/runner"), "/home/ubuntu")
+        self.assertEqual(self.driver._vm_cache_path("/opt/hostedtoolcache"), "/opt/hostedtoolcache")
+
+    @patch("subprocess.Popen")
+    @patch("subprocess.run")
     def test_spawn_runner_omits_proxy_stack_when_disabled(self, mock_run, mock_popen):
         mock_run.return_value = MagicMock(returncode=0)
         self.driver.spawn_runner(repo="el-j/run-zero", arch="arm64", access_token="token", proxies_enabled=False)
