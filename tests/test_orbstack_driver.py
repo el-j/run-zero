@@ -767,6 +767,102 @@ class TestOrbStackVMDriver(unittest.TestCase):
         self.driver.cleanup_all()
 
     @patch("subprocess.run")
+    def test_prune_exited_ignores_stopped_runner_older_than_fast_failure_window(self, mock_run):
+        # A clone that ran for a while before stopping (e.g. a real completed job)
+        # is not evidence of a network failure and must not count toward the backoff.
+        mock_run.return_value = MagicMock(returncode=0)
+        old_runner = RunnerInfo(
+            id="r1", name="runzero-vm-amd64-old", status="stopped", state="exited",
+            target_repo="", target_arch="amd64", backend="orbstack-vm",
+            created_at=time.time() - 3600,
+        )
+        self.driver.prune_exited([old_runner])
+        self.assertEqual(self.driver._spawn_failure_counts.get("amd64", 0), 0)
+
+    @patch("subprocess.run")
+    def test_prune_exited_counts_stopped_runner_younger_than_fast_failure_window(self, mock_run):
+        mock_run.return_value = MagicMock(returncode=0)
+        young_dead_runner = RunnerInfo(
+            id="r1", name="runzero-vm-amd64-young", status="stopped", state="exited",
+            target_repo="", target_arch="amd64", backend="orbstack-vm",
+            created_at=time.time() - 5,
+        )
+        self.driver.prune_exited([young_dead_runner])
+        self.assertEqual(self.driver._spawn_failure_counts.get("amd64", 0), 1)
+
+    @patch("subprocess.run")
+    def test_prune_exited_ignores_golden_base_image_entries(self, mock_run):
+        mock_run.return_value = MagicMock(returncode=0)
+        staging_image = RunnerInfo(
+            id="r1", name="runzero-vm-base-amd64-building", status="stopped", state="exited",
+            target_repo="", target_arch="amd64", backend="orbstack-vm",
+            created_at=time.time() - 5,
+        )
+        self.driver.prune_exited([staging_image])
+        self.assertEqual(self.driver._spawn_failure_counts.get("amd64", 0), 0)
+        mock_run.assert_not_called()
+
+    @patch("subprocess.run")
+    def test_prune_exited_resets_failure_count_when_a_clone_survives(self, mock_run):
+        mock_run.return_value = MagicMock(returncode=0)
+        self.driver._spawn_failure_counts["amd64"] = 2
+        healthy_runner = RunnerInfo(
+            id="r1", name="runzero-vm-amd64-healthy", status="running", state="running",
+            target_repo="", target_arch="amd64", backend="orbstack-vm",
+            created_at=time.time() - 3600,
+        )
+        self.driver.prune_exited([healthy_runner])
+        self.assertEqual(self.driver._spawn_failure_counts.get("amd64", 0), 0)
+
+    @patch("subprocess.Popen")
+    @patch("subprocess.run")
+    def test_spawn_runner_backs_off_after_consecutive_fast_failures(self, mock_run, mock_popen):
+        # Regression test for the 2026-09-09 incident: OrbStack clones that never got a
+        # network address were reclone'd every ~10s poll forever (355 clones in under 20
+        # minutes, none of which could ever register). After MAX_CONSECUTIVE_FAST_FAILURES
+        # stopped-while-still-young clones in a row, spawn_runner() must stop cloning for
+        # that arch instead of repeating the same doomed attempt on every poll.
+        mock_run.return_value = MagicMock(returncode=0, stdout=json.dumps([{"name": "runzero-vm-base-amd64", "state": "stopped"}]))
+        for _ in range(3):
+            dead_runner = RunnerInfo(
+                id="r", name="runzero-vm-amd64-x", status="stopped", state="exited",
+                target_repo="", target_arch="amd64", backend="orbstack-vm",
+                created_at=time.time() - 5,
+            )
+            self.driver.prune_exited([dead_runner])
+
+        mock_run.reset_mock()
+        result = self.driver.spawn_runner(repo="el-j/herbful", arch="amd64", access_token="tok")
+
+        self.assertIsNone(result)
+        mock_popen.assert_not_called()
+        clone_calls = [c for c in mock_run.call_args_list if c.args[0][:2] == ["orbctl", "clone"]]
+        self.assertEqual(clone_calls, [])
+
+    @patch("subprocess.Popen")
+    @patch("subprocess.run")
+    def test_spawn_runner_resumes_once_cooldown_elapses(self, mock_run, mock_popen):
+        mock_run.return_value = MagicMock(returncode=0, stdout=json.dumps([{"name": "runzero-vm-base-amd64", "state": "stopped"}]))
+        for _ in range(3):
+            dead_runner = RunnerInfo(
+                id="r", name="runzero-vm-amd64-x", status="stopped", state="exited",
+                target_repo="", target_arch="amd64", backend="orbstack-vm",
+                created_at=time.time() - 5,
+            )
+            self.driver.prune_exited([dead_runner])
+        self.assertGreater(self.driver._spawn_cooldown_remaining("amd64"), 0)
+
+        # Simulate the cooldown window having fully elapsed.
+        self.driver._spawn_retry_after["amd64"] = time.monotonic() - 1
+
+        mock_run.reset_mock()
+        with patch.object(self.driver, "base_image_exists", return_value=True):
+            result = self.driver.spawn_runner(repo="el-j/herbful", arch="amd64", access_token="tok")
+
+        self.assertIsNotNone(result)
+        mock_popen.assert_called_once()
+
+    @patch("subprocess.run")
     def test_is_staging_provisioned_tolerates_exception(self, mock_run):
         mock_run.side_effect = subprocess.TimeoutExpired(cmd="orb", timeout=25)
         self.assertFalse(self.driver._is_staging_provisioned("runzero-vm-base-amd64-building"))

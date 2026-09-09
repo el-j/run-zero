@@ -29,6 +29,14 @@ RUNNER_VERSION = "2.336.0"
 RUNNER_VM_PREFIX = "runzero-vm-"
 BASE_IMAGE_PREFIX = "runzero-vm-base-"
 
+# A per-job clone that goes from "just spawned" to "stopped" faster than this
+# never had a real chance to register and run a job -- see
+# _record_spawn_outcome()'s docstring for why this specific failure mode
+# (network-less clones) needs its own circuit breaker, separate from the
+# existing build_base_image() one.
+FAST_FAILURE_WINDOW_SECONDS = 60.0
+MAX_CONSECUTIVE_FAST_FAILURES = 3
+
 
 class OrbStackVMDriver(RunnerDriver):
     """Runs ephemeral runners as dedicated OrbStack Linux VMs, cloned per-job from a golden base image."""
@@ -62,6 +70,11 @@ class OrbStackVMDriver(RunnerDriver):
         # success and no operator-visible signal that this isn't self-healing.
         self._build_failure_counts: Dict[str, int] = {}
         self._build_retry_after: Dict[str, float] = {}
+        # Same backoff idea as _build_failure_counts/_build_retry_after above, but for
+        # a different failure mode: `orbctl clone` (not `orbctl create`) succeeding, then
+        # the clone itself never getting a network address -- see _record_spawn_outcome().
+        self._spawn_failure_counts: Dict[str, int] = {}
+        self._spawn_retry_after: Dict[str, float] = {}
         self._runner_created_at: Dict[str, float] = {}
         self._runner_repos: Dict[str, str] = {}
         # Tracks the most recently started background build thread per arch
@@ -383,6 +396,65 @@ echo "Base image provisioning complete."
         allowed, or 0.0 if none is in effect. Caller must hold _building_lock."""
         return max(0.0, self._build_retry_after.get(orb_arch, 0.0) - time.monotonic())
 
+    def _spawn_cooldown_remaining(self, orb_arch: str) -> float:
+        """Seconds until the next spawn_runner() clone for orb_arch is allowed, or 0.0 if none is in effect."""
+        return max(0.0, self._spawn_retry_after.get(orb_arch, 0.0) - time.monotonic())
+
+    def _record_spawn_outcome(self, orb_arch: str, got_network: bool) -> None:
+        """Track whether recently-cloned VMs are actually getting a network address, and back off
+        spawning more of them for this arch once they consistently aren't.
+
+        `prune_exited()` calls this once per poll with `got_network=False` for every clone it's
+        about to delete that died younger than FAST_FAILURE_WINDOW_SECONDS, and `got_network=True`
+        for every still-running clone older than that window (proof this arch is currently healthy).
+
+        This exists for a *different* failure mode than `_build_failure_counts`/`_build_retry_after`
+        above: that pair guards `orbctl create` (building the golden image) failing outright.  This
+        one guards `orbctl clone` succeeding -- so spawn_runner() has already returned a VM name and
+        the caller thinks a runner is on its way -- but the clone then never gets a network address
+        inside the guest, so it can never reach the GitHub API to register, and self-powers-off via
+        the `trap cleanup EXIT` in orbstack_templates.py's setup script. Without this circuit
+        breaker, that failure is invisible to spawn_runner() itself (the registration/run happens in
+        a detached, fire-and-forget `orb exec`) and the poll loop's ~10s cadence just clones a
+        replacement for the still-queued job every tick -- confirmed live (2026-09-09): 355 clones
+        in under 20 minutes, zero of which ever registered with GitHub, while burning a GitHub
+        registration-token API call each time.
+
+        This is an OrbStack-side bug, not something fixable from here: a bare `orbctl create`
+        reproduces the same "missing IP address" failure with zero run-zero code involved, and it
+        survives BOTH an OrbStack app restart and a full `orbctl stop && orbctl start` engine
+        cycle (confirmed live -- a diagnostic VM created immediately after a cold `orbctl
+        stop`/`start` failed identically). Filed upstream as
+        https://github.com/orbstack/orbstack/issues/2688. From this driver's side, all that's
+        knowable is "clones for this arch keep dying before they could possibly have registered,"
+        which is exactly what's tracked here.
+        """
+        if got_network:
+            self._spawn_failure_counts[orb_arch] = 0
+            self._spawn_retry_after.pop(orb_arch, None)
+            return
+
+        failures = self._spawn_failure_counts.get(orb_arch, 0) + 1
+        self._spawn_failure_counts[orb_arch] = failures
+        if failures < MAX_CONSECUTIVE_FAST_FAILURES:
+            return
+
+        cooldown = min(30 * (2 ** (failures - MAX_CONSECUTIVE_FAST_FAILURES)), 900)
+        self._spawn_retry_after[orb_arch] = time.monotonic() + cooldown
+        print(
+            f"[Autoscaler:OrbStack-VM] {failures} consecutive '{orb_arch}' clones in a row died "
+            f"within {int(FAST_FAILURE_WINDOW_SECONDS)}s of being created -- never long enough to "
+            f"register a runner. This almost always means the clone never got a network address -- "
+            f"an OrbStack-side issue, not a run-zero bug. Confirmed live (2026-09-09) that neither "
+            f"an OrbStack app restart NOR a full `orbctl stop && orbctl start` engine cycle clears "
+            f"it once it starts (a bare `orbctl create` fails identically right after either); a "
+            f"full macOS reboot has cleared it in the past but is not a guaranteed permanent fix "
+            f"and it has recurred after enough VM churn. Tracked upstream at "
+            f"https://github.com/orbstack/orbstack/issues/2688 -- not fixable from run-zero's "
+            f"side. Backing off {cooldown}s before spawning another '{orb_arch}' VM.",
+            file=sys.stderr,
+        )
+
     def _build_base_image_async(self, orb_arch: str) -> None:
         """Kick off build_base_image() on a background thread, deduped per-arch.
 
@@ -535,6 +607,18 @@ echo "Base image provisioning complete."
             default_labels += ",rosetta"
         runner_labels = labels if labels else default_labels
         orb_arch = "arm64" if arch == "arm64" else "amd64"
+
+        cooldown_remaining = self._spawn_cooldown_remaining(orb_arch)
+        if cooldown_remaining > 0:
+            print(
+                f"[Autoscaler:OrbStack-VM] Spawning for '{orb_arch}' is cooling down for "
+                f"{int(cooldown_remaining)}s after {self._spawn_failure_counts.get(orb_arch, 0)} "
+                f"consecutive clones failed to get a network address within "
+                f"{int(FAST_FAILURE_WINDOW_SECONDS)}s of being created. This queued job will be "
+                f"retried once the cooldown lifts.",
+                file=sys.stderr,
+            )
+            return None
 
         proxy_env_block = ""
         if proxies_enabled:
@@ -693,11 +777,23 @@ set -e
             return False
 
     def prune_exited(self, active_runners: List[RunnerInfo]) -> None:
-        """Delete any `active_runners` entries that are OrbStack-VM-backed and in a stopped state."""
+        """Delete any `active_runners` entries that are OrbStack-VM-backed and in a stopped state.
+
+        Also feeds `_record_spawn_outcome()` (see its docstring) so a run of clones that all die
+        implausibly young -- never long enough to have registered a runner -- trips a backoff
+        instead of being reclone'd every ~10s poll forever.
+        """
         for r in active_runners:
-            if r.backend == "orbstack-vm" and r.state in ("exited", "stopped", "dead"):
+            if r.backend != "orbstack-vm" or r.name.startswith(BASE_IMAGE_PREFIX):
+                continue
+            age = (time.time() - r.created_at) if r.created_at is not None else None
+            if r.state in ("exited", "stopped", "dead"):
+                if age is not None and age < FAST_FAILURE_WINDOW_SECONDS:
+                    self._record_spawn_outcome(r.target_arch, got_network=False)
                 print(f"[Autoscaler:OrbStack-VM] Deleting stopped VM: {r.name}")
                 self.destroy_runner(r.name)
+            elif r.state == "running" and age is not None and age >= FAST_FAILURE_WINDOW_SECONDS:
+                self._record_spawn_outcome(r.target_arch, got_network=True)
 
     def cleanup_all(self) -> None:
         """Delete every job VM this driver manages (used on autoscaler shutdown). Golden base images are untouched."""
