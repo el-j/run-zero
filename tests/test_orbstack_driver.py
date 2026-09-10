@@ -282,6 +282,64 @@ class TestOrbStackVMDriver(unittest.TestCase):
         runners = self.driver.list_runners()
         self.assertEqual(runners, [])
 
+    @patch("subprocess.run")
+    def test_list_runners_derives_created_at_from_orbstack_ulid(self, mock_run):
+        # This id is a real OrbStack VM id (a ULID) captured live; its first 10
+        # characters decode to 2026-09-09 15:47:33.355 UTC == 1788968853.355.
+        # See _vm_created_at_from_ulid()'s docstring: this is what makes a VM's
+        # tracked age survive a driver-process restart instead of resetting to
+        # "just created" every time -- confirmed live to have left 4 orphaned
+        # VMs running for 16+ hours because reconciler.py's age-based cleanup
+        # never saw them as old.
+        mock_run.return_value = MagicMock(
+            stdout=json.dumps(
+                [
+                    {
+                        "id": "01M23DMQVBY90E2BVMYBA1GAZT",
+                        "name": "runzero-vm-amd64-el-j-herbful-858742",
+                        "state": "running",
+                    }
+                ]
+            ),
+            returncode=0,
+        )
+        runners = self.driver.list_runners()
+        self.assertAlmostEqual(runners[0].created_at, 1788968853.355, places=2)
+
+    @patch("subprocess.run")
+    def test_list_runners_created_at_survives_simulated_process_restart(self, mock_run):
+        # Simulates exactly the bug scenario: a brand new driver instance (as if the
+        # Host VM Bridge process had just been restarted, wiping its in-memory
+        # _runner_created_at cache) observes a VM that already existed. Its age must
+        # come from OrbStack's own id, not from "now".
+        vm_list = [
+            {
+                "id": "01M23DMQVBY90E2BVMYBA1GAZT",
+                "name": "runzero-vm-amd64-el-j-herbful-858742",
+                "state": "running",
+            }
+        ]
+        mock_run.return_value = MagicMock(stdout=json.dumps(vm_list), returncode=0)
+
+        fresh_driver = OrbStackVMDriver(distro="ubuntu:24.04")
+        runners = fresh_driver.list_runners()
+        self.assertAlmostEqual(runners[0].created_at, 1788968853.355, places=2)
+
+    @patch("subprocess.run")
+    def test_list_runners_falls_back_when_id_is_not_a_ulid(self, mock_run):
+        mock_run.return_value = MagicMock(
+            stdout=json.dumps(
+                [{"id": "not-a-ulid", "name": "runzero-vm-amd64-el-j-run-zero-abc", "state": "running"}]
+            ),
+            returncode=0,
+        )
+        before = time.time()
+        runners = self.driver.list_runners()
+        after = time.time()
+        self.assertIsNotNone(runners[0].created_at)
+        self.assertGreaterEqual(runners[0].created_at, before)
+        self.assertLessEqual(runners[0].created_at, after)
+
     def test_base_image_name(self):
         self.assertEqual(self.driver.base_image_name("amd64"), "runzero-vm-base-amd64")
 

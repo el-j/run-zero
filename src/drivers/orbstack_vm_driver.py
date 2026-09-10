@@ -37,6 +37,50 @@ BASE_IMAGE_PREFIX = "runzero-vm-base-"
 FAST_FAILURE_WINDOW_SECONDS = 60.0
 MAX_CONSECUTIVE_FAST_FAILURES = 3
 
+# Crockford base32 -- the alphabet OrbStack's VM "id" field (a ULID) is encoded
+# with. See _vm_created_at_from_ulid() below for why this matters.
+_ULID_ALPHABET_INDEX = {c: i for i, c in enumerate("0123456789ABCDEFGHJKMNPQRSTVWXYZ")}
+
+
+def _vm_created_at_from_ulid(vm_id: str) -> Optional[float]:
+    """Decode the creation time OrbStack itself baked into a VM's `id`, as Unix epoch seconds.
+
+    `orbctl list --format json` doesn't expose a created-at field directly, but the `id`
+    it does return for every VM is a ULID: its first 10 characters are a 48-bit
+    millisecond Unix timestamp, assigned once by OrbStack at creation and stable for the
+    VM's lifetime -- unlike anything this driver tracks itself in memory.
+
+    Without this, list_runners() fell back to time.time() the first time *this process*
+    happened to observe a given VM name, via `_runner_created_at`. That dict lives only
+    in the driver instance's memory, so it resets on every restart of whatever process
+    owns this driver -- for the containerized autoscaler that's `vm_bridge.py` on the
+    host (see its module docstring), which runs unsupervised and has no auto-restart.
+    Confirmed live (2026-09-10): the bridge died mid-clone for 4 VMs; because it wasn't
+    restarted, `.bridge.log` simply stopped, and once it silently came back into scope
+    the *first* list_runners() call after any restart would have re-seeded every
+    already-existing VM's age as "just now" -- permanently defeating this file's own
+    FAST_FAILURE_WINDOW_SECONDS circuit breaker and reconciler.py's
+    IDLE_ORPHAN_TIMEOUT_SECONDS / UNREGISTERED_ORPHAN_TIMEOUT_SECONDS, since both compare
+    against `RunnerInfo.created_at`. Those 4 VMs sat "running" for 16+ hours, never
+    having registered with GitHub (no queued/in-progress job left for them either),
+    burning host CPU/RAM with nothing to reap them. Deriving the age from OrbStack's own
+    per-VM ULID instead makes every one of those existing timeouts restart-proof for
+    free, with no new API calls.
+
+    Returns None (caller should fall back to its own tracking) if `vm_id` isn't a
+    plausible ULID -- e.g. a test fixture with no/synthetic id, or a future OrbStack
+    version changing this format.
+    """
+    if not vm_id or len(vm_id) < 10:
+        return None
+    try:
+        ts_ms = 0
+        for ch in vm_id[:10]:
+            ts_ms = ts_ms * 32 + _ULID_ALPHABET_INDEX[ch.upper()]
+    except KeyError:
+        return None
+    return ts_ms / 1000.0
+
 
 class OrbStackVMDriver(RunnerDriver):
     """Runs ephemeral runners as dedicated OrbStack Linux VMs, cloned per-job from a golden base image."""
@@ -731,8 +775,14 @@ set -e
                     else:
                         state = "exited"
 
-                    if name not in self._runner_created_at:
-                        self._runner_created_at[name] = time.time()
+                    # Prefer OrbStack's own creation timestamp (see
+                    # _vm_created_at_from_ulid's docstring for why this matters) --
+                    # fall back to this process's own first-observed time only if the
+                    # id isn't a decodable ULID (e.g. test fixtures).
+                    created_at = _vm_created_at_from_ulid(vm.get("id", ""))
+                    if created_at is None:
+                        created_at = self._runner_created_at.get(name, time.time())
+                    self._runner_created_at[name] = created_at
 
                     target_repo = self._runner_repos.get(name, "")
                     if not target_repo:
@@ -749,7 +799,7 @@ set -e
                         target_repo=target_repo,
                         target_arch=arch,
                         backend="orbstack-vm",
-                        created_at=self._runner_created_at.get(name)
+                        created_at=created_at
                     ))
             return runners
         except Exception as e:
