@@ -257,33 +257,18 @@ dashboard: ## Open RunZero Real-Time Observability Web Dashboard in browser (htt
 	@open http://localhost:49505 || echo "Navigate to http://localhost:49505 in your browser."
 
 .PHONY: bridge-start bridge-stop bridge-status bridge-logs
-bridge-start: ## Start Host VM Bridge server on host (port 49504)
-	@if [ -f $(BRIDGE_PID_FILE) ] && kill -0 "$$(cat $(BRIDGE_PID_FILE))" 2>/dev/null; then \
-		echo "$(YELLOW)Host VM Bridge already running (PID $$(cat $(BRIDGE_PID_FILE))).$(RESET)"; \
-	else \
-		echo "$(CYAN)Starting Host VM Bridge on http://localhost:49504...$(RESET)"; \
-		set -a; [ -f .env ] && . ./.env; set +a; \
-		PYTHONPATH=src nohup python3 -u src/vm_bridge.py > $(BRIDGE_LOG_FILE) 2>&1 & \
-		echo $$! > $(BRIDGE_PID_FILE); \
-		echo "$(GREEN)Host VM Bridge running in background (PID $$(cat $(BRIDGE_PID_FILE))).$(RESET)"; \
-	fi
+bridge-start: ## Start Host VM Bridge server on host (port 49504, auto-restarts on crash via launchd)
+	@echo "$(CYAN)Starting Host VM Bridge on http://localhost:49504...$(RESET)"
+	@./scripts/bridge_supervisor.sh start
 
 bridge-stop: ## Stop Host VM Bridge server
 	@echo "$(YELLOW)Stopping Host VM Bridge...$(RESET)"
-	@if [ -f $(BRIDGE_PID_FILE) ]; then \
-		pid=$$(cat $(BRIDGE_PID_FILE)); \
-		if kill -0 "$$pid" 2>/dev/null; then kill "$$pid"; fi; \
-		rm -f $(BRIDGE_PID_FILE); \
-	fi
+	@./scripts/bridge_supervisor.sh stop
 	@echo "$(GREEN)Host VM Bridge stopped.$(RESET)"
 
 bridge-status: ## Check Host VM Bridge status
 	@echo "$(BOLD)$(CYAN)=== Host VM Bridge (port 49504) ===$(RESET)"
-	@if [ -f $(BRIDGE_PID_FILE) ] && kill -0 "$$(cat $(BRIDGE_PID_FILE))" 2>/dev/null; then \
-		echo "Running (PID $$(cat $(BRIDGE_PID_FILE)))"; \
-	else \
-		echo "Not running"; \
-	fi
+	@./scripts/bridge_supervisor.sh status
 
 bridge-logs: ## Stream live logs from the Host VM Bridge
 	@touch $(BRIDGE_LOG_FILE) && tail -f $(BRIDGE_LOG_FILE)

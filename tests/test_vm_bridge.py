@@ -426,12 +426,20 @@ class TestVMBridge(unittest.TestCase):
 class TestVMBridgeServerLifecycle(unittest.TestCase):
     @patch("vm_bridge.ThreadingHTTPServer")
     def test_start_blocking_stops_cleanly_on_keyboard_interrupt(self, mock_server_cls):
+        # serve_forever() now always runs on its own thread (see start()'s
+        # comment on why: shutdown() deadlocks if called from the same
+        # thread that's running serve_forever(), which used to be exactly
+        # what happened for blocking=True). So the KeyboardInterrupt that
+        # start() must catch and turn into a clean stop() no longer comes
+        # from serve_forever() itself (an exception raised on the
+        # background thread wouldn't propagate here) -- it comes from the
+        # main thread's wait for that thread, i.e. Thread.join().
         mock_httpd = MagicMock()
-        mock_httpd.serve_forever.side_effect = KeyboardInterrupt()
         mock_server_cls.return_value = mock_httpd
 
         server = VMBridgeServer(host="127.0.0.1", port=0)
-        server.start(blocking=True)
+        with patch("threading.Thread.join", side_effect=KeyboardInterrupt()):
+            server.start(blocking=True)
 
         mock_httpd.shutdown.assert_called_once()
         mock_httpd.server_close.assert_called_once()

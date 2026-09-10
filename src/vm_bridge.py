@@ -272,14 +272,30 @@ class VMBridgeServer:
         self._is_running = True
         print(f"[VMBridge] 🚀 Host VM Bridge listening on http://{self.host}:{self.port}")
 
+        # serve_forever() always runs on its own thread now, blocking=True
+        # included. It used to run inline on the caller's thread when
+        # blocking, which deadlocked in main()'s real usage: main() installs
+        # a SIGTERM/SIGINT handler that calls stop() -> httpd.shutdown().
+        # socketserver's shutdown() docs are explicit that it "must be
+        # called while serve_forever() is running in a different thread, or
+        # it will deadlock" -- a signal handler runs nested on the SAME
+        # thread that's blocked inside serve_forever(), so shutdown() waited
+        # forever for serve_forever()'s loop to notice a flag it could never
+        # get scheduled to check. Confirmed live: `kill -TERM <bridge-pid>`
+        # printed "Shutting down..." and then hung indefinitely, still
+        # holding the port, until manually SIGKILLed -- meaning `make
+        # bridge-stop`/a launchd-managed restart could never actually stop
+        # the process cleanly. Running serve_forever() on its own thread
+        # unconditionally means shutdown() is always called from a
+        # different thread than the one running it, exactly as documented.
+        self.thread = threading.Thread(target=self.httpd.serve_forever, daemon=True)
+        self.thread.start()
+
         if blocking:
             try:
-                self.httpd.serve_forever()
+                self.thread.join()
             except KeyboardInterrupt:
                 self.stop()
-        else:
-            self.thread = threading.Thread(target=self.httpd.serve_forever, daemon=True)
-            self.thread.start()
 
     def stop(self) -> None:
         """Shut down the HTTP server and join its serving thread (up to 2s), if running."""
@@ -302,6 +318,7 @@ def main():
 
     def signal_handler(signum, frame):
         """Stop the bridge server cleanly and exit the process."""
+        print(f"[VMBridge] Received signal {signum} ({signal.Signals(signum).name}), stopping.")
         server.stop()
         sys.exit(0)
 
