@@ -91,6 +91,15 @@ class TestDockerDriver(unittest.TestCase):
         self.assertIn("local-runner-amd64-my-org-", name_amd)
 
     @patch("subprocess.run")
+    def test_spawn_runner_uses_configured_network_mode(self, mock_run):
+        mock_run.return_value = MagicMock(returncode=0)
+        driver_host = DockerDriver(network="host")
+        driver_host.spawn_runner(repo="el-j/herbful", arch="arm64", access_token="tok")
+        cmd = mock_run.call_args[0][0]
+        net_idx = cmd.index("--network")
+        self.assertEqual(cmd[net_idx + 1], "host")
+
+    @patch("subprocess.run")
     def test_spawn_runner_passes_cache_mount_dests_env(self, mock_run):
         # start.sh fixes ownership of the *container-side* mount destinations
         # (Docker/OrbStack create their ancestors as root) using this env var as

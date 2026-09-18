@@ -838,12 +838,26 @@ class TestOrbStackVMDriver(unittest.TestCase):
         self.assertEqual(self.driver._spawn_failure_counts.get("amd64", 0), 0)
 
     @patch("subprocess.run")
+    def test_prune_exited_ignores_stopped_runner_within_startup_grace_period(self, mock_run):
+        # A newly cloned VM takes a few seconds to boot; if inspected during the
+        # startup grace period (<15s), it must not be deleted or counted as a failure.
+        mock_run.return_value = MagicMock(returncode=0)
+        booting_runner = RunnerInfo(
+            id="r1", name="runzero-vm-amd64-booting", status="stopped", state="exited",
+            target_repo="", target_arch="amd64", backend="orbstack-vm",
+            created_at=time.time() - 5,
+        )
+        self.driver.prune_exited([booting_runner])
+        self.assertEqual(self.driver._spawn_failure_counts.get("amd64", 0), 0)
+        mock_run.assert_not_called()
+
+    @patch("subprocess.run")
     def test_prune_exited_counts_stopped_runner_younger_than_fast_failure_window(self, mock_run):
         mock_run.return_value = MagicMock(returncode=0)
         young_dead_runner = RunnerInfo(
             id="r1", name="runzero-vm-amd64-young", status="stopped", state="exited",
             target_repo="", target_arch="amd64", backend="orbstack-vm",
-            created_at=time.time() - 5,
+            created_at=time.time() - 25,
         )
         self.driver.prune_exited([young_dead_runner])
         self.assertEqual(self.driver._spawn_failure_counts.get("amd64", 0), 1)
@@ -854,7 +868,7 @@ class TestOrbStackVMDriver(unittest.TestCase):
         staging_image = RunnerInfo(
             id="r1", name="runzero-vm-base-amd64-building", status="stopped", state="exited",
             target_repo="", target_arch="amd64", backend="orbstack-vm",
-            created_at=time.time() - 5,
+            created_at=time.time() - 25,
         )
         self.driver.prune_exited([staging_image])
         self.assertEqual(self.driver._spawn_failure_counts.get("amd64", 0), 0)
@@ -885,7 +899,7 @@ class TestOrbStackVMDriver(unittest.TestCase):
             dead_runner = RunnerInfo(
                 id="r", name="runzero-vm-amd64-x", status="stopped", state="exited",
                 target_repo="", target_arch="amd64", backend="orbstack-vm",
-                created_at=time.time() - 5,
+                created_at=time.time() - 25,
             )
             self.driver.prune_exited([dead_runner])
 
@@ -905,7 +919,7 @@ class TestOrbStackVMDriver(unittest.TestCase):
             dead_runner = RunnerInfo(
                 id="r", name="runzero-vm-amd64-x", status="stopped", state="exited",
                 target_repo="", target_arch="amd64", backend="orbstack-vm",
-                created_at=time.time() - 5,
+                created_at=time.time() - 25,
             )
             self.driver.prune_exited([dead_runner])
         self.assertGreater(self.driver._spawn_cooldown_remaining("amd64"), 0)

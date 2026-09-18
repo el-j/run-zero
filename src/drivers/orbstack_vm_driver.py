@@ -34,6 +34,7 @@ BASE_IMAGE_PREFIX = "runzero-vm-base-"
 # _record_spawn_outcome()'s docstring for why this specific failure mode
 # (network-less clones) needs its own circuit breaker, separate from the
 # existing build_base_image() one.
+STARTUP_GRACE_PERIOD_SECONDS = 15.0
 FAST_FAILURE_WINDOW_SECONDS = 60.0
 MAX_CONSECUTIVE_FAST_FAILURES = 3
 
@@ -499,6 +500,13 @@ echo "Base image provisioning complete."
             file=sys.stderr,
         )
 
+    def reset_spawn_cooldown(self, orb_arch: Optional[str] = None) -> None:
+        """Reset the consecutive fast failure counts and cooldown for an arch (or all arches)."""
+        arches = [orb_arch] if orb_arch else list(self._spawn_failure_counts.keys())
+        for a in arches:
+            self._spawn_failure_counts[a] = 0
+            self._spawn_retry_after.pop(a, None)
+
     def _build_base_image_async(self, orb_arch: str) -> None:
         """Kick off build_base_image() on a background thread, deduped per-arch.
 
@@ -837,6 +845,9 @@ set -e
             if r.backend != "orbstack-vm" or r.name.startswith(BASE_IMAGE_PREFIX):
                 continue
             age = (time.time() - r.created_at) if r.created_at is not None else None
+            # Protect newly spawned clones during initial boot and registration
+            if age is not None and age < STARTUP_GRACE_PERIOD_SECONDS:
+                continue
             if r.state in ("exited", "stopped", "dead"):
                 if age is not None and age < FAST_FAILURE_WINDOW_SECONDS:
                     self._record_spawn_outcome(r.target_arch, got_network=False)
