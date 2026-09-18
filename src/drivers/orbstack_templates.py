@@ -49,6 +49,8 @@ def cache_mount_snippet(cache_mounts: Optional[Dict[str, str]]) -> str:
             f'if [ -d "{mac_path}" ]; then\n'
             f'  sudo mount --bind "{mac_path}" "{container_path}" || '
             f'echo "Warning: cache bind mount failed for {container_path}" >&2\n'
+            f'  sudo chmod 777 "{container_path}" 2>/dev/null || true\n'
+            f'  sudo chown runner:runner "{container_path}" 2>/dev/null || true\n'
             f"else\n"
             f'  echo "Warning: host cache dir {mac_path} not visible via OrbStack mac share -- '
             f'skipping mount for {container_path}" >&2\n'
@@ -185,7 +187,9 @@ sudo mkdir -p /home/runner/go/bin /home/runner/go/pkg /opt/hostedtoolcache /home
 sudo chown -R runner:runner /home/runner /opt/hostedtoolcache 2>/dev/null || true
 sudo chmod -R 777 /home/runner/go /opt/hostedtoolcache /home/runner/.cache 2>/dev/null || true
 {cache_mount_block}
-sudo chown -R runner:runner /home/runner/.cargo /home/runner/.local /home/runner/.nuget 2>/dev/null || true
+sudo chown -R runner:runner /home/runner/.cache /home/runner/go /home/runner/.cargo /home/runner/.local /home/runner/.nuget 2>/dev/null || true
+sudo chmod -R 777 /home/runner/.cache /home/runner/go 2>/dev/null || true
+mkdir -p /home/runner/.cache/go-build /home/runner/go/pkg 2>/dev/null || true
 {proxy_env_block}
 cd /home/runner/actions-runner
 

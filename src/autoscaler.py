@@ -298,11 +298,12 @@ def main():
                     if not ensure_driver_runtime_assets(driver_to_use, arch):
                         continue
 
+                    job_scope = f"{repo}_{job.get('run_id', '')}_{job.get('id', '')}".strip("_")
                     spawned_id = driver_to_use.spawn_runner(
                         repo=repo,
                         arch=arch,
                         access_token=ACCESS_TOKEN,
-                        cache_mounts=init_cache_dirs(HOST_CACHE_DIR, arch, CACHE_ENABLED),
+                        cache_mounts=init_cache_dirs(HOST_CACHE_DIR, arch, CACHE_ENABLED, scope=job_scope),
                         proxies_enabled=PROXIES_ENABLED
                     )
                     effective_driver = driver_to_use
@@ -313,7 +314,7 @@ def main():
                                 repo=repo,
                                 arch=arch,
                                 access_token=ACCESS_TOKEN,
-                                cache_mounts=init_cache_dirs(HOST_CACHE_DIR, arch, CACHE_ENABLED),
+                                cache_mounts=init_cache_dirs(HOST_CACHE_DIR, arch, CACHE_ENABLED, scope=job_scope),
                                 proxies_enabled=PROXIES_ENABLED
                             )
                             effective_driver = default_driver
