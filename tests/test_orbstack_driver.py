@@ -126,6 +126,14 @@ class TestOrbStackTemplates(unittest.TestCase):
         self.assertIn("Warning: host cache dir", snippet)
         self.assertIn("Warning: cache bind mount failed", snippet)
 
+    def test_cache_mount_snippet_chowns_runner_ancestor_directories(self):
+        snippet = cache_mount_snippet(
+            {"/Users/dev/.local-github-runner/cache/rust": "/home/runner/.cargo/registry"}
+        )
+        self.assertIn('sudo mkdir -p "/home/runner/.cargo/registry"', snippet)
+        self.assertIn('sudo chown runner:runner "$_p"', snippet)
+        self.assertIn('sudo chown runner:runner "/home/runner/.cargo/registry"', snippet)
+
 
 class TestOrbStackVMDriver(unittest.TestCase):
     # Regression guard for issue #20: OrbStackVMDriver._build_base_image_async

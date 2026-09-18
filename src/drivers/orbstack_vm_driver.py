@@ -700,6 +700,8 @@ echo 'Acquire::http::Proxy "http://host.orb.internal:49503";' | sudo tee /etc/ap
             # inside an OrbStack VM -- no "is it up" detection needed the way Mode 2's
             # bridge-network containers need one).
             proxy_env_block += """
+sudo mkdir -p /home/runner/.cargo 2>/dev/null || true
+sudo chown -R runner:runner /home/runner/.cargo 2>/dev/null || true
 mkdir -p /home/runner/.cargo
 cat > /home/runner/.cargo/config.toml <<'CARGOCFG'
 [source.crates-io]
@@ -735,6 +737,10 @@ CARGOCFG
         setup_script = f"""
 exec > /home/runner/setup.log 2>&1
 cleanup() {{
+    EXIT_CODE=$?
+    if [ $EXIT_CODE -ne 0 ]; then
+        echo "[RunZero VM Error] Setup script failed with exit code $EXIT_CODE" >&2
+    fi
     sudo systemctl poweroff 2>/dev/null || sudo poweroff 2>/dev/null || sudo shutdown -h now 2>/dev/null || true
 }}
 trap cleanup EXIT

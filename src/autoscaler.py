@@ -305,6 +305,19 @@ def main():
                         cache_mounts=init_cache_dirs(HOST_CACHE_DIR, arch, CACHE_ENABLED),
                         proxies_enabled=PROXIES_ENABLED
                     )
+                    effective_driver = driver_to_use
+                    if not spawned_id and driver_to_use != default_driver:
+                        log_print(f"[Autoscaler] Driver '{driver_to_use.name()}' could not spawn runner for '{job.get('name')}' -- falling back to '{default_driver.name()}'.")
+                        if ensure_driver_runtime_assets(default_driver, arch):
+                            spawned_id = default_driver.spawn_runner(
+                                repo=repo,
+                                arch=arch,
+                                access_token=ACCESS_TOKEN,
+                                cache_mounts=init_cache_dirs(HOST_CACHE_DIR, arch, CACHE_ENABLED),
+                                proxies_enabled=PROXIES_ENABLED
+                            )
+                            effective_driver = default_driver
+
                     if spawned_id:
                         needed -= 1
                         runner_job_meta[spawned_id] = {
@@ -320,7 +333,7 @@ def main():
                             state="running",
                             target_repo=repo,
                             target_arch=arch,
-                            backend=driver_to_use.name()
+                            backend=effective_driver.name()
                         ))
 
         # Attach best-effort GitHub job links to currently active runner cards.

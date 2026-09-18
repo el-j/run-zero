@@ -36,6 +36,15 @@ def cache_mount_snippet(cache_mounts: Optional[Dict[str, str]]) -> str:
     for host_path, container_path in cache_mounts.items():
         mac_path = f"/mnt/mac{host_path}"
         lines.append(f'sudo mkdir -p "{container_path}"')
+        if container_path.startswith("/home/runner/"):
+            lines.append(
+                f'_p="{container_path}"\n'
+                f'while [ "$_p" != "/home/runner" ] && [ "$_p" != "/" ] && [ "$_p" != "." ]; do\n'
+                f'  sudo chown runner:runner "$_p" 2>/dev/null || true\n'
+                f'  _p="$(dirname "$_p")"\n'
+                f'done\n'
+                f'sudo chown runner:runner "{container_path}" 2>/dev/null || true'
+            )
         lines.append(
             f'if [ -d "{mac_path}" ]; then\n'
             f'  sudo mount --bind "{mac_path}" "{container_path}" || '
@@ -125,10 +134,11 @@ def registration_and_run_snippet(
     return f"""
 sudo systemctl start docker 2>/dev/null || true
 sudo chmod 666 /var/run/docker.sock 2>/dev/null || true
-sudo mkdir -p /home/runner/go/bin /home/runner/go/pkg /opt/hostedtoolcache /home/runner/.cache
+sudo mkdir -p /home/runner/go/bin /home/runner/go/pkg /opt/hostedtoolcache /home/runner/.cache /home/runner/.cargo /home/runner/.local/bin /home/runner/.nuget
 sudo chown -R runner:runner /home/runner /opt/hostedtoolcache 2>/dev/null || true
 sudo chmod -R 777 /home/runner/go /opt/hostedtoolcache /home/runner/.cache 2>/dev/null || true
 {cache_mount_block}
+sudo chown -R runner:runner /home/runner/.cargo /home/runner/.local /home/runner/.nuget 2>/dev/null || true
 {proxy_env_block}
 cd /home/runner/actions-runner
 
