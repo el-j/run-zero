@@ -132,6 +132,53 @@ def registration_and_run_snippet(
     that don't pass it behave exactly as before.
     """
     return f"""
+# --- 1. Ensure IPv4 network connectivity (self-healing for OrbStack DHCP bug #2688) ---
+has_ipv4=0
+for i in 1 2 3 4 5; do
+  if ip -4 addr show dev eth0 2>/dev/null | grep -q "inet "; then
+    has_ipv4=1
+    break
+  fi
+  sleep 1
+done
+
+if [ "$has_ipv4" -eq 0 ]; then
+  echo "[RunZero Network] DHCP unfulfilled on eth0. Finding available IP in 192.168.139.0/23..."
+  MAC_LAST=$(cat /sys/class/net/eth0/address 2>/dev/null | awk -F: '{{print $NF}}')
+  START_OFF=$(( (16#${{MAC_LAST:-01}} % 150) + 60 ))
+  FALLBACK_IP=""
+  for off in $(seq $START_OFF 245) $(seq 60 $((START_OFF - 1))); do
+    cand="192.168.139.$off"
+    if ! ping -c 1 -W 1 "$cand" >/dev/null 2>&1; then
+      FALLBACK_IP="$cand"
+      break
+    fi
+  done
+  if [ -z "$FALLBACK_IP" ]; then
+    FALLBACK_IP="192.168.139.$(( (RANDOM % 150) + 60 ))"
+  fi
+  echo "[RunZero Network] Assigning fallback IP $FALLBACK_IP/23 (gw 192.168.139.1)..."
+  sudo ip addr add "$FALLBACK_IP/23" dev eth0 2>/dev/null || true
+  sudo ip route add default via 192.168.139.1 dev eth0 2>/dev/null || true
+fi
+
+# Ensure DNS resolution works
+if ! curl -s --connect-timeout 2 -I https://api.github.com >/dev/null 2>&1; then
+  echo "[RunZero Network] Ensuring resilient DNS..."
+  sudo rm -f /etc/resolv.conf
+  echo -e "nameserver 0.250.250.200\\nnameserver 1.1.1.1\\nnameserver 8.8.8.8" | sudo tee /etc/resolv.conf >/dev/null
+fi
+
+# Wait up to 15s for outbound connectivity to GitHub
+for net_check in 1 2 3 4 5 6 7 8; do
+  if curl -s --connect-timeout 3 -I https://api.github.com >/dev/null 2>&1; then
+    echo "[RunZero Network] Network ready (api.github.com reachable)."
+    break
+  fi
+  echo "[RunZero Network] Waiting for GitHub reachability (check $net_check/8)..."
+  sleep 2
+done
+
 sudo systemctl start docker 2>/dev/null || true
 sudo chmod 666 /var/run/docker.sock 2>/dev/null || true
 sudo mkdir -p /home/runner/go/bin /home/runner/go/pkg /opt/hostedtoolcache /home/runner/.cache /home/runner/.cargo /home/runner/.local/bin /home/runner/.nuget
@@ -143,14 +190,25 @@ sudo chown -R runner:runner /home/runner/.cargo /home/runner/.local /home/runner
 cd /home/runner/actions-runner
 
 echo "Fetching registration token from GitHub API..."
-TOKEN_RESPONSE=$(curl -s -X POST \\
-  -H "Authorization: Bearer {access_token}" \\
-  -H "Accept: application/vnd.github+json" \\
-  -H "X-GitHub-Api-Version: 2022-11-28" \\
-  "{api_base}/registration-token")
-REG_TOKEN=$(echo "$TOKEN_RESPONSE" | jq -r '.token // empty')
+REG_TOKEN=""
+TOKEN_RESPONSE=""
+for attempt in 1 2 3 4 5; do
+  TOKEN_RESPONSE=$(curl -s -X POST \\
+    -H "Authorization: Bearer {access_token}" \\
+    -H "Accept: application/vnd.github+json" \\
+    -H "X-GitHub-Api-Version: 2022-11-28" \\
+    --connect-timeout 10 \\
+    "{api_base}/registration-token" 2>&1)
+  REG_TOKEN=$(echo "$TOKEN_RESPONSE" | jq -r '.token // empty' 2>/dev/null || true)
+  if [ -n "$REG_TOKEN" ] && [ "$REG_TOKEN" != "null" ]; then
+    break
+  fi
+  echo "Warning: Failed to obtain registration token (attempt $attempt/5). Response: $TOKEN_RESPONSE"
+  sleep 3
+done
+
 if [ -z "$REG_TOKEN" ] || [ "$REG_TOKEN" = "null" ]; then
-  echo "Error: Failed to obtain registration token. Response: $TOKEN_RESPONSE"
+  echo "Error: Failed to obtain registration token after retries. Response: $TOKEN_RESPONSE"
   exit 1
 fi
 

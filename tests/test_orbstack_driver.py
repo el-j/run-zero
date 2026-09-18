@@ -97,6 +97,21 @@ class TestOrbStackTemplates(unittest.TestCase):
         self.assertLess(mount_idx, proxy_idx)
         self.assertLess(proxy_idx, config_idx)
 
+    def test_registration_and_run_snippet_includes_network_self_healing(self):
+        reg = registration_and_run_snippet(
+            "https://api.github.com/repos/owner/repo/actions/runners",
+            "https://github.com/owner/repo",
+            "pat-token",
+            "vm-test",
+            "self-hosted,local",
+            "export PROXY=1",
+        )
+        self.assertIn("DHCP unfulfilled on eth0", reg)
+        self.assertIn("192.168.139.1", reg)
+        self.assertIn("nameserver 0.250.250.200", reg)
+        self.assertIn("nameserver 1.1.1.1", reg)
+        self.assertIn("api.github.com reachable", reg)
+
     def test_cache_mount_snippet_empty_when_no_mounts(self):
         self.assertEqual(cache_mount_snippet(None), "")
         self.assertEqual(cache_mount_snippet({}), "")
