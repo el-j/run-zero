@@ -530,6 +530,39 @@ super-nice: deps-update lint-fix fmt lint fmt-check ## Aggressive quality pass: 
 very-nice: super-nice ## Backward-compatible alias for super-nice
 	@echo "$(GREEN)Very nice pass complete (alias of super-nice).$(RESET)"
 
+.PHONY: pre-stage
+pre-stage: ## Format only currently changed (unstaged) files before git add
+	@echo "$(CYAN)Pre-staging: auto-formatting changed files before git add...$(RESET)"
+	@CHANGED=$$(git diff --name-only --diff-filter=ACM 2>/dev/null); \
+	if [ -z "$$CHANGED" ]; then \
+		echo "  $(YELLOW)No unstaged changes found.$(RESET)"; \
+	else \
+		echo "$$CHANGED" | while IFS= read -r file; do \
+			if [ -f "$$file" ]; then \
+				if [[ "$$OSTYPE" == "darwin"* ]]; then \
+					sed -i '' -E 's/[[:space:]]+$$//' "$$file" 2>/dev/null || true; \
+				else \
+					sed -i -E 's/[[:space:]]+$$//' "$$file" 2>/dev/null || true; \
+				fi; \
+			fi; \
+		done; \
+		PY_CHANGED=$$(echo "$$CHANGED" | grep -E '\.py$$' || true); \
+		if [ -n "$$PY_CHANGED" ]; then \
+			echo "  $(CYAN)→ Python files changed — running ruff fix...$(RESET)"; \
+			if command -v ruff >/dev/null 2>&1; then \
+				echo "$$PY_CHANGED" | xargs ruff check --fix --line-length=160 2>/dev/null || true; \
+				echo "$$PY_CHANGED" | xargs ruff format --line-length=160 2>/dev/null || true; \
+			fi; \
+		fi; \
+		WEB_CHANGED=$$(echo "$$CHANGED" | grep -E '^website/.*\.(astro|js|mjs|ts|css|json|md)$$' || true); \
+		if [ -n "$$WEB_CHANGED" ]; then \
+			echo "  $(CYAN)→ Website files changed — running prettier --write...$(RESET)"; \
+			(cd $(WEBSITE_DIR) && npm exec prettier -- --write \
+				$$(echo "$$WEB_CHANGED" | sed 's|^website/||') 2>/dev/null) || true; \
+		fi; \
+		echo "  $(GREEN)✓ Changed files formatted. Ready for: git add$(RESET)"; \
+	fi
+
 .PHONY: lint-fix
 lint-fix: ## Auto-fix Python formatting and strip trailing whitespace
 	@echo "$(CYAN)Auto-fixing formatting and stripping trailing whitespace...$(RESET)"

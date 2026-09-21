@@ -67,44 +67,49 @@ if [ -n "$PY_FILES" ]; then
 fi
 
 # ------------------------------------------------------------------------------
-# 3. Flake8 Linting & Mypy Type Checking
+# 3. Flake8 Linting & Mypy Type Checking (only when Python files are staged)
 # ------------------------------------------------------------------------------
 echo -e "${CYAN}==> 3/5 Checking Python syntax, linting (Flake8) & types (Mypy)...${RESET}"
+STAGED_PY=$(git diff --cached --name-only --diff-filter=ACM | grep -E '\.py$' || true)
 RUN_IN_DOCKER=0
 
-if command -v flake8 >/dev/null 2>&1; then
-  flake8 src/ tests/ --max-line-length=160 --extend-ignore=E203,E501,W503,E402
-  echo -e "  ${GREEN}✓ Flake8: 0 lint errors.${RESET}"
-elif python3 -m flake8 --version >/dev/null 2>&1; then
-  python3 -m flake8 src/ tests/ --max-line-length=160 --extend-ignore=E203,E501,W503,E402
-  echo -e "  ${GREEN}✓ Flake8: 0 lint errors.${RESET}"
-elif command -v docker >/dev/null 2>&1 && docker ps >/dev/null 2>&1; then
-  echo -e "  • ${YELLOW}flake8/mypy not installed on host — running inside Python container...${RESET}"
-  docker run --rm -v "$PROJECT_ROOT:/app" -w /app python:3.11-slim bash -c "\
-    pip install --quiet flake8 mypy && \
-    flake8 src/ tests/ --max-line-length=160 --extend-ignore=E203,E501,W503,E402 && \
-    MYPYPATH=src mypy src/ --ignore-missing-imports"
-  echo -e "  ${GREEN}✓ Containerized Flake8 & Mypy: 0 errors, 100% Type Safe.${RESET}"
-  RUN_IN_DOCKER=1
+if [ -z "$STAGED_PY" ]; then
+  echo -e "  ${YELLOW}No staged Python files — skipping Flake8 & Mypy.${RESET}"
 else
-  echo -e "  ${YELLOW}Attempting to install flake8 & mypy via pip...${RESET}"
-  python3 -m pip install --quiet flake8 mypy || true
   if command -v flake8 >/dev/null 2>&1; then
     flake8 src/ tests/ --max-line-length=160 --extend-ignore=E203,E501,W503,E402
     echo -e "  ${GREEN}✓ Flake8: 0 lint errors.${RESET}"
+  elif python3 -m flake8 --version >/dev/null 2>&1; then
+    python3 -m flake8 src/ tests/ --max-line-length=160 --extend-ignore=E203,E501,W503,E402
+    echo -e "  ${GREEN}✓ Flake8: 0 lint errors.${RESET}"
+  elif command -v docker >/dev/null 2>&1 && docker ps >/dev/null 2>&1; then
+    echo -e "  • ${YELLOW}flake8/mypy not installed on host — running inside Python container...${RESET}"
+    docker run --rm -v "$PROJECT_ROOT:/app" -w /app python:3.11-slim bash -c "\
+      pip install --quiet flake8 mypy && \
+      flake8 src/ tests/ --max-line-length=160 --extend-ignore=E203,E501,W503,E402 && \
+      MYPYPATH=src mypy src/ --ignore-missing-imports"
+    echo -e "  ${GREEN}✓ Containerized Flake8 & Mypy: 0 errors, 100% Type Safe.${RESET}"
+    RUN_IN_DOCKER=1
   else
-    find src tests -name "*.py" -exec python3 -m py_compile {} +
-    echo -e "  ${GREEN}✓ Python syntax: Valid.${RESET}"
+    echo -e "  ${YELLOW}Attempting to install flake8 & mypy via pip...${RESET}"
+    python3 -m pip install --quiet flake8 mypy || true
+    if command -v flake8 >/dev/null 2>&1; then
+      flake8 src/ tests/ --max-line-length=160 --extend-ignore=E203,E501,W503,E402
+      echo -e "  ${GREEN}✓ Flake8: 0 lint errors.${RESET}"
+    else
+      find src tests -name "*.py" -exec python3 -m py_compile {} +
+      echo -e "  ${GREEN}✓ Python syntax: Valid.${RESET}"
+    fi
   fi
-fi
 
-if [ "$RUN_IN_DOCKER" -eq 0 ]; then
-  if command -v mypy >/dev/null 2>&1; then
-    MYPYPATH=src mypy src/ --ignore-missing-imports
-    echo -e "  ${GREEN}✓ Mypy: 100% Type Safe.${RESET}"
-  elif python3 -m mypy --version >/dev/null 2>&1; then
-    MYPYPATH=src python3 -m mypy src/ --ignore-missing-imports
-    echo -e "  ${GREEN}✓ Mypy: 100% Type Safe.${RESET}"
+  if [ "$RUN_IN_DOCKER" -eq 0 ]; then
+    if command -v mypy >/dev/null 2>&1; then
+      MYPYPATH=src mypy src/ --ignore-missing-imports
+      echo -e "  ${GREEN}✓ Mypy: 100% Type Safe.${RESET}"
+    elif python3 -m mypy --version >/dev/null 2>&1; then
+      MYPYPATH=src python3 -m mypy src/ --ignore-missing-imports
+      echo -e "  ${GREEN}✓ Mypy: 100% Type Safe.${RESET}"
+    fi
   fi
 fi
 
@@ -120,26 +125,48 @@ for sh_file in docker/start.sh docker/provision-toolchain.sh scripts/setup_env.s
 done
 
 # ------------------------------------------------------------------------------
-# 5. Fast Local Unit Tests
+# 5. Unit Tests (only when src/ or tests/ Python files are staged)
 # ------------------------------------------------------------------------------
 echo -e "${CYAN}==> 5/5 Running unit test suite...${RESET}"
-PYTHONPATH=src python3 -m unittest discover -s tests -p "test_*.py" > /dev/null
-echo -e "  ${GREEN}✓ Unit Tests: All tests passed successfully!${RESET}"
+STAGED_CORE_PY=$(git diff --cached --name-only --diff-filter=ACM | grep -E '^(src|tests)/.*\.py$' || true)
+
+if [ -z "$STAGED_CORE_PY" ]; then
+  echo -e "  ${YELLOW}No staged src/ or tests/ Python files — skipping unit tests.${RESET}"
+else
+  PYTHONPATH=src python3 -m unittest discover -s tests -p "test_*.py" > /dev/null
+  echo -e "  ${GREEN}✓ Unit Tests: All tests passed successfully!${RESET}"
+fi
 
 # ------------------------------------------------------------------------------
-# 6. Website Lint (Oxlint)
+# 6. Website Lint & Format Check (only when website files are staged)
 # ------------------------------------------------------------------------------
-echo -e "${CYAN}==> 6/6 Running website lint (Oxlint)...${RESET}"
-if [ -d "website" ] && command -v npm >/dev/null 2>&1; then
-  if [ -n "$(git diff --cached --name-only --diff-filter=ACM | grep -E '^website/.*\.(js|mjs|cjs|ts|mts|cts|jsx|tsx|astro)$' || true)" ]; then
+STAGED_WEB=$(git diff --cached --name-only --diff-filter=ACM | grep -E '^website/' || true)
+
+if [ -n "$STAGED_WEB" ] && [ -d "website" ] && command -v npm >/dev/null 2>&1; then
+  STAGED_WEB_SCRIPT=$(echo "$STAGED_WEB" | grep -E '^website/.*\.(js|mjs|cjs|ts|mts|cts|jsx|tsx|astro)$' || true)
+  STAGED_WEB_FMT=$(echo "$STAGED_WEB" | grep -E '^website/.*\.(astro|js|mjs|ts|css|json|md)$' | sed 's|^website/||' || true)
+
+  echo -e "${CYAN}==> 6/6 Running website lint (Oxlint)...${RESET}"
+  if [ -n "$STAGED_WEB_SCRIPT" ]; then
     (cd website && npm ls oxlint >/dev/null 2>&1 || npm install >/dev/null 2>&1)
     (cd website && npm run lint)
     echo -e "  ${GREEN}✓ Oxlint: Website lint checks passed.${RESET}"
   else
-    echo -e "  ${YELLOW}No staged website JS/TS/Astro files; skipping Oxlint.${RESET}"
+    echo -e "  ${YELLOW}No staged JS/TS/Astro script files; skipping Oxlint.${RESET}"
+  fi
+
+  echo -e "${CYAN}==> 7/7 Checking website formatting (Prettier)...${RESET}"
+  if [ -n "$STAGED_WEB_FMT" ]; then
+    (cd website && echo "$STAGED_WEB_FMT" | xargs npm exec prettier -- --check) || {
+      echo -e "  ${RED}✗ Prettier: Formatting issues found. Run: make pre-stage && git add -u${RESET}"
+      exit 1
+    }
+    echo -e "  ${GREEN}✓ Prettier: All staged website files are formatted.${RESET}"
+  else
+    echo -e "  ${YELLOW}No staged website format files; skipping Prettier check.${RESET}"
   fi
 else
-  echo -e "  ${YELLOW}npm/website not available; skipping Oxlint.${RESET}"
+  echo -e "  ${YELLOW}No staged website files — skipping Oxlint & Prettier.${RESET}"
 fi
 
 echo -e "\n${BOLD}${GREEN}✅ [RunZero Pre-Commit Guard] All quality checks passed. Proceeding with commit!${RESET}\n"
