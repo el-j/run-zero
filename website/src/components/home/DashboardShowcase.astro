@@ -35,7 +35,9 @@ const baseUrl = import.meta.env.BASE_URL.replace(/\/$/, "");
         <span class="badge-live">● LIVE SSE STREAM</span>
       </div>
       <div class="window-quick-action">
-        <span class="quick-cmd"><code>make dashboard</code></span>
+        <span class="quick-cmd">
+          <code>make dashboard</code>
+        </span>
       </div>
     </div>
 
@@ -68,9 +70,8 @@ const baseUrl = import.meta.env.BASE_URL.replace(/\/$/, "");
           <div class="kpi-label">HYBRID ROUTING</div>
           <div class="kpi-val">
             <span class="accent-purple">62%</span>
-            <span class="kpi-sub">Docker</span> · <span class="accent-amber"
-              >38%</span
-            >
+            <span class="kpi-sub">Docker</span> ·{" "}
+            <span class="accent-amber">38%</span>
             <span class="kpi-sub">VM</span>
           </div>
           <div class="kpi-bar">
@@ -142,9 +143,9 @@ const baseUrl = import.meta.env.BASE_URL.replace(/\/$/, "");
           </div>
           <div class="telemetry-breakdown-list">
             <div class="breakdown-item">
-              <span class="b-label"
-                >Docker Containers (Unit Tests &amp; Builds)</span
-              >
+              <span class="b-label">
+                Docker Containers (Unit Tests &amp; Builds)
+              </span>
               <span class="b-val">128 jobs (62%)</span>
             </div>
             <div class="breakdown-item">

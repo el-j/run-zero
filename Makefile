@@ -495,7 +495,7 @@ fmt-check: ## Check formatting for Python and website sources
 	@echo "$(CYAN)Checking website formatting with Prettier...$(RESET)"
 	@if command -v npm >/dev/null 2>&1; then \
 		(cd $(WEBSITE_DIR) && { npm ls prettier-plugin-astro >/dev/null 2>&1 || npm install; } && \
-			npm exec prettier -- --plugin=prettier-plugin-astro --check "src/**/*.{astro,js,ts,css,md,json}" "public/**/*.{css,md,json}"); \
+			npm exec prettier -- --check "src/**/*.{astro,js,ts,css,md,json}" "public/**/*.{css,md,json}"); \
 	else \
 		echo "npm not found; skipping website format checks."; \
 	fi
@@ -513,7 +513,7 @@ fmt: ## Auto-format Python and website sources
 	@echo "$(CYAN)Formatting website sources with Prettier...$(RESET)"
 	@if command -v npm >/dev/null 2>&1; then \
 		(cd $(WEBSITE_DIR) && { npm ls prettier-plugin-astro >/dev/null 2>&1 || npm install; } && \
-			npm exec prettier -- --plugin=prettier-plugin-astro --write "src/**/*.{astro,js,ts,css,md,json}" "public/**/*.{css,md,json}"); \
+			npm exec prettier -- --write "src/**/*.{astro,js,ts,css,md,json}" "public/**/*.{css,md,json}"); \
 	else \
 		echo "npm not found; skipping website auto-formatting."; \
 	fi

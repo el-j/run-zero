@@ -2,6 +2,7 @@
 Self-healing zombie runner detection and queue unsticking.
 """
 
+import os
 import sys
 import time
 from typing import Dict, List, Optional
@@ -21,6 +22,11 @@ IDLE_ORPHAN_TIMEOUT_SECONDS = 600
 # or failed, or registration failed), it is considered an orphan and reaped.
 UNREGISTERED_ORPHAN_TIMEOUT_SECONDS = 180
 
+# How long a runner marked busy by GitHub is allowed to run before being checked
+# for stale execution (e.g. hung workflow where cancellation lagged).
+# Normal CI test matrices and builds often take 10-45+ minutes; default is 2 hours.
+BUSY_RUNNER_TIMEOUT_SECONDS = int(os.getenv("RUNNER_BUSY_TIMEOUT_SECONDS", "7200"))
+
 
 def _runner_name_matches(local_name: str, gh_name: str) -> bool:
     """Match exact names and legacy suffix variants used by older start.sh images."""
@@ -29,22 +35,37 @@ def _runner_name_matches(local_name: str, gh_name: str) -> bool:
     return gh_name == local_name or gh_name.startswith(f"{local_name}-")
 
 
-def _get_in_progress_runner_names(repo: str, access_token: Optional[str] = None) -> set[str]:
-    """Return runner names currently attached to in-progress jobs for one repo."""
+def _get_in_progress_runner_names(repo: str, access_token: Optional[str] = None) -> Optional[set[str]]:
+    """Return runner names currently attached to active jobs for one repo.
+
+    Returns None if the GitHub API query failed or timed out, so callers can
+    distinguish between 'verified zero active jobs' and 'API error/network failure'.
+    """
     names: set[str] = set()
     runs_data = github_request(
-        f"/repos/{repo}/actions/runs?status=in_progress&per_page=20",
+        f"/repos/{repo}/actions/runs?per_page=30",
         access_token=access_token,
     )
-    for run in (runs_data or {}).get("workflow_runs", []):
+    if runs_data is None:
+        return None
+
+    # Include all runs that are not completed (in_progress, queued, waiting, etc.)
+    active_runs = [
+        r for r in runs_data.get("workflow_runs", [])
+        if r.get("status") not in ("completed",)
+    ]
+
+    for run in active_runs:
         run_id = run.get("id")
         if not run_id:
             continue
         jobs_data = github_request(
-            f"/repos/{repo}/actions/runs/{run_id}/jobs",
+            f"/repos/{repo}/actions/runs/{run_id}/jobs?per_page=100",
             access_token=access_token,
         )
-        for job in (jobs_data or {}).get("jobs", []):
+        if jobs_data is None:
+            return None
+        for job in jobs_data.get("jobs", []):
             runner_name = str(job.get("runner_name") or "").strip()
             if runner_name:
                 names.add(runner_name)
@@ -97,6 +118,7 @@ def reconcile_idle_orphans(
     access_token: Optional[str] = None,
     idle_timeout_seconds: int = IDLE_ORPHAN_TIMEOUT_SECONDS,
     unregistered_timeout_seconds: int = UNREGISTERED_ORPHAN_TIMEOUT_SECONDS,
+    busy_timeout_seconds: int = BUSY_RUNNER_TIMEOUT_SECONDS,
     now: Optional[float] = None
 ) -> None:
     """Destroy our own runners that GitHub never dispatched a job to or that completed their run.
@@ -122,7 +144,7 @@ def reconcile_idle_orphans(
         data = github_request(f"/repos/{repo}/actions/runners", access_token=access_token)
         gh_runners_by_repo[repo] = (data or {}).get("runners", [])
 
-    active_runner_names_by_repo: Dict[str, set[str]] = {}
+    active_runner_names_by_repo: Dict[str, Optional[set[str]]] = {}
 
     for runner in managed:
         created_at = runner.created_at if runner.created_at is not None else now
@@ -146,29 +168,63 @@ def reconcile_idle_orphans(
                     gh_match = m
                     break
 
-        # A busy runner is usually actively running a job. If it's old enough and no
-        # in-progress run still references it, treat it as stale (common after canceled
-        # runs where GitHub runner busy flags lag behind local lifecycle).
+        # A busy runner is actively running a job. Only treat it as stale if it has
+        # exceeded the generous busy_timeout_seconds (e.g. hung jobs) AND no active
+        # workflow run still references it.
         if gh_match and gh_match.get("busy"):
-            if age_seconds <= idle_timeout_seconds:
+            if age_seconds <= busy_timeout_seconds:
                 continue
 
-            lookup_repo = runner.target_repo or next(
-                (
-                    repo_name
-                    for repo_name, r_list in gh_runners_by_repo.items()
-                    if any(_runner_name_matches(runner.name, str(r.get("name", ""))) for r in r_list)
-                ),
-                "",
-            )
+            # Safely resolve lookup_repo to an owner/repo format
+            lookup_repo = ""
+            if runner.target_repo and "/" in runner.target_repo:
+                lookup_repo = runner.target_repo
+            else:
+                norm_target = (runner.target_repo or "").replace("/", "-").lower()
+                for repo_name in repos:
+                    if repo_name.replace("/", "-").lower() == norm_target:
+                        lookup_repo = repo_name
+                        break
+                if not lookup_repo:
+                    lookup_repo = next(
+                        (
+                            repo_name
+                            for repo_name, r_list in gh_runners_by_repo.items()
+                            if any(_runner_name_matches(runner.name, str(r.get("name", ""))) for r in r_list)
+                        ),
+                        "",
+                    )
+
             if lookup_repo and lookup_repo not in active_runner_names_by_repo:
                 active_runner_names_by_repo[lookup_repo] = _get_in_progress_runner_names(
                     lookup_repo,
                     access_token=access_token,
                 )
-            active_runner_names = active_runner_names_by_repo.get(lookup_repo, set())
-            if runner.name in active_runner_names:
+            active_runner_names = active_runner_names_by_repo.get(lookup_repo)
+
+            # If API query failed or timed out, do not risk killing an active job
+            if active_runner_names is None:
                 continue
+
+            if any(_runner_name_matches(runner.name, name) for name in active_runner_names):
+                continue
+
+            # Attempt deletion from GitHub FIRST. If GitHub returns HTTP 422 (falsy),
+            # GitHub is telling us the runner is currently executing a job; do NOT tear down locally!
+            delete_repo = lookup_repo or (runner.target_repo if "/" in (runner.target_repo or "") else "")
+            if delete_repo and gh_match.get("id"):
+                deleted = github_request(
+                    f"/repos/{delete_repo}/actions/runners/{gh_match['id']}",
+                    access_token=access_token,
+                    method="DELETE",
+                )
+                if not deleted:
+                    print(
+                        f"[Autoscaler] ⚠️  Could not remove busy runner registration: {runner.name} "
+                        f"(GitHub rejected unregistration — runner likely still running a job) — skipping teardown",
+                        file=sys.stderr,
+                    )
+                    continue
 
             age_minutes = int(age_seconds / 60)
             print(
@@ -179,12 +235,6 @@ def reconcile_idle_orphans(
             driver = drivers.get(runner.backend)
             if driver:
                 driver.destroy_runner(runner.id)
-            if runner.target_repo and gh_match.get("id"):
-                github_request(
-                    f"/repos/{runner.target_repo}/actions/runners/{gh_match['id']}",
-                    access_token=access_token,
-                    method="DELETE",
-                )
             continue
 
         # Case 1: Runner is NOT registered on GitHub (ephemeral run finished or failed to register)
@@ -213,8 +263,17 @@ def reconcile_idle_orphans(
             if driver:
                 driver.destroy_runner(runner.id)
 
-            github_request(
-                f"/repos/{runner.target_repo}/actions/runners/{gh_match['id']}",
-                access_token=access_token,
-                method="DELETE"
-            )
+            delete_repo = runner.target_repo if (runner.target_repo and "/" in runner.target_repo) else ""
+            if not delete_repo and runner.target_repo:
+                norm_target = runner.target_repo.replace("/", "-").lower()
+                for repo_name in repos:
+                    if repo_name.replace("/", "-").lower() == norm_target:
+                        delete_repo = repo_name
+                        break
+
+            if delete_repo and gh_match.get("id"):
+                github_request(
+                    f"/repos/{delete_repo}/actions/runners/{gh_match['id']}",
+                    access_token=access_token,
+                    method="DELETE"
+                )

@@ -307,7 +307,7 @@ class TestReconciler(unittest.TestCase):
     @patch("reconciler.github_request")
     def test_reconcile_idle_orphans_destroys_stale_busy_runner_with_no_active_job(self, mock_gh):
         # Busy flags can linger after canceled runs. If no in-progress job is
-        # still attached to this runner, we should reap it once it is old enough.
+        # still attached to this runner, we should reap it once it has exceeded busy_timeout_seconds.
         now = 1_000_000.0
         runner = RunnerInfo(
             id="container123",
@@ -317,7 +317,7 @@ class TestReconciler(unittest.TestCase):
             target_repo="el-j/run-zero",
             target_arch="arm64",
             backend="docker",
-            created_at=now - 3600,
+            created_at=now - 8000,
         )
         mock_gh.side_effect = [
             {"runners": [{"id": 55, "name": runner.name, "busy": True}]},
@@ -333,6 +333,7 @@ class TestReconciler(unittest.TestCase):
             access_token="token",
             idle_timeout_seconds=600,
             unregistered_timeout_seconds=180,
+            busy_timeout_seconds=7200,
             now=now,
         )
 
@@ -349,7 +350,7 @@ class TestReconciler(unittest.TestCase):
             target_repo="el-j/run-zero",
             target_arch="arm64",
             backend="docker",
-            created_at=now - 3600,
+            created_at=now - 8000,
         )
         mock_gh.side_effect = [
             {"runners": [{"id": 77, "name": runner.name, "busy": True}]},
@@ -365,10 +366,119 @@ class TestReconciler(unittest.TestCase):
             access_token="token",
             idle_timeout_seconds=600,
             unregistered_timeout_seconds=180,
+            busy_timeout_seconds=7200,
             now=now,
         )
 
         driver.destroy_runner.assert_not_called()
+
+    @patch("reconciler.github_request")
+    def test_reconcile_idle_orphans_does_not_destroy_if_github_delete_fails(self, mock_gh):
+        # Even if a runner exceeds busy_timeout_seconds and is missing from in_progress jobs,
+        # if GitHub rejects deletion (e.g. 422 Unprocessable Entity because job is running),
+        # the local container/VM must NOT be destroyed!
+        now = 1_000_000.0
+        runner = RunnerInfo(
+            id="container123",
+            name="local-runner-arm64-el-j-run-zero-stale02",
+            status="Up",
+            state="running",
+            target_repo="el-j/run-zero",
+            target_arch="arm64",
+            backend="docker",
+            created_at=now - 8000,
+        )
+        mock_gh.side_effect = [
+            {"runners": [{"id": 55, "name": runner.name, "busy": True}]},
+            {"workflow_runs": []},
+            None,  # GitHub DELETE returns None (e.g. 422 error)
+        ]
+        driver = MagicMock()
+
+        reconcile_idle_orphans(
+            ["el-j/run-zero"],
+            [runner],
+            {"docker": driver},
+            access_token="token",
+            idle_timeout_seconds=600,
+            unregistered_timeout_seconds=180,
+            busy_timeout_seconds=7200,
+            now=now,
+        )
+
+        driver.destroy_runner.assert_not_called()
+
+    @patch("reconciler.github_request")
+    def test_reconcile_idle_orphans_skips_teardown_when_api_fails(self, mock_gh):
+        # Network hiccup or API rate-limit during run lookup must NOT result
+        # in destroying the busy runner.
+        now = 1_000_000.0
+        runner = RunnerInfo(
+            id="container123",
+            name="local-runner-arm64-el-j-run-zero-live02",
+            status="Up",
+            state="running",
+            target_repo="el-j/run-zero",
+            target_arch="arm64",
+            backend="docker",
+            created_at=now - 8000,
+        )
+        mock_gh.side_effect = [
+            {"runners": [{"id": 77, "name": runner.name, "busy": True}]},
+            None,  # API failure fetching runs
+        ]
+        driver = MagicMock()
+
+        reconcile_idle_orphans(
+            ["el-j/run-zero"],
+            [runner],
+            {"docker": driver},
+            access_token="token",
+            idle_timeout_seconds=600,
+            unregistered_timeout_seconds=180,
+            busy_timeout_seconds=7200,
+            now=now,
+        )
+
+        driver.destroy_runner.assert_not_called()
+
+    @patch("reconciler.github_request")
+    def test_reconcile_idle_orphans_normalizes_hyphenated_target_repo(self, mock_gh):
+        # A runner with hyphenated target_repo (e.g. OrbStack VM 'el-j-herbful')
+        # must normalize to 'el-j/herbful' when querying in-progress runs and DELETE.
+        now = 1_000_000.0
+        runner = RunnerInfo(
+            id="vm123",
+            name="runzero-vm-amd64-el-j-herbful-stale",
+            status="Up",
+            state="running",
+            target_repo="el-j-herbful",
+            target_arch="amd64",
+            backend="orbstack-vm",
+            created_at=now - 8000,
+        )
+        mock_gh.side_effect = [
+            {"runners": [{"id": 88, "name": runner.name, "busy": True}]},
+            {"workflow_runs": []},
+            True,  # DELETE succeeds
+        ]
+        driver = MagicMock()
+
+        reconcile_idle_orphans(
+            ["el-j/herbful"],
+            [runner],
+            {"orbstack-vm": driver},
+            access_token="token",
+            idle_timeout_seconds=600,
+            unregistered_timeout_seconds=180,
+            busy_timeout_seconds=7200,
+            now=now,
+        )
+
+        driver.destroy_runner.assert_called_once_with("vm123")
+        # Ensure DELETE called /repos/el-j/herbful/... NOT /repos/el-j-herbful/...
+        delete_call_endpoint = mock_gh.call_args_list[2][0][0]
+        self.assertIn("/repos/el-j/herbful/", delete_call_endpoint)
 
 
 if __name__ == "__main__":
