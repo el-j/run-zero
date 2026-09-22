@@ -22,7 +22,23 @@ boundary should be revisited.
 
 ## Docker engine — automated in CI
 
-`tests/test_e2e_docker.py` is the automated half of this document. It:
+`tests/test_e2e_docker.py` and `tests/test_e2e_compose_deployment.py` are the automated half of
+this document.
+
+### Deployment/compose-level check — `tests/test_e2e_compose_deployment.py`
+
+Added after a real production outage (2026-09-22): `docker-compose.yml`'s `autoscaler` service
+had no way to see its own Docker build context (no mount, no `RUNNER_IMAGE_DOCKER_DIR`), so
+`DockerDriver._resolve_build_context_dir()` could never find one and the golden runner image
+could never auto-build — every Docker-routed queued job stayed queued forever. Unit tests, `docker
+compose config` (syntax-only), and `test_e2e_docker.py` (a throwaway Alpine image, unrelated to
+`docker-compose.yml`) all stayed green through this. This test resolves the *real*
+`docker-compose.yml` `autoscaler` service via `docker compose config`, replays its exact declared
+bind mounts against a real container, and execs the real `DockerDriver._resolve_build_context_dir()`
+inside it — so a future edit that breaks either side of that contract fails this test instead of
+silently reintroducing the outage.
+
+`tests/test_e2e_docker.py` covers the container-lifecycle half. It:
 
 1. `docker build`s a tiny, disposable Alpine test image (not the real
    production runner image — that one takes minutes and needs full toolchain

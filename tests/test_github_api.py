@@ -124,7 +124,7 @@ class TestGitHubApi(unittest.TestCase):
     @patch("github_api.github_request")
     def test_get_queued_job_details(self, mock_gh, mock_workflow_text):
         mock_gh.side_effect = [
-            {"workflow_runs": [{"id": 101, "head_branch": "main", "event": "push"}]},
+            {"workflow_runs": [{"id": 101, "head_branch": "main", "event": "push", "path": ".github/workflows/ci.yml"}]},
             {"jobs": [{"id": 201, "name": "e2e-chrome", "status": "queued", "labels": ["self-hosted", "browser"]}]}
         ]
         mock_workflow_text.return_value = None  # workflow lookup unresolved -> declares_services is None
@@ -133,6 +133,7 @@ class TestGitHubApi(unittest.TestCase):
         self.assertEqual(jobs[0]["id"], 201)
         self.assertEqual(jobs[0]["name"], "e2e-chrome")
         self.assertEqual(jobs[0]["run_id"], 101)
+        self.assertEqual(jobs[0]["workflow_path"], ".github/workflows/ci.yml")
         self.assertIn("browser", jobs[0]["labels"])
         self.assertIsNone(jobs[0]["declares_services"])
         self.assertEqual(jobs[0]["run_url"], "https://github.com/el-j/run-zero/actions/runs/101")

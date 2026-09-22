@@ -132,6 +132,8 @@ ALLOWED_ENV_KEYS = {
     "RUNZERO_DEBUG",
     "HOST_VM_BRIDGE_HOST",
     "HOST_VM_BRIDGE_PORT",
+    "RUNNER_CPUS",
+    "RUNNER_MEMORY",
 }
 
 env_file = sys.argv[1]

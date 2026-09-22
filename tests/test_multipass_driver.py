@@ -109,6 +109,25 @@ class TestMultipassDriver(unittest.TestCase):
         self.assertTrue(any("/home/ubuntu/.npm" in cmd[6] for cmd in prep_exec_cmds))
         self.assertTrue(any("/opt/hostedtoolcache" in cmd[6] for cmd in prep_exec_cmds))
 
+    @patch("subprocess.Popen")
+    @patch("subprocess.run")
+    def test_spawn_runner_warns_and_continues_when_cache_mount_fails(self, mock_run, mock_popen):
+        def _side_effect(cmd, **kwargs):
+            if cmd[:2] == ["multipass", "mount"]:
+                raise subprocess.CalledProcessError(1, cmd, stderr=b"mount failed")
+            return MagicMock(returncode=0)
+
+        mock_run.side_effect = _side_effect
+        with patch("sys.stderr"):
+            name = self.driver.spawn_runner(
+                repo="el-j/run-zero",
+                arch="arm64",
+                access_token="token",
+                cache_mounts={"/host/npm": "/home/runner/.npm"},
+            )
+        # A failed cache mount is a warning, not a fatal error -- spawn still succeeds.
+        self.assertIn("runzero-mp-arm64-el-j-run-zero-", name)
+
     def test_vm_cache_path_translation(self):
         self.assertEqual(self.driver._vm_cache_path("/home/runner/.npm"), "/home/ubuntu/.npm")
         self.assertEqual(self.driver._vm_cache_path("/home/runner"), "/home/ubuntu")

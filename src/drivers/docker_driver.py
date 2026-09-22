@@ -14,7 +14,7 @@ import uuid
 from datetime import datetime
 from typing import Dict, List, Optional
 
-from . import RunnerDriver, RunnerInfo
+from . import ImageEventCallback, RunnerDriver, RunnerInfo
 
 
 class DockerDriver(RunnerDriver):
@@ -24,20 +24,54 @@ class DockerDriver(RunnerDriver):
         self,
         docker_sock: str = "/var/run/docker.sock",
         network: str = "host",
-        runner_image_prefix: str = "local-github-runner"
+        runner_image_prefix: str = "local-github-runner",
+        on_image_event: Optional[ImageEventCallback] = None
     ):
         """Configure the Docker socket path, container network mode, and runner image tag prefix.
 
         `docker_sock`/`network` fall back to DOCKER_SOCK/DOCKER_NETWORK env vars if set.
+        `on_image_event`, when given, is called with a structured dict on every golden-image
+        build status transition (building/ready/failed/cooldown) -- see `_report_image_event()`.
         """
         self.docker_sock = os.getenv("DOCKER_SOCK", docker_sock)
         self.network = os.getenv("DOCKER_NETWORK", network)
         self.runner_image_prefix = runner_image_prefix
+        # Per-container CPU/memory ceiling, forwarded to `docker run` (see spawn_runner()).
+        # Left unset by default (unlimited) to preserve existing behavior; without it,
+        # MAX_RUNNERS concurrent containers can each claim the full host core/RAM count.
+        # A test suite's own worker pool (e.g. vitest/jest auto-sizing to the host's
+        # reported CPU count) then oversubscribes actual available CPU by MAX_RUNNERS-x,
+        # which is exactly what starved a real CI run's vitest workers into false 20s
+        # test timeouts and one outright "Failed to start forks worker" crash (observed
+        # 2026-09-22 on el-j/herbful run 35768507392, orbstack-vm engine). Set both once
+        # host capacity is known so MAX_RUNNERS * RUNNER_CPUS stays within the host's
+        # real core count -- see the same env vars on OrbStackVMDriver.
+        self.runner_cpus = os.getenv("RUNNER_CPUS") or None
+        self.runner_memory = os.getenv("RUNNER_MEMORY") or None
+        self._on_image_event: ImageEventCallback = on_image_event or (lambda event: None)
         self._building_lock = threading.Lock()
         self._building_arches: set = set()
         self._build_failure_counts: Dict[str, int] = {}
         self._build_retry_after: Dict[str, float] = {}
         self._registry_mirror_checked = False
+
+    def _report_image_event(self, status: str, arch: str, detail: str, profile: Optional[str] = None) -> None:
+        """Emit a structured build-status event alongside the existing stdout/stderr prints.
+
+        Never raises -- a broken/misbehaving callback (e.g. dashboard not yet initialized in a
+        test) must not be able to break an actual image build.
+        """
+        try:
+            self._on_image_event({
+                "driver": self.name(),
+                "arch": arch,
+                "profile": profile,
+                "status": status,
+                "detail": detail,
+                "ts": time.time(),
+            })
+        except Exception:
+            pass
 
     @staticmethod
     def _normalize_arch(arch: str) -> str:
@@ -87,22 +121,25 @@ class DockerDriver(RunnerDriver):
 
         if self._image_exists(normalized_arch):
             print(f"[Autoscaler:Docker] Golden runner image '{image_tag}' already exists -- skipping build.")
+            self._report_image_event("ready", normalized_arch, "Already built -- skipping.")
             return True
 
         build_context_dir = self._resolve_build_context_dir()
         if not build_context_dir:
-            print(
-                "[Autoscaler:Docker] Error: runner image build context not found. "
-                "Expected a docker directory with Dockerfile/provision-toolchain.sh/start.sh. "
-                "Set RUNNER_IMAGE_DOCKER_DIR or mount the repo into /workspace.",
-                file=sys.stderr,
+            detail = (
+                "Error: runner image build context not found. Expected a docker directory with "
+                "Dockerfile/provision-toolchain.sh/start.sh. Set RUNNER_IMAGE_DOCKER_DIR or mount "
+                "the repo into /workspace."
             )
+            print(f"[Autoscaler:Docker] {detail}", file=sys.stderr)
+            self._report_image_event("failed", normalized_arch, detail)
             return False
 
         print(
             f"[Autoscaler:Docker] 🏗️  Building missing golden runner image '{image_tag}' "
             f"from '{build_context_dir}'..."
         )
+        self._report_image_event("building", normalized_arch, f"Building from '{build_context_dir}'...")
 
         # Cross-platform builds (e.g. linux/amd64 on Apple Silicon hosts)
         # require BuildKit/buildx. Falling back to legacy `docker build`
@@ -110,12 +147,13 @@ class DockerDriver(RunnerDriver):
         # tag for the requested architecture.
         has_buildx = subprocess.run(["docker", "buildx", "version"], capture_output=True).returncode == 0
         if not has_buildx:
-            print(
-                "[Autoscaler:Docker] Error: docker buildx is not available in the autoscaler runtime. "
-                "Install docker-buildx-plugin in the autoscaler image so missing runner images can be "
-                "built automatically for the requested platform.",
-                file=sys.stderr,
+            detail = (
+                "Error: docker buildx is not available in the autoscaler runtime. Install "
+                "docker-buildx-plugin in the autoscaler image so missing runner images can be "
+                "built automatically for the requested platform."
             )
+            print(f"[Autoscaler:Docker] {detail}", file=sys.stderr)
+            self._report_image_event("failed", normalized_arch, detail)
             return False
 
         try:
@@ -133,6 +171,7 @@ class DockerDriver(RunnerDriver):
                 capture_output=True,
             )
             print(f"[Autoscaler:Docker] ✅ Golden runner image '{image_tag}' is ready.")
+            self._report_image_event("ready", normalized_arch, "Build succeeded.")
             return True
         except subprocess.CalledProcessError as e:
             stderr = e.stderr.decode(errors="replace") if e.stderr else str(e)
@@ -140,6 +179,7 @@ class DockerDriver(RunnerDriver):
                 f"[Autoscaler:Docker] Error building golden runner image '{image_tag}': {stderr}",
                 file=sys.stderr,
             )
+            self._report_image_event("failed", normalized_arch, f"Build failed: {stderr}")
             return False
 
     def _build_runner_image_async(self, arch: str) -> None:
@@ -166,11 +206,9 @@ class DockerDriver(RunnerDriver):
                         self._build_failure_counts[normalized_arch] = failures
                         cooldown = min(30 * (2 ** (failures - 1)), 900)
                         self._build_retry_after[normalized_arch] = time.monotonic() + cooldown
-                        print(
-                            f"[Autoscaler:Docker] Golden runner image build for '{normalized_arch}' "
-                            f"failed {failures} time(s). Backing off {cooldown}s before retry.",
-                            file=sys.stderr,
-                        )
+                        detail = f"Failed {failures} time(s). Backing off {cooldown}s before retry."
+                        print(f"[Autoscaler:Docker] Golden runner image build for '{normalized_arch}' {detail}", file=sys.stderr)
+                        self._report_image_event("cooldown", normalized_arch, detail)
 
         threading.Thread(target=_run, name=f"runzero-build-docker-{normalized_arch}", daemon=True).start()
 
@@ -328,6 +366,11 @@ class DockerDriver(RunnerDriver):
             "-e", "RUNNER_TOOL_CACHE=/opt/hostedtoolcache",
             "-v", f"{self.docker_sock}:/var/run/docker.sock"
         ]
+
+        if self.runner_cpus:
+            cmd.extend(["--cpus", self.runner_cpus])
+        if self.runner_memory:
+            cmd.extend(["--memory", self.runner_memory])
 
         if proxies_enabled:
             # When on host network, access proxies on published localhost ports

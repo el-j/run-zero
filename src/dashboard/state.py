@@ -64,6 +64,12 @@ class DashboardState:
             "custom_label": 0
         }
 
+        # Golden image build status, keyed by "<driver>:<arch>:<profile-or-base>" -- see
+        # report_image_build(). Populated by driver on_image_event callbacks (autoscaler.py
+        # wires this in at driver construction time) so a build failure like a missing
+        # build-context directory shows up here instead of only in scrolling logs.
+        self.image_builds: dict[str, dict[str, Any]] = {}
+
         # Cache telemetry
         self.cache_sizes: dict[str, str] = {
             "npm": "0 B",
@@ -227,6 +233,32 @@ class DashboardState:
             else:
                 self.routing_docker_jobs += 1
 
+    def report_image_build(self, event: dict[str, Any]) -> None:
+        """Record a golden-image build status transition and broadcast it to SSE clients.
+
+        `event` is the structured dict drivers emit via `_report_image_event()`
+        (`driver`, `arch`, `profile`, `status`, `detail`, `ts`); missing/malformed events are
+        dropped rather than raising, since this runs on driver background-build threads where
+        an unhandled exception would be silent and hard to diagnose.
+        """
+        driver = event.get("driver")
+        arch = event.get("arch")
+        if not driver or not arch:
+            return
+        profile = event.get("profile") or "base"
+        key = f"{driver}:{arch}:{profile}"
+
+        with self._lock:
+            self.image_builds[key] = {
+                "driver": driver,
+                "arch": arch,
+                "profile": event.get("profile"),
+                "status": event.get("status", "unknown"),
+                "detail": event.get("detail", ""),
+                "ts": event.get("ts", time.time()),
+            }
+        self.broadcast_state()
+
     def _format_bytes(self, size_bytes: int) -> str:
         if size_bytes < 1024:
             return f"{size_bytes} B"
@@ -251,25 +283,60 @@ class DashboardState:
             return total
         return total
 
+    def _go_build_dirs(self, cache_root: str) -> list[str]:
+        """Every real go-build cache directory under `cache_root`.
+
+        `cache_manager.init_cache_dirs()` puts go-build under a per-job
+        `build-cache/<scope>/go-build/` directory whenever a job scope is given (the normal,
+        repo-job case -- see `autoscaler.build_cache_scope()`), or the flat `go-build/` only
+        for unscoped (ORG-mode) spawns. Measuring/clearing just the flat path -- as this
+        previously did -- always reported/cleared an empty, unused directory once scoping
+        landed, while the actual (now correctly reused) data sat invisible under
+        `build-cache/*/go-build/`.
+        """
+        dirs = []
+        flat = os.path.join(cache_root, "go-build")
+        if os.path.isdir(flat):
+            dirs.append(flat)
+        build_cache_root = os.path.join(cache_root, "build-cache")
+        if os.path.isdir(build_cache_root):
+            try:
+                for scope_name in os.listdir(build_cache_root):
+                    scoped = os.path.join(build_cache_root, scope_name, "go-build")
+                    if os.path.isdir(scoped):
+                        dirs.append(scoped)
+            except OSError:
+                pass
+        return dirs
+
     def _refresh_cache_metrics(self) -> None:
         cache_root = self.cache_dir or os.path.expanduser("~/.local-github-runner/cache")
         if os.path.isdir(cache_root):
+            # Keys match the display names already used by the webui/API; paths match the
+            # real subdirectory names cache_manager.init_cache_dirs() actually creates and
+            # mounts (previously "go-mod"/"cargo-registry"/"toolcache" here, none of which
+            # exist on disk -- init_cache_dirs creates "go-pkg"/"rust"/"hostedtoolcache" --
+            # so these three always read back as empty regardless of real usage).
             categories = {
                 "npm": os.path.join(cache_root, "npm"),
                 "yarn": os.path.join(cache_root, "yarn"),
                 "pnpm": os.path.join(cache_root, "pnpm"),
                 "pip": os.path.join(cache_root, "pip"),
                 "uv": os.path.join(cache_root, "uv"),
-                "go-mod": os.path.join(cache_root, "go-mod"),
-                "go-build": os.path.join(cache_root, "go-build"),
-                "cargo": os.path.join(cache_root, "cargo-registry"),
-                "toolcache": os.path.join(cache_root, "toolcache")
+                "go-mod": os.path.join(cache_root, "go-pkg"),
+                "cargo": os.path.join(cache_root, "rust"),
+                "toolcache": os.path.join(cache_root, "hostedtoolcache"),
             }
             total_host = 0
             for name, path in categories.items():
                 sz = self._get_dir_size(path)
                 total_host += sz
                 self.cache_sizes[name] = self._format_bytes(sz)
+
+            go_build_size = sum(self._get_dir_size(p) for p in self._go_build_dirs(cache_root))
+            total_host += go_build_size
+            self.cache_sizes["go-build"] = self._format_bytes(go_build_size)
+
             self.cache_sizes["total_host"] = self._format_bytes(total_host)
 
     def clean_cache(self, category: str = "all") -> dict[str, Any]:
@@ -278,17 +345,26 @@ class DashboardState:
         category = category.lower().strip()
         cleared = []
 
+        # See _refresh_cache_metrics() for why these paths (not "go-mod"/"cargo-registry"/
+        # "toolcache") are the real on-disk directory names.
         mapping = {
             "npm": os.path.join(cache_root, "npm"),
             "yarn": os.path.join(cache_root, "yarn"),
             "pnpm": os.path.join(cache_root, "pnpm"),
             "pip": os.path.join(cache_root, "pip"),
             "uv": os.path.join(cache_root, "uv"),
-            "go-mod": os.path.join(cache_root, "go-mod"),
-            "go-build": os.path.join(cache_root, "go-build"),
-            "cargo": os.path.join(cache_root, "cargo-registry"),
-            "toolcache": os.path.join(cache_root, "toolcache")
+            "go-mod": os.path.join(cache_root, "go-pkg"),
+            "cargo": os.path.join(cache_root, "rust"),
+            "toolcache": os.path.join(cache_root, "hostedtoolcache"),
         }
+
+        def _clear_go_build() -> None:
+            go_build_paths = self._go_build_dirs(cache_root)
+            for path in go_build_paths:
+                shutil.rmtree(path, ignore_errors=True)
+                os.makedirs(path, exist_ok=True)
+            if go_build_paths:
+                cleared.append("go-build")
 
         if category in ("all", "host"):
             for name, path in mapping.items():
@@ -296,6 +372,9 @@ class DashboardState:
                     shutil.rmtree(path, ignore_errors=True)
                     os.makedirs(path, exist_ok=True)
                     cleared.append(name)
+            _clear_go_build()
+        elif category == "go-build":
+            _clear_go_build()
         elif category in mapping:
             path = mapping[category]
             if os.path.exists(path):
@@ -352,6 +431,7 @@ class DashboardState:
                     "dir": str(self.cache_dir) if self.cache_dir is not None else "",
                     "sizes": self.cache_sizes
                 },
+                "image_builds": list(self.image_builds.values()),
                 "recent_logs": list(self.log_buffer)
             }
 

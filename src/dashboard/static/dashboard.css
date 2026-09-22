@@ -615,6 +615,59 @@ body {
 .queue-active { background: var(--accent-amber-dim); color: var(--accent-amber); border: 1px solid rgba(245, 158, 11, 0.3); }
 
 /* ==============================================================================
+   Golden Image Build Status
+   ============================================================================== */
+.image-builds-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.image-build-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 14px;
+  background: rgba(255, 255, 255, 0.02);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-sm);
+}
+
+.image-build-main {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.image-build-name {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-main);
+}
+
+.image-build-detail {
+  font-size: 11px;
+  color: var(--text-dim);
+  word-break: break-word;
+}
+
+.image-status-pill {
+  font-size: 11px;
+  font-weight: 700;
+  padding: 2px 8px;
+  border-radius: var(--radius-full);
+  white-space: nowrap;
+  text-transform: uppercase;
+}
+
+.image-status-building { background: var(--accent-amber-dim); color: var(--accent-amber); border: 1px solid rgba(245, 158, 11, 0.3); }
+.image-status-ready { background: var(--accent-emerald-dim); color: var(--accent-emerald); border: 1px solid rgba(16, 185, 129, 0.3); }
+.image-status-failed { background: var(--accent-red-dim); color: var(--accent-red); border: 1px solid rgba(244, 63, 94, 0.3); }
+.image-status-cooldown { background: rgba(255, 255, 255, 0.05); color: var(--text-dim); border: 1px solid var(--border-subtle); }
+
+/* ==============================================================================
    Terminal & Log Streaming
    ============================================================================== */
 .console-body {

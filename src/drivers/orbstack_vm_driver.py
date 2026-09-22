@@ -17,7 +17,7 @@ import time
 import uuid
 from typing import Dict, List, Optional
 
-from . import RunnerDriver, RunnerInfo
+from . import ImageEventCallback, RunnerDriver, RunnerInfo
 from .orbstack_templates import (
     cache_mount_snippet,
     docker_engine_snippet,
@@ -86,9 +86,27 @@ def _vm_created_at_from_ulid(vm_id: str) -> Optional[float]:
 class OrbStackVMDriver(RunnerDriver):
     """Runs ephemeral runners as dedicated OrbStack Linux VMs, cloned per-job from a golden base image."""
 
-    def __init__(self, distro: str = "ubuntu:24.04"):
-        """Configure the base distro golden images are built from, and init per-arch build/tracking state."""
+    def __init__(self, distro: str = "ubuntu:24.04", on_image_event: Optional[ImageEventCallback] = None):
+        """Configure the base distro golden images are built from, and init per-arch build/tracking state.
+
+        `on_image_event`, when given, is called with a structured dict on every golden base
+        image build status transition (building/ready/failed/cooldown) -- see
+        `_report_image_event()`.
+        """
         self.distro = distro
+        # Per-VM CPU/memory ceiling, forwarded to `orbctl create` (see build_base_image()).
+        # `orbctl clone` has no resource flags of its own -- "the new machine will have all
+        # the data and settings from the old machine" -- so every job VM cloned from the
+        # golden base image inherits whatever was set here at create time. Left unset by
+        # default (unlimited, OrbStack's own default) to preserve existing behavior; without
+        # it, MAX_RUNNERS concurrent VMs can each claim the full host core/RAM count, which
+        # is exactly what starved a real CI run's vitest workers into false 20s test timeouts
+        # and one outright "Failed to start forks worker" crash (observed 2026-09-22 on
+        # el-j/herbful run 35768507392) -- set these once host capacity is known so
+        # MAX_RUNNERS * RUNNER_CPUS stays within the host's real core count.
+        self.runner_cpus = os.getenv("RUNNER_CPUS") or None
+        self.runner_memory = os.getenv("RUNNER_MEMORY") or None
+        self._on_image_event: ImageEventCallback = on_image_event or (lambda event: None)
         self._provision_script_path = os.path.join(
             os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))),
             "docker", "provision-toolchain.sh"
@@ -132,6 +150,23 @@ class OrbStackVMDriver(RunnerDriver):
         # subprocess.run and starts issuing REAL orbctl/orb calls against a
         # real OrbStack daemon, if one is installed).
         self._build_threads: Dict[str, threading.Thread] = {}
+
+    def _report_image_event(self, status: str, arch: str, detail: str, profile: Optional[str] = None) -> None:
+        """Emit a structured build-status event alongside the existing stdout/stderr prints.
+
+        Never raises -- a broken/misbehaving callback must not be able to break an actual build.
+        """
+        try:
+            self._on_image_event({
+                "driver": self.name(),
+                "arch": arch,
+                "profile": profile,
+                "status": status,
+                "detail": detail,
+                "ts": time.time(),
+            })
+        except Exception:
+            pass
 
     def name(self) -> str:
         """Return this driver's backend identifier: "orbstack-vm"."""
@@ -276,6 +311,7 @@ class OrbStackVMDriver(RunnerDriver):
                 f"[Autoscaler:OrbStack-VM] Golden base image '{base_name}' already exists -- "
                 f"skipping build to avoid destroying a working image."
             )
+            self._report_image_event("ready", orb_arch, "Already built -- skipping.")
             return True
 
         staging_name = f"{base_name}-building"
@@ -286,22 +322,30 @@ class OrbStackVMDriver(RunnerDriver):
                 f"-- promoting directly to '{base_name}'."
             )
             if self._promote_staging_to_base(staging_name, base_name):
+                self._report_image_event("ready", orb_arch, "Promoted completed staging VM.")
                 return True
 
         print(f"[Autoscaler:OrbStack-VM] 🏗️  Building golden base image '{base_name}' ({self.distro})...")
+        self._report_image_event("building", orb_arch, f"Building '{base_name}' ({self.distro})...")
+
+        create_cmd = ["orbctl", "create", "-a", orb_arch, "-u", "runner"]
+        if self.runner_cpus:
+            create_cmd.extend(["--cpus", self.runner_cpus])
+        if self.runner_memory:
+            create_cmd.extend(["--memory", self.runner_memory])
+        create_cmd.extend([self.distro, staging_name])
 
         try:
             subprocess.run(["orbctl", "delete", "-f", staging_name], capture_output=True)
-            subprocess.run(
-                ["orbctl", "create", "-a", orb_arch, "-u", "runner", self.distro, staging_name],
-                check=True, capture_output=True
-            )
+            subprocess.run(create_cmd, check=True, capture_output=True)
         except subprocess.CalledProcessError as e:
             stderr = e.stderr.decode() if e.stderr else str(e)
             print(f"[Autoscaler:OrbStack-VM] Error creating base image: {stderr}", file=sys.stderr)
+            self._report_image_event("failed", orb_arch, f"Error creating base image: {stderr}")
             return False
         except Exception as e:
             print(f"[Autoscaler:OrbStack-VM] Error creating base image: {e}", file=sys.stderr)
+            self._report_image_event("failed", orb_arch, f"Error creating base image: {e}")
             return False
 
         full_script = f"""
@@ -320,19 +364,25 @@ echo "Base image provisioning complete."
                 capture_output=True, timeout=1800
             )
             if result.returncode != 0:
-                print(
-                    f"[Autoscaler:OrbStack-VM] Base image provisioning failed (exit {result.returncode}). "
-                    f"Check /home/runner/provision.log inside '{staging_name}' for details.", file=sys.stderr
+                detail = (
+                    f"Base image provisioning failed (exit {result.returncode}). Check "
+                    f"/home/runner/provision.log inside '{staging_name}' for details."
                 )
+                print(f"[Autoscaler:OrbStack-VM] {detail}", file=sys.stderr)
+                self._report_image_event("failed", orb_arch, detail)
                 return False
         except subprocess.TimeoutExpired:
-            print("[Autoscaler:OrbStack-VM] Base image provisioning timed out after 30 minutes.", file=sys.stderr)
+            detail = "Base image provisioning timed out after 30 minutes."
+            print(f"[Autoscaler:OrbStack-VM] {detail}", file=sys.stderr)
+            self._report_image_event("failed", orb_arch, detail)
             return False
 
         if not self._promote_staging_to_base(staging_name, base_name):
+            self._report_image_event("failed", orb_arch, "Failed to promote staging VM to base image.")
             return False
 
         print(f"[Autoscaler:OrbStack-VM] ✅ Golden base image '{base_name}' ready. Future spawns will clone it.")
+        self._report_image_event("ready", orb_arch, "Build succeeded.")
         return True
 
     def _stop_vm(self, vm_name: str) -> bool:
@@ -556,12 +606,12 @@ echo "Base image provisioning complete."
                             "this is a run-zero bug."
                             if failures >= 3 else ""
                         )
-                        print(
-                            f"[Autoscaler:OrbStack-VM] Golden base image build for '{orb_arch}' "
-                            f"has now failed {failures} time(s) in a row. Backing off {cooldown}s "
-                            f"before retrying.{hint}",
-                            file=sys.stderr
+                        detail = (
+                            f"Has now failed {failures} time(s) in a row. Backing off {cooldown}s "
+                            f"before retrying.{hint}"
                         )
+                        print(f"[Autoscaler:OrbStack-VM] Golden base image build for '{orb_arch}' {detail}", file=sys.stderr)
+                        self._report_image_event("cooldown", orb_arch, detail)
 
         thread = threading.Thread(target=_run, name=f"runzero-build-base-{orb_arch}", daemon=True)
         self._build_threads[orb_arch] = thread

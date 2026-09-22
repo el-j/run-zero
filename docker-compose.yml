@@ -38,6 +38,8 @@ services:
       - RUNNER_ARCH=${RUNNER_ARCH:-both}
       - MIN_RUNNERS=${MIN_RUNNERS:-0}
       - MAX_RUNNERS=${MAX_RUNNERS:-4}
+      - RUNNER_CPUS=${RUNNER_CPUS:-}
+      - RUNNER_MEMORY=${RUNNER_MEMORY:-}
       - POLL_INTERVAL=${POLL_INTERVAL:-5}
       - DISCOVERY_INTERVAL=${DISCOVERY_INTERVAL:-900}
       - RATE_LIMIT_REFRESH_INTERVAL=${RATE_LIMIT_REFRESH_INTERVAL:-60}
@@ -55,6 +57,15 @@ services:
       - HOST_VM_BRIDGE_URL=${HOST_VM_BRIDGE_URL:-http://host.docker.internal:49504}
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
+      # DockerDriver._resolve_build_context_dir() (src/drivers/docker_driver.py) needs the
+      # repo's docker/ folder (Dockerfile, provision-toolchain.sh, start.sh) to exist INSIDE
+      # this container so it can `docker buildx build` the golden runner image on demand --
+      # docker_driver.py's build-context candidates already include /workspace/docker as a
+      # fallback, but nothing mounted it here, so every automatic build failed immediately
+      # with "runner image build context not found" (confirmed live 2026-09-22: 8 failed
+      # attempts in a row, backing off 900s each time), leaving amd64 Docker-routed jobs
+      # stuck queued forever since the image could never be built.
+      - ./docker:/workspace/docker:ro
       # cache_manager.py's init_cache_dirs() runs INSIDE this container and calls
       # os.makedirs()/os.chmod() on HOST_CACHE_DIR to prepare per-language cache
       # subdirectories, then hands their paths straight to `docker run -v host:container`

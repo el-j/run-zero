@@ -4,7 +4,9 @@ Defines the abstract RunnerDriver interface and driver discovery/factory mechani
 """
 
 from abc import ABC, abstractmethod
-from typing import Any, Dict, List, Optional
+from typing import Any, Callable, Dict, List, Optional
+
+ImageEventCallback = Callable[[Dict[str, Any]], None]
 
 
 class RunnerInfo:
@@ -111,8 +113,13 @@ class RunnerDriver(ABC):
         return True
 
 
-def get_available_drivers() -> Dict[str, RunnerDriver]:
-    """Discover and return all drivers available on the host system or via Host VM Bridge."""
+def get_available_drivers(on_image_event: Optional[ImageEventCallback] = None) -> Dict[str, RunnerDriver]:
+    """Discover and return all drivers available on the host system or via Host VM Bridge.
+
+    `on_image_event`, when given, is forwarded to drivers that build golden images (currently
+    Docker and OrbStack VM) so they can report structured build-status events (see
+    `dashboard.state.DashboardState.report_image_build`) instead of only printing to stdout/stderr.
+    """
     from .bridge_driver import BridgeVMDriver
     from .docker_driver import DockerDriver
     from .multipass_driver import MultipassDriver
@@ -121,8 +128,8 @@ def get_available_drivers() -> Dict[str, RunnerDriver]:
 
     drivers = {}
     candidates = [
-        DockerDriver(),
-        OrbStackVMDriver(),
+        DockerDriver(on_image_event=on_image_event),
+        OrbStackVMDriver(on_image_event=on_image_event),
         WSL2Driver(),
         MultipassDriver()
     ]
@@ -139,8 +146,11 @@ def get_available_drivers() -> Dict[str, RunnerDriver]:
     return drivers
 
 
-def get_driver(name: str = "auto") -> RunnerDriver:
-    """Instantiate and return the requested driver or auto-select best available."""
+def get_driver(name: str = "auto", on_image_event: Optional[ImageEventCallback] = None) -> RunnerDriver:
+    """Instantiate and return the requested driver or auto-select best available.
+
+    See `get_available_drivers()` for what `on_image_event` is used for.
+    """
     from .bridge_driver import BridgeVMDriver
     from .docker_driver import DockerDriver
     from .multipass_driver import MultipassDriver
@@ -150,9 +160,9 @@ def get_driver(name: str = "auto") -> RunnerDriver:
     name = name.lower().strip()
 
     if name in ("docker", "container"):
-        return DockerDriver()
+        return DockerDriver(on_image_event=on_image_event)
     elif name in ("orb", "orbstack", "orbstack-vm", "vm-orb"):
-        orb_native = OrbStackVMDriver()
+        orb_native = OrbStackVMDriver(on_image_event=on_image_event)
         if orb_native.is_available():
             return orb_native
         bridge = BridgeVMDriver("orbstack-vm")
@@ -178,12 +188,12 @@ def get_driver(name: str = "auto") -> RunnerDriver:
     elif name in ("auto", "hybrid"):
         # Auto-selection priority:
         # 1. Docker (fastest, lightweight baseline)
-        docker_driver = DockerDriver()
+        docker_driver = DockerDriver(on_image_event=on_image_event)
         if docker_driver.is_available():
             return docker_driver
 
         # 2. OrbStack VM (if on macOS without docker daemon)
-        orb_driver = OrbStackVMDriver()
+        orb_driver = OrbStackVMDriver(on_image_event=on_image_event)
         if orb_driver.is_available():
             return orb_driver
         orb_bridge = BridgeVMDriver("orbstack-vm")

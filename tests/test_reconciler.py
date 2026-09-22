@@ -6,7 +6,12 @@ import unittest
 from unittest.mock import MagicMock, patch
 
 from drivers import RunnerInfo
-from reconciler import reconcile_idle_orphans, reconcile_zombie_runners
+from reconciler import (
+    _get_in_progress_runner_names,
+    _runner_name_matches,
+    reconcile_idle_orphans,
+    reconcile_zombie_runners,
+)
 
 
 class TestReconciler(unittest.TestCase):
@@ -478,6 +483,99 @@ class TestReconciler(unittest.TestCase):
         driver.destroy_runner.assert_called_once_with("vm123")
         # Ensure DELETE called /repos/el-j/herbful/... NOT /repos/el-j-herbful/...
         delete_call_endpoint = mock_gh.call_args_list[2][0][0]
+        self.assertIn("/repos/el-j/herbful/", delete_call_endpoint)
+
+    def test_runner_name_matches_returns_false_for_empty_names(self):
+        self.assertFalse(_runner_name_matches("", "some-runner"))
+        self.assertFalse(_runner_name_matches("some-runner", ""))
+
+    @patch("reconciler.github_request")
+    def test_get_in_progress_runner_names_skips_run_without_id(self, mock_gh):
+        mock_gh.return_value = {"workflow_runs": [{"status": "in_progress"}]}  # no "id" key
+        names = _get_in_progress_runner_names("el-j/run-zero", access_token="token")
+        self.assertEqual(names, set())
+
+    @patch("reconciler.github_request")
+    def test_get_in_progress_runner_names_returns_none_when_jobs_lookup_fails(self, mock_gh):
+        mock_gh.side_effect = [
+            {"workflow_runs": [{"id": 55, "status": "in_progress"}]},
+            None,  # jobs lookup for run 55 failed
+        ]
+        names = _get_in_progress_runner_names("el-j/run-zero", access_token="token")
+        self.assertIsNone(names)
+
+    @patch("reconciler.github_request")
+    def test_reconcile_idle_orphans_stale_busy_runner_falls_back_to_name_match_across_repos(self, mock_gh):
+        # target_repo doesn't match any tracked repo by direct or hyphen-normalized lookup,
+        # so lookup_repo must be resolved via a GitHub-runner-name match across every
+        # tracked repo's runner list instead (reconciler.py's last-resort fallback).
+        now = 1_000_000.0
+        runner = RunnerInfo(
+            id="c1",
+            name="local-runner-amd64-el-j-run-zero-abc123",
+            status="Up",
+            state="running",
+            target_repo="",
+            target_arch="amd64",
+            backend="docker",
+            created_at=now - 8000,
+        )
+        mock_gh.side_effect = [
+            {"runners": [{"id": 99, "name": runner.name, "busy": True}]},  # gh_runners_by_repo
+            {"workflow_runs": []},  # _get_in_progress_runner_names -> empty, not active
+            True,  # DELETE succeeds
+        ]
+        driver = MagicMock()
+
+        reconcile_idle_orphans(
+            ["el-j/run-zero"],
+            [runner],
+            {"docker": driver},
+            access_token="token",
+            idle_timeout_seconds=600,
+            unregistered_timeout_seconds=180,
+            busy_timeout_seconds=7200,
+            now=now,
+        )
+
+        driver.destroy_runner.assert_called_once_with("c1")
+        delete_call_endpoint = mock_gh.call_args_list[2][0][0]
+        self.assertIn("/repos/el-j/run-zero/", delete_call_endpoint)
+
+    @patch("reconciler.github_request")
+    def test_reconcile_idle_orphans_normalizes_hyphenated_target_repo_for_idle_runner(self, mock_gh):
+        # Same hyphenated-target_repo normalization as the busy-runner case, but for a
+        # non-busy runner going through the plain idle-timeout teardown path instead.
+        now = 1_000_000.0
+        runner = RunnerInfo(
+            id="vm123",
+            name="runzero-vm-amd64-el-j-herbful-stale",
+            status="Up",
+            state="running",
+            target_repo="el-j-herbful",
+            target_arch="amd64",
+            backend="orbstack-vm",
+            created_at=now - 8000,
+        )
+        mock_gh.side_effect = [
+            {"runners": [{"id": 88, "name": runner.name, "busy": False}]},
+            True,  # DELETE succeeds
+        ]
+        driver = MagicMock()
+
+        reconcile_idle_orphans(
+            ["el-j/herbful"],
+            [runner],
+            {"orbstack-vm": driver},
+            access_token="token",
+            idle_timeout_seconds=600,
+            unregistered_timeout_seconds=180,
+            busy_timeout_seconds=7200,
+            now=now,
+        )
+
+        driver.destroy_runner.assert_called_once_with("vm123")
+        delete_call_endpoint = mock_gh.call_args_list[1][0][0]
         self.assertIn("/repos/el-j/herbful/", delete_call_endpoint)
 
 

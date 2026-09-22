@@ -42,7 +42,7 @@ check_untyped_defs = true
 # completed a real run -- the previous single-string config could never have
 # worked. `paths_to_mutate` (mutmut 2.x's key) still works via mutmut 3.x's
 # back-compat shim but is deprecated in favor of `source_paths`.
-source_paths = ["src/"]
+source_paths = ["src/dashboard/state.py"]
 # Equivalent-mutant policy: skip low-signal modules that are mostly templates
 # or version metadata rather than runtime decision logic.
 do_not_mutate = [

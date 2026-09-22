@@ -315,6 +315,12 @@ def get_queued_job_details(repo_full_name: str, access_token: str | None = None)
                 "id": job.get("id"),
                 "name": job.get("name", ""),
                 "run_id": run_id,
+                # The workflow FILE path (e.g. ".github/workflows/ci.yml"), stable across every
+                # run of this workflow -- unlike run_id/id, which are unique per execution and
+                # therefore useless as a cache scope key (see build_cache_scope() in
+                # autoscaler.py: it's combined with the job name for a stable, reusable
+                # per-job build-cache directory instead of one that's thrown away every run).
+                "workflow_path": run.get("path", ""),
                 "job_url": job.get("html_url") or (
                     f"https://github.com/{repo_full_name}/actions/runs/{run_id}/job/{job.get('id')}"
                     if run_id and job.get("id") else ""

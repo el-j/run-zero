@@ -88,6 +88,23 @@ def resolve_job_arch(job_labels: list[str]) -> str:
     return "amd64"
 
 
+def build_cache_scope(repo: str, job: dict[str, Any]) -> str:
+    """Derive a stable per-job build-cache scope key: `repo + workflow file + job name`.
+
+    Deliberately excludes `run_id`/`id` -- both are unique to a single execution and never
+    repeat, so scoping on them (as this previously did) creates a brand-new, always-empty
+    `build-cache/<scope>/go-build` directory on every single run: real isolation from other
+    jobs, but zero actual cache reuse across repeated runs of the *same* job, defeating the
+    entire point of a compilation build cache. Scoping on the job's stable identity instead
+    still keeps unrelated/different jobs from colliding on one shared directory, while letting
+    the same recurring job (the overwhelmingly common case -- CI running on every push) reuse
+    its build cache like it's supposed to. `cache_manager._sanitize_scope()` already strips
+    unsafe characters, so the workflow path's slashes and a matrix job's "(x, y)" suffix are
+    fine to include as-is.
+    """
+    return f"{repo}_{job.get('workflow_path', '')}_{job.get('name', '')}".strip("_")
+
+
 def ensure_driver_runtime_assets(driver: Any, arch: str) -> bool:
     """Ensure per-arch driver prerequisites exist before attempting to spawn."""
     ensure_fn = getattr(driver, "ensure_runtime_assets", None)
@@ -121,8 +138,8 @@ def main():
         )
         sys.exit(1)
 
-    available_drivers = get_available_drivers()
-    default_driver = get_driver(RUNNER_BACKEND)
+    available_drivers = get_available_drivers(on_image_event=dashboard_state.report_image_build)
+    default_driver = get_driver(RUNNER_BACKEND, on_image_event=dashboard_state.report_image_build)
     architectures = get_target_architectures()
 
     try:
@@ -298,7 +315,7 @@ def main():
                     if not ensure_driver_runtime_assets(driver_to_use, arch):
                         continue
 
-                    job_scope = f"{repo}_{job.get('run_id', '')}_{job.get('id', '')}".strip("_")
+                    job_scope = build_cache_scope(repo, job)
                     spawned_id = driver_to_use.spawn_runner(
                         repo=repo,
                         arch=arch,
