@@ -252,6 +252,11 @@ job outright.
 
 ## ⚡ Quick Start
 
+> [!WARNING]
+> Self-hosted runners execute workflow code with near-root access to this machine. Only use
+> RunZero for repositories whose contributors you trust, and never for public repositories that
+> run fork pull requests. Read the [threat model](SECURITY.md#threat-model--hardening) first.
+
 ### 1. Initialize environment:
 ```bash
 make env
