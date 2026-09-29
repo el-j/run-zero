@@ -22,7 +22,6 @@ as a direct child?"
 """
 
 from collections.abc import Iterator
-from typing import Dict, List, Optional
 
 
 def _indent(line: str) -> int:
@@ -41,7 +40,7 @@ def _matrix_base(name: str) -> str:
     return name.split(" (", 1)[0].strip()
 
 
-def _looks_like_job_key(line: str, expected_indent: int) -> Optional[str]:
+def _looks_like_job_key(line: str, expected_indent: int) -> str | None:
     stripped = line.strip()
     if not stripped or stripped.startswith("#"):
         return None
@@ -57,10 +56,10 @@ def _looks_like_job_key(line: str, expected_indent: int) -> Optional[str]:
     return key
 
 
-def _iter_jobs(workflow_text: str) -> Iterator[Dict[str, object]]:
+def _iter_jobs(workflow_text: str) -> Iterator[dict[str, object]]:
     """Yield parsed job blocks from a workflow file's `jobs:` mapping."""
     lines = workflow_text.splitlines()
-    jobs_idx: Optional[int] = None
+    jobs_idx: int | None = None
     jobs_indent = 0
     for i, line in enumerate(lines):
         stripped = line.strip()
@@ -87,7 +86,7 @@ def _iter_jobs(workflow_text: str) -> Iterator[Dict[str, object]]:
 
         job_indent = _indent(line)
         j = i + 1
-        name_value: Optional[str] = None
+        name_value: str | None = None
         has_services = False
         while j < len(lines):
             current = lines[j]
@@ -98,9 +97,9 @@ def _iter_jobs(workflow_text: str) -> Iterator[Dict[str, object]]:
             current_indent = _indent(current)
             if current_indent == job_indent + 2:
                 if current_stripped.startswith("name:"):
-                    raw = current_stripped[len("name:"):]
+                    raw = current_stripped[len("name:") :]
                     name_value = _unquote(raw)
-                elif current_stripped.startswith("services:") or current_stripped.startswith("container:"):
+                elif current_stripped.startswith(("services:", "container:")):
                     has_services = True
 
             j += 1
@@ -113,8 +112,8 @@ def _iter_jobs(workflow_text: str) -> Iterator[Dict[str, object]]:
         i = j
 
 
-def _job_matches_target(target: str, job_id: str, job_name: Optional[str]) -> bool:
-    candidates: List[str] = [job_id]
+def _job_matches_target(target: str, job_id: str, job_name: str | None) -> bool:
+    candidates: list[str] = [job_id]
     if job_name:
         candidates.append(job_name)
 
@@ -122,12 +121,12 @@ def _job_matches_target(target: str, job_id: str, job_name: Optional[str]) -> bo
     for candidate in candidates:
         cand = candidate.strip()
         cand_base = _matrix_base(cand)
-        if target == cand or target_base == cand or target_base == cand_base:
+        if target == cand or target_base in (cand, cand_base):
             return True
     return False
 
 
-def job_uses_services_or_container(workflow_text: str, job_name: str) -> Optional[bool]:
+def job_uses_services_or_container(workflow_text: str, job_name: str) -> bool | None:
     """Return True/False if the job (matched by its rendered `name:`) declares
     `services:`/`container:`, or None if the job couldn't be located in the
     file at all (caller should fall back to a different heuristic in that
@@ -137,7 +136,7 @@ def job_uses_services_or_container(workflow_text: str, job_name: str) -> Optiona
         return None
 
     target = job_name.strip()
-    matched: List[bool] = []
+    matched: list[bool] = []
     for job in _iter_jobs(workflow_text):
         job_id = str(job["job_id"])
         rendered_name = job.get("job_name")

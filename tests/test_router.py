@@ -13,10 +13,7 @@ class TestRouter(unittest.TestCase):
     def setUp(self):
         self.docker_driver = DockerDriver()
         self.orbstack_driver = OrbStackVMDriver()
-        self.available_drivers = {
-            "docker": self.docker_driver,
-            "orbstack-vm": self.orbstack_driver
-        }
+        self.available_drivers = {"docker": self.docker_driver, "orbstack-vm": self.orbstack_driver}
 
     def test_select_driver_standard_unit_test(self):
         # get_queued_job_details() always sets declares_services explicitly

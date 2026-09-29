@@ -100,8 +100,7 @@ class TestDockerEngineEndToEnd(unittest.TestCase):
         )
         if build.returncode != 0:
             raise unittest.SkipTest(
-                f"could not build disposable e2e test image (docker build exited {build.returncode}): "
-                f"{build.stderr.decode(errors='replace')}"
+                f"could not build disposable e2e test image (docker build exited {build.returncode}): {build.stderr.decode(errors='replace')}"
             )
 
     @classmethod
@@ -127,7 +126,9 @@ class TestDockerEngineEndToEnd(unittest.TestCase):
         marker = f"real-e2e-exec-{uuid.uuid4().hex[:8]}"
         exec_res = subprocess.run(
             ["docker", "exec", runner_id, "sh", "-c", f"echo {marker}"],
-            capture_output=True, text=True, timeout=15,
+            capture_output=True,
+            text=True,
+            timeout=15,
         )
         self.assertEqual(exec_res.returncode, 0, f"docker exec failed: {exec_res.stderr}")
         self.assertIn(marker, exec_res.stdout)

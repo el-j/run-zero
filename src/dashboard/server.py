@@ -10,7 +10,7 @@ import signal
 import sys
 import threading
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
-from typing import Any, Dict, Optional
+from typing import Any
 from urllib.parse import urlparse
 
 from .state import dashboard_state
@@ -31,7 +31,7 @@ class DashboardRequestHandler(BaseHTTPRequestHandler):
         if os.getenv("RUNZERO_DEBUG", "").lower() in ("true", "1"):
             sys.stderr.write(f"[Dashboard:HTTP] {format % args}\n")
 
-    def _send_json(self, status_code: int, data: Dict[str, Any]) -> None:
+    def _send_json(self, status_code: int, data: dict[str, Any]) -> None:
         payload = json.dumps(data, default=str).encode("utf-8")
         self.send_response(status_code)
         self.send_header("Content-Type", "application/json; charset=utf-8")
@@ -41,7 +41,7 @@ class DashboardRequestHandler(BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(payload)
 
-    def _read_json(self) -> Dict[str, Any]:
+    def _read_json(self) -> dict[str, Any]:
         content_length = int(self.headers.get("Content-Length", 0))
         if content_length > 0:
             raw_body = self.rfile.read(content_length).decode("utf-8")
@@ -163,6 +163,7 @@ class DashboardRequestHandler(BaseHTTPRequestHandler):
         if path == "/api/actions/prune":
             try:
                 from drivers import get_available_drivers
+
                 drivers = get_available_drivers()
                 for d in drivers.values():
                     runners = d.list_runners()
@@ -183,8 +184,8 @@ class DashboardServer:
         """Store the bind address/port; the server isn't started until `start()` is called."""
         self.host = host
         self.port = port
-        self.httpd: Optional[ThreadingHTTPServer] = None
-        self.thread: Optional[threading.Thread] = None
+        self.httpd: ThreadingHTTPServer | None = None
+        self.thread: threading.Thread | None = None
         self._is_running = False
 
     def start(self, blocking: bool = False) -> None:

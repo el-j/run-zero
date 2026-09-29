@@ -227,11 +227,7 @@ class TestReconciler(unittest.TestCase):
         ]
 
         # Ensure runner is registered in GitHub so idle_timeout comparison is used.
-        mock_gh.return_value = {
-            "runners": [
-                {"id": 99, "name": "local-runner-test-1", "busy": False}
-            ]
-        }
+        mock_gh.return_value = {"runners": [{"id": 99, "name": "local-runner-test-1", "busy": False}]}
         drivers = {"docker": MagicMock()}
 
         with patch("reconciler.print"):

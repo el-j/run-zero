@@ -3,6 +3,7 @@ Docker Container Execution Driver for RunZero
 Spawns and manages ephemeral runner containers with host or bridge networking.
 """
 
+import contextlib
 import json
 import os
 import shutil
@@ -12,9 +13,22 @@ import threading
 import time
 import uuid
 from datetime import datetime
-from typing import Dict, List, Optional
 
 from . import ImageEventCallback, RunnerDriver, RunnerInfo
+
+# `docker ps` output columns, `|`-separated; parsed positionally by `list_runners()`.
+_PS_FORMAT = "|".join(
+    [
+        "{{.ID}}",
+        "{{.Status}}",
+        "{{.Names}}",
+        "{{.State}}",
+        '{{.Label "target-repo"}}',
+        '{{.Label "target-arch"}}',
+        '{{.Label "backend"}}',
+        "{{.CreatedAt}}",
+    ]
+)
 
 
 class DockerDriver(RunnerDriver):
@@ -25,7 +39,7 @@ class DockerDriver(RunnerDriver):
         docker_sock: str = "/var/run/docker.sock",
         network: str = "host",
         runner_image_prefix: str = "local-github-runner",
-        on_image_event: Optional[ImageEventCallback] = None
+        on_image_event: ImageEventCallback | None = None,
     ):
         """Configure the Docker socket path, container network mode, and runner image tag prefix.
 
@@ -51,27 +65,27 @@ class DockerDriver(RunnerDriver):
         self._on_image_event: ImageEventCallback = on_image_event or (lambda event: None)
         self._building_lock = threading.Lock()
         self._building_arches: set = set()
-        self._build_failure_counts: Dict[str, int] = {}
-        self._build_retry_after: Dict[str, float] = {}
+        self._build_failure_counts: dict[str, int] = {}
+        self._build_retry_after: dict[str, float] = {}
         self._registry_mirror_checked = False
 
-    def _report_image_event(self, status: str, arch: str, detail: str, profile: Optional[str] = None) -> None:
+    def _report_image_event(self, status: str, arch: str, detail: str, profile: str | None = None) -> None:
         """Emit a structured build-status event alongside the existing stdout/stderr prints.
 
         Never raises -- a broken/misbehaving callback (e.g. dashboard not yet initialized in a
         test) must not be able to break an actual image build.
         """
-        try:
-            self._on_image_event({
-                "driver": self.name(),
-                "arch": arch,
-                "profile": profile,
-                "status": status,
-                "detail": detail,
-                "ts": time.time(),
-            })
-        except Exception:
-            pass
+        with contextlib.suppress(Exception):
+            self._on_image_event(
+                {
+                    "driver": self.name(),
+                    "arch": arch,
+                    "profile": profile,
+                    "status": status,
+                    "detail": detail,
+                    "ts": time.time(),
+                }
+            )
 
     @staticmethod
     def _normalize_arch(arch: str) -> str:
@@ -90,16 +104,14 @@ class DockerDriver(RunnerDriver):
         except Exception:
             return False
 
-    def _resolve_build_context_dir(self) -> Optional[str]:
+    def _resolve_build_context_dir(self) -> str | None:
         candidates = []
 
         env_dir = os.getenv("RUNNER_IMAGE_DOCKER_DIR", "").strip()
         if env_dir:
             candidates.append(env_dir)
 
-        module_relative = os.path.abspath(
-            os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "..", "docker")
-        )
+        module_relative = os.path.abspath(os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "..", "docker"))
         candidates.append(module_relative)
         candidates.append("/workspace/docker")
         candidates.append(os.path.abspath(os.path.join(os.getcwd(), "docker")))
@@ -135,10 +147,7 @@ class DockerDriver(RunnerDriver):
             self._report_image_event("failed", normalized_arch, detail)
             return False
 
-        print(
-            f"[Autoscaler:Docker] 🏗️  Building missing golden runner image '{image_tag}' "
-            f"from '{build_context_dir}'..."
-        )
+        print(f"[Autoscaler:Docker] 🏗️  Building missing golden runner image '{image_tag}' from '{build_context_dir}'...")
         self._report_image_event("building", normalized_arch, f"Building from '{build_context_dir}'...")
 
         # Cross-platform builds (e.g. linux/amd64 on Apple Silicon hosts)
@@ -159,12 +168,18 @@ class DockerDriver(RunnerDriver):
         try:
             subprocess.run(
                 [
-                    "docker", "buildx", "build",
+                    "docker",
+                    "buildx",
+                    "build",
                     "--load",
-                    "--platform", f"linux/{normalized_arch}",
-                    "--build-arg", f"TARGETARCH={normalized_arch}",
-                    "-t", image_tag,
-                    "-f", os.path.join(build_context_dir, "Dockerfile"),
+                    "--platform",
+                    f"linux/{normalized_arch}",
+                    "--build-arg",
+                    f"TARGETARCH={normalized_arch}",
+                    "-t",
+                    image_tag,
+                    "-f",
+                    os.path.join(build_context_dir, "Dockerfile"),
                     build_context_dir,
                 ],
                 check=True,
@@ -223,10 +238,7 @@ class DockerDriver(RunnerDriver):
             cooldown_remaining = self._build_cooldown_remaining(normalized_arch)
 
         if already_building:
-            print(
-                f"[Autoscaler:Docker] Golden runner image '{image_tag}' is currently building. "
-                "This queued job will be retried on the next poll."
-            )
+            print(f"[Autoscaler:Docker] Golden runner image '{image_tag}' is currently building. This queued job will be retried on the next poll.")
             return False
 
         if cooldown_remaining > 0:
@@ -238,8 +250,7 @@ class DockerDriver(RunnerDriver):
             return False
 
         print(
-            f"[Autoscaler:Docker] Golden runner image '{image_tag}' is missing. "
-            "Starting automatic background build now; this job will be retried once ready."
+            f"[Autoscaler:Docker] Golden runner image '{image_tag}' is missing. Starting automatic background build now; this job will be retried once ready."
         )
         self._build_runner_image_async(normalized_arch)
         return False
@@ -308,15 +319,15 @@ class DockerDriver(RunnerDriver):
 
     def spawn_runner(
         self,
-        repo: Optional[str] = None,
-        org: Optional[str] = None,
+        repo: str | None = None,
+        org: str | None = None,
         arch: str = "arm64",
-        labels: Optional[str] = None,
-        access_token: Optional[str] = None,
-        cache_mounts: Optional[Dict[str, str]] = None,
+        labels: str | None = None,
+        access_token: str | None = None,
+        cache_mounts: dict[str, str] | None = None,
         proxies_enabled: bool = True,
-        extra_env: Optional[Dict[str, str]] = None
-    ) -> Optional[str]:
+        extra_env: dict[str, str] | None = None,
+    ) -> str | None:
         """Launch a detached, ephemeral runner container via `docker run -d` and return its name.
 
         Returns None (and prints to stderr) if the `docker run` invocation itself fails;
@@ -342,10 +353,15 @@ class DockerDriver(RunnerDriver):
         runner_labels = labels if labels else default_labels
 
         cmd = [
-            "docker", "run", "-d",
-            "--name", container_name,
-            "--platform", platform_flag,
-            "--network", self.network,
+            "docker",
+            "run",
+            "-d",
+            "--name",
+            container_name,
+            "--platform",
+            platform_flag,
+            "--network",
+            self.network,
             # Headless Chrome (Lighthouse CI, Playwright) needs to create its own
             # user/PID namespace for its internal sandbox, which Docker blocks by
             # default. GitHub-hosted runners never hit this because they're full
@@ -353,18 +369,30 @@ class DockerDriver(RunnerDriver):
             # own `runs-on:` labels match a VM_TRIGGER_LABELS entry and a VM
             # driver is available (see select_driver_for_job in autoscaler.py) —
             # every other job, including browser-driven ones, lands here.
-            "--cap-add", "SYS_ADMIN",
-            "--label", "managed-by=local-autoscaler",
-            "--label", "backend=docker",
-            "--label", f"target-repo={repo or ''}",
-            "--label", f"target-arch={arch}",
-            "-e", f"ACCESS_TOKEN={access_token}",
-            "-e", f"RUNNER_NAME={container_name}",
-            "-e", f"RUNNER_LABELS={runner_labels}",
-            "-e", "EPHEMERAL=true",
-            "-e", "RUNNER_WORKDIR=_work",
-            "-e", "RUNNER_TOOL_CACHE=/opt/hostedtoolcache",
-            "-v", f"{self.docker_sock}:/var/run/docker.sock"
+            "--cap-add",
+            "SYS_ADMIN",
+            "--label",
+            "managed-by=local-autoscaler",
+            "--label",
+            "backend=docker",
+            "--label",
+            f"target-repo={repo or ''}",
+            "--label",
+            f"target-arch={arch}",
+            "-e",
+            f"ACCESS_TOKEN={access_token}",
+            "-e",
+            f"RUNNER_NAME={container_name}",
+            "-e",
+            f"RUNNER_LABELS={runner_labels}",
+            "-e",
+            "EPHEMERAL=true",
+            "-e",
+            "RUNNER_WORKDIR=_work",
+            "-e",
+            "RUNNER_TOOL_CACHE=/opt/hostedtoolcache",
+            "-v",
+            f"{self.docker_sock}:/var/run/docker.sock",
         ]
 
         if self.runner_cpus:
@@ -375,18 +403,27 @@ class DockerDriver(RunnerDriver):
         if proxies_enabled:
             # When on host network, access proxies on published localhost ports
             verdaccio_url = "http://localhost:49501/" if self.network == "host" else "http://verdaccio:4873/"
-            athens_url = "http://localhost:49500,https://proxy.golang.org,direct" if self.network == "host" else "http://athens:3000,https://proxy.golang.org,direct"
+            athens_url = (
+                "http://localhost:49500,https://proxy.golang.org,direct" if self.network == "host" else "http://athens:3000,https://proxy.golang.org,direct"
+            )
             # devpi's default "root/pypi" index is a real pull-through PyPI mirror out of the
             # box; pip and uv both honor PIP_INDEX_URL, and uv additionally reads UV_INDEX_URL.
             pip_host = "localhost:49507" if self.network == "host" else "devpi:3141"
             pip_index_url = f"http://{pip_host}/root/pypi/+simple/"
-            cmd.extend([
-                "-e", f"NPM_CONFIG_REGISTRY={verdaccio_url}",
-                "-e", f"YARN_REGISTRY={verdaccio_url}",
-                "-e", f"GOPROXY={athens_url}",
-                "-e", f"PIP_INDEX_URL={pip_index_url}",
-                "-e", f"UV_INDEX_URL={pip_index_url}"
-            ])
+            cmd.extend(
+                [
+                    "-e",
+                    f"NPM_CONFIG_REGISTRY={verdaccio_url}",
+                    "-e",
+                    f"YARN_REGISTRY={verdaccio_url}",
+                    "-e",
+                    f"GOPROXY={athens_url}",
+                    "-e",
+                    f"PIP_INDEX_URL={pip_index_url}",
+                    "-e",
+                    f"UV_INDEX_URL={pip_index_url}",
+                ]
+            )
             if self.network != "host":
                 # pip implicitly trusts "localhost"/"127.0.0.1" for plain-HTTP indexes but
                 # refuses anything else -- verified live (2026-08-26): pointing pip at a
@@ -442,21 +479,14 @@ class DockerDriver(RunnerDriver):
             print(f"[Autoscaler:Docker] Error launching container: {stderr_text}", file=sys.stderr)
             return None
 
-    def list_runners(self) -> List[RunnerInfo]:
+    def list_runners(self) -> list[RunnerInfo]:
         """List containers labeled `managed-by=local-autoscaler` via `docker ps -a`.
 
         Returns an empty list (and prints to stderr) if the `docker ps` call itself fails.
         """
         try:
             res = subprocess.run(
-                [
-                    "docker", "ps", "-a",
-                    "--filter", "label=managed-by=local-autoscaler",
-                    "--format", "{{.ID}}|{{.Status}}|{{.Names}}|{{.State}}|{{.Label \"target-repo\"}}|{{.Label \"target-arch\"}}|{{.Label \"backend\"}}|{{.CreatedAt}}"
-                ],
-                capture_output=True,
-                text=True,
-                check=True
+                ["docker", "ps", "-a", "--filter", "label=managed-by=local-autoscaler", "--format", _PS_FORMAT], capture_output=True, text=True, check=True
             )
             runners = []
             for line in res.stdout.strip().split("\n"):
@@ -478,23 +508,25 @@ class DockerDriver(RunnerDriver):
                         state = "pending"
                     else:
                         state = raw_state
-                    runners.append(RunnerInfo(
-                        id=parts[0],
-                        status=parts[1],
-                        name=parts[2],
-                        state=state,
-                        target_repo=parts[4],
-                        target_arch=parts[5],
-                        backend=backend,
-                        created_at=created_at
-                    ))
+                    runners.append(
+                        RunnerInfo(
+                            id=parts[0],
+                            status=parts[1],
+                            name=parts[2],
+                            state=state,
+                            target_repo=parts[4],
+                            target_arch=parts[5],
+                            backend=backend,
+                            created_at=created_at,
+                        )
+                    )
             return runners
         except Exception as e:
             print(f"[Autoscaler:Docker] Docker ps error: {e}", file=sys.stderr)
             return []
 
     @staticmethod
-    def _parse_created_at(raw: str) -> Optional[float]:
+    def _parse_created_at(raw: str) -> float | None:
         # Docker's `--format {{.CreatedAt}}` is e.g. "2026-08-25 14:38:53 +0200
         # CEST" -- the trailing zone abbreviation isn't reliably parseable by
         # strptime's %Z across platforms/locales, but the numeric UTC offset
@@ -505,7 +537,7 @@ class DockerDriver(RunnerDriver):
         except (ValueError, IndexError):
             return None
 
-    def prune_exited(self, runners: List[RunnerInfo]) -> None:
+    def prune_exited(self, runners: list[RunnerInfo]) -> None:
         """Force-remove any `runners` entries that are Docker-backed and in "exited"/"dead" state."""
         for r in runners:
             if r.backend == "docker" and r.state in ("exited", "dead"):

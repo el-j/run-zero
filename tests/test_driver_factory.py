@@ -16,13 +16,7 @@ from drivers.wsl_driver import WSL2Driver
 class TestRunnerInfo(unittest.TestCase):
     def test_runner_info_properties_and_dict(self):
         info = RunnerInfo(
-            id="runner-123",
-            name="runner-123",
-            status="running",
-            state="running",
-            target_repo="el-j/run-zero",
-            target_arch="arm64",
-            backend="docker"
+            id="runner-123", name="runner-123", status="running", state="running", target_repo="el-j/run-zero", target_arch="arm64", backend="docker"
         )
         self.assertEqual(info.id, "runner-123")
         self.assertEqual(info.name, "runner-123")
@@ -215,9 +209,7 @@ class TestDriverFactory(unittest.TestCase):
     @patch.object(OrbStackVMDriver, "is_available", return_value=False)
     @patch.object(WSL2Driver, "is_available", return_value=False)
     @patch.object(MultipassDriver, "is_available", return_value=False)
-    def test_get_driver_auto_falls_through_orbstack_bridge(
-        self, mock_mp, mock_wsl, mock_orb, mock_docker
-    ):
+    def test_get_driver_auto_falls_through_orbstack_bridge(self, mock_mp, mock_wsl, mock_orb, mock_docker):
         # Auto-selection: docker/orb-native/wsl-native/mp-native all
         # unavailable, but the bridge reports orbstack-vm as available --
         # auto must pick the orbstack-vm bridge instance, not fall further
@@ -234,9 +226,7 @@ class TestDriverFactory(unittest.TestCase):
     @patch.object(OrbStackVMDriver, "is_available", return_value=False)
     @patch.object(WSL2Driver, "is_available", return_value=False)
     @patch.object(MultipassDriver, "is_available", return_value=False)
-    def test_get_driver_auto_falls_through_wsl_bridge(
-        self, mock_mp, mock_wsl, mock_orb, mock_docker
-    ):
+    def test_get_driver_auto_falls_through_wsl_bridge(self, mock_mp, mock_wsl, mock_orb, mock_docker):
         # Same idea, one step further down the chain: orbstack-vm bridge is
         # also unavailable, but wsl2's bridge is available.
         def bridge_is_available(self):
@@ -251,9 +241,7 @@ class TestDriverFactory(unittest.TestCase):
     @patch.object(OrbStackVMDriver, "is_available", return_value=False)
     @patch.object(WSL2Driver, "is_available", return_value=False)
     @patch.object(MultipassDriver, "is_available", return_value=False)
-    def test_get_driver_auto_falls_through_multipass_bridge(
-        self, mock_mp, mock_wsl, mock_orb, mock_docker
-    ):
+    def test_get_driver_auto_falls_through_multipass_bridge(self, mock_mp, mock_wsl, mock_orb, mock_docker):
         # Last step of the auto chain: only multipass's bridge is available.
         def bridge_is_available(self):
             return self.target_backend == "multipass"

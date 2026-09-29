@@ -2,9 +2,9 @@
 Host cache directory initialization and mount mapping manager.
 """
 
+import contextlib
 import os
 import shutil
-from typing import Dict
 
 
 def _sanitize_scope(scope: str) -> str:
@@ -29,17 +29,13 @@ def clean_build_cache(host_cache_dir: str, scope: str = "") -> None:
                 if os.path.isdir(item_path):
                     shutil.rmtree(item_path, ignore_errors=True)
                 else:
-                    try:
+                    with contextlib.suppress(OSError):
                         os.remove(item_path)
-                    except OSError:
-                        pass
         except OSError:
             pass
     os.makedirs(target_dir, exist_ok=True)
-    try:
+    with contextlib.suppress(OSError):
         os.chmod(target_dir, 0o777)
-    except OSError:
-        pass
 
 
 def init_cache_dirs(
@@ -47,7 +43,7 @@ def init_cache_dirs(
     arch: str,
     cache_enabled: bool = True,
     scope: str = "",
-) -> Dict[str, str]:
+) -> dict[str, str]:
     """Ensure host cache directories exist with strict permissions and return volume mounts.
 
     `scope` isolates mutable compilation build caches (such as `go-build`) per workflow/job
@@ -57,25 +53,18 @@ def init_cache_dirs(
     if not cache_enabled or not host_cache_dir:
         return {}
 
-    subdirs = [
-        "npm", "pnpm", "yarn", "pip", "uv", "go-pkg",
-        "dotnet", "rust", "hostedtoolcache", "apt"
-    ]
+    subdirs = ["npm", "pnpm", "yarn", "pip", "uv", "go-pkg", "dotnet", "rust", "hostedtoolcache", "apt"]
 
     for sub in subdirs:
         p = os.path.join(host_cache_dir, sub)
         os.makedirs(p, exist_ok=True)
-        try:
+        with contextlib.suppress(OSError):
             os.chmod(p, 0o777)
-        except OSError:
-            pass
 
     arch_toolcache = os.path.join(host_cache_dir, "hostedtoolcache", arch)
     os.makedirs(arch_toolcache, exist_ok=True)
-    try:
+    with contextlib.suppress(OSError):
         os.chmod(arch_toolcache, 0o777)
-    except OSError:
-        pass
 
     # Build cache isolation:
     # If scope is provided, place go-build under build-cache/<scope>/go-build so concurrent
@@ -87,10 +76,8 @@ def init_cache_dirs(
         go_build_dir = os.path.join(host_cache_dir, "go-build")
 
     os.makedirs(go_build_dir, exist_ok=True)
-    try:
+    with contextlib.suppress(OSError):
         os.chmod(go_build_dir, 0o777)
-    except OSError:
-        pass
 
     mount_mappings = {
         os.path.join(host_cache_dir, "npm"): "/home/runner/.npm",

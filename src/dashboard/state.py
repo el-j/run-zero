@@ -55,14 +55,7 @@ class DashboardState:
         # Routing telemetry counters
         self.routing_docker_jobs: int = 0
         self.routing_vm_jobs: int = 0
-        self.routing_triggers: dict[str, int] = {
-            "services": 0,
-            "dind": 0,
-            "browser": 0,
-            "e2e": 0,
-            "systemd": 0,
-            "custom_label": 0
-        }
+        self.routing_triggers: dict[str, int] = {"services": 0, "dind": 0, "browser": 0, "e2e": 0, "systemd": 0, "custom_label": 0}
 
         # Golden image build status, keyed by "<driver>:<arch>:<profile-or-base>" -- see
         # report_image_build(). Populated by driver on_image_event callbacks (autoscaler.py
@@ -85,17 +78,13 @@ class DashboardState:
             "verdaccio": "0 B",
             "athens": "0 B",
             "docker_mirror": "0 B",
-            "apt_cacher": "0 B"
+            "apt_cacher": "0 B",
         }
 
     @property
     def routing_stats(self) -> dict[str, Any]:
         """Return the Docker-vs-VM job routing counters and per-trigger breakdown as a plain dict."""
-        return {
-            "docker_jobs": self.routing_docker_jobs,
-            "vm_jobs": self.routing_vm_jobs,
-            "vm_triggers_breakdown": dict(self.routing_triggers)
-        }
+        return {"docker_jobs": self.routing_docker_jobs, "vm_jobs": self.routing_vm_jobs, "vm_triggers_breakdown": dict(self.routing_triggers)}
 
     def append_log(self, line: str) -> None:
         """Add a log line to ring buffer and broadcast to active SSE subscribers."""
@@ -157,7 +146,7 @@ class DashboardState:
         rate_limit_reset: int | None = None,
         actions_billing: dict[str, Any] | None = None,
         default_engine: str = "docker",
-        version: str = "0.1.0"
+        version: str = "0.1.0",
     ) -> None:
         """Replace the fleet/config snapshot with this poll's data, refresh cache sizes, and broadcast to SSE clients.
 
@@ -262,12 +251,12 @@ class DashboardState:
     def _format_bytes(self, size_bytes: int) -> str:
         if size_bytes < 1024:
             return f"{size_bytes} B"
-        elif size_bytes < 1024 ** 2:
+        elif size_bytes < 1024**2:
             return f"{size_bytes / 1024:.1f} KB"
-        elif size_bytes < 1024 ** 3:
-            return f"{size_bytes / (1024 ** 2):.1f} MB"
+        elif size_bytes < 1024**3:
+            return f"{size_bytes / (1024**2):.1f} MB"
         else:
-            return f"{size_bytes / (1024 ** 3):.2f} GB"
+            return f"{size_bytes / (1024**3):.2f} GB"
 
     def _get_dir_size(self, path: str) -> int:
         if not path or not os.path.isdir(path):
@@ -404,11 +393,7 @@ class DashboardState:
                 "available_drivers": self.available_drivers,
                 "hybrid_routing": self.hybrid_routing_enabled,
                 "architectures": self.target_architectures,
-                "concurrency": {
-                    "active": len(self.active_runners),
-                    "max": self.max_concurrency,
-                    "min": self.min_runners
-                },
+                "concurrency": {"active": len(self.active_runners), "max": self.max_concurrency, "min": self.min_runners},
                 "github": {
                     "rate_limit_remaining": self.github_rate_limit_remaining,
                     "rate_limit_total": self.github_rate_limit_total,
@@ -418,21 +403,17 @@ class DashboardState:
                     "actions_billing": self.github_actions_billing,
                     "monitored_repos": self.monitored_repos,
                     "queued_jobs_count": self.total_queued_jobs,
-                    "queued_jobs": self.queued_jobs
+                    "queued_jobs": self.queued_jobs,
                 },
                 "runners": self.active_runners,
                 "routing_stats": {
                     "docker_jobs": self.routing_docker_jobs,
                     "vm_jobs": self.routing_vm_jobs,
-                    "vm_triggers_breakdown": dict(self.routing_triggers)
+                    "vm_triggers_breakdown": dict(self.routing_triggers),
                 },
-                "cache": {
-                    "enabled": bool(self.cache_enabled),
-                    "dir": str(self.cache_dir) if self.cache_dir is not None else "",
-                    "sizes": self.cache_sizes
-                },
+                "cache": {"enabled": bool(self.cache_enabled), "dir": str(self.cache_dir) if self.cache_dir is not None else "", "sizes": self.cache_sizes},
                 "image_builds": list(self.image_builds.values()),
-                "recent_logs": list(self.log_buffer)
+                "recent_logs": list(self.log_buffer),
             }
 
 

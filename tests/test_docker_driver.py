@@ -68,9 +68,7 @@ class TestDockerDriver(unittest.TestCase):
     def test_image_exists_true_on_returncode_zero(self, mock_run):
         mock_run.return_value = MagicMock(returncode=0)
         self.assertTrue(self.driver._image_exists("amd64"))
-        mock_run.assert_called_once_with(
-            ["docker", "image", "inspect", "local-github-runner:amd64"], capture_output=True
-        )
+        mock_run.assert_called_once_with(["docker", "image", "inspect", "local-github-runner:amd64"], capture_output=True)
 
     @patch("subprocess.run")
     def test_image_exists_false_on_nonzero_returncode(self, mock_run):
@@ -111,7 +109,10 @@ class TestDockerDriver(unittest.TestCase):
     @patch("subprocess.run")
     def test_list_runners_parsing(self, mock_run):
         mock_run.return_value = MagicMock(
-            stdout="runner1|Up 2 hours|local-runner-arm64-el-j-run-zero-123|running|el-j/run-zero|arm64|docker\nrunner2|Exited (0)|local-runner-amd64-my-org-456|exited|my-org|amd64|docker\n",
+            stdout=(
+                "runner1|Up 2 hours|local-runner-arm64-el-j-run-zero-123|running|el-j/run-zero|arm64|docker\n"
+                "runner2|Exited (0)|local-runner-amd64-my-org-456|exited|my-org|amd64|docker\n"
+            ),
             returncode=0,
         )
         runners = self.driver.list_runners()
@@ -214,7 +215,7 @@ class TestDockerDriver(unittest.TestCase):
         env_pairs = [cmd[i + 1] for i, tok in enumerate(cmd) if tok == "-e"]
         dest_entries = [p for p in env_pairs if p.startswith("CACHE_MOUNT_DESTS=")]
         self.assertEqual(len(dest_entries), 1)
-        dests = dest_entries[0][len("CACHE_MOUNT_DESTS="):].split(":")
+        dests = dest_entries[0][len("CACHE_MOUNT_DESTS=") :].split(":")
         self.assertEqual(
             set(dests),
             {"/home/runner/.npm", "/home/runner/go/pkg", "/home/runner/.nuget/packages"},
@@ -354,7 +355,7 @@ class TestDockerDriver(unittest.TestCase):
         env_pairs = [cmd[i + 1] for i, tok in enumerate(cmd) if tok == "-e"]
         runner_label_env = [p for p in env_pairs if p.startswith("RUNNER_LABELS=")]
         self.assertEqual(len(runner_label_env), 1)
-        labels = runner_label_env[0][len("RUNNER_LABELS="):].split(",")
+        labels = runner_label_env[0][len("RUNNER_LABELS=") :].split(",")
         self.assertIn("self-hosted", labels)
         self.assertIn("local", labels)
         self.assertIn("x64", labels)
@@ -381,7 +382,7 @@ class TestDockerDriver(unittest.TestCase):
         env_pairs = [cmd[i + 1] for i, tok in enumerate(cmd) if tok == "-e"]
         runner_label_env = [p for p in env_pairs if p.startswith("RUNNER_LABELS=")]
         self.assertEqual(len(runner_label_env), 1)
-        labels = runner_label_env[0][len("RUNNER_LABELS="):].split(",")
+        labels = runner_label_env[0][len("RUNNER_LABELS=") :].split(",")
         self.assertIn("arm64", labels)
         self.assertNotIn("x64", labels)
 
@@ -389,9 +390,7 @@ class TestDockerDriver(unittest.TestCase):
     def test_list_runners_maps_every_field_to_the_correct_column(self, mock_run):
         # Mutation-prone: `.id`/`.status` were never asserted anywhere, so a column-index
         # swap (e.g. status=parts[2] instead of parts[1]) went completely undetected.
-        mock_run.return_value = MagicMock(
-            stdout="cid1|status-text|name1|running|repo1|arm64|docker\n", returncode=0
-        )
+        mock_run.return_value = MagicMock(stdout="cid1|status-text|name1|running|repo1|arm64|docker\n", returncode=0)
         runners = self.driver.list_runners()
         self.assertEqual(len(runners), 1)
         r = runners[0]
@@ -475,10 +474,7 @@ class TestDockerDriver(unittest.TestCase):
             MagicMock(returncode=0),  # docker run
         ]
         self.driver.spawn_runner(repo="el-j/run-zero", arch="arm64", proxies_enabled=True, access_token="tok")
-        warning_calls = [
-            c for c in mock_print.call_args_list
-            if c.args and "registry mirror" in str(c.args[0]).lower()
-        ]
+        warning_calls = [c for c in mock_print.call_args_list if c.args and "registry mirror" in str(c.args[0]).lower()]
         self.assertEqual(len(warning_calls), 1)
 
     @patch("builtins.print")
@@ -490,10 +486,7 @@ class TestDockerDriver(unittest.TestCase):
             MagicMock(returncode=0),  # docker run
         ]
         self.driver.spawn_runner(repo="el-j/run-zero", arch="arm64", proxies_enabled=True, access_token="tok")
-        warning_calls = [
-            c for c in mock_print.call_args_list
-            if c.args and "registry mirror" in str(c.args[0]).lower()
-        ]
+        warning_calls = [c for c in mock_print.call_args_list if c.args and "registry mirror" in str(c.args[0]).lower()]
         self.assertEqual(len(warning_calls), 0)
 
     def test_resolve_build_context_dir_uses_env_var_when_set(self):
@@ -524,6 +517,7 @@ class TestDockerDriver(unittest.TestCase):
         real_isfile = os.path.isfile
 
         with tempfile.TemporaryDirectory() as tmp:
+
             def scoped_isfile(path):
                 if not str(path).startswith(tmp):
                     return False

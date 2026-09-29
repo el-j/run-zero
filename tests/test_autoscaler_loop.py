@@ -429,8 +429,13 @@ class TestAutoscalerLoop(unittest.TestCase):
             mock_driver.name.return_value = "docker"
             mock_driver.spawn_runner.return_value = "local-runner-arm64-1"
             running_runner = RunnerInfo(
-                id="local-runner-arm64-1", name="local-runner-arm64-1", status="running",
-                state="running", target_repo="el-j/run-zero", target_arch="arm64", backend="docker",
+                id="local-runner-arm64-1",
+                name="local-runner-arm64-1",
+                status="running",
+                state="running",
+                target_repo="el-j/run-zero",
+                target_arch="arm64",
+                backend="docker",
             )
             # list_runners() is called twice per driver per poll (once for prune_exited(),
             # once to build all_runners) -- two ticks means four calls total.
@@ -894,9 +899,7 @@ class TestAutoscalerLoop(unittest.TestCase):
     @patch("autoscaler.reconcile_zombie_runners")
     @patch("autoscaler.get_queued_job_details")
     @patch("autoscaler.time.sleep")
-    def test_main_loop_repo_mode_needed_accounts_for_existing_active_runners_for_that_repo(
-        self, mock_sleep, mock_jobs, mock_reconcile, mock_discover
-    ):
+    def test_main_loop_repo_mode_needed_accounts_for_existing_active_runners_for_that_repo(self, mock_sleep, mock_jobs, mock_reconcile, mock_discover):
         # Mutation-prone: `active_for_repo = sum(1 for r in active_runners if
         # r.target_repo == repo)` had its `==` flippable to `!=` and its `1` flippable
         # to `2` with zero detection -- every existing test starts with zero pre-existing
@@ -925,8 +928,13 @@ class TestAutoscalerLoop(unittest.TestCase):
             mock_driver.name.return_value = "docker"
             mock_driver.list_runners.return_value = [
                 RunnerInfo(
-                    id="existing-1", name="existing-1", status="running", state="running",
-                    target_repo="el-j/run-zero", target_arch="arm64", backend="docker",
+                    id="existing-1",
+                    name="existing-1",
+                    status="running",
+                    state="running",
+                    target_repo="el-j/run-zero",
+                    target_arch="arm64",
+                    backend="docker",
                 ),
             ]
             mock_driver.spawn_runner.side_effect = ["new-runner-1", "new-runner-2", "new-runner-3"]
@@ -947,9 +955,7 @@ class TestAutoscalerLoop(unittest.TestCase):
     @patch("autoscaler.reconcile_zombie_runners")
     @patch("autoscaler.get_queued_job_details")
     @patch("autoscaler.time.sleep")
-    def test_main_loop_repo_mode_stops_exactly_when_needed_reaches_zero(
-        self, mock_sleep, mock_jobs, mock_reconcile, mock_discover
-    ):
+    def test_main_loop_repo_mode_stops_exactly_when_needed_reaches_zero(self, mock_sleep, mock_jobs, mock_reconcile, mock_discover):
         # Mutation-prone: `if len(active_runners) >= MAX_RUNNERS or needed <= 0: break`
         # mutated to `needed < 0` would let the loop spawn one job PAST the point where
         # `needed` naturally reaches exactly zero. 3 queued jobs, 1 already-active for
@@ -974,8 +980,13 @@ class TestAutoscalerLoop(unittest.TestCase):
             mock_driver.name.return_value = "docker"
             mock_driver.list_runners.return_value = [
                 RunnerInfo(
-                    id="existing-1", name="existing-1", status="running", state="running",
-                    target_repo="el-j/run-zero", target_arch="arm64", backend="docker",
+                    id="existing-1",
+                    name="existing-1",
+                    status="running",
+                    state="running",
+                    target_repo="el-j/run-zero",
+                    target_arch="arm64",
+                    backend="docker",
                 ),
             ]
             mock_driver.spawn_runner.side_effect = ["new-runner-1", "new-runner-2", "new-runner-3"]

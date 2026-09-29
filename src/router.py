@@ -4,23 +4,35 @@ Hybrid routing engine for dynamically matching workflow jobs to container or VM 
 
 import re
 import sys
-from typing import Any, Dict, Tuple
+from typing import Any
 
 from drivers import RunnerDriver
 
 VM_TRIGGER_LABELS = {
-    "vm", "orbstack", "wsl", "multipass", "e2e", "browser", "chrome",
-    "lighthouse", "systemd", "postgres", "mysql", "redis", "db",
-    "database", "service", "services", "integration", "dind"
+    "vm",
+    "orbstack",
+    "wsl",
+    "multipass",
+    "e2e",
+    "browser",
+    "chrome",
+    "lighthouse",
+    "systemd",
+    "postgres",
+    "mysql",
+    "redis",
+    "db",
+    "database",
+    "service",
+    "services",
+    "integration",
+    "dind",
 }
 
 
 def select_driver_for_job(
-    job: Dict[str, Any],
-    default_driver: RunnerDriver,
-    available_drivers: Dict[str, RunnerDriver],
-    auto_route_vm: bool = True
-) -> Tuple[RunnerDriver, str]:
+    job: dict[str, Any], default_driver: RunnerDriver, available_drivers: dict[str, RunnerDriver], auto_route_vm: bool = True
+) -> tuple[RunnerDriver, str]:
     """Determine whether a job requires a VM driver or a standard container driver."""
     job_labels = job.get("labels", [])
 
@@ -31,10 +43,7 @@ def select_driver_for_job(
     # for its browser sandbox; a job named "api-test" with a real `services:
     # postgres:` block still needs one and won't get caught by name alone).
     job_name_tokens = set(re.findall(r"[a-z0-9]+", (job.get("name") or "").lower()))
-    name_or_label_match = (
-        any(trigger in job_labels for trigger in VM_TRIGGER_LABELS)
-        or bool(job_name_tokens & VM_TRIGGER_LABELS)
-    )
+    name_or_label_match = any(trigger in job_labels for trigger in VM_TRIGGER_LABELS) or bool(job_name_tokens & VM_TRIGGER_LABELS)
 
     # get_queued_job_details() resolves this from the actual workflow YAML at
     # the run's commit (see workflow_inspector.job_uses_services_or_container):

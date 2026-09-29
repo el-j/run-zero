@@ -75,23 +75,34 @@ class TestDashboardState(unittest.TestCase):
         self.assertTrue("timestamp" in entry)
 
     def test_report_image_build_records_event_and_appears_in_snapshot(self):
-        self.state.report_image_build({
-            "driver": "docker", "arch": "amd64", "profile": None,
-            "status": "building", "detail": "Building...", "ts": 123.0,
-        })
+        self.state.report_image_build(
+            {
+                "driver": "docker",
+                "arch": "amd64",
+                "profile": None,
+                "status": "building",
+                "detail": "Building...",
+                "ts": 123.0,
+            }
+        )
         key = "docker:amd64:base"
         self.assertIn(key, self.state.image_builds)
         self.assertEqual(self.state.image_builds[key]["status"], "building")
         snapshot = self.state.get_snapshot()
-        expected = {"driver": "docker", "arch": "amd64", "profile": None,
-                    "status": "building", "detail": "Building...", "ts": 123.0}
+        expected = {"driver": "docker", "arch": "amd64", "profile": None, "status": "building", "detail": "Building...", "ts": 123.0}
         self.assertIn(expected, snapshot["image_builds"])
 
     def test_report_image_build_keys_by_profile_when_given(self):
-        self.state.report_image_build({
-            "driver": "docker", "arch": "amd64", "profile": "cuda",
-            "status": "ready", "detail": "ok", "ts": 1.0,
-        })
+        self.state.report_image_build(
+            {
+                "driver": "docker",
+                "arch": "amd64",
+                "profile": "cuda",
+                "status": "ready",
+                "detail": "ok",
+                "ts": 1.0,
+            }
+        )
         self.assertIn("docker:amd64:cuda", self.state.image_builds)
         self.assertNotIn("docker:amd64:base", self.state.image_builds)
 

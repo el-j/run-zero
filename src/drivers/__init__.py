@@ -4,25 +4,16 @@ Defines the abstract RunnerDriver interface and driver discovery/factory mechani
 """
 
 from abc import ABC, abstractmethod
-from typing import Any, Callable, Dict, List, Optional
+from collections.abc import Callable
+from typing import Any
 
-ImageEventCallback = Callable[[Dict[str, Any]], None]
+ImageEventCallback = Callable[[dict[str, Any]], None]
 
 
 class RunnerInfo:
     """Driver-agnostic snapshot of one ephemeral runner instance, as returned by `list_runners()`."""
 
-    def __init__(
-        self,
-        id: str,
-        name: str,
-        status: str,
-        state: str,
-        target_repo: str,
-        target_arch: str,
-        backend: str,
-        created_at: Optional[float] = None
-    ):
+    def __init__(self, id: str, name: str, status: str, state: str, target_repo: str, target_arch: str, backend: str, created_at: float | None = None):
         """Store the runner's identity, driver-reported status/state, and routing metadata."""
         self.id = id
         self.name = name
@@ -36,7 +27,7 @@ class RunnerInfo:
         # yet" apart from "been sitting idle for way too long, orphaned".
         self.created_at = created_at
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         """Serialize to a JSON-compatible dict (used for the VM bridge's HTTP payloads)."""
         return {
             "id": self.id,
@@ -46,7 +37,7 @@ class RunnerInfo:
             "target_repo": self.target_repo,
             "target_arch": self.target_arch,
             "backend": self.backend,
-            "created_at": self.created_at
+            "created_at": self.created_at,
         }
 
 
@@ -64,15 +55,15 @@ class RunnerDriver(ABC):
     @abstractmethod
     def spawn_runner(
         self,
-        repo: Optional[str] = None,
-        org: Optional[str] = None,
+        repo: str | None = None,
+        org: str | None = None,
         arch: str = "arm64",
-        labels: Optional[str] = None,
-        access_token: Optional[str] = None,
-        cache_mounts: Optional[Dict[str, str]] = None,
+        labels: str | None = None,
+        access_token: str | None = None,
+        cache_mounts: dict[str, str] | None = None,
         proxies_enabled: bool = True,
-        extra_env: Optional[Dict[str, str]] = None
-    ) -> Optional[str]:
+        extra_env: dict[str, str] | None = None,
+    ) -> str | None:
         """Spawn a fresh ephemeral runner for `repo` (or `org` if `repo` is unset).
 
         Must not block the caller for the life of the runner -- registration/execution
@@ -82,11 +73,11 @@ class RunnerDriver(ABC):
         """
 
     @abstractmethod
-    def list_runners(self) -> List[RunnerInfo]:
+    def list_runners(self) -> list[RunnerInfo]:
         """Return every runner instance this driver currently manages, regardless of state."""
 
     @abstractmethod
-    def prune_exited(self, runners: List[RunnerInfo]) -> None:
+    def prune_exited(self, runners: list[RunnerInfo]) -> None:
         """Remove any of `runners` (as previously returned by `list_runners()`) that have exited.
 
         Only acts on entries whose `backend` matches this driver; safe to call with a mixed-backend list.
@@ -113,7 +104,7 @@ class RunnerDriver(ABC):
         return True
 
 
-def get_available_drivers(on_image_event: Optional[ImageEventCallback] = None) -> Dict[str, RunnerDriver]:
+def get_available_drivers(on_image_event: ImageEventCallback | None = None) -> dict[str, RunnerDriver]:
     """Discover and return all drivers available on the host system or via Host VM Bridge.
 
     `on_image_event`, when given, is forwarded to drivers that build golden images (currently
@@ -127,12 +118,7 @@ def get_available_drivers(on_image_event: Optional[ImageEventCallback] = None) -
     from .wsl_driver import WSL2Driver
 
     drivers = {}
-    candidates = [
-        DockerDriver(on_image_event=on_image_event),
-        OrbStackVMDriver(on_image_event=on_image_event),
-        WSL2Driver(),
-        MultipassDriver()
-    ]
+    candidates = [DockerDriver(on_image_event=on_image_event), OrbStackVMDriver(on_image_event=on_image_event), WSL2Driver(), MultipassDriver()]
 
     for d in candidates:
         if d.is_available():
@@ -146,7 +132,7 @@ def get_available_drivers(on_image_event: Optional[ImageEventCallback] = None) -
     return drivers
 
 
-def get_driver(name: str = "auto", on_image_event: Optional[ImageEventCallback] = None) -> RunnerDriver:
+def get_driver(name: str = "auto", on_image_event: ImageEventCallback | None = None) -> RunnerDriver:
     """Instantiate and return the requested driver or auto-select best available.
 
     See `get_available_drivers()` for what `on_image_event` is used for.

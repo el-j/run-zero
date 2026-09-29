@@ -7,13 +7,36 @@ name = "run-zero"
 version = "0.0.1"
 description = "Dual-Engine Autoscaling GitHub Actions Runner Fleet for Docker & Linux VMs"
 readme = "README.md"
-requires-python = ">=3.9"
+requires-python = ">=3.11"
+
+[tool.ruff]
+line-length = 160
+target-version = "py311"
+extend-exclude = ["mutants", "website", "docs"]
+
+[tool.ruff.lint]
+# Ratchet: rules are only listed here once the codebase is clean against them, so
+# `make check` is always green-or-regressed, never "known red". Still to enable
+# (tracked in #58, after the P4 decomposition removes most module globals):
+# BLE (blind except), PLW1510 (subprocess.run without check=), PLW0603 (global).
+select = ["E", "W", "F", "B", "UP", "SIM", "I", "C4", "PIE", "RUF", "PLE", "S110"]
+
+[tool.ruff.lint.isort]
+known-first-party = ["autoscaler", "cache_manager", "dashboard", "discovery", "drivers", "github_api", "reconciler", "router", "version", "vm_bridge", "workflow_inspector"]
+
+[tool.interrogate]
+ignore-init-module = true
+# Ratchet floor = current baseline; #58 raises this to 100.
+fail-under = 83
+verbose = 0
 
 [tool.pytest.ini_options]
 minversion = "7.0"
 testpaths = ["tests"]
 pythonpath = ["src"]
 addopts = "-ra -q --cov=src --cov-report=term-missing --cov-fail-under=100"
+# Any warning raised during the suite is a failure (#40): "no code warnings" is enforced, not hoped for.
+filterwarnings = ["error"]
 
 [tool.coverage.run]
 source = ["src"]
@@ -27,6 +50,7 @@ skip_covered = false
 
 [tool.mypy]
 python_version = "3.11"
+mypy_path = "src"
 ignore_missing_imports = true
 warn_unused_configs = true
 disallow_untyped_defs = false

@@ -27,11 +27,7 @@ class TestGitHubApi(unittest.TestCase):
     def test_github_request_success(self, mock_urlopen):
         mock_resp = MagicMock()
         mock_resp.read.return_value = b'{"status": "ok"}'
-        mock_resp.headers = {
-            "x-ratelimit-remaining": "4990",
-            "x-ratelimit-limit": "5432",
-            "x-ratelimit-reset": "1700000000"
-        }
+        mock_resp.headers = {"x-ratelimit-remaining": "4990", "x-ratelimit-limit": "5432", "x-ratelimit-reset": "1700000000"}
         mock_resp.__enter__.return_value = mock_resp
         mock_urlopen.return_value = mock_resp
 
@@ -43,13 +39,11 @@ class TestGitHubApi(unittest.TestCase):
     @patch("urllib.request.urlopen")
     def test_github_request_http_error(self, mock_urlopen):
         error = urllib.error.HTTPError(
-            url="/test", code=403, msg="Forbidden",
-            hdrs={
-                "x-ratelimit-remaining": "0",
-                "x-ratelimit-limit": "7777",
-                "x-ratelimit-reset": "1700000000"
-            },
-            fp=BytesIO(b"")
+            url="/test",
+            code=403,
+            msg="Forbidden",
+            hdrs={"x-ratelimit-remaining": "0", "x-ratelimit-limit": "7777", "x-ratelimit-reset": "1700000000"},
+            fp=BytesIO(b""),
         )
         mock_urlopen.side_effect = error
         result = github_request("/test", access_token="secret")
@@ -61,9 +55,7 @@ class TestGitHubApi(unittest.TestCase):
         from github_api import refresh_rate_limit
 
         mock_resp = MagicMock()
-        mock_resp.read.return_value = (
-            b'{"resources":{"core":{"limit":9999,"remaining":8765,"used":1234,"reset":1700001111}}}'
-        )
+        mock_resp.read.return_value = b'{"resources":{"core":{"limit":9999,"remaining":8765,"used":1234,"reset":1700001111}}}'
         mock_resp.headers = {}
         mock_resp.__enter__.return_value = mock_resp
         mock_urlopen.return_value = mock_resp
@@ -125,7 +117,7 @@ class TestGitHubApi(unittest.TestCase):
     def test_get_queued_job_details(self, mock_gh, mock_workflow_text):
         mock_gh.side_effect = [
             {"workflow_runs": [{"id": 101, "head_branch": "main", "event": "push", "path": ".github/workflows/ci.yml"}]},
-            {"jobs": [{"id": 201, "name": "e2e-chrome", "status": "queued", "labels": ["self-hosted", "browser"]}]}
+            {"jobs": [{"id": 201, "name": "e2e-chrome", "status": "queued", "labels": ["self-hosted", "browser"]}]},
         ]
         mock_workflow_text.return_value = None  # workflow lookup unresolved -> declares_services is None
         jobs = get_queued_job_details("el-j/run-zero", access_token="token")
@@ -157,7 +149,7 @@ class TestGitHubApi(unittest.TestCase):
         # ubuntu-latest CI jobs.
         mock_gh.side_effect = [
             {"workflow_runs": [{"id": 101, "head_branch": "main", "event": "push"}]},
-            {"jobs": [{"id": 201, "name": "Python Lint", "status": "queued", "labels": ["ubuntu-latest"]}]}
+            {"jobs": [{"id": 201, "name": "Python Lint", "status": "queued", "labels": ["ubuntu-latest"]}]},
         ]
         jobs = get_queued_job_details("el-j/run-zero", access_token="token")
         self.assertEqual(jobs, [])
@@ -167,10 +159,12 @@ class TestGitHubApi(unittest.TestCase):
     def test_get_queued_job_details_mixed_batch_only_returns_self_hosted(self, mock_gh, mock_workflow_text):
         mock_gh.side_effect = [
             {"workflow_runs": [{"id": 101, "head_branch": "main", "event": "push"}]},
-            {"jobs": [
-                {"id": 201, "name": "hosted-job", "status": "queued", "labels": ["ubuntu-latest"]},
-                {"id": 202, "name": "local-job", "status": "queued", "labels": ["self-hosted", "local"]},
-            ]}
+            {
+                "jobs": [
+                    {"id": 201, "name": "hosted-job", "status": "queued", "labels": ["ubuntu-latest"]},
+                    {"id": 202, "name": "local-job", "status": "queued", "labels": ["self-hosted", "local"]},
+                ]
+            },
         ]
         mock_workflow_text.return_value = None
         jobs = get_queued_job_details("el-j/run-zero", access_token="token")
@@ -186,16 +180,9 @@ class TestGitHubApi(unittest.TestCase):
         # to actually has a `services:` block for that job.
         mock_gh.side_effect = [
             {"workflow_runs": [{"id": 555, "head_branch": "feat/x", "event": "pull_request"}]},
-            {"jobs": [{"id": 301, "name": "API — Tests", "status": "queued", "labels": ["self-hosted", "amd64"]}]}
+            {"jobs": [{"id": 301, "name": "API — Tests", "status": "queued", "labels": ["self-hosted", "amd64"]}]},
         ]
-        mock_workflow_text.return_value = (
-            "jobs:\n"
-            "  api-test:\n"
-            "    name: API — Tests\n"
-            "    services:\n"
-            "      postgres:\n"
-            "        image: postgres:16\n"
-        )
+        mock_workflow_text.return_value = "jobs:\n  api-test:\n    name: API — Tests\n    services:\n      postgres:\n        image: postgres:16\n"
         jobs = get_queued_job_details("el-j/herbful", access_token="token")
         self.assertEqual(len(jobs), 1)
         self.assertTrue(jobs[0]["declares_services"])
@@ -203,6 +190,7 @@ class TestGitHubApi(unittest.TestCase):
     @patch("github_api.github_request")
     def test_get_workflow_text_for_run_fetches_and_decodes(self, mock_gh):
         import base64
+
         raw_yaml = "jobs:\n  x:\n    name: X\n"
         mock_gh.side_effect = [
             {"path": ".github/workflows/ci.yml", "head_sha": "abc123"},
@@ -214,6 +202,7 @@ class TestGitHubApi(unittest.TestCase):
     @patch("github_api.github_request")
     def test_get_workflow_text_for_run_caches_by_run_id(self, mock_gh):
         import base64
+
         raw_yaml = "jobs:\n  x:\n    name: X\n"
         mock_gh.side_effect = [
             {"path": ".github/workflows/ci.yml", "head_sha": "abc123"},
@@ -234,14 +223,14 @@ class TestGitHubApi(unittest.TestCase):
     @patch("urllib.request.urlopen")
     def test_github_request_throttles_when_rate_limit_nearly_exhausted(self, mock_urlopen, mock_sleep):
         import github_api
+
         mock_resp = MagicMock()
         mock_resp.read.return_value = b'{"status": "ok"}'
         mock_resp.headers = {"x-ratelimit-remaining": "4990", "x-ratelimit-reset": "1700000000"}
         mock_resp.__enter__.return_value = mock_resp
         mock_urlopen.return_value = mock_resp
 
-        with patch.object(github_api, "rate_limit_remaining", 5), \
-             patch.object(github_api, "rate_limit_reset", 9_999_999_999):
+        with patch.object(github_api, "rate_limit_remaining", 5), patch.object(github_api, "rate_limit_reset", 9_999_999_999):
             result = github_request("/test", access_token="secret")
         self.assertEqual(result, {"status": "ok"})
         mock_sleep.assert_called_once()
@@ -260,9 +249,7 @@ class TestGitHubApi(unittest.TestCase):
     @patch("urllib.request.urlopen")
     def test_github_request_http_error_tolerates_malformed_ratelimit_headers(self, mock_urlopen):
         error = urllib.error.HTTPError(
-            url="/test", code=500, msg="Server Error",
-            hdrs={"x-ratelimit-remaining": "garbage", "x-ratelimit-reset": "garbage"},
-            fp=BytesIO(b"")
+            url="/test", code=500, msg="Server Error", hdrs={"x-ratelimit-remaining": "garbage", "x-ratelimit-reset": "garbage"}, fp=BytesIO(b"")
         )
         mock_urlopen.side_effect = error
         result = github_request("/test", access_token="secret")
@@ -272,22 +259,21 @@ class TestGitHubApi(unittest.TestCase):
     def test_github_request_http_error_non_rate_limit_prints_and_returns_none(self, mock_urlopen):
         # A 500 (or any code other than 401/403-with-exhausted-quota or 404)
         # must hit the generic "HTTP Error" logging branch.
-        error = urllib.error.HTTPError(
-            url="/test", code=500, msg="Internal Server Error",
-            hdrs={}, fp=BytesIO(b"")
-        )
+        error = urllib.error.HTTPError(url="/test", code=500, msg="Internal Server Error", hdrs={}, fp=BytesIO(b""))
         mock_urlopen.side_effect = error
         result = github_request("/test", access_token="secret")
         self.assertIsNone(result)
 
     def test_update_rate_limit_from_headers_captures_used_and_resource(self):
-        github_api._update_rate_limit_from_headers({
-            "x-ratelimit-remaining": "10",
-            "x-ratelimit-limit": "100",
-            "x-ratelimit-used": "90",
-            "x-ratelimit-resource": "search",
-            "x-ratelimit-reset": "1700001234",
-        })
+        github_api._update_rate_limit_from_headers(
+            {
+                "x-ratelimit-remaining": "10",
+                "x-ratelimit-limit": "100",
+                "x-ratelimit-used": "90",
+                "x-ratelimit-resource": "search",
+                "x-ratelimit-reset": "1700001234",
+            }
+        )
         self.assertEqual(github_api.rate_limit_used, 90)
         self.assertEqual(github_api.rate_limit_resource, "search")
 
@@ -300,28 +286,22 @@ class TestGitHubApi(unittest.TestCase):
 
     def test_update_rate_limit_from_payload_falls_back_to_core_and_rate(self):
         github_api.rate_limit_resource = "search"
-        github_api._update_rate_limit_from_payload({
-            "resources": {
-                "core": {"limit": 999, "remaining": 333, "used": 666, "reset": 1700002222}
-            }
-        })
+        github_api._update_rate_limit_from_payload({"resources": {"core": {"limit": 999, "remaining": 333, "used": 666, "reset": 1700002222}}})
         self.assertEqual(github_api.rate_limit_resource, "core")
         self.assertEqual(github_api.rate_limit_remaining, 333)
 
         github_api.rate_limit_resource = "search"
-        github_api._update_rate_limit_from_payload({
-            "resources": {},
-            "rate": {"limit": 5000, "remaining": 4900, "used": 100, "reset": 1700003333},
-        })
+        github_api._update_rate_limit_from_payload(
+            {
+                "resources": {},
+                "rate": {"limit": 5000, "remaining": 4900, "used": 100, "reset": 1700003333},
+            }
+        )
         self.assertEqual(github_api.rate_limit_remaining, 4900)
         self.assertEqual(github_api.rate_limit_used, 100)
 
     def test_update_rate_limit_from_payload_tolerates_bad_numeric_values(self):
-        github_api._update_rate_limit_from_payload({
-            "resources": {
-                "core": {"limit": "bad", "remaining": "bad", "used": "bad", "reset": "bad"}
-            }
-        })
+        github_api._update_rate_limit_from_payload({"resources": {"core": {"limit": "bad", "remaining": "bad", "used": "bad", "reset": "bad"}}})
         self.assertIsNone(github_api.rate_limit_total)
 
     def test_normalize_actions_billing_tolerates_non_numeric_values(self):
@@ -357,9 +337,7 @@ class TestGitHubApi(unittest.TestCase):
 
     @patch("urllib.request.urlopen")
     def test_github_request_rate_limit_error_without_reset_uses_unknown_reset_time(self, mock_urlopen):
-        error = urllib.error.HTTPError(
-            url="/test", code=403, msg="Forbidden", hdrs={"x-ratelimit-remaining": "0"}, fp=BytesIO(b"")
-        )
+        error = urllib.error.HTTPError(url="/test", code=403, msg="Forbidden", hdrs={"x-ratelimit-remaining": "0"}, fp=BytesIO(b""))
         mock_urlopen.side_effect = error
         result = github_request("/test", access_token="secret")
         self.assertIsNone(result)

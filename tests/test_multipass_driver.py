@@ -37,14 +37,16 @@ class TestMultipassDriver(unittest.TestCase):
     @patch("subprocess.run")
     def test_list_runners_json(self, mock_run):
         mock_run.return_value = MagicMock(
-            stdout=json.dumps({
-                "list": [
-                    {"name": "runzero-mp-arm64-el-j-run-zero-123", "state": "Running"},
-                    {"name": "runzero-mp-amd64-my-org-456", "state": "Stopped"},
-                    {"name": "unrelated-instance", "state": "Running"}
-                ]
-            }),
-            returncode=0
+            stdout=json.dumps(
+                {
+                    "list": [
+                        {"name": "runzero-mp-arm64-el-j-run-zero-123", "state": "Running"},
+                        {"name": "runzero-mp-amd64-my-org-456", "state": "Stopped"},
+                        {"name": "unrelated-instance", "state": "Running"},
+                    ]
+                }
+            ),
+            returncode=0,
         )
         runners = self.driver.list_runners()
         self.assertEqual(len(runners), 2)
@@ -102,9 +104,7 @@ class TestMultipassDriver(unittest.TestCase):
         self.assertTrue(any(cmd[2] == "/host/toolcache/arm64" and cmd[3].endswith(":/opt/hostedtoolcache") for cmd in mount_cmds))
 
         prep_exec_cmds = [
-            cmd
-            for cmd in run_cmds
-            if len(cmd) >= 7 and cmd[0] == "multipass" and cmd[1] == "exec" and cmd[3] == "--" and cmd[4] == "bash" and cmd[5] == "-lc"
+            cmd for cmd in run_cmds if len(cmd) >= 7 and cmd[0] == "multipass" and cmd[1] == "exec" and cmd[3] == "--" and cmd[4] == "bash" and cmd[5] == "-lc"
         ]
         self.assertTrue(any("/home/ubuntu/.npm" in cmd[6] for cmd in prep_exec_cmds))
         self.assertTrue(any("/opt/hostedtoolcache" in cmd[6] for cmd in prep_exec_cmds))
@@ -166,10 +166,7 @@ class TestMultipassDriver(unittest.TestCase):
         # here (only subprocess.run is mocked), so this exercises the real
         # filtering loop rather than relying on list_runners() failing
         # closed to an empty list.
-        mock_run.return_value = MagicMock(
-            stdout=json.dumps({"list": [{"name": "runzero-mp-arm64-el-j-run-zero-abc123", "state": "Running"}]}),
-            returncode=0
-        )
+        mock_run.return_value = MagicMock(stdout=json.dumps({"list": [{"name": "runzero-mp-arm64-el-j-run-zero-abc123", "state": "Running"}]}), returncode=0)
         self.driver.cleanup_all()
         delete_calls = [c for c in mock_run.call_args_list if c[0][0][:2] == ["multipass", "delete"]]
         self.assertEqual(len(delete_calls), 1)

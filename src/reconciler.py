@@ -5,7 +5,6 @@ Self-healing zombie runner detection and queue unsticking.
 import os
 import sys
 import time
-from typing import Dict, List, Optional
 
 from drivers import RunnerDriver, RunnerInfo
 from github_api import github_request
@@ -35,7 +34,7 @@ def _runner_name_matches(local_name: str, gh_name: str) -> bool:
     return gh_name == local_name or gh_name.startswith(f"{local_name}-")
 
 
-def _get_in_progress_runner_names(repo: str, access_token: Optional[str] = None) -> Optional[set[str]]:
+def _get_in_progress_runner_names(repo: str, access_token: str | None = None) -> set[str] | None:
     """Return runner names currently attached to active jobs for one repo.
 
     Returns None if the GitHub API query failed or timed out, so callers can
@@ -50,10 +49,7 @@ def _get_in_progress_runner_names(repo: str, access_token: Optional[str] = None)
         return None
 
     # Include all runs that are not completed (in_progress, queued, waiting, etc.)
-    active_runs = [
-        r for r in runs_data.get("workflow_runs", [])
-        if r.get("status") not in ("completed",)
-    ]
+    active_runs = [r for r in runs_data.get("workflow_runs", []) if r.get("status") not in ("completed",)]
 
     for run in active_runs:
         run_id = run.get("id")
@@ -72,7 +68,7 @@ def _get_in_progress_runner_names(repo: str, access_token: Optional[str] = None)
     return names
 
 
-def reconcile_zombie_runners(repos: List[str], access_token: Optional[str] = None) -> None:
+def reconcile_zombie_runners(repos: list[str], access_token: str | None = None) -> None:
     """Find and unstick runners GitHub still thinks are busy but that are actually dead.
 
     Cancels whatever run is pinned to a dead runner, then removes the stale registration.
@@ -82,12 +78,7 @@ def reconcile_zombie_runners(repos: List[str], access_token: Optional[str] = Non
         if not data or "runners" not in data:
             continue
 
-        zombies = [
-            r for r in data["runners"]
-            if r.get("status") == "offline"
-            and r.get("busy")
-            and str(r.get("name", "")).startswith(MANAGED_RUNNER_PREFIXES)
-        ]
+        zombies = [r for r in data["runners"] if r.get("status") == "offline" and r.get("busy") and str(r.get("name", "")).startswith(MANAGED_RUNNER_PREFIXES)]
         if not zombies:
             continue
 
@@ -112,14 +103,14 @@ def reconcile_zombie_runners(repos: List[str], access_token: Optional[str] = Non
 
 
 def reconcile_idle_orphans(
-    repos: List[str],
-    local_runners: List[RunnerInfo],
-    drivers: Dict[str, RunnerDriver],
-    access_token: Optional[str] = None,
+    repos: list[str],
+    local_runners: list[RunnerInfo],
+    drivers: dict[str, RunnerDriver],
+    access_token: str | None = None,
     idle_timeout_seconds: int = IDLE_ORPHAN_TIMEOUT_SECONDS,
     unregistered_timeout_seconds: int = UNREGISTERED_ORPHAN_TIMEOUT_SECONDS,
     busy_timeout_seconds: int = BUSY_RUNNER_TIMEOUT_SECONDS,
-    now: Optional[float] = None
+    now: float | None = None,
 ) -> None:
     """Destroy our own runners that GitHub never dispatched a job to or that completed their run.
 
@@ -131,7 +122,8 @@ def reconcile_idle_orphans(
 
     min_timeout = min(idle_timeout_seconds, unregistered_timeout_seconds)
     managed = [
-        r for r in local_runners
+        r
+        for r in local_runners
         if r.state == "running"
         and str(r.name).startswith(MANAGED_RUNNER_PREFIXES)
         and (now - (r.created_at if r.created_at is not None else now) > min_timeout)
@@ -139,12 +131,12 @@ def reconcile_idle_orphans(
     if not managed:
         return
 
-    gh_runners_by_repo: Dict[str, List[Dict]] = {}
+    gh_runners_by_repo: dict[str, list[dict]] = {}
     for repo in repos:
         data = github_request(f"/repos/{repo}/actions/runners", access_token=access_token)
         gh_runners_by_repo[repo] = (data or {}).get("runners", [])
 
-    active_runner_names_by_repo: Dict[str, Optional[set[str]]] = {}
+    active_runner_names_by_repo: dict[str, set[str] | None] = {}
 
     for runner in managed:
         created_at = runner.created_at if runner.created_at is not None else now
@@ -244,7 +236,7 @@ def reconcile_idle_orphans(
             print(
                 f"[Autoscaler] 🧹 Orphaned runner detected: {runner.name} "
                 f"(not registered in GitHub Actions / run finished, alive {age_minutes}m) — tearing down...",
-                file=sys.stderr
+                file=sys.stderr,
             )
             driver = drivers.get(runner.backend)
             if driver:
@@ -255,9 +247,8 @@ def reconcile_idle_orphans(
         if gh_match and age_seconds > idle_timeout_seconds:
             age_minutes = int(age_seconds / 60)
             print(
-                f"[Autoscaler] 🧹 Orphaned runner detected: {runner.name} "
-                f"(idle {age_minutes}m, GitHub never dispatched a job to it) — tearing down...",
-                file=sys.stderr
+                f"[Autoscaler] 🧹 Orphaned runner detected: {runner.name} (idle {age_minutes}m, GitHub never dispatched a job to it) — tearing down...",
+                file=sys.stderr,
             )
             driver = drivers.get(runner.backend)
             if driver:
@@ -272,8 +263,4 @@ def reconcile_idle_orphans(
                         break
 
             if delete_repo and gh_match.get("id"):
-                github_request(
-                    f"/repos/{delete_repo}/actions/runners/{gh_match['id']}",
-                    access_token=access_token,
-                    method="DELETE"
-                )
+                github_request(f"/repos/{delete_repo}/actions/runners/{gh_match['id']}", access_token=access_token, method="DELETE")

@@ -122,32 +122,34 @@ class TestAutoscalerComposeDeploymentBuildContext(unittest.TestCase):
         # Mirror docker/Dockerfile.autoscaler's own `WORKDIR /app` + `COPY src /app` exactly,
         # so DockerDriver's own-module-relative candidate path resolves identically to production.
         docker_run_args += ["-v", f"{SRC_DIR}:/app:ro", "-w", "/app"]
-        docker_run_base = docker_run_args + ["python:3.11-slim"]
-        docker_run_args = docker_run_base + [
-            "python3", "-c",
+        docker_run_base = [*docker_run_args, "python:3.11-slim"]
+        probe = (
             "from drivers.docker_driver import DockerDriver; "
             "d = DockerDriver(); "
             "ctx = d._resolve_build_context_dir(); "
             "print(ctx or ''); "
-            "raise SystemExit(0 if ctx else 1)",
-        ]
+            "raise SystemExit(0 if ctx else 1)"
+        )
+        docker_run_args = [*docker_run_base, "python3", "-c", probe]
 
         result = subprocess.run(docker_run_args, capture_output=True, text=True, timeout=60)
         self.assertEqual(
-            result.returncode, 0,
+            result.returncode,
+            0,
             "DockerDriver._resolve_build_context_dir() found no build context using the real "
             "docker-compose.yml 'autoscaler' service mounts -- this reproduces the 2026-09-22 "
             "outage where every Docker-routed job stayed queued forever because the golden "
-            f"runner image could never be auto-built.\nstdout={result.stdout!r} stderr={result.stderr!r}"
+            f"runner image could never be auto-built.\nstdout={result.stdout!r} stderr={result.stderr!r}",
         )
         resolved_path = result.stdout.strip()
         self.assertTrue(resolved_path, "resolver reported success but printed no path")
 
         for required_file in ("Dockerfile", "provision-toolchain.sh", "start.sh"):
-            check_args = docker_run_base + ["test", "-f", os.path.join(resolved_path, required_file)]
+            check_args = [*docker_run_base, "test", "-f", os.path.join(resolved_path, required_file)]
             check = subprocess.run(check_args, capture_output=True, text=True, timeout=30)
             self.assertEqual(
-                check.returncode, 0,
+                check.returncode,
+                0,
                 f"resolved build context '{resolved_path}' is missing required file '{required_file}'",
             )
 

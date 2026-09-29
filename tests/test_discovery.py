@@ -21,7 +21,7 @@ class TestDiscovery(unittest.TestCase):
                 {"full_name": "other/active-2", "archived": False, "pushed_at": "2099-01-01T00:00:00Z"},
                 {"full_name": "el-j/archived", "archived": True, "pushed_at": "2099-01-01T00:00:00Z"},
             ],
-            []  # Page 2 empty
+            [],  # Page 2 empty
         ]
         repos = discover_repositories(owner="el-j", active_days=60, auto_discover=True, access_token="token")
         self.assertEqual(repos, ["el-j/active-1"])
@@ -61,10 +61,7 @@ class TestDiscovery(unittest.TestCase):
     def test_auto_discover_continues_to_next_page_on_full_page(self, mock_gh):
         # A first page with exactly 100 items (a full page, none triggering
         # the cutoff) must continue on to page 2 rather than stopping.
-        full_page = [
-            {"full_name": f"el-j/repo-{i}", "archived": False, "pushed_at": "2099-01-01T00:00:00Z"}
-            for i in range(100)
-        ]
+        full_page = [{"full_name": f"el-j/repo-{i}", "archived": False, "pushed_at": "2099-01-01T00:00:00Z"} for i in range(100)]
         mock_gh.side_effect = [full_page, []]
         repos = discover_repositories(owner="el-j", active_days=60, auto_discover=True, access_token="token")
         self.assertEqual(len(repos), 100)

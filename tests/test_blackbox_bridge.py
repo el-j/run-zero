@@ -85,8 +85,13 @@ class TestVMBridgeBlackboxContract(unittest.TestCase):
         mock_driver = MagicMock()
         mock_driver.list_runners.return_value = [
             RunnerInfo(
-                id="vm-contract-1", name="vm-contract-1", status="running", state="running",
-                target_repo="owner/repo", target_arch="arm64", backend="orbstack-vm",
+                id="vm-contract-1",
+                name="vm-contract-1",
+                status="running",
+                state="running",
+                target_repo="owner/repo",
+                target_arch="arm64",
+                backend="orbstack-vm",
             )
         ]
         mock_get_driver.return_value = mock_driver
@@ -128,8 +133,13 @@ class TestVMBridgeBlackboxContract(unittest.TestCase):
         mock_get_driver.return_value = mock_driver
 
         runner = {
-            "id": "vm-1", "name": "vm-1", "status": "exited", "state": "exited",
-            "target_repo": "o/r", "target_arch": "arm64", "backend": "orbstack-vm",
+            "id": "vm-1",
+            "name": "vm-1",
+            "status": "exited",
+            "state": "exited",
+            "target_repo": "o/r",
+            "target_arch": "arm64",
+            "backend": "orbstack-vm",
         }
         with self._post("/api/drivers/orbstack-vm/prune", {"runners": [runner]}) as resp:
             self.assertEqual(resp.status, 200)
@@ -265,10 +275,7 @@ class TestVMBridgeSignalHandlingRealProcess(unittest.TestCase):
             except subprocess.TimeoutExpired:
                 proc.kill()
                 proc.wait(timeout=5.0)
-                self.fail(
-                    "bridge subprocess did not exit within 5s of SIGTERM -- "
-                    "it deadlocked in shutdown (the same-thread stop() bug)"
-                )
+                self.fail("bridge subprocess did not exit within 5s of SIGTERM -- it deadlocked in shutdown (the same-thread stop() bug)")
             self.assertEqual(returncode, 0)
         finally:
             if proc.poll() is None:

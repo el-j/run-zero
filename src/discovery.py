@@ -2,19 +2,22 @@
 Repository auto-discovery with activity date cutoffs and owner filtering.
 """
 
-from datetime import datetime, timedelta, timezone
-from typing import List, Optional
+from datetime import UTC, datetime, timedelta
 
 from github_api import github_request
 
 
+def _parse_timestamp(value: str) -> datetime | None:
+    """Parse a GitHub ISO-8601 timestamp (``...Z``), returning None when it is malformed."""
+    try:
+        return datetime.fromisoformat(value.replace("Z", "+00:00"))
+    except (TypeError, ValueError, AttributeError):
+        return None
+
+
 def discover_repositories(
-    owner: str = "",
-    active_days: int = 60,
-    auto_discover: bool = True,
-    repos_config: str = "",
-    access_token: Optional[str] = None
-) -> List[str]:
+    owner: str = "", active_days: int = 60, auto_discover: bool = True, repos_config: str = "", access_token: str | None = None
+) -> list[str]:
     """Discover list of active repositories to monitor."""
     repos = set()
 
@@ -23,16 +26,13 @@ def discover_repositories(
             r = r.strip()
             if r:
                 repos.add(r)
-        return sorted(list(repos))
+        return sorted(repos)
 
     if auto_discover and access_token:
-        cutoff_date = datetime.now(timezone.utc) - timedelta(days=active_days)
+        cutoff_date = datetime.now(UTC) - timedelta(days=active_days)
         page = 1
         while True:
-            data = github_request(
-                f"/user/repos?per_page=100&affiliation=owner&sort=pushed&direction=desc&page={page}",
-                access_token=access_token
-            )
+            data = github_request(f"/user/repos?per_page=100&affiliation=owner&sort=pushed&direction=desc&page={page}", access_token=access_token)
             if not isinstance(data, list) or not data:
                 break
 
@@ -47,13 +47,12 @@ def discover_repositories(
 
                 pushed_at_str = item.get("pushed_at")
                 if pushed_at_str:
-                    try:
-                        pushed_at = datetime.fromisoformat(pushed_at_str.replace("Z", "+00:00"))
-                        if pushed_at < cutoff_date:
-                            stop_pagination = True
-                            break
-                    except Exception:
-                        pass
+                    pushed_at = _parse_timestamp(pushed_at_str)
+                    # An unparseable timestamp keeps the repo (fail open): dropping a repo
+                    # silently would stop its queued jobs from ever being scaled for.
+                    if pushed_at is not None and pushed_at < cutoff_date:
+                        stop_pagination = True
+                        break
 
                 repos.add(full_name)
 
@@ -61,4 +60,4 @@ def discover_repositories(
                 break
             page += 1
 
-    return sorted(list(repos))
+    return sorted(repos)

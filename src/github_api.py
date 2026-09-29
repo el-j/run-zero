@@ -34,6 +34,8 @@ def _update_rate_limit_from_headers(headers: Any) -> None:
     if not headers or "x-ratelimit-remaining" not in headers:
         return
 
+    # Malformed header values stop the update at the first bad field (earlier fields are kept),
+    # matching GitHub's own all-or-nothing header set in practice.
     try:
         rate_limit_remaining = int(headers["x-ratelimit-remaining"])
         if "x-ratelimit-limit" in headers:
@@ -44,8 +46,8 @@ def _update_rate_limit_from_headers(headers: Any) -> None:
             rate_limit_resource = str(headers["x-ratelimit-resource"])
         if "x-ratelimit-reset" in headers:
             rate_limit_reset = int(headers["x-ratelimit-reset"])
-    except Exception:
-        pass
+    except (TypeError, ValueError):
+        return
 
 
 def _update_rate_limit_from_payload(payload: Any) -> None:
@@ -84,8 +86,8 @@ def _update_rate_limit_from_payload(payload: Any) -> None:
             rate_limit_reset = int(resource_data["reset"])
         if resource_key:
             rate_limit_resource = resource_key
-    except Exception:
-        pass
+    except (TypeError, ValueError):
+        return
 
 
 def refresh_rate_limit(access_token: str | None = None) -> bool:
@@ -224,23 +226,18 @@ def github_request(endpoint: str, access_token: str | None = None, method: str =
     except urllib.error.HTTPError as e:
         _update_rate_limit_from_headers(e.headers or {})
         if e.code in (401, 403) and rate_limit_remaining == 0:
-            if rate_limit_reset:
-                reset_time = time.strftime('%Y-%m-%d %H:%M:%S UTC', time.gmtime(rate_limit_reset))
-            else:
-                reset_time = "unknown"
+            reset_time = time.strftime("%Y-%m-%d %H:%M:%S UTC", time.gmtime(rate_limit_reset)) if rate_limit_reset else "unknown"
             limit_text = str(rate_limit_total) if rate_limit_total is not None else "unknown"
             print(f"[Autoscaler:API] ❌ Rate limit exceeded (0/{limit_text} remaining). Resets at {reset_time}.")
         elif e.code != 404:
             print(f"[Autoscaler:API] HTTP Error {e.code} for {endpoint}: {e.reason}")
         return None
-    except Exception as e:  # noqa: BLE001
+    except Exception as e:
         print(f"[Autoscaler:API] Connection error for {endpoint}: {e}")
         return None
 
 
-def get_workflow_text_for_run(
-    repo_full_name: str, run_id: int, access_token: str | None = None
-) -> str | None:
+def get_workflow_text_for_run(repo_full_name: str, run_id: int, access_token: str | None = None) -> str | None:
     """Fetch the raw workflow YAML that produced a given run, at the exact
     commit it ran against. Returns None (and caches the miss) if the run,
     its workflow path, or the file content can't be resolved -- callers
@@ -255,9 +252,7 @@ def get_workflow_text_for_run(
     head_sha = run_data.get("head_sha") if isinstance(run_data, dict) else None
 
     if path and head_sha:
-        contents = github_request(
-            f"/repos/{repo_full_name}/contents/{path}?ref={head_sha}", access_token=access_token
-        )
+        contents = github_request(f"/repos/{repo_full_name}/contents/{path}?ref={head_sha}", access_token=access_token)
         if isinstance(contents, dict) and contents.get("encoding") == "base64" and contents.get("content"):
             try:
                 text = base64.b64decode(contents["content"]).decode("utf-8")
@@ -295,10 +290,7 @@ def get_queued_job_details(repo_full_name: str, access_token: str | None = None)
         # never be assigned to us) still causes a container/VM spawn
         # that then sits registered and idle forever, since GitHub
         # dispatches it to its own hosted fleet instead.
-        qualifying_jobs = [
-            job for job in jobs_data["jobs"]
-            if job.get("status") == "queued" and "self-hosted" in job.get("labels", [])
-        ]
+        qualifying_jobs = [job for job in jobs_data["jobs"] if job.get("status") == "queued" and "self-hosted" in job.get("labels", [])]
         if not qualifying_jobs:
             continue
 
@@ -307,34 +299,29 @@ def get_queued_job_details(repo_full_name: str, access_token: str | None = None)
         workflow_text = get_workflow_text_for_run(repo_full_name, run_id, access_token=access_token)
 
         for job in qualifying_jobs:
-            declares_services = (
-                job_uses_services_or_container(workflow_text, job.get("name", ""))
-                if workflow_text is not None else None
+            declares_services = job_uses_services_or_container(workflow_text, job.get("name", "")) if workflow_text is not None else None
+            detailed_jobs.append(
+                {
+                    "id": job.get("id"),
+                    "name": job.get("name", ""),
+                    "run_id": run_id,
+                    # The workflow FILE path (e.g. ".github/workflows/ci.yml"), stable across every
+                    # run of this workflow -- unlike run_id/id, which are unique per execution and
+                    # therefore useless as a cache scope key (see build_cache_scope() in
+                    # autoscaler.py: it's combined with the job name for a stable, reusable
+                    # per-job build-cache directory instead of one that's thrown away every run).
+                    "workflow_path": run.get("path", ""),
+                    "job_url": job.get("html_url")
+                    or (f"https://github.com/{repo_full_name}/actions/runs/{run_id}/job/{job.get('id')}" if run_id and job.get("id") else ""),
+                    "run_url": run.get("html_url") or (f"https://github.com/{repo_full_name}/actions/runs/{run_id}" if run_id else ""),
+                    "labels": job.get("labels", []),
+                    "head_branch": run.get("head_branch", ""),
+                    "event": run.get("event", ""),
+                    # True/False when the workflow file could be located and
+                    # parsed and the job matched by name; None ("unknown") if
+                    # not -- router.py must fall back to its name/label
+                    # heuristic rather than treat None as "no services".
+                    "declares_services": declares_services,
+                }
             )
-            detailed_jobs.append({
-                "id": job.get("id"),
-                "name": job.get("name", ""),
-                "run_id": run_id,
-                # The workflow FILE path (e.g. ".github/workflows/ci.yml"), stable across every
-                # run of this workflow -- unlike run_id/id, which are unique per execution and
-                # therefore useless as a cache scope key (see build_cache_scope() in
-                # autoscaler.py: it's combined with the job name for a stable, reusable
-                # per-job build-cache directory instead of one that's thrown away every run).
-                "workflow_path": run.get("path", ""),
-                "job_url": job.get("html_url") or (
-                    f"https://github.com/{repo_full_name}/actions/runs/{run_id}/job/{job.get('id')}"
-                    if run_id and job.get("id") else ""
-                ),
-                "run_url": run.get("html_url") or (
-                    f"https://github.com/{repo_full_name}/actions/runs/{run_id}" if run_id else ""
-                ),
-                "labels": job.get("labels", []),
-                "head_branch": run.get("head_branch", ""),
-                "event": run.get("event", ""),
-                # True/False when the workflow file could be located and
-                # parsed and the job matched by name; None ("unknown") if
-                # not -- router.py must fall back to its name/label
-                # heuristic rather than treat None as "no services".
-                "declares_services": declares_services,
-            })
     return detailed_jobs

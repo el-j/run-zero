@@ -138,6 +138,7 @@ class TestDashboardBlackboxContract(unittest.TestCase):
         # touches a real host package cache.
         import shutil
         import tempfile
+
         temp_cache = tempfile.mkdtemp(prefix="runzero-blackbox-cache-")
         self.addCleanup(shutil.rmtree, temp_cache, True)
         original_cache_dir = dashboard_state.cache_dir

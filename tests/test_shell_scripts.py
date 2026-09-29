@@ -91,8 +91,7 @@ class TestShellScripts(unittest.TestCase):
         self.assertEqual(
             fallback_dirs,
             expected_dirs,
-            "start.sh's CACHE_DIRS fallback has drifted from cache_manager.init_cache_dirs() "
-            "mount destinations — update start.sh to match.",
+            "start.sh's CACHE_DIRS fallback has drifted from cache_manager.init_cache_dirs() mount destinations — update start.sh to match.",
         )
 
 

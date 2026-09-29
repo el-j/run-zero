@@ -10,7 +10,6 @@ import subprocess
 import sys
 import time
 import uuid
-from typing import Dict, List, Optional
 
 from . import RunnerDriver, RunnerInfo
 
@@ -21,7 +20,7 @@ class WSL2Driver(RunnerDriver):
     def __init__(self, distro_base: str = "Ubuntu-24.04"):
         """Configure which WSL distro to run jobs in (falls back to the WSL_DISTRO_BASE env var)."""
         self.distro_base = os.getenv("WSL_DISTRO_BASE", distro_base)
-        self._runner_created_at: Dict[str, float] = {}
+        self._runner_created_at: dict[str, float] = {}
 
     def name(self) -> str:
         """Return this driver's backend identifier: "wsl2"."""
@@ -39,15 +38,15 @@ class WSL2Driver(RunnerDriver):
 
     def spawn_runner(
         self,
-        repo: Optional[str] = None,
-        org: Optional[str] = None,
+        repo: str | None = None,
+        org: str | None = None,
         arch: str = "x64",
-        labels: Optional[str] = None,
-        access_token: Optional[str] = None,
-        cache_mounts: Optional[Dict[str, str]] = None,
+        labels: str | None = None,
+        access_token: str | None = None,
+        cache_mounts: dict[str, str] | None = None,
         proxies_enabled: bool = True,
-        extra_env: Optional[Dict[str, str]] = None
-    ) -> Optional[str]:
+        extra_env: dict[str, str] | None = None,
+    ) -> str | None:
         """Launch `run.sh` inside `distro_base` as a detached background process and return its name.
 
         Unlike the VM drivers, this doesn't create a new WSL instance per runner -- it runs directly
@@ -84,16 +83,26 @@ CARGOCFG
         print(f"[Autoscaler:WSL2] 🚀 Spawning ephemeral WSL2 runner '{instance_name}' for {repo or org} with caching proxies...")
 
         try:
-            cmd = ["wsl", "-d", self.distro_base, "-u", "runner", "--", "bash", "-c", f"""
+            cmd = [
+                "wsl",
+                "-d",
+                self.distro_base,
+                "-u",
+                "runner",
+                "--",
+                "bash",
+                "-c",
+                f"""
 {proxy_env_block}
 export ACCESS_TOKEN="{access_token}"
 export RUNNER_NAME="{instance_name}"
 export RUNNER_LABELS="{runner_labels}"
 export EPHEMERAL="true"
-export REPO="{repo or ''}"
-export ORG="{org or ''}"
+export REPO="{repo or ""}"
+export ORG="{org or ""}"
 cd /home/runner/actions-runner && ./run.sh --unattended --ephemeral --name "{instance_name}" --labels "{runner_labels}"
-"""]
+""",
+            ]
             subprocess.Popen(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
             self._runner_created_at[instance_name] = time.time()
             return instance_name
@@ -102,7 +111,7 @@ cd /home/runner/actions-runner && ./run.sh --unattended --ephemeral --name "{ins
             print(f"[Autoscaler:WSL2] Error launching WSL runner: {e}", file=sys.stderr)
             return None
 
-    def list_runners(self) -> List[RunnerInfo]:
+    def list_runners(self) -> list[RunnerInfo]:
         """List registered WSL distro names (via `wsl --list --quiet`) starting with "runzero-wsl".
 
         Returns an empty list (silently) if the `wsl --list` call itself fails.
@@ -112,24 +121,26 @@ cd /home/runner/actions-runner && ./run.sh --unattended --ephemeral --name "{ins
             runners = []
             for line in res.stdout.strip().split("\n"):
                 name = line.strip().replace("\x00", "")
-                if name.startswith("runzero-wsl-") or name.startswith("runzero-wsl"):
+                if name.startswith(("runzero-wsl-", "runzero-wsl")):
                     if name not in self._runner_created_at:
                         self._runner_created_at[name] = time.time()
-                    runners.append(RunnerInfo(
-                        id=name,
-                        status="running",
-                        name=name,
-                        state="running",
-                        target_repo="",
-                        target_arch="x64",
-                        backend="wsl2",
-                        created_at=self._runner_created_at.get(name)
-                    ))
+                    runners.append(
+                        RunnerInfo(
+                            id=name,
+                            status="running",
+                            name=name,
+                            state="running",
+                            target_repo="",
+                            target_arch="x64",
+                            backend="wsl2",
+                            created_at=self._runner_created_at.get(name),
+                        )
+                    )
             return runners
         except Exception:
             return []
 
-    def prune_exited(self, runners: List[RunnerInfo]) -> None:
+    def prune_exited(self, runners: list[RunnerInfo]) -> None:
         """Terminate any `runners` entries that are WSL2-backed and in "exited"/"stopped"/"dead" state."""
         for r in runners:
             if r.backend == "wsl2" and r.state in ("exited", "stopped", "dead"):

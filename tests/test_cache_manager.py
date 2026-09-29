@@ -35,8 +35,8 @@ class TestCacheManager(unittest.TestCase):
         self.assertIn(os.path.join(self.temp_dir, "npm"), mounts_2)
 
         # Build caches are completely isolated under build-cache/<scope>/go-build
-        go_build_1 = [k for k, v in mounts_1.items() if v == "/home/runner/.cache/go-build"][0]
-        go_build_2 = [k for k, v in mounts_2.items() if v == "/home/runner/.cache/go-build"][0]
+        go_build_1 = next(k for k, v in mounts_1.items() if v == "/home/runner/.cache/go-build")
+        go_build_2 = next(k for k, v in mounts_2.items() if v == "/home/runner/.cache/go-build")
         self.assertNotEqual(go_build_1, go_build_2)
         self.assertIn("el-j_herbful_1001_jobA", go_build_1)
         self.assertIn("el-j_herbful_1002_jobB", go_build_2)
@@ -45,7 +45,7 @@ class TestCacheManager(unittest.TestCase):
 
     def test_clean_build_cache(self):
         mounts = init_cache_dirs(self.temp_dir, "arm64", cache_enabled=True, scope="test-scope")
-        go_build_dir = [k for k, v in mounts.items() if v == "/home/runner/.cache/go-build"][0]
+        go_build_dir = next(k for k, v in mounts.items() if v == "/home/runner/.cache/go-build")
 
         # Write dummy files and directories inside go-build
         sub_dir = os.path.join(go_build_dir, "0a")

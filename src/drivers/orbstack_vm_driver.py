@@ -7,6 +7,7 @@ and real host-backed local disk caches via OrbStack's automatic /mnt/mac filesys
 (see `orbstack_templates.cache_mount_snippet()`).
 """
 
+import contextlib
 import json
 import os
 import shutil
@@ -15,7 +16,6 @@ import sys
 import threading
 import time
 import uuid
-from typing import Dict, List, Optional
 
 from . import ImageEventCallback, RunnerDriver, RunnerInfo
 from .orbstack_templates import (
@@ -43,7 +43,7 @@ MAX_CONSECUTIVE_FAST_FAILURES = 3
 _ULID_ALPHABET_INDEX = {c: i for i, c in enumerate("0123456789ABCDEFGHJKMNPQRSTVWXYZ")}
 
 
-def _vm_created_at_from_ulid(vm_id: str) -> Optional[float]:
+def _vm_created_at_from_ulid(vm_id: str) -> float | None:
     """Decode the creation time OrbStack itself baked into a VM's `id`, as Unix epoch seconds.
 
     `orbctl list --format json` doesn't expose a created-at field directly, but the `id`
@@ -86,7 +86,7 @@ def _vm_created_at_from_ulid(vm_id: str) -> Optional[float]:
 class OrbStackVMDriver(RunnerDriver):
     """Runs ephemeral runners as dedicated OrbStack Linux VMs, cloned per-job from a golden base image."""
 
-    def __init__(self, distro: str = "ubuntu:24.04", on_image_event: Optional[ImageEventCallback] = None):
+    def __init__(self, distro: str = "ubuntu:24.04", on_image_event: ImageEventCallback | None = None):
         """Configure the base distro golden images are built from, and init per-arch build/tracking state.
 
         `on_image_event`, when given, is called with a structured dict on every golden base
@@ -108,8 +108,7 @@ class OrbStackVMDriver(RunnerDriver):
         self.runner_memory = os.getenv("RUNNER_MEMORY") or None
         self._on_image_event: ImageEventCallback = on_image_event or (lambda event: None)
         self._provision_script_path = os.path.join(
-            os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))),
-            "docker", "provision-toolchain.sh"
+            os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))), "docker", "provision-toolchain.sh"
         )
         # main()'s poll loop is single-threaded and synchronous -- a golden-image
         # build blocking in-line here used to freeze the ENTIRE autoscaler (every
@@ -131,15 +130,15 @@ class OrbStackVMDriver(RunnerDriver):
         # delete the half-built staging VM, recreate it, fail identically,
         # repeat -- burning CPU/OrbStack-daemon load with zero chance of
         # success and no operator-visible signal that this isn't self-healing.
-        self._build_failure_counts: Dict[str, int] = {}
-        self._build_retry_after: Dict[str, float] = {}
+        self._build_failure_counts: dict[str, int] = {}
+        self._build_retry_after: dict[str, float] = {}
         # Same backoff idea as _build_failure_counts/_build_retry_after above, but for
         # a different failure mode: `orbctl clone` (not `orbctl create`) succeeding, then
         # the clone itself never getting a network address -- see _record_spawn_outcome().
-        self._spawn_failure_counts: Dict[str, int] = {}
-        self._spawn_retry_after: Dict[str, float] = {}
-        self._runner_created_at: Dict[str, float] = {}
-        self._runner_repos: Dict[str, str] = {}
+        self._spawn_failure_counts: dict[str, int] = {}
+        self._spawn_retry_after: dict[str, float] = {}
+        self._runner_created_at: dict[str, float] = {}
+        self._runner_repos: dict[str, str] = {}
         # Tracks the most recently started background build thread per arch
         # (see _build_base_image_async below). Exists so callers -- mainly
         # tests -- can deterministically wait for a driver-owned background
@@ -149,24 +148,24 @@ class OrbStackVMDriver(RunnerDriver):
         # test's mock.patch context stops seeing the test's mocked
         # subprocess.run and starts issuing REAL orbctl/orb calls against a
         # real OrbStack daemon, if one is installed).
-        self._build_threads: Dict[str, threading.Thread] = {}
+        self._build_threads: dict[str, threading.Thread] = {}
 
-    def _report_image_event(self, status: str, arch: str, detail: str, profile: Optional[str] = None) -> None:
+    def _report_image_event(self, status: str, arch: str, detail: str, profile: str | None = None) -> None:
         """Emit a structured build-status event alongside the existing stdout/stderr prints.
 
         Never raises -- a broken/misbehaving callback must not be able to break an actual build.
         """
-        try:
-            self._on_image_event({
-                "driver": self.name(),
-                "arch": arch,
-                "profile": profile,
-                "status": status,
-                "detail": detail,
-                "ts": time.time(),
-            })
-        except Exception:
-            pass
+        with contextlib.suppress(Exception):
+            self._on_image_event(
+                {
+                    "driver": self.name(),
+                    "arch": arch,
+                    "profile": profile,
+                    "status": status,
+                    "detail": detail,
+                    "ts": time.time(),
+                }
+            )
 
     def name(self) -> str:
         """Return this driver's backend identifier: "orbstack-vm"."""
@@ -187,19 +186,17 @@ class OrbStackVMDriver(RunnerDriver):
         """Return the golden base image's VM name for a given OrbStack arch (e.g. "arm64" -> "runzero-vm-base-arm64")."""
         return f"{BASE_IMAGE_PREFIX}{orb_arch}"
 
-    def _list_vm_names(self) -> List[str]:
+    def _list_vm_names(self) -> list[str]:
         # Retried because a single transient "orbctl list" failure (CLI busy while
         # another orbctl/orb command is mid-flight, momentary daemon hiccup, etc.)
         # used to be indistinguishable from "no VMs exist at all". That false
         # negative fed straight into base_image_exists() -> False, which triggered
         # build_base_image() to unconditionally `orbctl delete -f` and rebuild a
         # perfectly healthy golden image from scratch (confirmed happening live).
-        last_err: Optional[Exception] = None
+        last_err: Exception | None = None
         for attempt in range(3):
             try:
-                res = subprocess.run(
-                    ["orbctl", "list", "--format", "json"], capture_output=True, text=True, check=True, timeout=5
-                )
+                res = subprocess.run(["orbctl", "list", "--format", "json"], capture_output=True, text=True, check=True, timeout=5)
                 vms = json.loads(res.stdout or "[]")
                 return [vm.get("name", "") for vm in vms]
             except Exception as e:
@@ -227,10 +224,7 @@ class OrbStackVMDriver(RunnerDriver):
             with self._building_lock:
                 being_built = orb_arch in self._building_arches
             if not being_built and self._is_staging_provisioned(staging_name):
-                print(
-                    f"[Autoscaler:OrbStack-VM] Found fully provisioned staging VM '{staging_name}' "
-                    f"-- promoting to golden base image '{base_name}'..."
-                )
+                print(f"[Autoscaler:OrbStack-VM] Found fully provisioned staging VM '{staging_name}' -- promoting to golden base image '{base_name}'...")
                 if self._promote_staging_to_base(staging_name, base_name):
                     return True
 
@@ -241,10 +235,17 @@ class OrbStackVMDriver(RunnerDriver):
         try:
             res = subprocess.run(
                 [
-                    "orb", "-m", staging_name, "-u", "runner", "bash", "-c",
-                    "test -f /home/runner/actions-runner/run.sh || grep -q 'Base image provisioning complete' /home/runner/provision.log 2>/dev/null"
+                    "orb",
+                    "-m",
+                    staging_name,
+                    "-u",
+                    "runner",
+                    "bash",
+                    "-c",
+                    "test -f /home/runner/actions-runner/run.sh || grep -q 'Base image provisioning complete' /home/runner/provision.log 2>/dev/null",
                 ],
-                capture_output=True, timeout=25
+                capture_output=True,
+                timeout=25,
             )
             return res.returncode == 0
         except Exception:
@@ -276,21 +277,14 @@ class OrbStackVMDriver(RunnerDriver):
             print(f"[Autoscaler:OrbStack-VM] ✅ Successfully promoted '{staging_name}' to '{base_name}' via clone fallback.")
             return True
 
-        print(
-            f"[Autoscaler:OrbStack-VM] Error: Failed to promote '{staging_name}' to '{base_name}' "
-            f"after rename attempts and clone fallback.",
-            file=sys.stderr
-        )
+        print(f"[Autoscaler:OrbStack-VM] Error: Failed to promote '{staging_name}' to '{base_name}' after rename attempts and clone fallback.", file=sys.stderr)
         return False
 
-    def _read_provision_script(self) -> Optional[str]:
+    def _read_provision_script(self) -> str | None:
         if not os.path.isfile(self._provision_script_path):
-            print(
-                f"[Autoscaler:OrbStack-VM] Error: shared provisioning script not found at "
-                f"{self._provision_script_path}", file=sys.stderr
-            )
+            print(f"[Autoscaler:OrbStack-VM] Error: shared provisioning script not found at {self._provision_script_path}", file=sys.stderr)
             return None
-        with open(self._provision_script_path, "r") as f:
+        with open(self._provision_script_path) as f:
             return f.read()
 
     def build_base_image(self, orb_arch: str) -> bool:
@@ -307,20 +301,14 @@ class OrbStackVMDriver(RunnerDriver):
 
         base_name = self.base_image_name(orb_arch)
         if self.base_image_exists(orb_arch):
-            print(
-                f"[Autoscaler:OrbStack-VM] Golden base image '{base_name}' already exists -- "
-                f"skipping build to avoid destroying a working image."
-            )
+            print(f"[Autoscaler:OrbStack-VM] Golden base image '{base_name}' already exists -- skipping build to avoid destroying a working image.")
             self._report_image_event("ready", orb_arch, "Already built -- skipping.")
             return True
 
         staging_name = f"{base_name}-building"
         # If staging_name already exists and completed provisioning, promote it immediately
         if staging_name in self._list_vm_names() and self._is_staging_provisioned(staging_name):
-            print(
-                f"[Autoscaler:OrbStack-VM] Staging VM '{staging_name}' already completed provisioning "
-                f"-- promoting directly to '{base_name}'."
-            )
+            print(f"[Autoscaler:OrbStack-VM] Staging VM '{staging_name}' already completed provisioning -- promoting directly to '{base_name}'.")
             if self._promote_staging_to_base(staging_name, base_name):
                 self._report_image_event("ready", orb_arch, "Promoted completed staging VM.")
                 return True
@@ -359,15 +347,9 @@ set -- "{orb_arch}"
 echo "Base image provisioning complete."
 """
         try:
-            result = subprocess.run(
-                ["orb", "-m", staging_name, "-u", "runner", "bash", "-c", full_script],
-                capture_output=True, timeout=1800
-            )
+            result = subprocess.run(["orb", "-m", staging_name, "-u", "runner", "bash", "-c", full_script], capture_output=True, timeout=1800)
             if result.returncode != 0:
-                detail = (
-                    f"Base image provisioning failed (exit {result.returncode}). Check "
-                    f"/home/runner/provision.log inside '{staging_name}' for details."
-                )
+                detail = f"Base image provisioning failed (exit {result.returncode}). Check /home/runner/provision.log inside '{staging_name}' for details."
                 print(f"[Autoscaler:OrbStack-VM] {detail}", file=sys.stderr)
                 self._report_image_event("failed", orb_arch, detail)
                 return False
@@ -390,25 +372,23 @@ echo "Base image provisioning complete."
         times. A fire-and-forget `orbctl stop` here previously left the golden
         image running indefinitely -- burning host CPU/RAM for a VM that
         nothing was using -- any time the stop command didn't land cleanly."""
-        for attempt in range(3):
+        for _attempt in range(3):
             subprocess.run(["orbctl", "stop", vm_name], capture_output=True)
             for _ in range(10):
-                names_and_states = {}
                 try:
-                    res = subprocess.run(
-                        ["orbctl", "list", "--format", "json"], capture_output=True, text=True, check=True
-                    )
-                    for vm in json.loads(res.stdout or "[]"):
-                        names_and_states[vm.get("name", "")] = vm.get("state", "")
-                except Exception:
-                    pass
+                    res = subprocess.run(["orbctl", "list", "--format", "json"], capture_output=True, text=True, check=True)
+                    names_and_states = {vm.get("name", ""): vm.get("state", "") for vm in json.loads(res.stdout or "[]")}
+                except (subprocess.CalledProcessError, OSError, ValueError, AttributeError):
+                    # Listing failed: we can't tell whether the VM stopped, so don't claim it did.
+                    time.sleep(1)
+                    continue
                 if names_and_states.get(vm_name, "stopped") == "stopped":
                     return True
                 time.sleep(1)
         print(
             f"[Autoscaler:OrbStack-VM] Warning: '{vm_name}' did not confirm stopped after "
             f"repeated attempts -- it may still be running and consuming host resources.",
-            file=sys.stderr
+            file=sys.stderr,
         )
         return False
 
@@ -425,7 +405,7 @@ echo "Base image provisioning complete."
             if not name.startswith(BASE_IMAGE_PREFIX):
                 continue
             is_building_suffix = name.endswith("-building")
-            orb_arch = name[len(BASE_IMAGE_PREFIX):].removesuffix("-building")
+            orb_arch = name[len(BASE_IMAGE_PREFIX) :].removesuffix("-building")
             with self._building_lock:
                 being_built = orb_arch in self._building_arches
             if being_built:
@@ -453,16 +433,10 @@ echo "Base image provisioning complete."
                     # was ALREADY running (not woken by our own probe), so the
                     # exec call below can't itself cause the oscillation above.
                     if self._is_staging_provisioned(name):
-                        print(
-                            f"[Autoscaler:OrbStack-VM] Idle staging VM '{name}' is already provisioned -- "
-                            f"promoting to '{base_name}'."
-                        )
+                        print(f"[Autoscaler:OrbStack-VM] Idle staging VM '{name}' is already provisioned -- promoting to '{base_name}'.")
                         self._promote_staging_to_base(name, base_name)
                     else:
-                        print(
-                            f"[Autoscaler:OrbStack-VM] Golden base image '{name}' is running idle -- "
-                            f"stopping it to free host resources for job VMs."
-                        )
+                        print(f"[Autoscaler:OrbStack-VM] Golden base image '{name}' is running idle -- stopping it to free host resources for job VMs.")
                         self._stop_vm(name)
                 else:
                     # Stopped, and no live builder in this process is tracking
@@ -472,18 +446,12 @@ echo "Base image provisioning complete."
                     # re-provisioning cleanly from scratch. Dedup'd and
                     # backoff-gated the same as any other build trigger, so
                     # this can't hot-loop even if the resume keeps failing.
-                    print(
-                        f"[Autoscaler:OrbStack-VM] Found orphaned staging VM '{name}' with no active "
-                        f"builder in this process -- resuming its build."
-                    )
+                    print(f"[Autoscaler:OrbStack-VM] Found orphaned staging VM '{name}' with no active builder in this process -- resuming its build.")
                     self._build_base_image_async(orb_arch)
                 continue
 
             if state == "running":
-                print(
-                    f"[Autoscaler:OrbStack-VM] Golden base image '{name}' is running idle -- "
-                    f"stopping it to free host resources for job VMs."
-                )
+                print(f"[Autoscaler:OrbStack-VM] Golden base image '{name}' is running idle -- stopping it to free host resources for job VMs.")
                 self._stop_vm(name)
 
     def _build_cooldown_remaining(self, orb_arch: str) -> float:
@@ -550,7 +518,7 @@ echo "Base image provisioning complete."
             file=sys.stderr,
         )
 
-    def reset_spawn_cooldown(self, orb_arch: Optional[str] = None) -> None:
+    def reset_spawn_cooldown(self, orb_arch: str | None = None) -> None:
         """Reset the consecutive fast failure counts and cooldown for an arch (or all arches)."""
         arches = [orb_arch] if orb_arch else list(self._spawn_failure_counts.keys())
         for a in arches:
@@ -585,6 +553,10 @@ echo "Base image provisioning complete."
             ok = False
             try:
                 ok = self.build_base_image(orb_arch)
+            except Exception as exc:
+                # A crash counts as a failed build (backoff below). Logging it here keeps
+                # it from escaping as an unhandled thread exception with only a raw traceback.
+                print(f"[Autoscaler:OrbStack-VM] Golden base image build for '{orb_arch}' crashed: {exc}", file=sys.stderr)
             finally:
                 with self._building_lock:
                     self._building_arches.discard(orb_arch)
@@ -604,12 +576,10 @@ echo "Base image provisioning complete."
                             "after long uptime). Verify with a bare `orbctl create -a "
                             f"{orb_arch} ubuntu:24.04 diag-test` outside run-zero before assuming "
                             "this is a run-zero bug."
-                            if failures >= 3 else ""
+                            if failures >= 3
+                            else ""
                         )
-                        detail = (
-                            f"Has now failed {failures} time(s) in a row. Backing off {cooldown}s "
-                            f"before retrying.{hint}"
-                        )
+                        detail = f"Has now failed {failures} time(s) in a row. Backing off {cooldown}s before retrying.{hint}"
                         print(f"[Autoscaler:OrbStack-VM] Golden base image build for '{orb_arch}' {detail}", file=sys.stderr)
                         self._report_image_event("cooldown", orb_arch, detail)
 
@@ -638,10 +608,7 @@ echo "Base image provisioning complete."
             )
             self._build_base_image_async(orb_arch)
         elif already_building:
-            print(
-                f"[Autoscaler:OrbStack-VM] Golden base image '{base_name}' is currently building. "
-                "This queued job will be retried on the next poll."
-            )
+            print(f"[Autoscaler:OrbStack-VM] Golden base image '{base_name}' is currently building. This queued job will be retried on the next poll.")
         else:
             print(
                 f"[Autoscaler:OrbStack-VM] Golden base image '{base_name}' is missing, but build retry is "
@@ -678,15 +645,15 @@ echo "Base image provisioning complete."
 
     def spawn_runner(
         self,
-        repo: Optional[str] = None,
-        org: Optional[str] = None,
+        repo: str | None = None,
+        org: str | None = None,
         arch: str = "arm64",
-        labels: Optional[str] = None,
-        access_token: Optional[str] = None,
-        cache_mounts: Optional[Dict[str, str]] = None,
+        labels: str | None = None,
+        access_token: str | None = None,
+        cache_mounts: dict[str, str] | None = None,
         proxies_enabled: bool = True,
-        extra_env: Optional[Dict[str, str]] = None
-    ) -> Optional[str]:
+        extra_env: dict[str, str] | None = None,
+    ) -> str | None:
         """Clone the golden base image and boot a per-job VM that registers, runs, then self-powers-off.
 
         If the base image for this arch doesn't exist yet, kicks off an async background build
@@ -775,14 +742,9 @@ CARGOCFG
             return None
         base_name = self.base_image_name(orb_arch)
 
-        reg_and_run = registration_and_run_snippet(
-            api_base, runner_url, access_token or "", vm_name, runner_labels, proxy_env_block, cache_mount_block
-        )
+        reg_and_run = registration_and_run_snippet(api_base, runner_url, access_token or "", vm_name, runner_labels, proxy_env_block, cache_mount_block)
 
-        print(
-            f"[Autoscaler:OrbStack-VM] 🚀 Spawning ephemeral [{arch.upper()}] Linux VM '{vm_name}' "
-            f"(cloned from golden image '{base_name}')..."
-        )
+        print(f"[Autoscaler:OrbStack-VM] 🚀 Spawning ephemeral [{arch.upper()}] Linux VM '{vm_name}' (cloned from golden image '{base_name}')...")
         clone_cmd = ["orbctl", "clone", base_name, vm_name]
         setup_script = f"""
 exec > /home/runner/setup.log 2>&1
@@ -806,18 +768,14 @@ set -e
             elif org:
                 self._runner_repos[vm_name] = org
 
-            subprocess.Popen(
-                ["orb", "-m", vm_name, "-u", "runner", "bash", "-c", setup_script],
-                stdout=subprocess.DEVNULL,
-                stderr=subprocess.DEVNULL
-            )
+            subprocess.Popen(["orb", "-m", vm_name, "-u", "runner", "bash", "-c", setup_script], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
             return vm_name
         except subprocess.CalledProcessError as e:
             stderr = e.stderr.decode() if e.stderr else str(e)
             print(f"[Autoscaler:OrbStack-VM] Error creating VM: {stderr}", file=sys.stderr)
             return None
 
-    def list_runners(self) -> List[RunnerInfo]:
+    def list_runners(self) -> list[RunnerInfo]:
         """List job VMs (name starts with the runner prefix, excluding golden base images).
 
         Returns an empty list (and prints to stderr) if the `orbctl list` call itself fails.
@@ -850,21 +808,23 @@ set -e
 
                     target_repo = self._runner_repos.get(name, "")
                     if not target_repo:
-                        name_body = name[len(RUNNER_VM_PREFIX):]
+                        name_body = name[len(RUNNER_VM_PREFIX) :]
                         body_parts = name_body.split("-")
                         if len(body_parts) >= 3:
                             target_repo = "-".join(body_parts[1:-1])
 
-                    runners.append(RunnerInfo(
-                        id=name,
-                        name=name,
-                        status=status,
-                        state=state,
-                        target_repo=target_repo,
-                        target_arch=arch,
-                        backend="orbstack-vm",
-                        created_at=created_at
-                    ))
+                    runners.append(
+                        RunnerInfo(
+                            id=name,
+                            name=name,
+                            status=status,
+                            state=state,
+                            target_repo=target_repo,
+                            target_arch=arch,
+                            backend="orbstack-vm",
+                            created_at=created_at,
+                        )
+                    )
             return runners
         except Exception as e:
             print(f"[Autoscaler:OrbStack-VM] Error listing VMs: {e}", file=sys.stderr)
@@ -878,8 +838,7 @@ set -e
         """
         if runner_id.startswith(BASE_IMAGE_PREFIX):
             print(
-                f"[Autoscaler:OrbStack-VM] Refusing to delete '{runner_id}' -- it looks like a "
-                f"golden base image, not an ephemeral job runner.", file=sys.stderr
+                f"[Autoscaler:OrbStack-VM] Refusing to delete '{runner_id}' -- it looks like a golden base image, not an ephemeral job runner.", file=sys.stderr
             )
             return False
         try:
@@ -890,7 +849,7 @@ set -e
         except Exception:
             return False
 
-    def prune_exited(self, active_runners: List[RunnerInfo]) -> None:
+    def prune_exited(self, active_runners: list[RunnerInfo]) -> None:
         """Delete any `active_runners` entries that are OrbStack-VM-backed and in a stopped state.
 
         Also feeds `_record_spawn_outcome()` (see its docstring) so a run of clones that all die

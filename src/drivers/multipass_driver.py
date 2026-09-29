@@ -12,7 +12,6 @@ import subprocess
 import sys
 import time
 import uuid
-from typing import Dict, List, Optional
 
 from . import RunnerDriver, RunnerInfo
 
@@ -23,7 +22,7 @@ class MultipassDriver(RunnerDriver):
     def __init__(self, image: str = "24.04"):
         """Configure the Multipass base image (falls back to the MULTIPASS_IMAGE env var)."""
         self.image = os.getenv("MULTIPASS_IMAGE", image)
-        self._runner_created_at: Dict[str, float] = {}
+        self._runner_created_at: dict[str, float] = {}
 
     def name(self) -> str:
         """Return this driver's backend identifier: "multipass"."""
@@ -54,15 +53,15 @@ class MultipassDriver(RunnerDriver):
 
     def spawn_runner(
         self,
-        repo: Optional[str] = None,
-        org: Optional[str] = None,
+        repo: str | None = None,
+        org: str | None = None,
         arch: str = "arm64",
-        labels: Optional[str] = None,
-        access_token: Optional[str] = None,
-        cache_mounts: Optional[Dict[str, str]] = None,
+        labels: str | None = None,
+        access_token: str | None = None,
+        cache_mounts: dict[str, str] | None = None,
         proxies_enabled: bool = True,
-        extra_env: Optional[Dict[str, str]] = None
-    ) -> Optional[str]:
+        extra_env: dict[str, str] | None = None,
+    ) -> str | None:
         """Launch a fresh Multipass VM (`multipass launch`) and bootstrap+register the runner inside it.
 
         The launch itself is synchronous; the apt-get/runner-download/registration bootstrap script
@@ -138,18 +137,14 @@ sudo ./bin/installdependencies.sh
 export ACCESS_TOKEN="{access_token}"
 nohup ./run.sh --unattended --ephemeral --name "{vm_name}" --labels "{runner_labels}" > /home/ubuntu/runner.log 2>&1 &
 """
-            subprocess.Popen(
-                ["multipass", "exec", vm_name, "--", "bash", "-c", setup_script],
-                stdout=subprocess.DEVNULL,
-                stderr=subprocess.DEVNULL
-            )
+            subprocess.Popen(["multipass", "exec", vm_name, "--", "bash", "-c", setup_script], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
             return vm_name
 
         except subprocess.CalledProcessError as e:
             print(f"[Autoscaler:Multipass] Error launching VM: {e.stderr.decode()}", file=sys.stderr)
             return None
 
-    def list_runners(self) -> List[RunnerInfo]:
+    def list_runners(self) -> list[RunnerInfo]:
         """List VMs whose name starts with "runzero-mp-" via `multipass list --format json`.
 
         Returns an empty list (silently) if the `multipass list` call itself fails.
@@ -166,21 +161,23 @@ nohup ./run.sh --unattended --ephemeral --name "{vm_name}" --labels "{runner_lab
                     state = "running" if status.lower() == "running" else "exited"
                     if name not in self._runner_created_at:
                         self._runner_created_at[name] = time.time()
-                    runners.append(RunnerInfo(
-                        id=name,
-                        status=status,
-                        name=name,
-                        state=state,
-                        target_repo="",
-                        target_arch="arm64",
-                        backend="multipass",
-                        created_at=self._runner_created_at.get(name)
-                    ))
+                    runners.append(
+                        RunnerInfo(
+                            id=name,
+                            status=status,
+                            name=name,
+                            state=state,
+                            target_repo="",
+                            target_arch="arm64",
+                            backend="multipass",
+                            created_at=self._runner_created_at.get(name),
+                        )
+                    )
             return runners
         except Exception:
             return []
 
-    def prune_exited(self, runners: List[RunnerInfo]) -> None:
+    def prune_exited(self, runners: list[RunnerInfo]) -> None:
         """Delete-and-purge any `runners` entries that are Multipass-backed and in a stopped state."""
         for r in runners:
             if r.backend == "multipass" and r.state in ("exited", "stopped", "dead"):

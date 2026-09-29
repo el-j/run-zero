@@ -163,7 +163,7 @@ def main():
         try:
             dashboard_server = DashboardServer(host=DASHBOARD_HOST, port=DASHBOARD_PORT)
             dashboard_server.start(blocking=False)
-        except Exception as e:  # noqa: BLE001
+        except Exception as e:
             log_print(f"[Autoscaler] Warning: Could not start Dashboard server: {e}", file=sys.stderr)
 
     log_print("=" * 65)
@@ -211,11 +211,7 @@ def main():
         # Refresh tracked repositories periodically
         if not ORG and (now - last_discovery_time > DISCOVERY_INTERVAL or not tracked_repos):
             discovered = discover_repositories(
-                owner=OWNER,
-                active_days=ACTIVE_DAYS,
-                auto_discover=AUTO_DISCOVER,
-                repos_config=REPOS_CONFIG,
-                access_token=ACCESS_TOKEN
+                owner=OWNER, active_days=ACTIVE_DAYS, auto_discover=AUTO_DISCOVER, repos_config=REPOS_CONFIG, access_token=ACCESS_TOKEN
             )
             last_discovery_time = now
             if discovered:
@@ -229,10 +225,7 @@ def main():
                 if quota_remaining is None or quota_total is None:
                     log_print("[Autoscaler] GitHub API Quota remaining: unknown/unknown")
                 else:
-                    log_print(
-                        f"[Autoscaler] GitHub API Quota remaining: "
-                        f"{quota_remaining}/{quota_total} ({quota_resource})"
-                    )
+                    log_print(f"[Autoscaler] GitHub API Quota remaining: {quota_remaining}/{quota_total} ({quota_resource})")
 
             if tracked_repos:
                 reconcile_zombie_runners(tracked_repos, access_token=ACCESS_TOKEN)
@@ -269,18 +262,20 @@ def main():
                         arch=arch,
                         access_token=ACCESS_TOKEN,
                         cache_mounts=init_cache_dirs(HOST_CACHE_DIR, arch, CACHE_ENABLED),
-                        proxies_enabled=PROXIES_ENABLED
+                        proxies_enabled=PROXIES_ENABLED,
                     )
                     if spawned_id:
-                        active_runners.append(RunnerInfo(
-                            id=spawned_id,
-                            name=spawned_id,
-                            status="running",
-                            state="running",
-                            target_repo=ORG,
-                            target_arch=arch,
-                            backend=default_driver.name()
-                        ))
+                        active_runners.append(
+                            RunnerInfo(
+                                id=spawned_id,
+                                name=spawned_id,
+                                status="running",
+                                state="running",
+                                target_repo=ORG,
+                                target_arch=arch,
+                                backend=default_driver.name(),
+                            )
+                        )
         else:
             # For repositories: check queued jobs with hybrid routing
             total_queued = 0
@@ -321,18 +316,21 @@ def main():
                         arch=arch,
                         access_token=ACCESS_TOKEN,
                         cache_mounts=init_cache_dirs(HOST_CACHE_DIR, arch, CACHE_ENABLED, scope=job_scope),
-                        proxies_enabled=PROXIES_ENABLED
+                        proxies_enabled=PROXIES_ENABLED,
                     )
                     effective_driver = driver_to_use
                     if not spawned_id and driver_to_use != default_driver:
-                        log_print(f"[Autoscaler] Driver '{driver_to_use.name()}' could not spawn runner for '{job.get('name')}' -- falling back to '{default_driver.name()}'.")
+                        log_print(
+                            f"[Autoscaler] Driver '{driver_to_use.name()}' could not spawn runner for "
+                            f"'{job.get('name')}' -- falling back to '{default_driver.name()}'."
+                        )
                         if ensure_driver_runtime_assets(default_driver, arch):
                             spawned_id = default_driver.spawn_runner(
                                 repo=repo,
                                 arch=arch,
                                 access_token=ACCESS_TOKEN,
                                 cache_mounts=init_cache_dirs(HOST_CACHE_DIR, arch, CACHE_ENABLED, scope=job_scope),
-                                proxies_enabled=PROXIES_ENABLED
+                                proxies_enabled=PROXIES_ENABLED,
                             )
                             effective_driver = default_driver
 
@@ -344,15 +342,17 @@ def main():
                             "job_url": job.get("job_url", ""),
                             "run_url": job.get("run_url", ""),
                         }
-                        active_runners.append(RunnerInfo(
-                            id=spawned_id,
-                            name=spawned_id,
-                            status="running",
-                            state="running",
-                            target_repo=repo,
-                            target_arch=arch,
-                            backend=effective_driver.name()
-                        ))
+                        active_runners.append(
+                            RunnerInfo(
+                                id=spawned_id,
+                                name=spawned_id,
+                                status="running",
+                                state="running",
+                                target_repo=repo,
+                                target_arch=arch,
+                                backend=effective_driver.name(),
+                            )
+                        )
 
         # Attach best-effort GitHub job links to currently active runner cards.
         current_runner_names = {runner.name for runner in active_runners}
@@ -379,7 +379,7 @@ def main():
             monitored_repos=tracked_repos,
             available_drivers=list(available_drivers),
             default_engine=default_driver.name(),
-            version=__version__
+            version=__version__,
         )
 
         # Sleep before next poll loop

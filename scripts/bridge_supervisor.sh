@@ -115,8 +115,9 @@ pick_python() {
 # breakage.
 render_plist() {
     local python_bin="$1"
+    local env_file="$REPO_DIR/.env"
     PYTHON_BIN="$python_bin" REPO_DIR="$REPO_DIR" LABEL="$LABEL" LOG_FILE="$LOG_FILE" \
-    "$python_bin" - "$REPO_DIR/.env" <<'PYEOF'
+    "$python_bin" - "$env_file" <<'PYEOF'
 import os
 import sys
 from xml.sax.saxutils import escape
@@ -201,7 +202,11 @@ nohup_start() {
         return
     fi
     echo -e "${YELLOW}$reason -- starting Host VM Bridge without crash supervision.${RESET}"
-    set -a; [ -f "$REPO_DIR/.env" ] && . "$REPO_DIR/.env"; set +a
+    set -a
+    # User-provided .env, not part of the repo.
+    # shellcheck source=/dev/null
+    [ -f "$REPO_DIR/.env" ] && . "$REPO_DIR/.env"
+    set +a
     # Must background a plain simple command, not a `cd ... && nohup ...`
     # compound: backgrounding a `&&`-list forces bash to fork a wrapper
     # subshell to run it, and `$!` then captures THAT wrapper's PID -- which

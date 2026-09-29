@@ -2,10 +2,8 @@
 Shell script generation templates for OrbStack Linux VM provisioning.
 """
 
-from typing import Dict, Optional
 
-
-def cache_mount_snippet(cache_mounts: Optional[Dict[str, str]]) -> str:
+def cache_mount_snippet(cache_mounts: dict[str, str] | None) -> str:
     """Generate a shell snippet that bind-mounts host-backed package caches into this VM.
 
     A Docker container shares the host's mount namespace, so `DockerDriver` can turn
@@ -42,7 +40,7 @@ def cache_mount_snippet(cache_mounts: Optional[Dict[str, str]]) -> str:
                 f'while [ "$_p" != "/home/runner" ] && [ "$_p" != "/" ] && [ "$_p" != "." ]; do\n'
                 f'  sudo chown runner:runner "$_p" 2>/dev/null || true\n'
                 f'  _p="$(dirname "$_p")"\n'
-                f'done\n'
+                f"done\n"
                 f'sudo chown runner:runner "{container_path}" 2>/dev/null || true'
             )
         lines.append(
@@ -65,7 +63,9 @@ def docker_engine_snippet() -> str:
 sudo install -m 0755 -d /etc/apt/keyrings
 curl -fsSL https://download.docker.com/linux/ubuntu/gpg -o /tmp/docker.asc
 sudo install -m 0644 /tmp/docker.asc /etc/apt/keyrings/docker.asc
-echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.asc] https://download.docker.com/linux/ubuntu $(. /etc/os-release && echo "$VERSION_CODENAME") stable" | \\
+DOCKER_APT_ARCH=$(dpkg --print-architecture)
+DOCKER_APT_CODENAME=$(. /etc/os-release && echo "$VERSION_CODENAME")
+echo "deb [arch=$DOCKER_APT_ARCH signed-by=/etc/apt/keyrings/docker.asc] https://download.docker.com/linux/ubuntu $DOCKER_APT_CODENAME stable" | \\
   sudo tee /etc/apt/sources.list.d/docker.list > /dev/null
 sudo apt-get update -y
 sudo apt-get install -y --no-install-recommends docker-ce docker-ce-cli containerd.io docker-compose-plugin
@@ -98,7 +98,13 @@ sudo usermod -aG docker runner
 # wired via env vars -- had real cached data). insecure-registries is
 # required alongside it: dockerd refuses a registry-mirrors entry served over
 # plain HTTP otherwise, and the local mirror has no TLS cert.
-echo '{"exec-opts": ["native.cgroupdriver=cgroupfs"], "registry-mirrors": ["http://host.orb.internal:49502"], "insecure-registries": ["host.orb.internal:49502"]}' | sudo tee /etc/docker/daemon.json > /dev/null
+sudo tee /etc/docker/daemon.json > /dev/null <<'DAEMONJSON'
+{
+  "exec-opts": ["native.cgroupdriver=cgroupfs"],
+  "registry-mirrors": ["http://host.orb.internal:49502"],
+  "insecure-registries": ["host.orb.internal:49502"]
+}
+DAEMONJSON
 sudo systemctl enable docker
 """
 
@@ -117,13 +123,7 @@ sudo ./bin/installdependencies.sh
 
 
 def registration_and_run_snippet(
-    api_base: str,
-    runner_url: str,
-    access_token: str,
-    vm_name: str,
-    runner_labels: str,
-    proxy_env_block: str,
-    cache_mount_block: str = ""
+    api_base: str, runner_url: str, access_token: str, vm_name: str, runner_labels: str, proxy_env_block: str, cache_mount_block: str = ""
 ) -> str:
     """Generate shell snippet for obtaining registration token, registering with config.sh, and executing run.sh.
 

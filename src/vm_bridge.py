@@ -11,7 +11,7 @@ import signal
 import sys
 import threading
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
-from typing import Any, Dict, Optional
+from typing import Any
 from urllib.parse import urlparse
 
 from drivers import RunnerDriver, RunnerInfo, get_available_drivers, get_driver
@@ -34,7 +34,7 @@ DEFAULT_BRIDGE_HOST = "0.0.0.0"
 # provision.log, let alone finish, stop, and rename. Caching one instance
 # per driver name here makes the bridge behave like autoscaler.py's own
 # persistent-driver model.
-_driver_cache: Dict[str, RunnerDriver] = {}
+_driver_cache: dict[str, RunnerDriver] = {}
 _driver_cache_lock = threading.Lock()
 
 
@@ -58,7 +58,7 @@ class VMBridgeRequestHandler(BaseHTTPRequestHandler):
         if os.getenv("RUNZERO_DEBUG", "").lower() in ("true", "1"):
             sys.stderr.write(f"[VMBridge:HTTP] {format % args}\n")
 
-    def _send_json(self, status_code: int, data: Dict[str, Any]) -> None:
+    def _send_json(self, status_code: int, data: dict[str, Any]) -> None:
         try:
             payload = json.dumps(data).encode("utf-8")
             self.send_response(status_code)
@@ -70,7 +70,7 @@ class VMBridgeRequestHandler(BaseHTTPRequestHandler):
         except (BrokenPipeError, ConnectionResetError):
             pass
 
-    def _read_json(self) -> Dict[str, Any]:
+    def _read_json(self) -> dict[str, Any]:
         content_length = int(self.headers.get("Content-Length", 0))
         if content_length > 0:
             raw_body = self.rfile.read(content_length).decode("utf-8")
@@ -97,22 +97,21 @@ class VMBridgeRequestHandler(BaseHTTPRequestHandler):
             drivers = get_available_drivers()
             # VM bridge is for VM drivers (orbstack-vm, multipass, wsl2)
             vm_drivers = [k for k, d in drivers.items() if not isinstance(d, DockerDriver)]
-            self._send_json(200, {
-                "status": "ok",
-                "service": "runzero-vm-bridge",
-                "platform": sys.platform,
-                "available_vm_drivers": vm_drivers,
-                "all_drivers": list(drivers.keys())
-            })
+            self._send_json(
+                200,
+                {
+                    "status": "ok",
+                    "service": "runzero-vm-bridge",
+                    "platform": sys.platform,
+                    "available_vm_drivers": vm_drivers,
+                    "all_drivers": list(drivers.keys()),
+                },
+            )
             return
 
         if path == "/api/status":
             drivers = get_available_drivers()
-            self._send_json(200, {
-                "status": "ok",
-                "available_drivers": list(drivers.keys()),
-                "platform": sys.platform
-            })
+            self._send_json(200, {"status": "ok", "available_drivers": list(drivers.keys()), "platform": sys.platform})
             return
 
         # /api/drivers/{driver_name}/runners
@@ -122,10 +121,7 @@ class VMBridgeRequestHandler(BaseHTTPRequestHandler):
             try:
                 driver = _get_cached_driver(driver_name)
                 runners = driver.list_runners()
-                self._send_json(200, {
-                    "driver": driver_name,
-                    "runners": [r.to_dict() for r in runners]
-                })
+                self._send_json(200, {"driver": driver_name, "runners": [r.to_dict() for r in runners]})
             except Exception as e:
                 self._send_json(500, {"error": str(e), "driver": driver_name})
             return
@@ -163,13 +159,9 @@ class VMBridgeRequestHandler(BaseHTTPRequestHandler):
                         access_token=body.get("access_token"),
                         cache_mounts=body.get("cache_mounts"),
                         proxies_enabled=body.get("proxies_enabled", True),
-                        extra_env=body.get("extra_env")
+                        extra_env=body.get("extra_env"),
                     )
-                    self._send_json(200, {
-                        "status": "success",
-                        "driver": driver_name,
-                        "runner_id": runner_id
-                    })
+                    self._send_json(200, {"status": "success", "driver": driver_name, "runner_id": runner_id})
                 except Exception as e:
                     self._send_json(500, {"error": str(e), "driver": driver_name})
                 return
@@ -186,7 +178,7 @@ class VMBridgeRequestHandler(BaseHTTPRequestHandler):
                             target_repo=r.get("target_repo", ""),
                             target_arch=r.get("target_arch", ""),
                             backend=r.get("backend", driver_name),
-                            created_at=r.get("created_at")
+                            created_at=r.get("created_at"),
                         )
                         for r in runners_data
                     ]
@@ -249,8 +241,8 @@ class VMBridgeServer:
         """Store the bind address/port; the server isn't started until `start()` is called."""
         self.host = host
         self.port = port
-        self.httpd: Optional[ThreadingHTTPServer] = None
-        self.thread: Optional[threading.Thread] = None
+        self.httpd: ThreadingHTTPServer | None = None
+        self.thread: threading.Thread | None = None
         self._is_running = False
 
     def start(self, blocking: bool = False) -> None:

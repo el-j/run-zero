@@ -13,6 +13,11 @@ AUTOSCALER_LOG_FILE := .autoscaler.log
 BRIDGE_PID_FILE := .bridge.pid
 BRIDGE_LOG_FILE := .bridge.log
 
+# Python used for all quality gates. `make dev-setup` creates .venv-dev with the pinned
+# tooling from requirements-dev.txt; CI passes PY=python after installing the same file.
+PY ?= $(if $(wildcard .venv-dev/bin/python),.venv-dev/bin/python,python3)
+SHELL_SCRIPTS := docker/start.sh docker/provision-toolchain.sh scripts/setup_env.sh scripts/pre-commit.sh scripts/bridge_supervisor.sh
+
 # Colors for terminal styling
 CYAN    := \033[36m
 GREEN   := \033[32m
@@ -51,7 +56,7 @@ install: init-cache website-install install-hooks ## Bootstrap local development
 	@echo "$(CYAN)Installing Python package and dev tools (best-effort)...$(RESET)"
 	@if command -v python3 >/dev/null 2>&1; then \
 		python3 -m pip install --quiet -e . || echo "Could not install project package in current Python environment."; \
-		python3 -m pip install --quiet ruff flake8 mypy pytest pytest-cov || echo "Could not install dev tooling in current Python environment."; \
+		python3 -m pip install --quiet -r requirements-dev.txt || echo "Could not install dev tooling in current Python environment (try: make dev-setup)."; \
 	else \
 		echo "$(YELLOW)python3 not found; skipping Python install.$(RESET)"; \
 	fi
@@ -391,15 +396,37 @@ build-vm-base: ## Build the golden OrbStack VM base image (Docker/Node/nvm/.NET/
 .PHONY: vm-rebuild-base
 vm-rebuild-base: build-vm-base ## Alias for build-vm-base -- use after changing docker/provision-toolchain.sh to refresh the golden image
 
+.PHONY: dev-setup
+dev-setup: ## Create .venv-dev with the pinned dev tooling from requirements-dev.txt
+	@echo "$(CYAN)Creating .venv-dev with pinned dev tooling...$(RESET)"
+	@python3 -m venv .venv-dev
+	@.venv-dev/bin/python -m pip install --quiet --upgrade pip
+	@.venv-dev/bin/python -m pip install --quiet -r requirements-dev.txt
+	@echo "$(GREEN).venv-dev ready. Quality gates: make check$(RESET)"
+
+.PHONY: check check-python check-shell
+check: check-python check-shell ## Run every quality gate (the same set CI enforces)
+	@echo "$(GREEN)All quality gates passed.$(RESET)"
+
+check-python: ## Python gates: ruff lint + format, flake8, mypy, interrogate, pytest with 100% coverage
+	$(PY) -m ruff check src tests
+	$(PY) -m ruff format --check src tests
+	$(PY) -m flake8 src tests
+	$(PY) -m mypy src
+	$(PY) -m interrogate src
+	$(PY) -m pytest
+
+check-shell: ## Shell gates: bash -n + shellcheck on every maintained script
+	@for f in $(SHELL_SCRIPTS); do bash -n "$$f" || exit 1; done
+	shellcheck -x $(SHELL_SCRIPTS)
+
 .PHONY: test-suite
-test-suite: ## Run test suite with pytest, mypy type checking, and flake8 linter
-	@echo "$(CYAN)Running Flake8, Mypy, and Pytest coverage suite...$(RESET)"
+test-suite: ## Run the Python quality gates inside a clean python:3.11-slim container
+	@echo "$(CYAN)Running Python quality gates in python:3.11-slim...$(RESET)"
 	@docker run --rm -v "$$(pwd):/app" -w /app python:3.11-slim bash -c "\
-		apt-get update -qq && apt-get install -y -qq --no-install-recommends make > /dev/null && \
-		pip install --quiet pytest pytest-cov mypy flake8 && \
-		flake8 src/ tests/ --max-line-length=160 --extend-ignore=E501,W503,E402 && \
-		MYPYPATH=src mypy src/ --ignore-missing-imports && \
-		PYTHONPATH=src pytest --cov=src --cov-report=term-missing tests/"
+		apt-get update -qq && apt-get install -y -qq --no-install-recommends make git > /dev/null && \
+		pip install --quiet -r requirements-dev.txt && \
+		make check-python PY=python"
 	@echo "$(GREEN)All tests passed with 0 warnings!$(RESET)"
 
 .PHONY: mutation-test
@@ -415,7 +442,7 @@ mutation-test: ## Run mutation testing suite (mutmut) -- fails the build on surv
 
 .PHONY: test
 test: ## Run local unit tests directly
-	@PYTHONPATH=src python3 -m unittest discover -s tests -p "test_*.py" -v
+	$(PY) -m pytest
 
 .PHONY: install-hooks
 install-hooks: ## Install RunZero pre-commit quality guard into .git/hooks/pre-commit
@@ -430,11 +457,12 @@ pre-commit: ## Run the RunZero pre-commit quality guard manually
 	@bash scripts/pre-commit.sh
 
 .PHONY: lint
-lint: ## Run Flake8 linter and Mypy static type checker
-	@echo "$(CYAN)Running Flake8 linter...$(RESET)"
-	@flake8 src/ tests/ --max-line-length=160 --extend-ignore=E203,E501,W503,E402 || echo "Install flake8 for full linting."
+lint: ## Run ruff + Flake8 linters, Mypy type checker, and website Oxlint
+	@echo "$(CYAN)Running ruff + Flake8 linters...$(RESET)"
+	$(PY) -m ruff check src tests
+	$(PY) -m flake8 src tests
 	@echo "$(CYAN)Running Mypy type checker...$(RESET)"
-	@MYPYPATH=src mypy src/ --ignore-missing-imports || echo "Install mypy for full typechecking."
+	$(PY) -m mypy src
 	@echo "$(CYAN)Running website lint checks with Oxlint...$(RESET)"
 	@if command -v npm >/dev/null 2>&1; then \
 		(cd $(WEBSITE_DIR) && { npm ls oxlint >/dev/null 2>&1 || npm install; } && npm run lint); \
@@ -485,13 +513,7 @@ deps-update: ## Apply dependency updates where possible (website package.json vi
 .PHONY: fmt-check
 fmt-check: ## Check formatting for Python and website sources
 	@echo "$(CYAN)Checking Python formatting...$(RESET)"
-	@if command -v ruff >/dev/null 2>&1; then \
-		ruff format --check --line-length=160 src/ tests/; \
-	elif command -v black >/dev/null 2>&1; then \
-		black --check --line-length=160 src/ tests/; \
-	else \
-		echo "Install ruff or black for Python format checks."; \
-	fi
+	$(PY) -m ruff format --check src tests
 	@echo "$(CYAN)Checking website formatting with Prettier...$(RESET)"
 	@if command -v npm >/dev/null 2>&1; then \
 		(cd $(WEBSITE_DIR) && { npm ls prettier-plugin-astro >/dev/null 2>&1 || npm install; } && \
@@ -503,13 +525,7 @@ fmt-check: ## Check formatting for Python and website sources
 .PHONY: fmt
 fmt: ## Auto-format Python and website sources
 	@echo "$(CYAN)Formatting Python sources...$(RESET)"
-	@if command -v ruff >/dev/null 2>&1; then \
-		ruff format --line-length=160 src/ tests/; \
-	elif command -v black >/dev/null 2>&1; then \
-		black --line-length=160 src/ tests/; \
-	else \
-		echo "Install ruff or black for Python auto-formatting."; \
-	fi
+	$(PY) -m ruff format src tests
 	@echo "$(CYAN)Formatting website sources with Prettier...$(RESET)"
 	@if command -v npm >/dev/null 2>&1; then \
 		(cd $(WEBSITE_DIR) && { npm ls prettier-plugin-astro >/dev/null 2>&1 || npm install; } && \
@@ -549,10 +565,8 @@ pre-stage: ## Format only currently changed (unstaged) files before git add
 		PY_CHANGED=$$(echo "$$CHANGED" | grep -E '\.py$$' || true); \
 		if [ -n "$$PY_CHANGED" ]; then \
 			echo "  $(CYAN)→ Python files changed — running ruff fix...$(RESET)"; \
-			if command -v ruff >/dev/null 2>&1; then \
-				echo "$$PY_CHANGED" | xargs ruff check --fix --line-length=160 2>/dev/null || true; \
-				echo "$$PY_CHANGED" | xargs ruff format --line-length=160 2>/dev/null || true; \
-			fi; \
+			echo "$$PY_CHANGED" | xargs $(PY) -m ruff check --fix 2>/dev/null || true; \
+			echo "$$PY_CHANGED" | xargs $(PY) -m ruff format 2>/dev/null || true; \
 		fi; \
 		WEB_CHANGED=$$(echo "$$CHANGED" | grep -E '^website/.*\.(astro|js|mjs|ts|css|json|md)$$' || true); \
 		if [ -n "$$WEB_CHANGED" ]; then \
@@ -567,12 +581,8 @@ pre-stage: ## Format only currently changed (unstaged) files before git add
 lint-fix: ## Auto-fix Python formatting and strip trailing whitespace
 	@echo "$(CYAN)Auto-fixing formatting and stripping trailing whitespace...$(RESET)"
 	@find src tests -name "*.py" -exec sed -i '' -E 's/[[:space:]]+$$//' {} + 2>/dev/null || true
-	@if command -v ruff >/dev/null 2>&1; then \
-		ruff check --fix --line-length=160 src/ tests/; \
-		ruff format --line-length=160 src/ tests/; \
-	elif command -v autopep8 >/dev/null 2>&1; then \
-		autopep8 --in-place --recursive --aggressive --max-line-length=160 src/ tests/; \
-	fi
+	$(PY) -m ruff check --fix src tests
+	$(PY) -m ruff format src tests
 	@echo "$(GREEN)Auto-fixes applied successfully.$(RESET)"
 
 .PHONY: run-dev

@@ -68,7 +68,9 @@ class TestOrbStackLiveCacheSharing(unittest.TestCase):
         name = f"{VM_PREFIX}{uuid.uuid4().hex[:8]}"
         subprocess.run(
             ["orbctl", "create", "-a", "arm64", "-u", "runner", "ubuntu:24.04", name],
-            check=True, capture_output=True, timeout=60,
+            check=True,
+            capture_output=True,
+            timeout=60,
         )
         self.vm_names.append(name)
         return name
@@ -77,7 +79,9 @@ class TestOrbStackLiveCacheSharing(unittest.TestCase):
         snippet = cache_mount_snippet({self.host_dir: container_path})
         res = subprocess.run(
             ["orb", "-m", vm_name, "-u", "runner", "bash", "-c", snippet],
-            capture_output=True, text=True, timeout=30,
+            capture_output=True,
+            text=True,
+            timeout=30,
         )
         self.assertEqual(res.returncode, 0, f"cache_mount_snippet failed: {res.stderr}")
 
@@ -87,9 +91,10 @@ class TestOrbStackLiveCacheSharing(unittest.TestCase):
         vm1 = self._create_vm()
         self._mount_cache(vm1, container_path)
         write_res = subprocess.run(
-            ["orb", "-m", vm1, "-u", "runner", "bash", "-c",
-             f'echo "written-by-{vm1}" > {container_path}/marker.txt'],
-            capture_output=True, text=True, timeout=15,
+            ["orb", "-m", vm1, "-u", "runner", "bash", "-c", f'echo "written-by-{vm1}" > {container_path}/marker.txt'],
+            capture_output=True,
+            text=True,
+            timeout=15,
         )
         self.assertEqual(write_res.returncode, 0, write_res.stderr)
 
@@ -101,7 +106,9 @@ class TestOrbStackLiveCacheSharing(unittest.TestCase):
         self._mount_cache(vm2, container_path)
         read_res = subprocess.run(
             ["orb", "-m", vm2, "-u", "runner", "bash", "-c", f"cat {container_path}/marker.txt"],
-            capture_output=True, text=True, timeout=15,
+            capture_output=True,
+            text=True,
+            timeout=15,
         )
         self.assertEqual(read_res.returncode, 0, read_res.stderr)
         self.assertEqual(read_res.stdout.strip(), f"written-by-{vm1}")

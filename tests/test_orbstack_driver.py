@@ -148,9 +148,7 @@ class TestOrbStackTemplates(unittest.TestCase):
         self.assertIn("Warning: cache bind mount failed", snippet)
 
     def test_cache_mount_snippet_chowns_runner_ancestor_directories(self):
-        snippet = cache_mount_snippet(
-            {"/Users/dev/.local-github-runner/cache/rust": "/home/runner/.cargo/registry"}
-        )
+        snippet = cache_mount_snippet({"/Users/dev/.local-github-runner/cache/rust": "/home/runner/.cargo/registry"})
         self.assertIn('sudo mkdir -p "/home/runner/.cargo/registry"', snippet)
         self.assertIn('sudo chown runner:runner "$_p"', snippet)
         self.assertIn('sudo chown runner:runner "/home/runner/.cargo/registry"', snippet)
@@ -357,9 +355,7 @@ class TestOrbStackVMDriver(unittest.TestCase):
     @patch("subprocess.run")
     def test_list_runners_falls_back_when_id_is_not_a_ulid(self, mock_run):
         mock_run.return_value = MagicMock(
-            stdout=json.dumps(
-                [{"id": "not-a-ulid", "name": "runzero-vm-amd64-el-j-run-zero-abc", "state": "running"}]
-            ),
+            stdout=json.dumps([{"id": "not-a-ulid", "name": "runzero-vm-amd64-el-j-run-zero-abc", "state": "running"}]),
             returncode=0,
         )
         before = time.time()
@@ -859,8 +855,13 @@ class TestOrbStackVMDriver(unittest.TestCase):
         # is not evidence of a network failure and must not count toward the backoff.
         mock_run.return_value = MagicMock(returncode=0)
         old_runner = RunnerInfo(
-            id="r1", name="runzero-vm-amd64-old", status="stopped", state="exited",
-            target_repo="", target_arch="amd64", backend="orbstack-vm",
+            id="r1",
+            name="runzero-vm-amd64-old",
+            status="stopped",
+            state="exited",
+            target_repo="",
+            target_arch="amd64",
+            backend="orbstack-vm",
             created_at=time.time() - 3600,
         )
         self.driver.prune_exited([old_runner])
@@ -872,8 +873,13 @@ class TestOrbStackVMDriver(unittest.TestCase):
         # startup grace period (<15s), it must not be deleted or counted as a failure.
         mock_run.return_value = MagicMock(returncode=0)
         booting_runner = RunnerInfo(
-            id="r1", name="runzero-vm-amd64-booting", status="stopped", state="exited",
-            target_repo="", target_arch="amd64", backend="orbstack-vm",
+            id="r1",
+            name="runzero-vm-amd64-booting",
+            status="stopped",
+            state="exited",
+            target_repo="",
+            target_arch="amd64",
+            backend="orbstack-vm",
             created_at=time.time() - 5,
         )
         self.driver.prune_exited([booting_runner])
@@ -884,8 +890,13 @@ class TestOrbStackVMDriver(unittest.TestCase):
     def test_prune_exited_counts_stopped_runner_younger_than_fast_failure_window(self, mock_run):
         mock_run.return_value = MagicMock(returncode=0)
         young_dead_runner = RunnerInfo(
-            id="r1", name="runzero-vm-amd64-young", status="stopped", state="exited",
-            target_repo="", target_arch="amd64", backend="orbstack-vm",
+            id="r1",
+            name="runzero-vm-amd64-young",
+            status="stopped",
+            state="exited",
+            target_repo="",
+            target_arch="amd64",
+            backend="orbstack-vm",
             created_at=time.time() - 25,
         )
         self.driver.prune_exited([young_dead_runner])
@@ -895,8 +906,13 @@ class TestOrbStackVMDriver(unittest.TestCase):
     def test_prune_exited_ignores_golden_base_image_entries(self, mock_run):
         mock_run.return_value = MagicMock(returncode=0)
         staging_image = RunnerInfo(
-            id="r1", name="runzero-vm-base-amd64-building", status="stopped", state="exited",
-            target_repo="", target_arch="amd64", backend="orbstack-vm",
+            id="r1",
+            name="runzero-vm-base-amd64-building",
+            status="stopped",
+            state="exited",
+            target_repo="",
+            target_arch="amd64",
+            backend="orbstack-vm",
             created_at=time.time() - 25,
         )
         self.driver.prune_exited([staging_image])
@@ -908,8 +924,13 @@ class TestOrbStackVMDriver(unittest.TestCase):
         mock_run.return_value = MagicMock(returncode=0)
         self.driver._spawn_failure_counts["amd64"] = 2
         healthy_runner = RunnerInfo(
-            id="r1", name="runzero-vm-amd64-healthy", status="running", state="running",
-            target_repo="", target_arch="amd64", backend="orbstack-vm",
+            id="r1",
+            name="runzero-vm-amd64-healthy",
+            status="running",
+            state="running",
+            target_repo="",
+            target_arch="amd64",
+            backend="orbstack-vm",
             created_at=time.time() - 3600,
         )
         self.driver.prune_exited([healthy_runner])
@@ -926,8 +947,13 @@ class TestOrbStackVMDriver(unittest.TestCase):
         mock_run.return_value = MagicMock(returncode=0, stdout=json.dumps([{"name": "runzero-vm-base-amd64", "state": "stopped"}]))
         for _ in range(3):
             dead_runner = RunnerInfo(
-                id="r", name="runzero-vm-amd64-x", status="stopped", state="exited",
-                target_repo="", target_arch="amd64", backend="orbstack-vm",
+                id="r",
+                name="runzero-vm-amd64-x",
+                status="stopped",
+                state="exited",
+                target_repo="",
+                target_arch="amd64",
+                backend="orbstack-vm",
                 created_at=time.time() - 25,
             )
             self.driver.prune_exited([dead_runner])
@@ -946,8 +972,13 @@ class TestOrbStackVMDriver(unittest.TestCase):
         mock_run.return_value = MagicMock(returncode=0, stdout=json.dumps([{"name": "runzero-vm-base-amd64", "state": "stopped"}]))
         for _ in range(3):
             dead_runner = RunnerInfo(
-                id="r", name="runzero-vm-amd64-x", status="stopped", state="exited",
-                target_repo="", target_arch="amd64", backend="orbstack-vm",
+                id="r",
+                name="runzero-vm-amd64-x",
+                status="stopped",
+                state="exited",
+                target_repo="",
+                target_arch="amd64",
+                backend="orbstack-vm",
                 created_at=time.time() - 25,
             )
             self.driver.prune_exited([dead_runner])
@@ -1381,7 +1412,10 @@ class TestOrbStackVMDriver(unittest.TestCase):
             self.driver._list_vm_names()
         mock_run.assert_called_once_with(
             ["orbctl", "list", "--format", "json"],
-            capture_output=True, text=True, check=True, timeout=5,
+            capture_output=True,
+            text=True,
+            check=True,
+            timeout=5,
         )
 
     def test_list_vm_names_retries_exactly_three_times_then_gives_up(self):
@@ -1430,12 +1464,17 @@ class TestOrbStackVMDriver(unittest.TestCase):
             mock_run.return_value = MagicMock(returncode=0, stdout=json.dumps([]))
             self.driver._promote_staging_to_base("staging-vm", "base-vm")
         mock_run.assert_any_call(
-            ["orbctl", "rename", "staging-vm", "base-vm"], capture_output=True, text=True,
+            ["orbctl", "rename", "staging-vm", "base-vm"],
+            capture_output=True,
+            text=True,
         )
 
     def test_promote_staging_to_base_deletes_existing_destination_with_expected_args(self):
-        with patch("subprocess.run") as mock_run, patch.object(self.driver, "_stop_vm", return_value=True), \
-                patch.object(self.driver, "_list_vm_names", return_value=["base-vm"]):
+        with (
+            patch("subprocess.run") as mock_run,
+            patch.object(self.driver, "_stop_vm", return_value=True),
+            patch.object(self.driver, "_list_vm_names", return_value=["base-vm"]),
+        ):
             mock_run.return_value = MagicMock(returncode=0)
             self.driver._promote_staging_to_base("staging-vm", "base-vm")
         mock_run.assert_any_call(["orbctl", "delete", "-f", "base-vm"], capture_output=True)
@@ -1446,8 +1485,7 @@ class TestOrbStackVMDriver(unittest.TestCase):
                 return MagicMock(returncode=1, stderr="locked")
             return MagicMock(returncode=0, stdout=json.dumps([]))
 
-        with patch("subprocess.run") as mock_run, patch.object(self.driver, "_stop_vm", return_value=True), \
-                patch("time.sleep"):
+        with patch("subprocess.run") as mock_run, patch.object(self.driver, "_stop_vm", return_value=True), patch("time.sleep"):
             mock_run.side_effect = fake_run
             result = self.driver._promote_staging_to_base("staging-vm", "base-vm")
         self.assertTrue(result)
@@ -1455,8 +1493,8 @@ class TestOrbStackVMDriver(unittest.TestCase):
         mock_run.assert_any_call(["orbctl", "delete", "-f", "staging-vm"], capture_output=True)
 
     def test_promote_staging_to_base_retries_rename_exactly_5_times(self):
-        with patch("subprocess.run") as mock_run, patch.object(self.driver, "_stop_vm", return_value=True), \
-                patch("time.sleep"):
+        with patch("subprocess.run") as mock_run, patch.object(self.driver, "_stop_vm", return_value=True), patch("time.sleep"):
+
             def fake_run(cmd, *args, **kwargs):
                 if cmd[:2] == ["orbctl", "rename"]:
                     return MagicMock(returncode=1, stderr="locked")
@@ -1471,8 +1509,8 @@ class TestOrbStackVMDriver(unittest.TestCase):
         # Regression guard: `time.sleep(1.0 + attempt * 0.5)` had no value
         # assertions -- wrong base, wrong operator (* -> /), or wrong
         # multiplier all survived.
-        with patch("subprocess.run") as mock_run, patch.object(self.driver, "_stop_vm", return_value=True), \
-                patch("time.sleep") as mock_sleep:
+        with patch("subprocess.run") as mock_run, patch.object(self.driver, "_stop_vm", return_value=True), patch("time.sleep") as mock_sleep:
+
             def fake_run(cmd, *args, **kwargs):
                 if cmd[:2] == ["orbctl", "rename"]:
                     return MagicMock(returncode=1, stderr="locked")
@@ -1493,11 +1531,10 @@ class TestOrbStackVMDriver(unittest.TestCase):
         self.assertEqual(mock_print.call_args.kwargs.get("file"), sys.stderr)
 
     def test_read_provision_script_opens_exact_path_and_returns_contents(self):
-        with patch("os.path.isfile", return_value=True), \
-                patch("builtins.open", mock_open(read_data="script contents")) as mock_file:
+        with patch("os.path.isfile", return_value=True), patch("builtins.open", mock_open(read_data="script contents")) as mock_file:
             result = self.driver._read_provision_script()
         self.assertEqual(result, "script contents")
-        mock_file.assert_called_once_with(self.driver._provision_script_path, "r")
+        mock_file.assert_called_once_with(self.driver._provision_script_path)
 
     def test_record_spawn_outcome_backoff_formula_exact_values(self):
         # Regression guard: `min(30 * (2 ** (failures - MAX_CONSECUTIVE_FAST_FAILURES)), 900)`
@@ -1512,7 +1549,8 @@ class TestOrbStackVMDriver(unittest.TestCase):
             with patch("time.monotonic", return_value=1000.0), patch("builtins.print"):
                 driver._record_spawn_outcome("amd64", got_network=False)
             self.assertAlmostEqual(
-                driver._spawn_retry_after["amd64"] - 1000.0, expected_cooldown,
+                driver._spawn_retry_after["amd64"] - 1000.0,
+                expected_cooldown,
                 msg=f"failures={failures}",
             )
 
@@ -1536,14 +1574,17 @@ class TestOrbStackVMDriver(unittest.TestCase):
         with patch("time.time", return_value=1700000000.0):
             driver._report_image_event("building", "arm64", "some detail", profile="cuda")
         self.assertEqual(len(events), 1)
-        self.assertEqual(events[0], {
-            "driver": "orbstack-vm",
-            "arch": "arm64",
-            "profile": "cuda",
-            "status": "building",
-            "detail": "some detail",
-            "ts": 1700000000.0,
-        })
+        self.assertEqual(
+            events[0],
+            {
+                "driver": "orbstack-vm",
+                "arch": "arm64",
+                "profile": "cuda",
+                "status": "building",
+                "detail": "some detail",
+                "ts": 1700000000.0,
+            },
+        )
 
     def test_spawn_cooldown_remaining_is_exactly_zero_with_no_prior_failure(self):
         self.assertEqual(self.driver._spawn_cooldown_remaining("amd64"), 0.0)
@@ -1564,23 +1605,17 @@ class TestOrbStackVMDriver(unittest.TestCase):
 
     @patch("subprocess.run")
     def test_stop_vm_subprocess_calls_have_expected_args(self, mock_run):
-        mock_run.return_value = MagicMock(
-            stdout=json.dumps([{"name": "test-vm", "state": "stopped"}]), returncode=0
-        )
+        mock_run.return_value = MagicMock(stdout=json.dumps([{"name": "test-vm", "state": "stopped"}]), returncode=0)
         self.driver._stop_vm("test-vm")
         mock_run.assert_any_call(["orbctl", "stop", "test-vm"], capture_output=True)
-        mock_run.assert_any_call(
-            ["orbctl", "list", "--format", "json"], capture_output=True, text=True, check=True
-        )
+        mock_run.assert_any_call(["orbctl", "list", "--format", "json"], capture_output=True, text=True, check=True)
 
     @patch("time.sleep")
     @patch("subprocess.run")
     def test_stop_vm_polls_exactly_10_times_per_attempt_with_1s_sleep(self, mock_run, mock_sleep):
         # Regression guard: the inner `for _ in range(10)` poll loop and the
         # `time.sleep(1)` between polls both had zero value assertions.
-        mock_run.return_value = MagicMock(
-            stdout=json.dumps([{"name": "test-vm", "state": "running"}]), returncode=0
-        )
+        mock_run.return_value = MagicMock(stdout=json.dumps([{"name": "test-vm", "state": "running"}]), returncode=0)
         self.driver._stop_vm("test-vm")
         list_calls = [c for c in mock_run.call_args_list if c.args[0][:2] == ["orbctl", "list"]]
         self.assertEqual(len(list_calls), 30)  # 3 outer attempts x 10 inner polls
@@ -1590,9 +1625,7 @@ class TestOrbStackVMDriver(unittest.TestCase):
     @patch("time.sleep")
     @patch("subprocess.run")
     def test_stop_vm_gives_up_message_content(self, mock_run, mock_sleep):
-        mock_run.return_value = MagicMock(
-            stdout=json.dumps([{"name": "test-vm", "state": "running"}]), returncode=0
-        )
+        mock_run.return_value = MagicMock(stdout=json.dumps([{"name": "test-vm", "state": "running"}]), returncode=0)
         with patch("builtins.print") as mock_print:
             result = self.driver._stop_vm("test-vm")
         self.assertFalse(result)
@@ -1609,12 +1642,12 @@ class TestOrbStackVMDriver(unittest.TestCase):
         # in progress for this arch -- an `and`->`or` mutant, or the guard
         # being replaced outright, would let this auto-promote a staging VM
         # out from under a build that's still running against it.
-        mock_run.return_value = MagicMock(
-            stdout=json.dumps([{"name": "runzero-vm-base-amd64-building", "state": "stopped"}]), returncode=0
-        )
+        mock_run.return_value = MagicMock(stdout=json.dumps([{"name": "runzero-vm-base-amd64-building", "state": "stopped"}]), returncode=0)
         self.driver._building_arches.add("amd64")
-        with patch.object(self.driver, "_is_staging_provisioned", return_value=True) as mock_provisioned, \
-                patch.object(self.driver, "_promote_staging_to_base") as mock_promote:
+        with (
+            patch.object(self.driver, "_is_staging_provisioned", return_value=True) as mock_provisioned,
+            patch.object(self.driver, "_promote_staging_to_base") as mock_promote,
+        ):
             result = self.driver.base_image_exists("amd64")
         self.assertFalse(result)
         mock_promote.assert_not_called()
@@ -1626,12 +1659,12 @@ class TestOrbStackVMDriver(unittest.TestCase):
 
     @patch("subprocess.run")
     def test_base_image_exists_promotes_when_provisioned_and_not_building(self, mock_run):
-        mock_run.return_value = MagicMock(
-            stdout=json.dumps([{"name": "runzero-vm-base-amd64-building", "state": "stopped"}]), returncode=0
-        )
-        with patch.object(self.driver, "_is_staging_provisioned", return_value=True) as mock_provisioned, \
-                patch.object(self.driver, "_promote_staging_to_base", return_value=True) as mock_promote, \
-                patch("builtins.print") as mock_print:
+        mock_run.return_value = MagicMock(stdout=json.dumps([{"name": "runzero-vm-base-amd64-building", "state": "stopped"}]), returncode=0)
+        with (
+            patch.object(self.driver, "_is_staging_provisioned", return_value=True) as mock_provisioned,
+            patch.object(self.driver, "_promote_staging_to_base", return_value=True) as mock_promote,
+            patch("builtins.print") as mock_print,
+        ):
             result = self.driver.base_image_exists("amd64")
         self.assertTrue(result)
         mock_provisioned.assert_called_once_with("runzero-vm-base-amd64-building")
@@ -1643,11 +1676,8 @@ class TestOrbStackVMDriver(unittest.TestCase):
 
     @patch("subprocess.run")
     def test_base_image_exists_does_not_promote_when_staging_not_yet_provisioned(self, mock_run):
-        mock_run.return_value = MagicMock(
-            stdout=json.dumps([{"name": "runzero-vm-base-amd64-building", "state": "stopped"}]), returncode=0
-        )
-        with patch.object(self.driver, "_is_staging_provisioned", return_value=False), \
-                patch.object(self.driver, "_promote_staging_to_base") as mock_promote:
+        mock_run.return_value = MagicMock(stdout=json.dumps([{"name": "runzero-vm-base-amd64-building", "state": "stopped"}]), returncode=0)
+        with patch.object(self.driver, "_is_staging_provisioned", return_value=False), patch.object(self.driver, "_promote_staging_to_base") as mock_promote:
             result = self.driver.base_image_exists("amd64")
         self.assertFalse(result)
         mock_promote.assert_not_called()
@@ -1660,9 +1690,7 @@ class TestOrbStackVMDriver(unittest.TestCase):
 
     @patch("subprocess.run")
     def test_build_base_image_already_exists_reports_exact_event_and_message(self, mock_run):
-        mock_run.return_value = MagicMock(
-            stdout=json.dumps([{"name": "runzero-vm-base-amd64", "state": "stopped"}]), returncode=0
-        )
+        mock_run.return_value = MagicMock(stdout=json.dumps([{"name": "runzero-vm-base-amd64", "state": "stopped"}]), returncode=0)
         events = []
         self.driver._on_image_event = events.append
         with patch("builtins.print") as mock_print:
@@ -1678,28 +1706,38 @@ class TestOrbStackVMDriver(unittest.TestCase):
     def test_build_base_image_promotes_already_provisioned_staging_immediately(self):
         events = []
         self.driver._on_image_event = events.append
-        with patch.object(self.driver, "base_image_exists", return_value=False), \
-                patch.object(self.driver, "_list_vm_names", return_value=["runzero-vm-base-amd64-building"]), \
-                patch.object(self.driver, "_is_staging_provisioned", return_value=True) as mock_provisioned, \
-                patch.object(self.driver, "_promote_staging_to_base", return_value=True) as mock_promote, \
-                patch("builtins.print") as mock_print:
+        with (
+            patch.object(self.driver, "base_image_exists", return_value=False),
+            patch.object(self.driver, "_list_vm_names", return_value=["runzero-vm-base-amd64-building"]),
+            patch.object(self.driver, "_is_staging_provisioned", return_value=True) as mock_provisioned,
+            patch.object(self.driver, "_promote_staging_to_base", return_value=True) as mock_promote,
+            patch("builtins.print") as mock_print,
+        ):
             result = self.driver.build_base_image("amd64")
         self.assertTrue(result)
         mock_provisioned.assert_called_once_with("runzero-vm-base-amd64-building")
         mock_promote.assert_called_once_with("runzero-vm-base-amd64-building", "runzero-vm-base-amd64")
         printed = " ".join(str(a) for a in mock_print.call_args.args)
         self.assertIn("already completed provisioning", printed)
-        self.assertEqual(events[-1], {
-            **events[-1], "status": "ready", "arch": "amd64", "detail": "Promoted completed staging VM.",
-        })
+        self.assertEqual(
+            events[-1],
+            {
+                **events[-1],
+                "status": "ready",
+                "arch": "amd64",
+                "detail": "Promoted completed staging VM.",
+            },
+        )
 
     def test_build_base_image_building_start_reports_exact_event_and_message(self):
         events = []
         self.driver._on_image_event = events.append
-        with patch.object(self.driver, "base_image_exists", return_value=False), \
-                patch.object(self.driver, "_list_vm_names", return_value=[]), \
-                patch("subprocess.run", side_effect=Exception("stop here")), \
-                patch("builtins.print") as mock_print:
+        with (
+            patch.object(self.driver, "base_image_exists", return_value=False),
+            patch.object(self.driver, "_list_vm_names", return_value=[]),
+            patch("subprocess.run", side_effect=Exception("stop here")),
+            patch("builtins.print") as mock_print,
+        ):
             self.driver.build_base_image("amd64")
         printed_calls = [" ".join(str(a) for a in c.args) for c in mock_print.call_args_list]
         self.assertTrue(any("Building golden base image" in p and "runzero-vm-base-amd64" in p for p in printed_calls))
@@ -1720,7 +1758,8 @@ class TestOrbStackVMDriver(unittest.TestCase):
         mock_run.assert_any_call(["orbctl", "delete", "-f", "runzero-vm-base-amd64-building"], capture_output=True)
         mock_run.assert_any_call(
             ["orbctl", "create", "-a", "amd64", "-u", "runner", "ubuntu:24.04", "runzero-vm-base-amd64-building"],
-            check=True, capture_output=True,
+            check=True,
+            capture_output=True,
         )
 
     @patch.dict(os.environ, {"RUNNER_CPUS": "2", "RUNNER_MEMORY": "4g"})
@@ -1736,11 +1775,21 @@ class TestOrbStackVMDriver(unittest.TestCase):
         driver.build_base_image("amd64")
         mock_run.assert_any_call(
             [
-                "orbctl", "create", "-a", "amd64", "-u", "runner",
-                "--cpus", "2", "--memory", "4g",
-                "ubuntu:24.04", "runzero-vm-base-amd64-building",
+                "orbctl",
+                "create",
+                "-a",
+                "amd64",
+                "-u",
+                "runner",
+                "--cpus",
+                "2",
+                "--memory",
+                "4g",
+                "ubuntu:24.04",
+                "runzero-vm-base-amd64-building",
             ],
-            check=True, capture_output=True,
+            check=True,
+            capture_output=True,
         )
 
     @patch("subprocess.run")
@@ -1795,10 +1844,15 @@ class TestOrbStackVMDriver(unittest.TestCase):
         with patch("builtins.print") as mock_print:
             result = self.driver.build_base_image("amd64")
         self.assertFalse(result)
-        self.assertEqual(events[-1], {
-            **events[-1], "status": "failed", "arch": "amd64",
-            "detail": "Error creating base image: orbctl daemon unreachable",
-        })
+        self.assertEqual(
+            events[-1],
+            {
+                **events[-1],
+                "status": "failed",
+                "arch": "amd64",
+                "detail": "Error creating base image: orbctl daemon unreachable",
+            },
+        )
         printed = " ".join(str(a) for a in mock_print.call_args.args)
         self.assertIn("orbctl daemon unreachable", printed)
         self.assertEqual(mock_print.call_args.kwargs.get("file"), sys.stderr)
@@ -1820,8 +1874,10 @@ class TestOrbStackVMDriver(unittest.TestCase):
             return MagicMock(returncode=0, stdout=json.dumps([]))
 
         mock_run.side_effect = fake_run
-        with patch.object(self.driver, "_read_provision_script", return_value="echo hello-provision-marker"), \
-                patch.object(self.driver, "_promote_staging_to_base", return_value=True):
+        with (
+            patch.object(self.driver, "_read_provision_script", return_value="echo hello-provision-marker"),
+            patch.object(self.driver, "_promote_staging_to_base", return_value=True),
+        ):
             self.driver.build_base_image("arm64")
 
         self.assertIn("cmd", captured, "the `orb -m ... bash -c <full_script>` call was never reached")
@@ -1851,10 +1907,7 @@ class TestOrbStackVMDriver(unittest.TestCase):
         with patch("builtins.print") as mock_print:
             result = self.driver.build_base_image("amd64")
         self.assertFalse(result)
-        expected_detail = (
-            "Base image provisioning failed (exit 7). Check /home/runner/provision.log "
-            "inside 'runzero-vm-base-amd64-building' for details."
-        )
+        expected_detail = "Base image provisioning failed (exit 7). Check /home/runner/provision.log inside 'runzero-vm-base-amd64-building' for details."
         self.assertEqual(events[-1]["detail"], expected_detail)
         self.assertEqual(events[-1]["status"], "failed")
         self.assertEqual(events[-1]["arch"], "amd64")
@@ -1895,10 +1948,15 @@ class TestOrbStackVMDriver(unittest.TestCase):
         with patch.object(self.driver, "_promote_staging_to_base", return_value=False):
             result = self.driver.build_base_image("amd64")
         self.assertFalse(result)
-        self.assertEqual(events[-1], {
-            **events[-1], "status": "failed", "arch": "amd64",
-            "detail": "Failed to promote staging VM to base image.",
-        })
+        self.assertEqual(
+            events[-1],
+            {
+                **events[-1],
+                "status": "failed",
+                "arch": "amd64",
+                "detail": "Failed to promote staging VM to base image.",
+            },
+        )
 
     @patch("subprocess.run")
     def test_build_base_image_full_success_reports_exact_event_and_message(self, mock_run):
@@ -1910,13 +1968,18 @@ class TestOrbStackVMDriver(unittest.TestCase):
         mock_run.side_effect = fake_run
         events = []
         self.driver._on_image_event = events.append
-        with patch.object(self.driver, "_promote_staging_to_base", return_value=True), \
-                patch("builtins.print") as mock_print:
+        with patch.object(self.driver, "_promote_staging_to_base", return_value=True), patch("builtins.print") as mock_print:
             result = self.driver.build_base_image("amd64")
         self.assertTrue(result)
-        self.assertEqual(events[-1], {
-            **events[-1], "status": "ready", "arch": "amd64", "detail": "Build succeeded.",
-        })
+        self.assertEqual(
+            events[-1],
+            {
+                **events[-1],
+                "status": "ready",
+                "arch": "amd64",
+                "detail": "Build succeeded.",
+            },
+        )
         printed = " ".join(str(a) for a in mock_print.call_args.args)
         self.assertIn("runzero-vm-base-amd64", printed)
         self.assertIn("ready", printed)
@@ -1941,9 +2004,7 @@ class TestOrbStackVMDriver(unittest.TestCase):
         self.driver._runner_repos["runzero-vm-dead"] = "el-j/run-zero"
         result = self.driver.destroy_runner("runzero-vm-dead")
         self.assertTrue(result)
-        mock_run.assert_called_once_with(
-            ["orbctl", "delete", "-f", "runzero-vm-dead"], check=True, capture_output=True
-        )
+        mock_run.assert_called_once_with(["orbctl", "delete", "-f", "runzero-vm-dead"], check=True, capture_output=True)
         self.assertNotIn("runzero-vm-dead", self.driver._runner_created_at)
         self.assertNotIn("runzero-vm-dead", self.driver._runner_repos)
 
@@ -1954,9 +2015,7 @@ class TestOrbStackVMDriver(unittest.TestCase):
         # a VM entry missing either key must degrade to "", not None/crash.
         mock_run.return_value = MagicMock(stdout=json.dumps([{"other_field": "x"}]), returncode=0)
         self.driver.ensure_base_images_stopped()
-        mock_run.assert_called_once_with(
-            ["orbctl", "list", "--format", "json"], capture_output=True, text=True, check=True
-        )
+        mock_run.assert_called_once_with(["orbctl", "list", "--format", "json"], capture_output=True, text=True, check=True)
 
     @patch("subprocess.run")
     def test_ensure_base_images_stopped_continues_past_non_base_vm_to_later_base_vm(self, mock_run):
@@ -1967,10 +2026,15 @@ class TestOrbStackVMDriver(unittest.TestCase):
         # a non-base VM first so only `continue` (not `break`) reaches the
         # base image after it.
         mock_run.side_effect = [
-            MagicMock(stdout=json.dumps([
-                {"name": "runzero-vm-amd64-el-j-run-zero-abc", "state": "running"},
-                {"name": "runzero-vm-base-amd64", "state": "running"},
-            ]), returncode=0),
+            MagicMock(
+                stdout=json.dumps(
+                    [
+                        {"name": "runzero-vm-amd64-el-j-run-zero-abc", "state": "running"},
+                        {"name": "runzero-vm-base-amd64", "state": "running"},
+                    ]
+                ),
+                returncode=0,
+            ),
             MagicMock(returncode=0),  # orbctl stop
             MagicMock(stdout=json.dumps([{"name": "runzero-vm-base-amd64", "state": "stopped"}]), returncode=0),
         ]
@@ -1985,10 +2049,15 @@ class TestOrbStackVMDriver(unittest.TestCase):
         # be skipped WITHOUT aborting the loop for every other tracked arch.
         self.driver._building_arches.add("amd64")
         mock_run.side_effect = [
-            MagicMock(stdout=json.dumps([
-                {"name": "runzero-vm-base-amd64", "state": "running"},  # building -- must be skipped, not abort
-                {"name": "runzero-vm-base-arm64", "state": "running"},  # idle -- must still be stopped
-            ]), returncode=0),
+            MagicMock(
+                stdout=json.dumps(
+                    [
+                        {"name": "runzero-vm-base-amd64", "state": "running"},  # building -- must be skipped, not abort
+                        {"name": "runzero-vm-base-arm64", "state": "running"},  # idle -- must still be stopped
+                    ]
+                ),
+                returncode=0,
+            ),
             MagicMock(returncode=0),  # orbctl stop arm64
             MagicMock(stdout=json.dumps([{"name": "runzero-vm-base-arm64", "state": "stopped"}]), returncode=0),
         ]
@@ -2000,25 +2069,32 @@ class TestOrbStackVMDriver(unittest.TestCase):
         # Regression guard: after resuming an orphaned "-building" VM's build,
         # `continue` (not `break`) must let the loop keep processing every
         # OTHER base image VM that comes after it.
-        with patch("subprocess.run") as mock_run, \
-                patch.object(self.driver, "_build_base_image_async") as mock_resume, \
-                patch.object(self.driver, "_stop_vm") as mock_stop:
-            mock_run.return_value = MagicMock(stdout=json.dumps([
-                {"name": "runzero-vm-base-amd64-building", "state": "stopped"},  # orphaned -- resume
-                {"name": "runzero-vm-base-arm64", "state": "running"},  # idle -- must still be stopped
-            ]), returncode=0)
+        with (
+            patch("subprocess.run") as mock_run,
+            patch.object(self.driver, "_build_base_image_async") as mock_resume,
+            patch.object(self.driver, "_stop_vm") as mock_stop,
+        ):
+            mock_run.return_value = MagicMock(
+                stdout=json.dumps(
+                    [
+                        {"name": "runzero-vm-base-amd64-building", "state": "stopped"},  # orphaned -- resume
+                        {"name": "runzero-vm-base-arm64", "state": "running"},  # idle -- must still be stopped
+                    ]
+                ),
+                returncode=0,
+            )
             self.driver.ensure_base_images_stopped()
         mock_resume.assert_called_once_with("amd64")
         mock_stop.assert_called_once_with("runzero-vm-base-arm64")
 
     def test_ensure_base_images_stopped_idle_staging_promotion_message_content(self):
-        with patch("subprocess.run") as mock_run, \
-                patch.object(self.driver, "_is_staging_provisioned", return_value=True), \
-                patch.object(self.driver, "_promote_staging_to_base") as mock_promote, \
-                patch("builtins.print") as mock_print:
-            mock_run.return_value = MagicMock(
-                stdout=json.dumps([{"name": "runzero-vm-base-amd64-building", "state": "running"}]), returncode=0
-            )
+        with (
+            patch("subprocess.run") as mock_run,
+            patch.object(self.driver, "_is_staging_provisioned", return_value=True),
+            patch.object(self.driver, "_promote_staging_to_base") as mock_promote,
+            patch("builtins.print") as mock_print,
+        ):
+            mock_run.return_value = MagicMock(stdout=json.dumps([{"name": "runzero-vm-base-amd64-building", "state": "running"}]), returncode=0)
             self.driver.ensure_base_images_stopped()
         mock_promote.assert_called_once_with("runzero-vm-base-amd64-building", "runzero-vm-base-amd64")
         printed = " ".join(str(a) for a in mock_print.call_args.args)
@@ -2027,12 +2103,8 @@ class TestOrbStackVMDriver(unittest.TestCase):
         self.assertIn("runzero-vm-base-amd64", printed)
 
     def test_ensure_base_images_stopped_orphaned_resume_message_content(self):
-        with patch("subprocess.run") as mock_run, \
-                patch.object(self.driver, "_build_base_image_async") as mock_resume, \
-                patch("builtins.print") as mock_print:
-            mock_run.return_value = MagicMock(
-                stdout=json.dumps([{"name": "runzero-vm-base-amd64-building", "state": "stopped"}]), returncode=0
-            )
+        with patch("subprocess.run") as mock_run, patch.object(self.driver, "_build_base_image_async") as mock_resume, patch("builtins.print") as mock_print:
+            mock_run.return_value = MagicMock(stdout=json.dumps([{"name": "runzero-vm-base-amd64-building", "state": "stopped"}]), returncode=0)
             self.driver.ensure_base_images_stopped()
         mock_resume.assert_called_once_with("amd64")
         printed = " ".join(str(a) for a in mock_print.call_args.args)
@@ -2072,16 +2144,17 @@ class TestOrbStackVMDriver(unittest.TestCase):
         # already flagged as building. No existing test called
         # ensure_runtime_assets() directly with already_building explicitly
         # toggled both ways.
-        with patch.object(self.driver, "base_image_exists", return_value=False), \
-                patch.object(self.driver, "_build_base_image_async") as mock_build:
+        with patch.object(self.driver, "base_image_exists", return_value=False), patch.object(self.driver, "_build_base_image_async") as mock_build:
             self.driver.ensure_runtime_assets("arm64")
         mock_build.assert_called_once_with("arm64")
 
     def test_ensure_runtime_assets_does_not_start_build_while_already_building(self):
         self.driver._building_arches.add("arm64")
-        with patch.object(self.driver, "base_image_exists", return_value=False), \
-                patch.object(self.driver, "_build_base_image_async") as mock_build, \
-                patch("builtins.print") as mock_print:
+        with (
+            patch.object(self.driver, "base_image_exists", return_value=False),
+            patch.object(self.driver, "_build_base_image_async") as mock_build,
+            patch("builtins.print") as mock_print,
+        ):
             result = self.driver.ensure_runtime_assets("arm64")
         self.assertFalse(result)
         mock_build.assert_not_called()
@@ -2091,9 +2164,11 @@ class TestOrbStackVMDriver(unittest.TestCase):
 
     def test_ensure_runtime_assets_cooldown_message_content(self):
         self.driver._build_retry_after["arm64"] = time.monotonic() + 42
-        with patch.object(self.driver, "base_image_exists", return_value=False), \
-                patch.object(self.driver, "_build_base_image_async") as mock_build, \
-                patch("builtins.print") as mock_print:
+        with (
+            patch.object(self.driver, "base_image_exists", return_value=False),
+            patch.object(self.driver, "_build_base_image_async") as mock_build,
+            patch("builtins.print") as mock_print,
+        ):
             result = self.driver.ensure_runtime_assets("arm64")
         self.assertFalse(result)
         mock_build.assert_not_called()
@@ -2103,9 +2178,11 @@ class TestOrbStackVMDriver(unittest.TestCase):
         self.assertEqual(mock_print.call_args.kwargs.get("file"), sys.stderr)
 
     def test_ensure_runtime_assets_build_start_message_content(self):
-        with patch.object(self.driver, "base_image_exists", return_value=False), \
-                patch.object(self.driver, "_build_base_image_async"), \
-                patch("builtins.print") as mock_print:
+        with (
+            patch.object(self.driver, "base_image_exists", return_value=False),
+            patch.object(self.driver, "_build_base_image_async"),
+            patch("builtins.print") as mock_print,
+        ):
             self.driver.ensure_runtime_assets("arm64")
         printed = " ".join(str(a) for a in mock_print.call_args.args)
         self.assertIn("not found", printed)
@@ -2148,9 +2225,7 @@ class TestOrbStackVMDriver(unittest.TestCase):
         # Regression guard: `status_lower in ("running", "active")` -- "active"
         # was never exercised by any existing test (only "running" was), so a
         # mutant mangling the "active" literal survived.
-        mock_run.return_value = MagicMock(
-            stdout=json.dumps([{"name": "runzero-vm-amd64-el-j-run-zero-abc", "state": "active"}]), returncode=0
-        )
+        mock_run.return_value = MagicMock(stdout=json.dumps([{"name": "runzero-vm-amd64-el-j-run-zero-abc", "state": "active"}]), returncode=0)
         runners = self.driver.list_runners()
         self.assertEqual(runners[0].state, "running")
 
@@ -2160,9 +2235,7 @@ class TestOrbStackVMDriver(unittest.TestCase):
         # body splits into EXACTLY 3 parts (arch-repo-uniqueid), `>= 3` derives
         # a repo but `> 3`/`>= 4` mutants leave target_repo empty. Every
         # existing fixture used names with >3 parts, hiding this boundary.
-        mock_run.return_value = MagicMock(
-            stdout=json.dumps([{"name": "runzero-vm-amd64-myrepo-abc123", "state": "running"}]), returncode=0
-        )
+        mock_run.return_value = MagicMock(stdout=json.dumps([{"name": "runzero-vm-amd64-myrepo-abc123", "state": "running"}]), returncode=0)
         runners = self.driver.list_runners()
         self.assertEqual(runners[0].target_repo, "myrepo")
 
@@ -2195,9 +2268,7 @@ class TestOrbStackVMDriver(unittest.TestCase):
     def test_list_runners_subprocess_exact_args(self, mock_run):
         mock_run.return_value = MagicMock(stdout=json.dumps([]), returncode=0)
         self.driver.list_runners()
-        mock_run.assert_called_once_with(
-            ["orbctl", "list", "--format", "json"], capture_output=True, text=True, check=True
-        )
+        mock_run.assert_called_once_with(["orbctl", "list", "--format", "json"], capture_output=True, text=True, check=True)
 
     @patch("subprocess.run")
     def test_prune_exited_continues_past_non_orbstack_runner_to_next(self, mock_run):
@@ -2208,13 +2279,23 @@ class TestOrbStackVMDriver(unittest.TestCase):
         # later OrbStack VM un-pruned.
         mock_run.return_value = MagicMock(returncode=0)
         docker_runner = RunnerInfo(
-            id="d1", name="local-github-runner-abc", status="exited", state="exited",
-            target_repo="", target_arch="amd64", backend="docker",
+            id="d1",
+            name="local-github-runner-abc",
+            status="exited",
+            state="exited",
+            target_repo="",
+            target_arch="amd64",
+            backend="docker",
             created_at=time.time() - 3600,
         )
         old_orbstack_runner = RunnerInfo(
-            id="r1", name="runzero-vm-amd64-old", status="stopped", state="exited",
-            target_repo="", target_arch="amd64", backend="orbstack-vm",
+            id="r1",
+            name="runzero-vm-amd64-old",
+            status="stopped",
+            state="exited",
+            target_repo="",
+            target_arch="amd64",
+            backend="orbstack-vm",
             created_at=time.time() - 3600,
         )
         self.driver.prune_exited([docker_runner, old_orbstack_runner])
@@ -2226,13 +2307,23 @@ class TestOrbStackVMDriver(unittest.TestCase):
         # Same `continue`-not-`break` risk for the startup-grace-period guard.
         mock_run.return_value = MagicMock(returncode=0)
         booting_runner = RunnerInfo(
-            id="b1", name="runzero-vm-amd64-booting", status="stopped", state="exited",
-            target_repo="", target_arch="amd64", backend="orbstack-vm",
+            id="b1",
+            name="runzero-vm-amd64-booting",
+            status="stopped",
+            state="exited",
+            target_repo="",
+            target_arch="amd64",
+            backend="orbstack-vm",
             created_at=time.time() - 5,
         )
         old_runner = RunnerInfo(
-            id="r1", name="runzero-vm-amd64-old", status="stopped", state="exited",
-            target_repo="", target_arch="amd64", backend="orbstack-vm",
+            id="r1",
+            name="runzero-vm-amd64-old",
+            status="stopped",
+            state="exited",
+            target_repo="",
+            target_arch="amd64",
+            backend="orbstack-vm",
             created_at=time.time() - 3600,
         )
         self.driver.prune_exited([booting_runner, old_runner])
@@ -2245,8 +2336,13 @@ class TestOrbStackVMDriver(unittest.TestCase):
         for state in ("stopped", "dead"):
             mock_run.reset_mock()
             runner = RunnerInfo(
-                id="r1", name=f"runzero-vm-amd64-{state}", status=state, state=state,
-                target_repo="", target_arch="amd64", backend="orbstack-vm",
+                id="r1",
+                name=f"runzero-vm-amd64-{state}",
+                status=state,
+                state=state,
+                target_repo="",
+                target_arch="amd64",
+                backend="orbstack-vm",
                 created_at=time.time() - 3600,
             )
             self.driver.prune_exited([runner])
@@ -2257,8 +2353,13 @@ class TestOrbStackVMDriver(unittest.TestCase):
     def test_prune_exited_deleting_message_content(self, mock_run):
         mock_run.return_value = MagicMock(returncode=0)
         runner = RunnerInfo(
-            id="r1", name="runzero-vm-amd64-old", status="stopped", state="exited",
-            target_repo="", target_arch="amd64", backend="orbstack-vm",
+            id="r1",
+            name="runzero-vm-amd64-old",
+            status="stopped",
+            state="exited",
+            target_repo="",
+            target_arch="amd64",
+            backend="orbstack-vm",
             created_at=time.time() - 3600,
         )
         with patch("builtins.print") as mock_print:
@@ -2275,8 +2376,13 @@ class TestOrbStackVMDriver(unittest.TestCase):
         # dead) state, e.g. "pending", resetting a real failure streak based
         # on a runner that never proved it actually got a network address.
         pending_old_runner = RunnerInfo(
-            id="p1", name="runzero-vm-amd64-stuck", status="creating", state="pending",
-            target_repo="", target_arch="amd64", backend="orbstack-vm",
+            id="p1",
+            name="runzero-vm-amd64-stuck",
+            status="creating",
+            state="pending",
+            target_repo="",
+            target_arch="amd64",
+            backend="orbstack-vm",
             created_at=time.time() - 3600,
         )
         self.driver._spawn_failure_counts["amd64"] = 2
@@ -2286,8 +2392,13 @@ class TestOrbStackVMDriver(unittest.TestCase):
 
     def test_prune_exited_records_got_network_true_exactly(self):
         healthy_runner = RunnerInfo(
-            id="h1", name="runzero-vm-amd64-healthy", status="running", state="running",
-            target_repo="", target_arch="amd64", backend="orbstack-vm",
+            id="h1",
+            name="runzero-vm-amd64-healthy",
+            status="running",
+            state="running",
+            target_repo="",
+            target_arch="amd64",
+            backend="orbstack-vm",
             created_at=time.time() - 3600,
         )
         with patch.object(self.driver, "_record_spawn_outcome") as mock_record:
@@ -2298,8 +2409,13 @@ class TestOrbStackVMDriver(unittest.TestCase):
     def test_prune_exited_records_got_network_false_exactly(self, mock_run):
         mock_run.return_value = MagicMock(returncode=0)
         young_dead_runner = RunnerInfo(
-            id="r1", name="runzero-vm-amd64-young", status="stopped", state="exited",
-            target_repo="", target_arch="amd64", backend="orbstack-vm",
+            id="r1",
+            name="runzero-vm-amd64-young",
+            status="stopped",
+            state="exited",
+            target_repo="",
+            target_arch="amd64",
+            backend="orbstack-vm",
             created_at=time.time() - 25,
         )
         with patch.object(self.driver, "_record_spawn_outcome") as mock_record:
@@ -2313,8 +2429,13 @@ class TestOrbStackVMDriver(unittest.TestCase):
         # threshold), so it proceeds to be evaluated as dead/stopped.
         mock_run.return_value = MagicMock(returncode=0)
         runner = RunnerInfo(
-            id="r1", name="runzero-vm-amd64-boundary", status="stopped", state="exited",
-            target_repo="", target_arch="amd64", backend="orbstack-vm",
+            id="r1",
+            name="runzero-vm-amd64-boundary",
+            status="stopped",
+            state="exited",
+            target_repo="",
+            target_arch="amd64",
+            backend="orbstack-vm",
             created_at=time.time() - STARTUP_GRACE_PERIOD_SECONDS,
         )
         self.driver.prune_exited([runner])
@@ -2326,12 +2447,16 @@ class TestOrbStackVMDriver(unittest.TestCase):
         # the boundary, this must NOT count as a fast failure (a `<=` mutant
         # would).
         runner = RunnerInfo(
-            id="r1", name="runzero-vm-amd64-boundary", status="stopped", state="exited",
-            target_repo="", target_arch="amd64", backend="orbstack-vm",
+            id="r1",
+            name="runzero-vm-amd64-boundary",
+            status="stopped",
+            state="exited",
+            target_repo="",
+            target_arch="amd64",
+            backend="orbstack-vm",
             created_at=time.time() - FAST_FAILURE_WINDOW_SECONDS,
         )
-        with patch("subprocess.run", return_value=MagicMock(returncode=0)), \
-                patch.object(self.driver, "_record_spawn_outcome") as mock_record:
+        with patch("subprocess.run", return_value=MagicMock(returncode=0)), patch.object(self.driver, "_record_spawn_outcome") as mock_record:
             self.driver.prune_exited([runner])
         mock_record.assert_not_called()
 
@@ -2402,8 +2527,11 @@ class TestOrbStackVMDriver(unittest.TestCase):
         ]
         with patch("drivers.orbstack_vm_driver.registration_and_run_snippet", return_value="REG_SNIPPET") as mock_reg:
             name = self.driver.spawn_runner(
-                repo="el-j/run-zero", arch="amd64", access_token="tok123",
-                cache_mounts=None, proxies_enabled=False,
+                repo="el-j/run-zero",
+                arch="amd64",
+                access_token="tok123",
+                cache_mounts=None,
+                proxies_enabled=False,
             )
         mock_reg.assert_called_once_with(
             "https://api.github.com/repos/el-j/run-zero/actions/runners",

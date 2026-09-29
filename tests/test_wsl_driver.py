@@ -35,10 +35,7 @@ class TestWSL2Driver(unittest.TestCase):
 
     @patch("subprocess.run")
     def test_list_runners_parser(self, mock_run):
-        mock_run.return_value = MagicMock(
-            stdout="runzero-wsl-el-j-run-zero-123\nunrelated-distro\n",
-            returncode=0
-        )
+        mock_run.return_value = MagicMock(stdout="runzero-wsl-el-j-run-zero-123\nunrelated-distro\n", returncode=0)
         runners = self.driver.list_runners()
         self.assertEqual(len(runners), 1)
         self.assertEqual(runners[0].name, "runzero-wsl-el-j-run-zero-123")
@@ -102,10 +99,7 @@ class TestWSL2Driver(unittest.TestCase):
         # (only subprocess.run is mocked), so this exercises the real
         # filtering loop rather than relying on list_runners() failing
         # closed to an empty list.
-        mock_run.return_value = MagicMock(
-            stdout="runzero-wsl-el-j-run-zero-abc123\n",
-            returncode=0
-        )
+        mock_run.return_value = MagicMock(stdout="runzero-wsl-el-j-run-zero-abc123\n", returncode=0)
         self.driver.cleanup_all()
         terminate_calls = [c for c in mock_run.call_args_list if c[0][0][:2] == ["wsl", "--terminate"]]
         self.assertEqual(len(terminate_calls), 1)

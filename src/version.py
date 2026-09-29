@@ -25,24 +25,16 @@ def get_version() -> str:
 
     try:
         # Resolve current git branch name
-        branch = subprocess.check_output(
-            ["git", "rev-parse", "--abbrev-ref", "HEAD"],
-            stderr=subprocess.DEVNULL,
-            text=True
-        ).strip()
+        branch = subprocess.check_output(["git", "rev-parse", "--abbrev-ref", "HEAD"], stderr=subprocess.DEVNULL, text=True).strip()
 
         # Count commits on current branch
-        count = subprocess.check_output(
-            ["git", "rev-list", "--count", "HEAD"],
-            stderr=subprocess.DEVNULL,
-            text=True
-        ).strip()
+        count = subprocess.check_output(["git", "rev-list", "--count", "HEAD"], stderr=subprocess.DEVNULL, text=True).strip()
 
         if branch in ("main", "master"):
             return BASE_VERSION
         elif branch == "develop":
             return f"{BASE_VERSION}-beta.1"
-        elif branch.startswith("feat/") or branch.startswith("feature/") or branch.startswith("fix/"):
+        elif branch.startswith(("feat/", "feature/", "fix/")):
             return f"{BASE_VERSION}-alpha.{count}"
         else:
             return f"{BASE_VERSION}-dev.{count}"
