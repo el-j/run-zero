@@ -50,6 +50,7 @@ class TestWSL2Driver(unittest.TestCase):
     @patch("subprocess.Popen")
     def test_spawn_runner(self, mock_popen):
         name = self.driver.spawn_runner(repo="el-j/run-zero", access_token="token")
+        assert name is not None
         self.assertIn("runzero-wsl-el-j-run-zero-", name)
 
     @patch("subprocess.Popen")

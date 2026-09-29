@@ -26,28 +26,16 @@ jobs:
         with:
           python-version: '3.11'
 
-      - name: Install Testing & Linting Tools
+      - name: Install pinned dev tooling
         run: |
           python -m pip install --upgrade pip
-          pip install flake8 mypy pytest pytest-cov
+          pip install -r requirements-dev.txt
+          sudo apt-get update -qq && sudo apt-get install -y -qq shellcheck
 
-      - name: Flake8 Code Linting
-        run: |
-          flake8 src/ tests/ --max-line-length=160 --extend-ignore=E501,W503,E402
-
-      - name: Mypy Static Type Checking
-        run: |
-          MYPYPATH=src mypy src/ --ignore-missing-imports
-
-      - name: Run Pytest with Code Coverage
-        run: |
-          PYTHONPATH=src pytest --cov=src --cov-report=term-missing tests/
-
-      - name: Validate Shell Script Syntax
-        run: |
-          bash -n docker/start.sh
-          bash -n scripts/setup_env.sh
-          echo "Bash scripts syntax is valid!"
+      # One entry point shared with local dev and the pre-commit hook: ruff lint + format,
+      # flake8, mypy, interrogate, pytest (100% coverage, warnings are errors), bash -n, shellcheck.
+      - name: Quality gates (make check)
+        run: make check PY=python
 
       - name: Validate Docker Compose Configuration
         run: |
@@ -73,6 +61,11 @@ jobs:
         run: |
           cd website
           npm ci
+
+      - name: Lint website (oxlint)
+        run: |
+          cd website
+          npm run lint
 
       - name: Validate Astro Build
         run: |
@@ -106,3 +99,24 @@ jobs:
           platforms: linux/amd64
           push: false
           tags: local-github-runner:amd64-test
+
+  build-runner-arm64:
+    name: Test ARM64 Runner Image Build
+    # Native arm64 runner: Apple Silicon hosts run this image, so it must build there too.
+    runs-on: ubuntu-24.04-arm
+    needs: [validate-code]
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v7
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v4
+
+      - name: Build ARM64 Runner Image
+        uses: docker/build-push-action@v7
+        with:
+          context: ./docker
+          file: docker/Dockerfile
+          platforms: linux/arm64
+          push: false
+          tags: local-github-runner:arm64-test

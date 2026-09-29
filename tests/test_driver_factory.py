@@ -40,7 +40,17 @@ class _MinimalDriver(RunnerDriver):
     def is_available(self) -> bool:
         return True
 
-    def spawn_runner(self, **kwargs):
+    def spawn_runner(
+        self,
+        repo: str | None = None,
+        org: str | None = None,
+        arch: str = "arm64",
+        labels: str | None = None,
+        access_token: str | None = None,
+        cache_mounts: dict[str, str] | None = None,
+        proxies_enabled: bool = True,
+        extra_env: dict[str, str] | None = None,
+    ) -> str | None:
         return None
 
     def list_runners(self):

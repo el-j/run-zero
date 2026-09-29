@@ -52,6 +52,7 @@ class TestVMBridgeBlackboxContract(unittest.TestCase):
         vm_bridge._driver_cache.clear()
         self.server = VMBridgeServer(host="127.0.0.1", port=0)
         self.server.start(blocking=False)
+        assert self.server.httpd is not None
         self.port = self.server.httpd.server_port
         self.base_url = f"http://127.0.0.1:{self.port}"
 

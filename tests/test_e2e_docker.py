@@ -88,6 +88,9 @@ def _host_arch() -> str:
 class TestDockerEngineEndToEnd(unittest.TestCase):
     """Real, unmocked Docker container lifecycle via DockerDriver's own real subprocess calls."""
 
+    arch: str
+    image_tag: str
+
     @classmethod
     def setUpClass(cls):
         cls.arch = _host_arch()
@@ -119,6 +122,7 @@ class TestDockerEngineEndToEnd(unittest.TestCase):
             proxies_enabled=False,
         )
         self.assertIsNotNone(runner_id, "spawn_runner() failed to create a real container")
+        assert runner_id is not None
         # Guaranteed real cleanup even if a later assertion fails.
         self.addCleanup(lambda: subprocess.run(["docker", "rm", "-f", runner_id], capture_output=True))
 

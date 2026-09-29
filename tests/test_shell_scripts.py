@@ -83,6 +83,7 @@ class TestShellScripts(unittest.TestCase):
 
         match = re.search(r"CACHE_DIRS=\((.*?)\)", content, re.DOTALL)
         self.assertIsNotNone(match, "Could not find CACHE_DIRS fallback array in start.sh")
+        assert match is not None
         fallback_dirs = set(match.group(1).split())
 
         expected = init_cache_dirs("/tmp/fake-host-cache", "arm64")

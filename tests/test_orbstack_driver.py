@@ -9,6 +9,7 @@ import sys
 import threading
 import time
 import unittest
+from typing import Any
 from unittest.mock import MagicMock, call, mock_open, patch
 
 from drivers import RunnerInfo
@@ -331,6 +332,7 @@ class TestOrbStackVMDriver(unittest.TestCase):
             returncode=0,
         )
         runners = self.driver.list_runners()
+        assert runners[0].created_at is not None
         self.assertAlmostEqual(runners[0].created_at, 1788968853.355, places=2)
 
     @patch("subprocess.run")
@@ -350,6 +352,7 @@ class TestOrbStackVMDriver(unittest.TestCase):
 
         fresh_driver = OrbStackVMDriver(distro="ubuntu:24.04")
         runners = fresh_driver.list_runners()
+        assert runners[0].created_at is not None
         self.assertAlmostEqual(runners[0].created_at, 1788968853.355, places=2)
 
     @patch("subprocess.run")
@@ -361,9 +364,10 @@ class TestOrbStackVMDriver(unittest.TestCase):
         before = time.time()
         runners = self.driver.list_runners()
         after = time.time()
-        self.assertIsNotNone(runners[0].created_at)
-        self.assertGreaterEqual(runners[0].created_at, before)
-        self.assertLessEqual(runners[0].created_at, after)
+        created_at = runners[0].created_at
+        assert created_at is not None
+        self.assertGreaterEqual(created_at, before)
+        self.assertLessEqual(created_at, after)
 
     def test_base_image_name(self):
         self.assertEqual(self.driver.base_image_name("amd64"), "runzero-vm-base-amd64")
@@ -402,6 +406,7 @@ class TestOrbStackVMDriver(unittest.TestCase):
         ]
         name = self.driver.spawn_runner(repo="el-j/run-zero", arch="amd64", access_token="token")
         self.assertIsNotNone(name)
+        assert name is not None
         clone_call = mock_run.call_args_list[1]
         self.assertEqual(clone_call[0][0][:2], ["orbctl", "clone"])
 
@@ -422,6 +427,7 @@ class TestOrbStackVMDriver(unittest.TestCase):
             cache_mounts={"/Users/dev/.local-github-runner/cache/npm": "/home/runner/.npm"},
         )
         self.assertIsNotNone(name)
+        assert name is not None
         popen_args = mock_popen.call_args[0][0]
         self.assertEqual(popen_args[:5], ["orb", "-m", name, "-u", "runner"])
         setup_script = popen_args[-1]
@@ -1174,6 +1180,7 @@ class TestOrbStackVMDriver(unittest.TestCase):
         ]
         name = self.driver.spawn_runner(org="my-org", arch="amd64", access_token="token")
         self.assertIsNotNone(name)
+        assert name is not None
         self.assertEqual(self.driver._runner_repos.get(name), "my-org")
 
     @patch("subprocess.run")
@@ -1257,7 +1264,7 @@ class TestOrbStackVMDriver(unittest.TestCase):
         # callback doesn't raise -- it never proved the callback was actually the
         # one invoked, since _report_image_event swallows every exception,
         # including "NoneType is not callable".
-        events = []
+        events: list[dict[str, Any]] = []
         driver = OrbStackVMDriver(on_image_event=events.append)
         driver._report_image_event("building", "arm64", "detail-here")
         self.assertEqual(len(events), 1)
@@ -1358,7 +1365,7 @@ class TestOrbStackVMDriver(unittest.TestCase):
         # passed to _report_image_event, killing the argument-swap/omission
         # mutants on that call.
         driver = OrbStackVMDriver(distro="ubuntu:24.04")
-        events = []
+        events: list[dict[str, Any]] = []
         driver._on_image_event = events.append
         with patch.object(driver, "build_base_image", return_value=False):
             for _ in range(2):
@@ -1569,7 +1576,7 @@ class TestOrbStackVMDriver(unittest.TestCase):
         # Regression guard: every dict key here (driver/arch/profile/status/
         # detail/ts) had zero direct assertions -- a key-name typo or a
         # value swapped for the wrong field went completely undetected.
-        events = []
+        events: list[dict[str, Any]] = []
         driver = OrbStackVMDriver(distro="ubuntu:24.04", on_image_event=events.append)
         with patch("time.time", return_value=1700000000.0):
             driver._report_image_event("building", "arm64", "some detail", profile="cuda")
@@ -1691,7 +1698,7 @@ class TestOrbStackVMDriver(unittest.TestCase):
     @patch("subprocess.run")
     def test_build_base_image_already_exists_reports_exact_event_and_message(self, mock_run):
         mock_run.return_value = MagicMock(stdout=json.dumps([{"name": "runzero-vm-base-amd64", "state": "stopped"}]), returncode=0)
-        events = []
+        events: list[dict[str, Any]] = []
         self.driver._on_image_event = events.append
         with patch("builtins.print") as mock_print:
             result = self.driver.build_base_image("amd64")
@@ -1704,7 +1711,7 @@ class TestOrbStackVMDriver(unittest.TestCase):
         self.assertEqual(events[-1]["detail"], "Already built -- skipping.")
 
     def test_build_base_image_promotes_already_provisioned_staging_immediately(self):
-        events = []
+        events: list[dict[str, Any]] = []
         self.driver._on_image_event = events.append
         with (
             patch.object(self.driver, "base_image_exists", return_value=False),
@@ -1730,7 +1737,7 @@ class TestOrbStackVMDriver(unittest.TestCase):
         )
 
     def test_build_base_image_building_start_reports_exact_event_and_message(self):
-        events = []
+        events: list[dict[str, Any]] = []
         self.driver._on_image_event = events.append
         with (
             patch.object(self.driver, "base_image_exists", return_value=False),
@@ -1800,7 +1807,7 @@ class TestOrbStackVMDriver(unittest.TestCase):
             return MagicMock(returncode=0, stdout=json.dumps([]))
 
         mock_run.side_effect = fake_run
-        events = []
+        events: list[dict[str, Any]] = []
         self.driver._on_image_event = events.append
         with patch("builtins.print") as mock_print:
             result = self.driver.build_base_image("amd64")
@@ -1826,7 +1833,7 @@ class TestOrbStackVMDriver(unittest.TestCase):
             return MagicMock(returncode=0, stdout=json.dumps([]))
 
         mock_run.side_effect = fake_run
-        events = []
+        events: list[dict[str, Any]] = []
         self.driver._on_image_event = events.append
         self.driver.build_base_image("amd64")
         self.assertEqual(events[-1]["detail"], f"Error creating base image: {error}")
@@ -1839,7 +1846,7 @@ class TestOrbStackVMDriver(unittest.TestCase):
             return MagicMock(returncode=0, stdout=json.dumps([]))
 
         mock_run.side_effect = fake_run
-        events = []
+        events: list[dict[str, Any]] = []
         self.driver._on_image_event = events.append
         with patch("builtins.print") as mock_print:
             result = self.driver.build_base_image("amd64")
@@ -1902,7 +1909,7 @@ class TestOrbStackVMDriver(unittest.TestCase):
             return MagicMock(returncode=0, stdout=json.dumps([]))
 
         mock_run.side_effect = fake_run
-        events = []
+        events: list[dict[str, Any]] = []
         self.driver._on_image_event = events.append
         with patch("builtins.print") as mock_print:
             result = self.driver.build_base_image("amd64")
@@ -1923,7 +1930,7 @@ class TestOrbStackVMDriver(unittest.TestCase):
             return MagicMock(returncode=0, stdout=json.dumps([]))
 
         mock_run.side_effect = fake_run
-        events = []
+        events: list[dict[str, Any]] = []
         self.driver._on_image_event = events.append
         with patch("builtins.print") as mock_print:
             result = self.driver.build_base_image("amd64")
@@ -1943,7 +1950,7 @@ class TestOrbStackVMDriver(unittest.TestCase):
             return MagicMock(returncode=0, stdout=json.dumps([]))
 
         mock_run.side_effect = fake_run
-        events = []
+        events: list[dict[str, Any]] = []
         self.driver._on_image_event = events.append
         with patch.object(self.driver, "_promote_staging_to_base", return_value=False):
             result = self.driver.build_base_image("amd64")
@@ -1966,7 +1973,7 @@ class TestOrbStackVMDriver(unittest.TestCase):
             return MagicMock(returncode=0, stdout=json.dumps([]))
 
         mock_run.side_effect = fake_run
-        events = []
+        events: list[dict[str, Any]] = []
         self.driver._on_image_event = events.append
         with patch.object(self.driver, "_promote_staging_to_base", return_value=True), patch("builtins.print") as mock_print:
             result = self.driver.build_base_image("amd64")
@@ -2596,6 +2603,7 @@ class TestOrbStackVMDriver(unittest.TestCase):
         ]
         before = time.time()
         name = self.driver.spawn_runner(repo="el-j/run-zero", arch="amd64", access_token="tok")
+        assert name is not None
         after = time.time()
         mock_run.assert_called_with(["orbctl", "clone", "runzero-vm-base-amd64", name], check=True, capture_output=True)
         self.assertIn(name, self.driver._runner_created_at)
@@ -2611,6 +2619,7 @@ class TestOrbStackVMDriver(unittest.TestCase):
             MagicMock(returncode=0),
         ]
         name = self.driver.spawn_runner(org="my-org", arch="amd64", access_token="tok")
+        assert name is not None
         self.assertEqual(self.driver._runner_repos[name], "my-org")
 
     @patch("subprocess.Popen")

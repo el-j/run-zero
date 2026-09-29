@@ -126,7 +126,7 @@ def _job_matches_target(target: str, job_id: str, job_name: str | None) -> bool:
     return False
 
 
-def job_uses_services_or_container(workflow_text: str, job_name: str) -> bool | None:
+def job_uses_services_or_container(workflow_text: str | None, job_name: str) -> bool | None:
     """Return True/False if the job (matched by its rendered `name:`) declares
     `services:`/`container:`, or None if the job couldn't be located in the
     file at all (caller should fall back to a different heuristic in that

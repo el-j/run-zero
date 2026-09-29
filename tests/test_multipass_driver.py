@@ -69,6 +69,7 @@ class TestMultipassDriver(unittest.TestCase):
     def test_spawn_runner(self, mock_run, mock_popen):
         mock_run.return_value = MagicMock(returncode=0)
         name = self.driver.spawn_runner(repo="el-j/run-zero", arch="arm64", access_token="token", proxies_enabled=True)
+        assert name is not None
         self.assertIn("runzero-mp-arm64-el-j-run-zero-", name)
 
     @patch("subprocess.Popen")
@@ -125,6 +126,7 @@ class TestMultipassDriver(unittest.TestCase):
                 access_token="token",
                 cache_mounts={"/host/npm": "/home/runner/.npm"},
             )
+            assert name is not None
         # A failed cache mount is a warning, not a fatal error -- spawn still succeeds.
         self.assertIn("runzero-mp-arm64-el-j-run-zero-", name)
 

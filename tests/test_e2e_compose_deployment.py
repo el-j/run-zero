@@ -42,6 +42,7 @@ import os
 import shutil
 import subprocess
 import unittest
+from typing import Any
 
 REPO_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 SRC_DIR = os.path.join(REPO_ROOT, "src")
@@ -63,6 +64,10 @@ def _docker_compose_available() -> bool:
 @unittest.skipUnless(_docker_compose_available(), "Docker/Compose not available on this host/CI runner")
 class TestAutoscalerComposeDeploymentBuildContext(unittest.TestCase):
     """Proves the real docker-compose.yml deployment gives DockerDriver a build context."""
+
+    _env_path: str
+    _created_env: bool
+    autoscaler_volumes: list[dict[str, Any]]
 
     @classmethod
     def setUpClass(cls):

@@ -6,6 +6,7 @@ import os
 import subprocess
 import time
 import unittest
+from typing import Any
 from unittest.mock import MagicMock, patch
 
 from drivers import RunnerInfo
@@ -160,10 +161,12 @@ class TestDockerDriver(unittest.TestCase):
         name_arm = self.driver.spawn_runner(
             repo="el-j/run-zero", arch="arm64", access_token="secret-pat", cache_mounts={"/host/cache": "/home/runner/.cache"}, proxies_enabled=True
         )
+        assert name_arm is not None
         self.assertIn("local-runner-arm64-el-j-run-zero-", name_arm)
 
         # Spawn for Org
         name_amd = self.driver.spawn_runner(org="my-org", arch="amd64", access_token="secret-pat", proxies_enabled=False)
+        assert name_amd is not None
         self.assertIn("local-runner-amd64-my-org-", name_amd)
 
     @patch("subprocess.run")
@@ -639,7 +642,7 @@ class TestDockerDriverImageBuildReporting(unittest.TestCase):
     this was previously under test, leaving the entire build path uncovered."""
 
     def setUp(self):
-        self.events = []
+        self.events: list[dict[str, Any]] = []
         self.driver = DockerDriver(on_image_event=self.events.append)
 
     def test_report_image_event_calls_callback_with_expected_shape(self):

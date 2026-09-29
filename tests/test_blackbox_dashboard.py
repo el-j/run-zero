@@ -50,6 +50,7 @@ class TestDashboardBlackboxContract(unittest.TestCase):
     def setUp(self):
         self.server = DashboardServer(host="127.0.0.1", port=0)
         self.server.start(blocking=False)
+        assert self.server.httpd is not None
         self.port = self.server.httpd.server_port
         self.base_url = f"http://127.0.0.1:{self.port}"
 

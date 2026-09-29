@@ -5,7 +5,7 @@ Unit tests for self-healing zombie runner reconciler.
 import unittest
 from unittest.mock import MagicMock, patch
 
-from drivers import RunnerInfo
+from drivers import RunnerDriver, RunnerInfo
 from reconciler import (
     _get_in_progress_runner_names,
     _runner_name_matches,
@@ -228,7 +228,8 @@ class TestReconciler(unittest.TestCase):
 
         # Ensure runner is registered in GitHub so idle_timeout comparison is used.
         mock_gh.return_value = {"runners": [{"id": 99, "name": "local-runner-test-1", "busy": False}]}
-        drivers = {"docker": MagicMock()}
+        docker_driver = MagicMock()
+        drivers: dict[str, RunnerDriver] = {"docker": docker_driver}
 
         with patch("reconciler.print"):
             # With now - created_at = 600 exactly and idle_timeout = 600,
@@ -236,7 +237,7 @@ class TestReconciler(unittest.TestCase):
             reconcile_idle_orphans(["test/repo"], runners, drivers, idle_timeout_seconds=600, unregistered_timeout_seconds=180, now=now)
 
         # Verify destroy was NOT called (runner is exactly at timeout, not over it)
-        drivers["docker"].destroy_runner.assert_not_called()
+        docker_driver.destroy_runner.assert_not_called()
 
     @patch("reconciler.github_request")
     def test_reconcile_idle_orphans_age_seconds_must_exceed_timeout(self, mock_gh):
@@ -264,14 +265,15 @@ class TestReconciler(unittest.TestCase):
         mock_gh.return_value = {
             "runners": []  # Not found in GitHub, so will check unregistered timeout
         }
-        drivers = {"docker": MagicMock()}
+        docker_driver = MagicMock()
+        drivers: dict[str, RunnerDriver] = {"docker": docker_driver}
 
         with patch("reconciler.print"):
             # Runner is 601 seconds old, exceeds 600s timeout
             reconcile_idle_orphans(["test/repo"], runners, drivers, idle_timeout_seconds=600, unregistered_timeout_seconds=180, now=now)
 
         # Verify destroy WAS called (runner exceeds timeout)
-        drivers["docker"].destroy_runner.assert_called_once()
+        docker_driver.destroy_runner.assert_called_once()
 
     @patch("reconciler.github_request")
     def test_reconcile_idle_orphans_skips_runner_not_in_managed_prefixes(self, mock_gh):
@@ -297,13 +299,14 @@ class TestReconciler(unittest.TestCase):
         ]
 
         mock_gh.return_value = {"runners": []}
-        drivers = {"docker": MagicMock()}
+        docker_driver = MagicMock()
+        drivers: dict[str, RunnerDriver] = {"docker": docker_driver}
 
         with patch("reconciler.print"):
             reconcile_idle_orphans(["test/repo"], runners, drivers, idle_timeout_seconds=600, unregistered_timeout_seconds=180, now=now)
 
         # Should NOT destroy because runner name doesn't start with managed prefix
-        drivers["docker"].destroy_runner.assert_not_called()
+        docker_driver.destroy_runner.assert_not_called()
 
     @patch("reconciler.github_request")
     def test_reconcile_idle_orphans_destroys_stale_busy_runner_with_no_active_job(self, mock_gh):

@@ -26,6 +26,7 @@ class TestVMBridge(unittest.TestCase):
         # Start bridge on ephemeral port for testing
         self.server = VMBridgeServer(host="127.0.0.1", port=0)
         self.server.start(blocking=False)
+        assert self.server.httpd is not None
         self.port = self.server.httpd.server_port
         self.base_url = f"http://127.0.0.1:{self.port}"
 
@@ -504,6 +505,7 @@ class TestBridgeVMDriver(unittest.TestCase):
 
         self.server = VMBridgeServer(host="127.0.0.1", port=0)
         self.server.start(blocking=False)
+        assert self.server.httpd is not None
         self.port = self.server.httpd.server_port
         self.bridge_url = f"http://127.0.0.1:{self.port}"
         self.driver = BridgeVMDriver("orbstack-vm", bridge_url=self.bridge_url)

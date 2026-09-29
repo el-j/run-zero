@@ -412,7 +412,7 @@ check-python: ## Python gates: ruff lint + format, flake8, mypy, interrogate, py
 	$(PY) -m ruff check src tests
 	$(PY) -m ruff format --check src tests
 	$(PY) -m flake8 src tests
-	$(PY) -m mypy src
+	$(PY) -m mypy src tests
 	$(PY) -m interrogate src
 	$(PY) -m pytest
 
@@ -462,7 +462,7 @@ lint: ## Run ruff + Flake8 linters, Mypy type checker, and website Oxlint
 	$(PY) -m ruff check src tests
 	$(PY) -m flake8 src tests
 	@echo "$(CYAN)Running Mypy type checker...$(RESET)"
-	$(PY) -m mypy src
+	$(PY) -m mypy src tests
 	@echo "$(CYAN)Running website lint checks with Oxlint...$(RESET)"
 	@if command -v npm >/dev/null 2>&1; then \
 		(cd $(WEBSITE_DIR) && { npm ls oxlint >/dev/null 2>&1 || npm install; } && npm run lint); \

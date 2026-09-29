@@ -57,7 +57,7 @@ class TestOrbStackLiveCacheSharing(unittest.TestCase):
 
     def setUp(self) -> None:
         self.host_dir = tempfile.mkdtemp(prefix="runzero-live-cache-test-")
-        self.vm_names = []
+        self.vm_names: list[str] = []
 
     def tearDown(self) -> None:
         for name in self.vm_names:

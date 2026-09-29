@@ -450,6 +450,7 @@ class TestAutoscalerLoop(unittest.TestCase):
         snapshot = autoscaler.dashboard_state.get_snapshot()
         runner_entry = next((r for r in snapshot["runners"] if r.get("name") == "local-runner-arm64-1"), None)
         self.assertIsNotNone(runner_entry)
+        assert runner_entry is not None
         self.assertEqual(runner_entry.get("job_url"), "https://x/job")
 
     def test_log_print_writes_to_given_file(self):

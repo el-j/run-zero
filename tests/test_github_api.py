@@ -4,11 +4,20 @@ Unit tests for GitHub REST API client and job queue inspector.
 
 import unittest
 import urllib.error
+from email.message import Message
 from io import BytesIO
 from unittest.mock import MagicMock, patch
 
 import github_api
 from github_api import get_queued_job_details, get_workflow_text_for_run, github_request
+
+
+def _headers(values: dict[str, str]) -> Message:
+    """Build the header mapping urllib.error.HTTPError expects (``hdrs``) from a plain dict."""
+    msg = Message()
+    for key, value in values.items():
+        msg[key] = value
+    return msg
 
 
 class TestGitHubApi(unittest.TestCase):
@@ -42,7 +51,7 @@ class TestGitHubApi(unittest.TestCase):
             url="/test",
             code=403,
             msg="Forbidden",
-            hdrs={"x-ratelimit-remaining": "0", "x-ratelimit-limit": "7777", "x-ratelimit-reset": "1700000000"},
+            hdrs=_headers({"x-ratelimit-remaining": "0", "x-ratelimit-limit": "7777", "x-ratelimit-reset": "1700000000"}),
             fp=BytesIO(b""),
         )
         mock_urlopen.side_effect = error
@@ -249,7 +258,7 @@ class TestGitHubApi(unittest.TestCase):
     @patch("urllib.request.urlopen")
     def test_github_request_http_error_tolerates_malformed_ratelimit_headers(self, mock_urlopen):
         error = urllib.error.HTTPError(
-            url="/test", code=500, msg="Server Error", hdrs={"x-ratelimit-remaining": "garbage", "x-ratelimit-reset": "garbage"}, fp=BytesIO(b"")
+            url="/test", code=500, msg="Server Error", hdrs=_headers({"x-ratelimit-remaining": "garbage", "x-ratelimit-reset": "garbage"}), fp=BytesIO(b"")
         )
         mock_urlopen.side_effect = error
         result = github_request("/test", access_token="secret")
@@ -259,7 +268,7 @@ class TestGitHubApi(unittest.TestCase):
     def test_github_request_http_error_non_rate_limit_prints_and_returns_none(self, mock_urlopen):
         # A 500 (or any code other than 401/403-with-exhausted-quota or 404)
         # must hit the generic "HTTP Error" logging branch.
-        error = urllib.error.HTTPError(url="/test", code=500, msg="Internal Server Error", hdrs={}, fp=BytesIO(b""))
+        error = urllib.error.HTTPError(url="/test", code=500, msg="Internal Server Error", hdrs=_headers({}), fp=BytesIO(b""))
         mock_urlopen.side_effect = error
         result = github_request("/test", access_token="secret")
         self.assertIsNone(result)
@@ -311,6 +320,7 @@ class TestGitHubApi(unittest.TestCase):
             "el-j",
         )
         self.assertIsNotNone(normalized)
+        assert normalized is not None
         self.assertIsNone(normalized["included_minutes"])
         self.assertIsNone(normalized["total_minutes_used"])
         self.assertIsNone(normalized["total_paid_minutes_used"])
@@ -337,7 +347,7 @@ class TestGitHubApi(unittest.TestCase):
 
     @patch("urllib.request.urlopen")
     def test_github_request_rate_limit_error_without_reset_uses_unknown_reset_time(self, mock_urlopen):
-        error = urllib.error.HTTPError(url="/test", code=403, msg="Forbidden", hdrs={"x-ratelimit-remaining": "0"}, fp=BytesIO(b""))
+        error = urllib.error.HTTPError(url="/test", code=403, msg="Forbidden", hdrs=_headers({"x-ratelimit-remaining": "0"}), fp=BytesIO(b""))
         mock_urlopen.side_effect = error
         result = github_request("/test", access_token="secret")
         self.assertIsNone(result)

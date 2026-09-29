@@ -111,7 +111,7 @@ fi
 
 if [ "$STAGED_CORE" -eq 1 ]; then
   echo -e "${CYAN}==> 3/5 Type checking and docstring coverage (mypy, interrogate)...${RESET}"
-  "$PY" -m mypy src
+  "$PY" -m mypy src tests
   "$PY" -m interrogate src
 else
   echo -e "${CYAN}==> 3/5 ${YELLOW}No staged src/ or tests/ Python files — skipping mypy & interrogate.${RESET}"
