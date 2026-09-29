@@ -21,6 +21,11 @@ rate_limit_resource: str | None = None
 rate_limit_reset: int | None = None
 actions_billing: dict[str, Any] = {}
 
+# Hard ceiling on pages fetched by github_paginate(): 10 x 100 items. Bounds the API cost of a
+# single call; hitting it is logged, never silent.
+MAX_PAGES = 10
+PAGE_SIZE = 100
+
 # A queued run's workflow file is pinned to that run's head_sha, so its content
 # never changes for the lifetime of the run -- caching by run_id forever avoids
 # re-fetching + re-parsing the same file on every ~10s poll while it's queued.
@@ -252,6 +257,35 @@ def create_registration_token(repo: str | None, org: str | None, access_token: s
     return token if isinstance(token, str) and token else None
 
 
+def github_paginate(
+    endpoint: str, key: str, access_token: str | None = None, max_pages: int = MAX_PAGES, allow_truncated: bool = True
+) -> list[dict[str, Any]] | None:
+    """Fetch every page of a GitHub list endpoint and return the concatenated `key` items.
+
+    GitHub list endpoints default to 30 items per page; without this, a matrix of more than
+    30 jobs or a repo with more than 30 runners is silently truncated. Requests
+    `per_page=100` and follows pages until a short page, up to `max_pages` (a truncation
+    warning is printed if the cap is hit).
+
+    Returns None if ANY page fails or is malformed: a partial list would be mistaken for the
+    complete set (e.g. "these are all the registered runners") by callers. For the same
+    reason, callers that treat the result as exhaustive pass `allow_truncated=False` to get
+    None instead of a capped list.
+    """
+    sep = "&" if "?" in endpoint else "?"
+    items: list[dict[str, Any]] = []
+    for page in range(1, max_pages + 1):
+        data = github_request(f"{endpoint}{sep}per_page={PAGE_SIZE}&page={page}", access_token=access_token)
+        batch = data.get(key) if isinstance(data, dict) else None
+        if not isinstance(batch, list):
+            return None
+        items.extend(item for item in batch if isinstance(item, dict))
+        if len(batch) < PAGE_SIZE:
+            return items
+    print(f"[Autoscaler:API] ⚠️ {endpoint} has more than {max_pages * PAGE_SIZE} {key}; only the first {max_pages * PAGE_SIZE} were read.")
+    return items if allow_truncated else None
+
+
 def get_workflow_text_for_run(repo_full_name: str, run_id: int, access_token: str | None = None) -> str | None:
     """Fetch the raw workflow YAML that produced a given run, at the exact
     commit it ran against. Returns None (and caches the miss) if the run,
@@ -280,11 +314,7 @@ def get_workflow_text_for_run(repo_full_name: str, run_id: int, access_token: st
 
 def get_queued_job_details(repo_full_name: str, access_token: str | None = None) -> list[dict[str, Any]]:
     """Retrieve detailed metadata for unclaimed queued jobs in a repository."""
-    data = github_request(f"/repos/{repo_full_name}/actions/runs?status=queued", access_token=access_token)
-    if not isinstance(data, dict) or "workflow_runs" not in data:
-        return []
-
-    queued_runs = data["workflow_runs"]
+    queued_runs = github_paginate(f"/repos/{repo_full_name}/actions/runs?status=queued", "workflow_runs", access_token=access_token)
     if not queued_runs:
         return []
 
@@ -293,8 +323,8 @@ def get_queued_job_details(repo_full_name: str, access_token: str | None = None)
         run_id = run.get("id")
         if not run_id:
             continue
-        jobs_data = github_request(f"/repos/{repo_full_name}/actions/runs/{run_id}/jobs", access_token=access_token)
-        if not isinstance(jobs_data, dict) or "jobs" not in jobs_data:
+        jobs = github_paginate(f"/repos/{repo_full_name}/actions/runs/{run_id}/jobs", "jobs", access_token=access_token)
+        if jobs is None:
             continue
 
         # GitHub only ever dispatches a job to one of our runners if its
@@ -305,7 +335,7 @@ def get_queued_job_details(repo_full_name: str, access_token: str | None = None)
         # never be assigned to us) still causes a container/VM spawn
         # that then sits registered and idle forever, since GitHub
         # dispatches it to its own hosted fleet instead.
-        qualifying_jobs = [job for job in jobs_data["jobs"] if job.get("status") == "queued" and "self-hosted" in job.get("labels", [])]
+        qualifying_jobs = [job for job in jobs if job.get("status") == "queued" and "self-hosted" in job.get("labels", [])]
         if not qualifying_jobs:
             continue
 

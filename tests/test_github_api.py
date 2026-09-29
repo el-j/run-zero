@@ -6,6 +6,7 @@ import unittest
 import urllib.error
 from email.message import Message
 from io import BytesIO
+from typing import Any
 from unittest.mock import MagicMock, patch
 
 import github_api
@@ -388,3 +389,47 @@ class TestGitHubApi(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TestGithubPaginate(unittest.TestCase):
+    """github_paginate(): follows pages, never returns a partial list on failure (#45)."""
+
+    def _pages(self, pages: list[Any]) -> tuple[MagicMock, Any]:
+        mock = MagicMock(side_effect=pages)
+        return mock, patch("github_api.github_request", mock)
+
+    def test_follows_pages_until_a_short_page(self):
+        full = {"jobs": [{"id": i} for i in range(github_api.PAGE_SIZE)]}
+        mock, p = self._pages([full, {"jobs": [{"id": "last"}, "not-a-dict"]}])
+        with p:
+            items = github_api.github_paginate("/repos/o/r/actions/runs/1/jobs", "jobs", access_token="t")
+        assert items is not None
+        self.assertEqual(len(items), github_api.PAGE_SIZE + 1)
+        urls = [c.args[0] for c in mock.call_args_list]
+        self.assertEqual(urls, ["/repos/o/r/actions/runs/1/jobs?per_page=100&page=1", "/repos/o/r/actions/runs/1/jobs?per_page=100&page=2"])
+
+    def test_existing_query_string_uses_ampersand(self):
+        mock, p = self._pages([{"workflow_runs": []}])
+        with p:
+            self.assertEqual(github_api.github_paginate("/x?status=queued", "workflow_runs"), [])
+        self.assertEqual(mock.call_args.args[0], "/x?status=queued&per_page=100&page=1")
+
+    def test_failure_or_malformed_page_is_none(self):
+        full = {"runners": [{"id": i} for i in range(github_api.PAGE_SIZE)]}
+        seconds: tuple[Any, ...] = (None, {"runners": "x"}, [], True)
+        for second in seconds:
+            with self.subTest(second=second):
+                _, p = self._pages([full, second])
+                with p:
+                    self.assertIsNone(github_api.github_paginate("/x", "runners"))
+
+    def test_page_cap(self):
+        full = {"runners": [{"id": i} for i in range(github_api.PAGE_SIZE)]}
+        for allow, expected_len in ((True, 2 * github_api.PAGE_SIZE), (False, None)):
+            with self.subTest(allow=allow):
+                mock, p = self._pages([full] * 5)
+                with p, patch("builtins.print") as printed:
+                    items = github_api.github_paginate("/x", "runners", max_pages=2, allow_truncated=allow)
+                self.assertEqual(mock.call_count, 2)
+                self.assertEqual(None if items is None else len(items), expected_len)
+                self.assertIn("only the first 200", printed.call_args.args[0])
