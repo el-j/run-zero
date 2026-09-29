@@ -135,6 +135,8 @@ ALLOWED_ENV_KEYS = {
     "HOST_VM_BRIDGE_PORT",
     "RUNNER_CPUS",
     "RUNNER_MEMORY",
+    "RUNZERO_BRIDGE_TOKEN",
+    "RUNZERO_ALLOWED_HOSTS",
 }
 
 env_file = sys.argv[1]
@@ -256,7 +258,7 @@ launchd_start() {
         rm -f "$PID_FILE"
     fi
 
-    render_plist "$python_bin" > "$PLIST_PATH"
+    (umask 077 && render_plist "$python_bin" > "$PLIST_PATH")
     chmod 600 "$PLIST_PATH"
     # Idempotent: bootout-then-bootstrap picks up plist edits (e.g. a changed
     # .env or interpreter path) instead of leaving a stale job registered.

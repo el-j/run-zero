@@ -16,9 +16,13 @@ from urllib.parse import urlparse
 
 from drivers import RunnerDriver, RunnerInfo, get_available_drivers, get_driver
 from drivers.docker_driver import DockerDriver
+from http_security import RequestRejected, allowed_hosts_from_env, check_bearer_token, check_host_header, is_loopback_host, read_json_body
 
 DEFAULT_BRIDGE_PORT = 49504
-DEFAULT_BRIDGE_HOST = "0.0.0.0"
+# Loopback by default. Containers still reach it as host.docker.internal on Docker Desktop
+# and OrbStack (verified on OrbStack 2026-09-29). Binding anything else requires a token.
+DEFAULT_BRIDGE_HOST = "127.0.0.1"
+BRIDGE_TOKEN_ENV = "RUNZERO_BRIDGE_TOKEN"
 
 # get_driver() constructs a brand-new driver instance on every call -- fine
 # for autoscaler.py, which calls it once at startup and holds the result for
@@ -64,34 +68,40 @@ class VMBridgeRequestHandler(BaseHTTPRequestHandler):
             self.send_response(status_code)
             self.send_header("Content-Type", "application/json")
             self.send_header("Content-Length", str(len(payload)))
-            self.send_header("Access-Control-Allow-Origin", "*")
             self.end_headers()
             self.wfile.write(payload)
         except (BrokenPipeError, ConnectionResetError):
             pass
 
-    def _read_json(self) -> dict[str, Any]:
-        content_length = int(self.headers.get("Content-Length", 0))
-        if content_length > 0:
-            raw_body = self.rfile.read(content_length).decode("utf-8")
-            try:
-                return json.loads(raw_body)
-            except json.JSONDecodeError:
-                return {}
-        return {}
+    def _admit(self, require_token: bool) -> bool:
+        """Apply the Host allowlist and, for driver routes, the bearer token.
+
+        On rejection the error response is sent and False is returned.
+        """
+        try:
+            check_host_header(self, allowed_hosts_from_env())
+            if require_token:
+                check_bearer_token(self, os.getenv(BRIDGE_TOKEN_ENV, ""))
+        except RequestRejected as rej:
+            self._send_json(rej.status, {"error": rej.message})
+            return False
+        return True
 
     def do_OPTIONS(self) -> None:
-        """Answer a CORS preflight request with an empty 204 and the allowed methods/headers."""
+        """Answer a CORS preflight with 204 but grant nothing: the bridge has no browser clients."""
         self.send_response(204)
-        self.send_header("Access-Control-Allow-Origin", "*")
-        self.send_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
-        self.send_header("Access-Control-Allow-Headers", "Content-Type, Authorization")
         self.end_headers()
 
     def do_GET(self) -> None:
-        """Route GET requests: /health(-alias)es, /api/status, and /api/drivers/{name}/runners."""
+        """Route GET requests: /health(-alias)es, /api/status, and /api/drivers/{name}/runners.
+
+        Health/status are unauthenticated (they reveal only driver availability); the
+        driver routes require the bridge token when one is configured.
+        """
         parsed = urlparse(self.path)
         path = parsed.path.rstrip("/")
+        if not self._admit(require_token=path.startswith("/api/drivers")):
+            return
 
         if path in ("", "/health", "/api/health"):
             drivers = get_available_drivers()
@@ -134,6 +144,8 @@ class VMBridgeRequestHandler(BaseHTTPRequestHandler):
         Dispatches each action to the corresponding method on the (cached) real driver for
         `{name}`, translating its result/exception into a JSON response.
         """
+        if not self._admit(require_token=True):
+            return
         parsed = urlparse(self.path)
         path = parsed.path.rstrip("/")
         parts = [p for p in path.split("/") if p]
@@ -141,7 +153,11 @@ class VMBridgeRequestHandler(BaseHTTPRequestHandler):
         if len(parts) >= 4 and parts[0] == "api" and parts[1] == "drivers":
             driver_name = parts[2]
             action = parts[3]
-            body = self._read_json()
+            try:
+                body = read_json_body(self)
+            except RequestRejected as rej:
+                self._send_json(rej.status, {"error": rej.message})
+                return
 
             try:
                 driver = _get_cached_driver(driver_name)
@@ -248,8 +264,18 @@ class VMBridgeServer:
     def start(self, blocking: bool = False) -> None:
         """Start the ThreadingHTTPServer; either block the caller (`blocking=True`) or run it on a daemon thread.
 
-        See the comment below for why this must be ThreadingHTTPServer, not plain HTTPServer.
+        Refuses (ValueError) to bind a non-loopback address without RUNZERO_BRIDGE_TOKEN set,
+        since every driver route would then be open to the network. See the comment below for
+        why this must be ThreadingHTTPServer, not plain HTTPServer.
         """
+        token = os.getenv(BRIDGE_TOKEN_ENV, "")
+        if not token and not is_loopback_host(self.host):
+            raise ValueError(f"Refusing to bind the VM bridge to {self.host} without {BRIDGE_TOKEN_ENV} set")
+        if not token:
+            print(
+                f"[VMBridge] ⚠️  {BRIDGE_TOKEN_ENV} is not set: any local process or container can drive the bridge. Run `make env` to generate one.",
+                file=sys.stderr,
+            )
         # Plain HTTPServer serves one request at a time. The "build-base"
         # action calls driver.build_base_image() synchronously in the
         # handler -- a real golden-image build takes 15-25 minutes, during

@@ -13,12 +13,18 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from typing import Any
 from urllib.parse import urlparse
 
+from http_security import RequestRejected, allowed_hosts_from_env, check_host_header, read_json_body, resolve_static_path
+
 from .state import dashboard_state
 
 DEFAULT_DASHBOARD_PORT = 49505
-DEFAULT_DASHBOARD_HOST = "0.0.0.0"
+# Loopback by default: the dashboard can purge caches and prune runners. The container
+# image overrides this (DASHBOARD_HOST=0.0.0.0) and docker-compose publishes the port on
+# the host's 127.0.0.1 only.
+DEFAULT_DASHBOARD_HOST = "127.0.0.1"
 
 STATIC_DIR = os.path.join(os.path.dirname(__file__), "static")
+FONTS_DIR = os.path.join(STATIC_DIR, "fonts")
 
 
 class DashboardRequestHandler(BaseHTTPRequestHandler):
@@ -36,24 +42,22 @@ class DashboardRequestHandler(BaseHTTPRequestHandler):
         self.send_response(status_code)
         self.send_header("Content-Type", "application/json; charset=utf-8")
         self.send_header("Content-Length", str(len(payload)))
-        self.send_header("Access-Control-Allow-Origin", "*")
         self.send_header("Cache-Control", "no-store, no-cache, must-revalidate")
         self.end_headers()
         self.wfile.write(payload)
 
-    def _read_json(self) -> dict[str, Any]:
-        content_length = int(self.headers.get("Content-Length", 0))
-        if content_length > 0:
-            raw_body = self.rfile.read(content_length).decode("utf-8")
-            try:
-                return json.loads(raw_body)
-            except json.JSONDecodeError:
-                return {}
-        return {}
+    def _admit(self) -> bool:
+        """Apply the Host-header allowlist; on rejection send the error and return False."""
+        try:
+            check_host_header(self, allowed_hosts_from_env())
+        except RequestRejected as rej:
+            self._send_json(rej.status, {"error": rej.message})
+            return False
+        return True
 
-    def _serve_file(self, filename: str, content_type: str) -> None:
-        file_path = os.path.join(STATIC_DIR, filename)
-        if not os.path.isfile(file_path):
+    def _serve_file(self, root: str, relative: str, content_type: str) -> None:
+        file_path = resolve_static_path(root, relative)
+        if file_path is None:
             self.send_response(404)
             self.end_headers()
             self.wfile.write(b"404 Not Found")
@@ -74,31 +78,37 @@ class DashboardRequestHandler(BaseHTTPRequestHandler):
             self.wfile.write(str(e).encode("utf-8"))
 
     def do_OPTIONS(self) -> None:
-        """Answer a CORS preflight request with an empty 204 and the allowed methods/headers."""
+        """Answer a CORS preflight with 204 but no Access-Control-Allow-* headers.
+
+        The dashboard UI is same-origin, so it never preflights; granting nothing here is
+        what stops a foreign page from issuing JSON POSTs against the action endpoints.
+        """
         self.send_response(204)
-        self.send_header("Access-Control-Allow-Origin", "*")
-        self.send_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
-        self.send_header("Access-Control-Allow-Headers", "Content-Type")
         self.end_headers()
 
     def do_GET(self) -> None:
         """Route GET requests: static UI assets, REST snapshot/log endpoints, and the /api/events SSE stream."""
+        if not self._admit():
+            return
         parsed = urlparse(self.path)
         path = parsed.path.rstrip("/")
 
         # Static assets
         if path in ("", "/index.html"):
-            self._serve_file("index.html", "text/html; charset=utf-8")
+            self._serve_file(STATIC_DIR, "index.html", "text/html; charset=utf-8")
             return
         elif path == "/dashboard.css":
-            self._serve_file("dashboard.css", "text/css; charset=utf-8")
+            self._serve_file(STATIC_DIR, "dashboard.css", "text/css; charset=utf-8")
             return
         elif path == "/dashboard.js":
-            self._serve_file("dashboard.js", "application/javascript; charset=utf-8")
+            self._serve_file(STATIC_DIR, "dashboard.js", "application/javascript; charset=utf-8")
             return
         elif path.startswith("/fonts/"):
-            font_filename = path.replace("/fonts/", "fonts/")
-            self._serve_file(font_filename, "font/woff2")
+            # Only flat *.woff2 names inside static/fonts/ -- never a nested or parent path.
+            font_name = path[len("/fonts/") :]
+            if "/" in font_name or "\\" in font_name or not font_name.endswith(".woff2"):
+                font_name = ""
+            self._serve_file(FONTS_DIR, font_name, "font/woff2")
             return
 
         # REST Endpoints
@@ -116,7 +126,6 @@ class DashboardRequestHandler(BaseHTTPRequestHandler):
             self.send_header("Content-Type", "text/event-stream")
             self.send_header("Cache-Control", "no-cache")
             self.send_header("Connection", "keep-alive")
-            self.send_header("Access-Control-Allow-Origin", "*")
             self.end_headers()
 
             client_queue = dashboard_state.subscribe()
@@ -148,33 +157,45 @@ class DashboardRequestHandler(BaseHTTPRequestHandler):
         self._send_json(404, {"error": f"Endpoint not found: {path}"})
 
     def do_POST(self) -> None:
-        """Route POST requests: /api/actions/clean-cache and /api/actions/prune."""
+        """Route POST requests: /api/actions/clean-cache and /api/actions/prune.
+
+        Bodies must be ``application/json`` (see http_security.read_json_body).
+        """
+        if not self._admit():
+            return
         parsed = urlparse(self.path)
         path = parsed.path.rstrip("/")
-        body = self._read_json()
+        if path not in ("/api/actions/clean-cache", "/api/actions/prune"):
+            self._send_json(404, {"error": f"Endpoint not found: {path}"})
+            return
+        try:
+            body = read_json_body(self)
+        except RequestRejected as rej:
+            self._send_json(rej.status, {"error": rej.message})
+            return
 
         if path == "/api/actions/clean-cache":
             category = body.get("category", "all")
+            if not isinstance(category, str):
+                self._send_json(400, {"error": "category must be a string"})
+                return
             res = dashboard_state.clean_cache(category)
             dashboard_state.append_log(f"[Dashboard] 🧹 Purged cache: {category}")
             self._send_json(200, res)
             return
 
-        if path == "/api/actions/prune":
-            try:
-                from drivers import get_available_drivers
+        # Only /api/actions/prune remains.
+        try:
+            from drivers import get_available_drivers
 
-                drivers = get_available_drivers()
-                for d in drivers.values():
-                    runners = d.list_runners()
-                    d.prune_exited(runners)
-                dashboard_state.append_log("[Dashboard] ✂️  Triggered fleet runner prune across all active drivers.")
-                self._send_json(200, {"status": "success", "message": "Prune executed"})
-            except Exception as e:
-                self._send_json(500, {"error": str(e)})
-            return
-
-        self._send_json(404, {"error": f"Endpoint not found: {path}"})
+            drivers = get_available_drivers()
+            for d in drivers.values():
+                runners = d.list_runners()
+                d.prune_exited(runners)
+            dashboard_state.append_log("[Dashboard] ✂️  Triggered fleet runner prune across all active drivers.")
+            self._send_json(200, {"status": "success", "message": "Prune executed"})
+        except Exception as e:
+            self._send_json(500, {"error": str(e)})
 
 
 class DashboardServer:

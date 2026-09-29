@@ -9,7 +9,7 @@ import urllib.request
 from unittest.mock import MagicMock, patch
 
 import dashboard.server
-from dashboard.server import DashboardRequestHandler, DashboardServer
+from dashboard.server import STATIC_DIR, DashboardRequestHandler, DashboardServer
 from dashboard.state import DashboardState, dashboard_state
 
 
@@ -517,18 +517,20 @@ class TestDashboardServer(unittest.TestCase):
         req = urllib.request.Request(f"{self.base_url}/api/status", method="OPTIONS")
         with urllib.request.urlopen(req, timeout=3.0) as resp:
             self.assertEqual(resp.status, 204)
-            self.assertEqual(resp.headers.get("Access-Control-Allow-Origin"), "*")
-            self.assertIn("GET", resp.headers.get("Access-Control-Allow-Methods", ""))
+            # No CORS grant: a foreign origin must not be able to preflight into the API.
+            self.assertIsNone(resp.headers.get("Access-Control-Allow-Origin"))
+            self.assertIsNone(resp.headers.get("Access-Control-Allow-Methods"))
 
-    def test_malformed_json_body_defaults_to_empty(self):
+    def test_malformed_json_body_is_rejected_without_acting(self):
+        # A malformed body used to be swallowed and treated as {} -> category "all",
+        # i.e. garbage input purged every cache. It must now be a 400 with no side effect.
         req = urllib.request.Request(
             f"{self.base_url}/api/actions/clean-cache", data=b"not valid json{{{", headers={"Content-Type": "application/json"}, method="POST"
         )
-        with urllib.request.urlopen(req, timeout=3.0) as resp:
-            data = json.loads(resp.read().decode("utf-8"))
-            self.assertEqual(resp.status, 200)
-            # _read_json() swallowed the bad body -> defaults category to "all".
-            self.assertEqual(data.get("status"), "success")
+        with patch("dashboard.server.dashboard_state.clean_cache") as clean, self.assertRaises(urllib.error.HTTPError) as cm:
+            urllib.request.urlopen(req, timeout=3.0)
+        self.assertEqual(cm.exception.code, 400)
+        clean.assert_not_called()
 
     def test_post_with_no_body_defaults_to_empty_dict(self):
         # _read_json() with Content-Length 0 (no body at all, not even "{}")
@@ -573,7 +575,7 @@ class TestDashboardServer(unittest.TestCase):
         # is real and true for index.html) but open() itself fails.
         mock_handler = MagicMock()
         with patch("builtins.open", side_effect=OSError("disk read error")):
-            DashboardRequestHandler._serve_file(mock_handler, "index.html", "text/html; charset=utf-8")
+            DashboardRequestHandler._serve_file(mock_handler, STATIC_DIR, "index.html", "text/html; charset=utf-8")
         mock_handler.send_response.assert_called_once_with(500)
         mock_handler.wfile.write.assert_called_once()
 

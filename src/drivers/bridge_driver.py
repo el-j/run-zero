@@ -36,6 +36,9 @@ class BridgeVMDriver(RunnerDriver):
         url = f"{self.bridge_url}{path}"
         body_bytes = json.dumps(data).encode("utf-8") if data is not None else None
         headers = {"Content-Type": "application/json"} if body_bytes else {}
+        token = os.getenv("RUNZERO_BRIDGE_TOKEN", "")
+        if token:
+            headers["Authorization"] = f"Bearer {token}"
 
         req = urllib.request.Request(url, data=body_bytes, headers=headers, method=method)
         try:

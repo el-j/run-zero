@@ -5,6 +5,8 @@
 # ==============================================================================
 
 set -e
+# .env holds credentials: never create it readable by other users, even briefly.
+umask 077
 
 # Terminal Colors
 CYAN="\033[36m"
@@ -13,6 +15,19 @@ YELLOW="\033[33m"
 RED="\033[31m"
 BOLD="\033[1m"
 RESET="\033[0m"
+
+# Shared secret between the autoscaler container and the Host VM Bridge (see SECURITY.md).
+generate_token() {
+    python3 -c 'import secrets; print(secrets.token_urlsafe(32))' 2>/dev/null || openssl rand -hex 32
+}
+
+# Append RUNZERO_BRIDGE_TOKEN to an existing .env that predates it; never rotate one that exists.
+ensure_bridge_token() {
+    if ! grep -q '^RUNZERO_BRIDGE_TOKEN=.' .env; then
+        printf '\n# Host VM Bridge shared secret (autoscaler <-> bridge)\nRUNZERO_BRIDGE_TOKEN=%s\n' "$(generate_token)" >> .env
+        echo -e "${GREEN}Added a generated RUNZERO_BRIDGE_TOKEN to .env.${RESET}"
+    fi
+}
 
 echo ""
 echo -e "${BOLD}${CYAN}╔═══════════════════════════════════════════════════════════════╗${RESET}"
@@ -30,6 +45,7 @@ if [ ! -t 0 ] || [ "$CI" = "true" ] || [ "$NON_INTERACTIVE" = "true" ]; then
     else
         echo -e "${YELLOW}.env file already exists. Skipping wizard.${RESET}"
     fi
+    ensure_bridge_token
     exit 0
 fi
 
@@ -39,6 +55,7 @@ if [ -f .env ]; then
     read -r -p "Do you want to reconfigure and overwrite it? [y/N]: " OVERWRITE_ENV
     if [[ ! "$OVERWRITE_ENV" =~ ^[yY](es)?$ ]]; then
         echo -e "${GREEN}Keeping existing .env file.${RESET}"
+        ensure_bridge_token
         exit 0
     fi
     echo ""
@@ -159,6 +176,9 @@ HOST_CACHE_DIR=~/.local-github-runner/cache
 # Networking
 DOCKER_NETWORK=host
 DOCKER_SOCK=/var/run/docker.sock
+
+# Host VM Bridge shared secret (autoscaler <-> bridge)
+RUNZERO_BRIDGE_TOKEN=$(generate_token)
 EOF
 
 chmod 600 .env

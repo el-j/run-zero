@@ -200,7 +200,8 @@ class TestVMBridgeBlackboxContract(unittest.TestCase):
         req = urllib.request.Request(f"{self.base_url}/api/drivers/orbstack-vm/spawn", method="OPTIONS")
         with urllib.request.urlopen(req, timeout=3.0) as resp:
             self.assertEqual(resp.status, 204)
-            self.assertEqual(resp.headers.get("Access-Control-Allow-Origin"), "*")
+            # No CORS grant: a foreign origin must not be able to preflight into the API.
+            self.assertIsNone(resp.headers.get("Access-Control-Allow-Origin"))
 
     def test_unknown_get_route_returns_404_contract(self):
         with self.assertRaises(urllib.error.HTTPError) as cm:

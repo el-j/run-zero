@@ -259,7 +259,8 @@ class TestVMBridge(unittest.TestCase):
         req = urllib.request.Request(f"{self.base_url}/api/drivers/orbstack-vm/spawn", method="OPTIONS")
         with urllib.request.urlopen(req, timeout=3.0) as resp:
             self.assertEqual(resp.status, 204)
-            self.assertEqual(resp.headers.get("Access-Control-Allow-Origin"), "*")
+            # No CORS grant: a foreign origin must not be able to preflight into the API.
+            self.assertIsNone(resp.headers.get("Access-Control-Allow-Origin"))
 
     def test_unknown_get_path_returns_404(self):
         req = urllib.request.Request(f"{self.base_url}/nonexistent")
@@ -285,15 +286,17 @@ class TestVMBridge(unittest.TestCase):
             self.assertEqual(data.get("status"), "success")
             self.assertEqual(data.get("runner_id"), "runzero-vm-new")
 
-    def test_malformed_json_body_defaults_to_empty(self):
-        # _read_json() must swallow a JSONDecodeError and behave as if no
-        # body was sent, not raise / 500.
+    def test_malformed_json_body_is_rejected_without_acting(self):
+        # A malformed body must be a 400 before any driver action runs -- not silently
+        # treated as {} (which would still execute the action with default arguments).
         req = urllib.request.Request(
             f"{self.base_url}/api/drivers/orbstack-vm/cleanup", data=b"not valid json{{{", headers={"Content-Type": "application/json"}, method="POST"
         )
-        with patch("vm_bridge.get_driver", return_value=MagicMock()), urllib.request.urlopen(req, timeout=3.0) as resp:
-            data = json.loads(resp.read().decode("utf-8"))
-            self.assertEqual(data.get("status"), "success")
+        driver = MagicMock()
+        with patch("vm_bridge.get_driver", return_value=driver), self.assertRaises(urllib.error.HTTPError) as cm:
+            urllib.request.urlopen(req, timeout=3.0)
+        self.assertEqual(cm.exception.code, 400)
+        driver.cleanup_all.assert_not_called()
 
     @patch("vm_bridge.get_driver")
     def test_get_runners_endpoint_invalid_driver_returns_500(self, mock_get_driver):

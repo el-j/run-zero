@@ -50,7 +50,8 @@ ACTIONS_BILLING_REFRESH_INTERVAL = int(os.getenv("ACTIONS_BILLING_REFRESH_INTERV
 # Dashboard settings
 DASHBOARD_ENABLED = os.getenv("DASHBOARD_ENABLED", "true").lower() in ("true", "1", "yes")
 DASHBOARD_PORT = int(os.getenv("DASHBOARD_PORT", "49505"))
-DASHBOARD_HOST = os.getenv("DASHBOARD_HOST", "0.0.0.0")
+# Loopback unless overridden; the autoscaler image sets 0.0.0.0 so the published port works.
+DASHBOARD_HOST = os.getenv("DASHBOARD_HOST", "127.0.0.1")
 
 running = True
 
