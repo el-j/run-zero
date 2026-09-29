@@ -1,11 +1,20 @@
 #!/usr/bin/env bash
 # ==============================================================================
 # RunZero Pre-Commit Quality Guard & Auto-Fixer
-# Validates code style, static types, shell syntax, and runs unit tests.
-# Automatically fixes formatting and re-stages updated files.
+#
+# 1. Auto-fixes (ruff lint --fix + ruff format) staged Python files and re-stages
+#    ONLY those files -- and only when they have no additional unstaged edits, so
+#    re-staging can never sweep unrelated work-in-progress into the commit.
+# 2. Runs the fast quality gates against what is staged: ruff, flake8, mypy,
+#    interrogate, shellcheck / bash -n, pytest (no coverage gate -- CI enforces it),
+#    and the website's oxlint + prettier.
+#
+# Tooling comes from $RUNZERO_PY, else .venv-dev/bin/python (`make dev-setup`),
+# else python3. Missing tooling is a hard failure, never a silent skip.
+# Must stay compatible with macOS's stock bash 3.2 (no mapfile, guarded arrays).
 # ==============================================================================
 
-set -eo pipefail
+set -euo pipefail
 
 RED='\033[0;31m'
 GREEN='\033[0;32m'
@@ -14,160 +23,151 @@ CYAN='\033[0;36m'
 BOLD='\033[1m'
 RESET='\033[0m'
 
-echo -e "${BOLD}${CYAN}🔍 [RunZero Pre-Commit Guard] Running quality checks & auto-fixes...${RESET}"
-
 PROJECT_ROOT="$(git rev-parse --show-toplevel 2>/dev/null || pwd)"
 cd "$PROJECT_ROOT"
 
-AUTOFIXED=0
-
-# ------------------------------------------------------------------------------
-# 1. Auto-Fix Trailing Whitespace & Newlines in Python, Shell, and Astro files
-# ------------------------------------------------------------------------------
-echo -e "${CYAN}==> 1/5 Checking and auto-fixing trailing whitespace & file endings...${RESET}"
-while IFS= read -r file; do
-  if [ -f "$file" ]; then
-    # Strip trailing carriage returns and whitespace
-    if [[ "$OSTYPE" == "darwin"* ]]; then
-      sed -i '' -E 's/[[:space:]]+$//' "$file" 2>/dev/null || true
-    else
-      sed -i -E 's/[[:space:]]+$//' "$file" 2>/dev/null || true
-    fi
-    # Ensure newline at EOF
-    if [ -n "$(tail -c 1 "$file" 2>/dev/null)" ]; then
-      echo "" >> "$file"
-    fi
-  fi
-done < <(git diff --cached --name-only --diff-filter=ACM | grep -E '\.(py|sh|astro|md|yml|yaml|json|css)$' || true)
-
-# ------------------------------------------------------------------------------
-# 2. Python Formatting & Auto-Fixes (ruff / autopep8 / black if available)
-# ------------------------------------------------------------------------------
-echo -e "${CYAN}==> 2/5 Running Python auto-fixers (imports, formatting)...${RESET}"
-PY_FILES=$(git diff --cached --name-only --diff-filter=ACM | grep -E '\.py$' || true)
-
-if [ -n "$PY_FILES" ]; then
-  if command -v ruff >/dev/null 2>&1; then
-    echo -e "  • Using ${BOLD}ruff${RESET} to auto-fix Python linting & formatting..."
-    echo "$PY_FILES" | xargs ruff check --fix --line-length=160 2>/dev/null || true
-    echo "$PY_FILES" | xargs ruff format --line-length=160 2>/dev/null || true
-  elif command -v docker >/dev/null 2>&1 && docker ps >/dev/null 2>&1; then
-    echo -e "  • Using containerized ${BOLD}ruff${RESET} to auto-fix Python code..."
-    docker run --rm -v "$PROJECT_ROOT:/app" -w /app python:3.11-slim bash -c "\
-      pip install --quiet ruff && \
-      ruff check --fix --line-length=160 src/ tests/ && \
-      ruff format --line-length=160 src/ tests/" 2>/dev/null || true
-  elif command -v autopep8 >/dev/null 2>&1; then
-    echo -e "  • Using ${BOLD}autopep8${RESET} to auto-format Python code..."
-    echo "$PY_FILES" | xargs autopep8 --in-place --aggressive --max-line-length=160 2>/dev/null || true
-  fi
-
-  # Automatically re-stage any auto-fixed files so the commit includes all fixes
-  git diff --name-only | xargs git add 2>/dev/null || true
-fi
-
-# ------------------------------------------------------------------------------
-# 3. Flake8 Linting & Mypy Type Checking (only when Python files are staged)
-# ------------------------------------------------------------------------------
-echo -e "${CYAN}==> 3/5 Checking Python syntax, linting (Flake8) & types (Mypy)...${RESET}"
-STAGED_PY=$(git diff --cached --name-only --diff-filter=ACM | grep -E '\.py$' || true)
-RUN_IN_DOCKER=0
-
-if [ -z "$STAGED_PY" ]; then
-  echo -e "  ${YELLOW}No staged Python files — skipping Flake8 & Mypy.${RESET}"
+if [ -n "${RUNZERO_PY:-}" ]; then
+  PY="$RUNZERO_PY"
+elif [ -x .venv-dev/bin/python ]; then
+  PY=".venv-dev/bin/python"
 else
-  if command -v flake8 >/dev/null 2>&1; then
-    flake8 src/ tests/ --max-line-length=160 --extend-ignore=E203,E501,W503,E402
-    echo -e "  ${GREEN}✓ Flake8: 0 lint errors.${RESET}"
-  elif python3 -m flake8 --version >/dev/null 2>&1; then
-    python3 -m flake8 src/ tests/ --max-line-length=160 --extend-ignore=E203,E501,W503,E402
-    echo -e "  ${GREEN}✓ Flake8: 0 lint errors.${RESET}"
-  elif command -v docker >/dev/null 2>&1 && docker ps >/dev/null 2>&1; then
-    echo -e "  • ${YELLOW}flake8/mypy not installed on host — running inside Python container...${RESET}"
-    docker run --rm -v "$PROJECT_ROOT:/app" -w /app python:3.11-slim bash -c "\
-      pip install --quiet flake8 mypy && \
-      flake8 src/ tests/ --max-line-length=160 --extend-ignore=E203,E501,W503,E402 && \
-      MYPYPATH=src mypy src/ --ignore-missing-imports"
-    echo -e "  ${GREEN}✓ Containerized Flake8 & Mypy: 0 errors, 100% Type Safe.${RESET}"
-    RUN_IN_DOCKER=1
-  else
-    echo -e "  ${YELLOW}Attempting to install flake8 & mypy via pip...${RESET}"
-    python3 -m pip install --quiet flake8 mypy || true
-    if command -v flake8 >/dev/null 2>&1; then
-      flake8 src/ tests/ --max-line-length=160 --extend-ignore=E203,E501,W503,E402
-      echo -e "  ${GREEN}✓ Flake8: 0 lint errors.${RESET}"
-    else
-      find src tests -name "*.py" -exec python3 -m py_compile {} +
-      echo -e "  ${GREEN}✓ Python syntax: Valid.${RESET}"
-    fi
-  fi
+  PY="python3"
+fi
 
-  if [ "$RUN_IN_DOCKER" -eq 0 ]; then
-    if command -v mypy >/dev/null 2>&1; then
-      MYPYPATH=src mypy src/ --ignore-missing-imports
-      echo -e "  ${GREEN}✓ Mypy: 100% Type Safe.${RESET}"
-    elif python3 -m mypy --version >/dev/null 2>&1; then
-      MYPYPATH=src python3 -m mypy src/ --ignore-missing-imports
-      echo -e "  ${GREEN}✓ Mypy: 100% Type Safe.${RESET}"
-    fi
-  fi
+echo -e "${BOLD}${CYAN}🔍 [RunZero Pre-Commit Guard] Running quality checks & auto-fixes...${RESET}"
+
+if ! "$PY" -m ruff --version >/dev/null 2>&1 || ! "$PY" -m flake8 --version >/dev/null 2>&1; then
+  echo -e "${RED}✗ Dev tooling not found for '$PY'. Run: make dev-setup (or set RUNZERO_PY).${RESET}"
+  exit 1
+fi
+
+STAGED_PY=()
+FULLY_STAGED_PY=()
+PARTIAL_PY=()
+STAGED_SH=()
+STAGED_CORE=0
+STAGED_WEB=()
+while IFS= read -r f; do
+  [ -f "$f" ] || continue
+  case "$f" in
+    website/*) STAGED_WEB+=("$f") ;;
+  esac
+  case "$f" in
+    src/*.py | tests/*.py) STAGED_CORE=1 ;;
+  esac
+  case "$f" in
+    *.py)
+      STAGED_PY+=("$f")
+      if git diff --quiet -- "$f"; then
+        FULLY_STAGED_PY+=("$f")
+      else
+        PARTIAL_PY+=("$f")
+      fi
+      ;;
+    *.sh) STAGED_SH+=("$f") ;;
+  esac
+done < <(git diff --cached --name-only --diff-filter=ACM)
+
+# ------------------------------------------------------------------------------
+# 1. Auto-fix fully staged Python files and re-stage exactly those files
+# ------------------------------------------------------------------------------
+echo -e "${CYAN}==> 1/5 Auto-fixing staged Python files (ruff)...${RESET}"
+if [ ${#FULLY_STAGED_PY[@]} -gt 0 ]; then
+  "$PY" -m ruff check --fix --quiet -- "${FULLY_STAGED_PY[@]}" || true
+  "$PY" -m ruff format --quiet -- "${FULLY_STAGED_PY[@]}"
+  git add -- "${FULLY_STAGED_PY[@]}"
+  echo -e "  ${GREEN}✓ Auto-fixed and re-staged ${#FULLY_STAGED_PY[@]} file(s).${RESET}"
+else
+  echo -e "  ${YELLOW}No fully staged Python files to auto-fix.${RESET}"
+fi
+if [ ${#PARTIAL_PY[@]} -gt 0 ]; then
+  echo -e "  ${YELLOW}Not auto-fixed (also has unstaged edits): ${PARTIAL_PY[*]}${RESET}"
 fi
 
 # ------------------------------------------------------------------------------
-# 4. Shell Script Syntax Validation
+# 2. Python lint, format and type gates
 # ------------------------------------------------------------------------------
-echo -e "${CYAN}==> 4/5 Validating Shell Scripts (bash -n)...${RESET}"
-for sh_file in docker/start.sh docker/provision-toolchain.sh scripts/setup_env.sh scripts/pre-commit.sh; do
-  if [ -f "$sh_file" ]; then
+echo -e "${CYAN}==> 2/5 Linting staged Python (ruff, flake8)...${RESET}"
+if [ ${#STAGED_PY[@]} -gt 0 ]; then
+  # Fully staged files: working tree == index, so check them on disk.
+  if [ ${#FULLY_STAGED_PY[@]} -gt 0 ]; then
+    "$PY" -m ruff check -- "${FULLY_STAGED_PY[@]}"
+    "$PY" -m ruff format --check -- "${FULLY_STAGED_PY[@]}"
+    "$PY" -m flake8 -- "${FULLY_STAGED_PY[@]}"
+  fi
+  # Partially staged files: check the staged blob (what will be committed), not the
+  # working tree, so unstaged work-in-progress neither fails nor passes the commit.
+  if [ ${#PARTIAL_PY[@]} -gt 0 ]; then
+    for f in "${PARTIAL_PY[@]}"; do
+      git show ":$f" | "$PY" -m ruff check --stdin-filename "$f" -
+      git show ":$f" | "$PY" -m ruff format --check --stdin-filename "$f" - >/dev/null
+      git show ":$f" | "$PY" -m flake8 --stdin-display-name "$f" -
+    done
+  fi
+  echo -e "  ${GREEN}✓ ruff + flake8 clean.${RESET}"
+else
+  echo -e "  ${YELLOW}No staged Python files.${RESET}"
+fi
+
+if [ "$STAGED_CORE" -eq 1 ]; then
+  echo -e "${CYAN}==> 3/5 Type checking and docstring coverage (mypy, interrogate)...${RESET}"
+  "$PY" -m mypy src
+  "$PY" -m interrogate src
+else
+  echo -e "${CYAN}==> 3/5 ${YELLOW}No staged src/ or tests/ Python files — skipping mypy & interrogate.${RESET}"
+fi
+
+# ------------------------------------------------------------------------------
+# 4. Shell scripts
+# ------------------------------------------------------------------------------
+echo -e "${CYAN}==> 4/5 Validating staged shell scripts...${RESET}"
+if [ ${#STAGED_SH[@]} -gt 0 ]; then
+  for sh_file in "${STAGED_SH[@]}"; do
     bash -n "$sh_file"
-    echo -e "  ${GREEN}✓ $sh_file: Syntax valid.${RESET}"
+  done
+  if command -v shellcheck >/dev/null 2>&1; then
+    shellcheck -x "${STAGED_SH[@]}"
+  else
+    echo -e "  ${RED}✗ shellcheck not installed (brew install shellcheck / apt-get install shellcheck).${RESET}"
+    exit 1
   fi
-done
-
-# ------------------------------------------------------------------------------
-# 5. Unit Tests (only when src/ or tests/ Python files are staged)
-# ------------------------------------------------------------------------------
-echo -e "${CYAN}==> 5/5 Running unit test suite...${RESET}"
-STAGED_CORE_PY=$(git diff --cached --name-only --diff-filter=ACM | grep -E '^(src|tests)/.*\.py$' || true)
-
-if [ -z "$STAGED_CORE_PY" ]; then
-  echo -e "  ${YELLOW}No staged src/ or tests/ Python files — skipping unit tests.${RESET}"
+  echo -e "  ${GREEN}✓ Shell scripts valid.${RESET}"
 else
-  PYTHONPATH=src python3 -m unittest discover -s tests -p "test_*.py" > /dev/null
-  echo -e "  ${GREEN}✓ Unit Tests: All tests passed successfully!${RESET}"
+  echo -e "  ${YELLOW}No staged shell scripts.${RESET}"
 fi
 
 # ------------------------------------------------------------------------------
-# 6. Website Lint & Format Check (only when website files are staged)
+# 5. Tests (coverage gate is enforced by `make check` / CI, not here, for speed)
 # ------------------------------------------------------------------------------
-STAGED_WEB=$(git diff --cached --name-only --diff-filter=ACM | grep -E '^website/' || true)
+if [ "$STAGED_CORE" -eq 1 ] && [ "${RUNZERO_PRECOMMIT_SKIP_TESTS:-0}" != "1" ]; then
+  echo -e "${CYAN}==> 5/5 Running test suite...${RESET}"
+  "$PY" -m pytest -q -x --no-cov
+  echo -e "  ${GREEN}✓ Tests passed.${RESET}"
+elif [ "$STAGED_CORE" -eq 1 ]; then
+  echo -e "${CYAN}==> 5/5 ${YELLOW}Skipping tests (RUNZERO_PRECOMMIT_SKIP_TESTS=1).${RESET}"
+else
+  echo -e "${CYAN}==> 5/5 ${YELLOW}Skipping tests (no staged src/ or tests/ Python files).${RESET}"
+fi
 
-if [ -n "$STAGED_WEB" ] && [ -d "website" ] && command -v npm >/dev/null 2>&1; then
-  STAGED_WEB_SCRIPT=$(echo "$STAGED_WEB" | grep -E '^website/.*\.(js|mjs|cjs|ts|mts|cts|jsx|tsx|astro)$' || true)
-  STAGED_WEB_FMT=$(echo "$STAGED_WEB" | grep -E '^website/.*\.(astro|js|mjs|ts|css|json|md)$' | sed 's|^website/||' || true)
-
-  echo -e "${CYAN}==> 6/6 Running website lint (Oxlint)...${RESET}"
-  if [ -n "$STAGED_WEB_SCRIPT" ]; then
-    (cd website && npm ls oxlint >/dev/null 2>&1 || npm install >/dev/null 2>&1)
-    (cd website && npm run lint)
-    echo -e "  ${GREEN}✓ Oxlint: Website lint checks passed.${RESET}"
-  else
-    echo -e "  ${YELLOW}No staged JS/TS/Astro script files; skipping Oxlint.${RESET}"
-  fi
-
-  echo -e "${CYAN}==> 7/7 Checking website formatting (Prettier)...${RESET}"
-  if [ -n "$STAGED_WEB_FMT" ]; then
-    (cd website && echo "$STAGED_WEB_FMT" | xargs npm exec prettier -- --check) || {
-      echo -e "  ${RED}✗ Prettier: Formatting issues found. Run: make pre-stage && git add -u${RESET}"
+# ------------------------------------------------------------------------------
+# Website lint & format check (only when website files are staged)
+# ------------------------------------------------------------------------------
+if [ ${#STAGED_WEB[@]} -gt 0 ] && command -v npm >/dev/null 2>&1; then
+  echo -e "${CYAN}==> Website: oxlint + prettier...${RESET}"
+  WEB_REL=()
+  for f in "${STAGED_WEB[@]}"; do
+    case "$f" in
+      *.astro | *.js | *.mjs | *.ts | *.css | *.json | *.md) WEB_REL+=("${f#website/}") ;;
+    esac
+  done
+  (cd website && { npm ls oxlint >/dev/null 2>&1 || npm install >/dev/null 2>&1; } && npm run lint)
+  if [ ${#WEB_REL[@]} -gt 0 ]; then
+    (cd website && npm exec prettier -- --check "${WEB_REL[@]}") || {
+      echo -e "  ${RED}✗ Prettier: formatting issues found. Run: make pre-stage && git add -u${RESET}"
       exit 1
     }
-    echo -e "  ${GREEN}✓ Prettier: All staged website files are formatted.${RESET}"
-  else
-    echo -e "  ${YELLOW}No staged website format files; skipping Prettier check.${RESET}"
   fi
-else
-  echo -e "  ${YELLOW}No staged website files — skipping Oxlint & Prettier.${RESET}"
+  echo -e "  ${GREEN}✓ Website checks passed.${RESET}"
 fi
 
-echo -e "\n${BOLD}${GREEN}✅ [RunZero Pre-Commit Guard] All quality checks passed. Proceeding with commit!${RESET}\n"
-exit 0
+echo -e "\n${BOLD}${GREEN}✅ [RunZero Pre-Commit Guard] All quality checks passed.${RESET}\n"
