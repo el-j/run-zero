@@ -118,7 +118,7 @@ class TestDockerEngineEndToEnd(unittest.TestCase):
         runner_id = driver.spawn_runner(
             repo=repo,
             arch=self.arch,
-            access_token="e2e-test-token-never-read-by-the-sleep-entrypoint",
+            runner_token="e2e-test-token-never-read-by-the-sleep-entrypoint",
             proxies_enabled=False,
         )
         self.assertIsNotNone(runner_id, "spawn_runner() failed to create a real container")

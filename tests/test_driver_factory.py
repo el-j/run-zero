@@ -50,6 +50,7 @@ class _MinimalDriver(RunnerDriver):
         cache_mounts: dict[str, str] | None = None,
         proxies_enabled: bool = True,
         extra_env: dict[str, str] | None = None,
+        runner_token: str | None = None,
     ) -> str | None:
         return None
 

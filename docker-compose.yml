@@ -228,6 +228,9 @@ services:
     environment:
       - REPO=${REPO:-}
       - ORG=${ORG:-}
+      # Static runners self-register, so they need a credential. start.sh keeps it out of
+      # job steps, but the container's initial env stays readable in-container (/proc/1/environ):
+      # prefer RUNNER_TOKEN (a registration token) over the PAT here. See SECURITY.md.
       - ACCESS_TOKEN=${ACCESS_TOKEN:-}
       - RUNNER_TOKEN=${RUNNER_TOKEN:-}
       - RUNNER_NAME=${RUNNER_NAME:-local-runner-arm64}
@@ -269,6 +272,9 @@ services:
     environment:
       - REPO=${REPO:-}
       - ORG=${ORG:-}
+      # Static runners self-register, so they need a credential. start.sh keeps it out of
+      # job steps, but the container's initial env stays readable in-container (/proc/1/environ):
+      # prefer RUNNER_TOKEN (a registration token) over the PAT here. See SECURITY.md.
       - ACCESS_TOKEN=${ACCESS_TOKEN:-}
       - RUNNER_TOKEN=${RUNNER_TOKEN:-}
       - RUNNER_NAME=${RUNNER_NAME:-local-runner-amd64}

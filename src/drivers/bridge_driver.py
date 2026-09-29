@@ -67,18 +67,23 @@ class BridgeVMDriver(RunnerDriver):
         cache_mounts: dict[str, str] | None = None,
         proxies_enabled: bool = True,
         extra_env: dict[str, str] | None = None,
+        runner_token: str | None = None,
     ) -> str | None:
         """POST a spawn request to the bridge's `/api/drivers/{backend}/spawn` endpoint.
 
-        Returns the runner id the bridge reports, or None if the request failed or errored
-        (network error, timeout, non-success bridge response).
+        The PAT is exchanged for a registration token here, in the autoscaler, so the PAT
+        never crosses the bridge. Returns the runner id the bridge reports, or None if the
+        inputs are invalid, no token could be obtained, or the request failed/errored.
         """
+        registration_token = self._prepare_spawn(repo, org, labels, access_token, runner_token, extra_env)
+        if not registration_token:
+            return None
         payload = {
             "repo": repo,
             "org": org,
             "arch": arch,
             "labels": labels,
-            "access_token": access_token,
+            "runner_token": registration_token,
             "cache_mounts": cache_mounts,
             "proxies_enabled": proxies_enabled,
             "extra_env": extra_env,

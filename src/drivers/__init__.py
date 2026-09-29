@@ -3,11 +3,53 @@ RunZero Runner Drivers Package
 Defines the abstract RunnerDriver interface and driver discovery/factory mechanisms.
 """
 
+import re
+import sys
 from abc import ABC, abstractmethod
 from collections.abc import Callable
 from typing import Any
 
+from github_api import create_registration_token
+
 ImageEventCallback = Callable[[dict[str, Any]], None]
+
+# Spawn inputs end up in runner names, `docker run` labels and VM bootstrap scripts, so they are
+# validated against GitHub's own naming rules before any driver uses them (and quoted anyway).
+_OWNER = r"[A-Za-z0-9](?:[A-Za-z0-9-]{0,38})"
+_REPO_RE = re.compile(rf"^{_OWNER}/[A-Za-z0-9._-]{{1,100}}$")
+_ORG_RE = re.compile(rf"^{_OWNER}$")
+_LABEL = r"[A-Za-z0-9._:+/ -]{1,100}"
+_LABELS_RE = re.compile(rf"^{_LABEL}(?:,{_LABEL})*$")
+_ENV_KEY_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]{0,127}$")
+# Variables the runner bootstrap owns; extra_env may not override them.
+_RESERVED_ENV_KEYS = frozenset({"ACCESS_TOKEN", "RUNNER_TOKEN", "REGISTRATION_TOKEN", "RUNNER_NAME", "RUNNER_LABELS", "REPO", "ORG", "EPHEMERAL"})
+
+
+def validate_spawn_target(repo: str | None, org: str | None, labels: str | None, extra_env: dict[str, str] | None = None) -> None:
+    """Raise ValueError unless `repo`/`org`/`labels`/`extra_env` are well-formed.
+
+    Exactly one of `repo` ("owner/name") or `org` is required; `labels` is an optional
+    comma-separated list; `extra_env` keys must be plain identifiers that don't shadow a
+    variable the runner bootstrap sets itself, and values must be strings.
+    """
+    if repo:
+        if not isinstance(repo, str) or not _REPO_RE.match(repo):
+            raise ValueError(f"invalid repository name: {repo!r}")
+    elif org:
+        if not isinstance(org, str) or not _ORG_RE.match(org):
+            raise ValueError(f"invalid organization name: {org!r}")
+    else:
+        raise ValueError("either repo or org is required")
+    if labels and (not isinstance(labels, str) or not _LABELS_RE.match(labels)):
+        raise ValueError(f"invalid runner labels: {labels!r}")
+    if extra_env is not None:
+        if not isinstance(extra_env, dict):
+            raise ValueError("extra_env must be an object")
+        for key, value in extra_env.items():
+            if not isinstance(key, str) or not _ENV_KEY_RE.match(key) or key.upper() in _RESERVED_ENV_KEYS:
+                raise ValueError(f"invalid or reserved extra_env key: {key!r}")
+            if not isinstance(value, str) or "\x00" in value:
+                raise ValueError(f"invalid extra_env value for {key!r}")
 
 
 class RunnerInfo:
@@ -63,8 +105,13 @@ class RunnerDriver(ABC):
         cache_mounts: dict[str, str] | None = None,
         proxies_enabled: bool = True,
         extra_env: dict[str, str] | None = None,
+        runner_token: str | None = None,
     ) -> str | None:
         """Spawn a fresh ephemeral runner for `repo` (or `org` if `repo` is unset).
+
+        Credentials: `runner_token` is a GitHub runner registration token; when it is absent
+        the driver exchanges `access_token` (the admin PAT) for one via
+        `_prepare_spawn()`. Only the registration token may reach the runner.
 
         Must not block the caller for the life of the runner -- registration/execution
         happens out-of-process (background thread, detached subprocess, or remote job).
@@ -93,6 +140,30 @@ class RunnerDriver(ABC):
     @abstractmethod
     def cleanup_all(self) -> None:
         """Destroy every runner this driver manages. Best-effort: swallows per-runner failures."""
+
+    def _prepare_spawn(
+        self,
+        repo: str | None,
+        org: str | None,
+        labels: str | None,
+        access_token: str | None,
+        runner_token: str | None,
+        extra_env: dict[str, str] | None = None,
+    ) -> str | None:
+        """Validate the spawn target and return the registration token to hand the runner.
+
+        Returns None (after logging why) when the inputs are malformed or no registration
+        token can be obtained; callers then return None from spawn_runner().
+        """
+        try:
+            validate_spawn_target(repo, org, labels, extra_env)
+        except ValueError as exc:
+            print(f"[Autoscaler:{self.name()}] Refusing to spawn: {exc}", file=sys.stderr)
+            return None
+        token = runner_token or create_registration_token(repo, org, access_token)
+        if not token:
+            print(f"[Autoscaler:{self.name()}] Could not obtain a runner registration token for {repo or org}.", file=sys.stderr)
+        return token
 
     def ensure_runtime_assets(self, arch: str = "arm64") -> bool:
         """Ensure architecture-specific golden artifacts are ready before spawn.

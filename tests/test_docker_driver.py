@@ -15,6 +15,10 @@ from drivers.docker_driver import DockerDriver
 
 class TestDockerDriver(unittest.TestCase):
     def setUp(self):
+        # Spawning exchanges the PAT for a registration token via the GitHub API; stub it.
+        _reg = patch("drivers.create_registration_token", return_value="reg-token")
+        self.create_registration_token = _reg.start()
+        self.addCleanup(_reg.stop)
         self.driver = DockerDriver()
 
     def test_name(self):
@@ -575,6 +579,10 @@ class TestDockerDriver(unittest.TestCase):
 
 class TestDockerDriverSpawnErrorPaths(unittest.TestCase):
     def setUp(self):
+        # Spawning exchanges the PAT for a registration token via the GitHub API; stub it.
+        _reg = patch("drivers.create_registration_token", return_value="reg-token")
+        self.create_registration_token = _reg.start()
+        self.addCleanup(_reg.stop)
         self.driver = DockerDriver()
 
     @patch("subprocess.run")

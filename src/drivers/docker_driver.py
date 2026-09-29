@@ -327,11 +327,14 @@ class DockerDriver(RunnerDriver):
         cache_mounts: dict[str, str] | None = None,
         proxies_enabled: bool = True,
         extra_env: dict[str, str] | None = None,
+        runner_token: str | None = None,
     ) -> str | None:
         """Launch a detached, ephemeral runner container via `docker run -d` and return its name.
 
-        Returns None (and prints to stderr) if the `docker run` invocation itself fails;
-        registration/execution then happens asynchronously inside the container's own entrypoint.
+        The container receives only a registration token (RUNNER_TOKEN), never the PAT.
+        Returns None (and prints to stderr) if the inputs are invalid, no registration token
+        can be obtained, or the `docker run` invocation itself fails; registration/execution
+        then happens asynchronously inside the container's own entrypoint.
         """
         unique_id = uuid.uuid4().hex[:6]
         name_suffix = f"-{repo.replace('/', '-')}" if repo else (f"-{org}" if org else "")
@@ -341,6 +344,10 @@ class DockerDriver(RunnerDriver):
         platform_flag = f"linux/{normalized_arch}"
 
         if not self.ensure_runtime_assets(normalized_arch):
+            return None
+
+        registration_token = self._prepare_spawn(repo, org, labels, access_token, runner_token, extra_env)
+        if not registration_token:
             return None
 
         if proxies_enabled:
@@ -380,7 +387,7 @@ class DockerDriver(RunnerDriver):
             "--label",
             f"target-arch={arch}",
             "-e",
-            f"ACCESS_TOKEN={access_token}",
+            f"RUNNER_TOKEN={registration_token}",
             "-e",
             f"RUNNER_NAME={container_name}",
             "-e",

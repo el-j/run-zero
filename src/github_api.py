@@ -237,6 +237,21 @@ def github_request(endpoint: str, access_token: str | None = None, method: str =
         return None
 
 
+def create_registration_token(repo: str | None, org: str | None, access_token: str | None) -> str | None:
+    """Exchange the admin PAT for a short-lived (1 hour) runner registration token.
+
+    Runners only ever receive this token -- never the PAT -- so a job running on them
+    cannot reuse the autoscaler's credentials. `repo` wins over `org` when both are set.
+    Returns None when there is no PAT/target or GitHub refuses the request.
+    """
+    if not access_token or not (repo or org):
+        return None
+    scope = f"/repos/{repo}" if repo else f"/orgs/{org}"
+    data = github_request(f"{scope}/actions/runners/registration-token", access_token=access_token, method="POST")
+    token = data.get("token") if isinstance(data, dict) else None
+    return token if isinstance(token, str) and token else None
+
+
 def get_workflow_text_for_run(repo_full_name: str, run_id: int, access_token: str | None = None) -> str | None:
     """Fetch the raw workflow YAML that produced a given run, at the exact
     commit it ran against. Returns None (and caches the miss) if the run,

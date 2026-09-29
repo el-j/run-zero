@@ -14,7 +14,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from typing import Any
 from urllib.parse import urlparse
 
-from drivers import RunnerDriver, RunnerInfo, get_available_drivers, get_driver
+from drivers import RunnerDriver, RunnerInfo, get_available_drivers, get_driver, validate_spawn_target
 from drivers.docker_driver import DockerDriver
 from http_security import RequestRejected, allowed_hosts_from_env, check_bearer_token, check_host_header, is_loopback_host, read_json_body
 
@@ -167,12 +167,18 @@ class VMBridgeRequestHandler(BaseHTTPRequestHandler):
 
             if action == "spawn":
                 try:
+                    validate_spawn_target(body.get("repo"), body.get("org"), body.get("labels"), body.get("extra_env"))
+                except ValueError as e:
+                    self._send_json(400, {"error": str(e), "driver": driver_name})
+                    return
+                try:
+                    # Only a registration token is accepted over the bridge -- never a PAT.
                     runner_id = driver.spawn_runner(
                         repo=body.get("repo"),
                         org=body.get("org"),
                         arch=body.get("arch", "arm64"),
                         labels=body.get("labels"),
-                        access_token=body.get("access_token"),
+                        runner_token=body.get("runner_token"),
                         cache_mounts=body.get("cache_mounts"),
                         proxies_enabled=body.get("proxies_enabled", True),
                         extra_env=body.get("extra_env"),

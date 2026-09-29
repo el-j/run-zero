@@ -294,6 +294,14 @@ else
   REG_TOKEN="${RUNNER_TOKEN}"
 fi
 
+# Keep credentials out of every job step: run.sh and its children inherit only exported
+# variables, so drop the export attribute from all credential names. The autoscaler only
+# ever passes RUNNER_TOKEN (a registration token); a PAT supplied for standalone use stays
+# in this shell solely for cleanup()'s remove-token call. NOTE: the container's initial
+# environment remains readable via /proc/1/environ by the same user -- see SECURITY.md.
+export -n ACCESS_TOKEN TOKEN PAT_TOKEN GITHUB_TOKEN RUNNER_TOKEN REGISTRATION_TOKEN
+unset TOKEN PAT_TOKEN RUNNER_TOKEN REGISTRATION_TOKEN
+
 cd /home/runner/actions-runner
 
 # Configure runner arguments

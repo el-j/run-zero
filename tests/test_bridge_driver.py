@@ -11,6 +11,10 @@ from drivers.bridge_driver import BridgeVMDriver
 
 class TestBridgeVMDriver(unittest.TestCase):
     def setUp(self):
+        # Spawning exchanges the PAT for a registration token via the GitHub API; stub it.
+        _reg = patch("drivers.create_registration_token", return_value="reg-token")
+        self.create_registration_token = _reg.start()
+        self.addCleanup(_reg.stop)
         self.driver = BridgeVMDriver("orbstack-vm", bridge_url="http://localhost:49504")
 
     def test_name_returns_target_backend(self):

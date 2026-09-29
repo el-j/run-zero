@@ -5,6 +5,7 @@ with automatic integration with local caching proxies (Verdaccio, Athens).
 """
 
 import os
+import shlex
 import shutil
 import subprocess
 import sys
@@ -46,6 +47,7 @@ class WSL2Driver(RunnerDriver):
         cache_mounts: dict[str, str] | None = None,
         proxies_enabled: bool = True,
         extra_env: dict[str, str] | None = None,
+        runner_token: str | None = None,
     ) -> str | None:
         """Launch `run.sh` inside `distro_base` as a detached background process and return its name.
 
@@ -57,6 +59,13 @@ class WSL2Driver(RunnerDriver):
         name_suffix = f"-{repo.replace('/', '-')}" if repo else (f"-{org}" if org else "")
         instance_name = f"runzero-wsl{name_suffix}-{unique_id}"
         runner_labels = labels if labels else "self-hosted,local,wsl,x64,windows-host"
+        registration_token = self._prepare_spawn(repo, org, labels, access_token, runner_token, extra_env)
+        if not registration_token:
+            return None
+        register = (
+            f"./config.sh --unattended --replace --ephemeral --url {shlex.quote(f'https://github.com/{repo or org}')} "
+            f"--token {shlex.quote(registration_token)} --name {shlex.quote(instance_name)} --labels {shlex.quote(runner_labels)}"
+        )
 
         proxy_env_block = ""
         if proxies_enabled:
@@ -94,13 +103,7 @@ CARGOCFG
                 "-c",
                 f"""
 {proxy_env_block}
-export ACCESS_TOKEN="{access_token}"
-export RUNNER_NAME="{instance_name}"
-export RUNNER_LABELS="{runner_labels}"
-export EPHEMERAL="true"
-export REPO="{repo or ""}"
-export ORG="{org or ""}"
-cd /home/runner/actions-runner && ./run.sh --unattended --ephemeral --name "{instance_name}" --labels "{runner_labels}"
+cd /home/runner/actions-runner && {register} && ./run.sh
 """,
             ]
             subprocess.Popen(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)

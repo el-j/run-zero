@@ -161,7 +161,7 @@ class TestVMBridge(unittest.TestCase):
             org=None,
             arch="arm64",
             labels=None,
-            access_token=None,
+            runner_token=None,
             cache_mounts=None,
             proxies_enabled=True,
             extra_env=None,
@@ -173,18 +173,20 @@ class TestVMBridge(unittest.TestCase):
         mock_driver.spawn_runner.return_value = "runzero-vm-defaults"
         mock_get_driver.return_value = mock_driver
 
-        req = urllib.request.Request(f"{self.base_url}/api/drivers/orbstack-vm/spawn", data=b"{}", headers={"Content-Type": "application/json"}, method="POST")
+        req = urllib.request.Request(
+            f"{self.base_url}/api/drivers/orbstack-vm/spawn", data=b'{"repo": "o/r"}', headers={"Content-Type": "application/json"}, method="POST"
+        )
         with urllib.request.urlopen(req, timeout=3.0) as resp:
             data = json.loads(resp.read().decode("utf-8"))
             self.assertEqual(data.get("status"), "success")
             self.assertEqual(data.get("runner_id"), "runzero-vm-defaults")
 
         mock_driver.spawn_runner.assert_called_once_with(
-            repo=None,
+            repo="o/r",
             org=None,
             arch="arm64",
             labels=None,
-            access_token=None,
+            runner_token=None,
             cache_mounts=None,
             proxies_enabled=True,
             extra_env=None,
@@ -280,7 +282,9 @@ class TestVMBridge(unittest.TestCase):
         mock_driver.spawn_runner.return_value = "runzero-vm-new"
         mock_get_driver.return_value = mock_driver
 
-        req = urllib.request.Request(f"{self.base_url}/api/drivers/orbstack-vm/spawn/", data=b"{}", headers={"Content-Type": "application/json"}, method="POST")
+        req = urllib.request.Request(
+            f"{self.base_url}/api/drivers/orbstack-vm/spawn/", data=b'{"repo": "o/r"}', headers={"Content-Type": "application/json"}, method="POST"
+        )
         with urllib.request.urlopen(req, timeout=3.0) as resp:
             data = json.loads(resp.read().decode("utf-8"))
             self.assertEqual(data.get("status"), "success")
@@ -319,7 +323,9 @@ class TestVMBridge(unittest.TestCase):
         mock_driver = MagicMock()
         mock_driver.spawn_runner.side_effect = RuntimeError("boom")
         mock_get_driver.return_value = mock_driver
-        req = urllib.request.Request(f"{self.base_url}/api/drivers/orbstack-vm/spawn", data=b"{}", headers={"Content-Type": "application/json"}, method="POST")
+        req = urllib.request.Request(
+            f"{self.base_url}/api/drivers/orbstack-vm/spawn", data=b'{"repo": "o/r"}', headers={"Content-Type": "application/json"}, method="POST"
+        )
         with self.assertRaises(urllib.error.HTTPError) as cm:
             urllib.request.urlopen(req, timeout=3.0)
         self.assertEqual(cm.exception.code, 500)
@@ -499,6 +505,10 @@ class TestVMBridgeServerLifecycle(unittest.TestCase):
 
 class TestBridgeVMDriver(unittest.TestCase):
     def setUp(self):
+        # Spawning exchanges the PAT for a registration token via the GitHub API; stub it.
+        _reg = patch("drivers.create_registration_token", return_value="reg-token")
+        self.create_registration_token = _reg.start()
+        self.addCleanup(_reg.stop)
         # See TestVMBridge.setUp's comment -- _driver_cache is a module-level
         # global shared by every test in this process, not scoped per test
         # class, so it must be cleared here too.
@@ -568,6 +578,10 @@ class TestBridgeVMDriverDirectUnit(unittest.TestCase):
     TestBridgeVMDriver above doesn't exercise on its own."""
 
     def setUp(self):
+        # Spawning exchanges the PAT for a registration token via the GitHub API; stub it.
+        _reg = patch("drivers.create_registration_token", return_value="reg-token")
+        self.create_registration_token = _reg.start()
+        self.addCleanup(_reg.stop)
         self.driver = BridgeVMDriver("orbstack-vm", bridge_url="http://127.0.0.1:1")
 
     @patch.object(BridgeVMDriver, "_request")

@@ -71,14 +71,17 @@ class TestOrbStackTemplates(unittest.TestCase):
         self.assertIn("actions-runner-linux-${RUNNER_ARCH}-2.336.0.tar.gz", dl)
 
         reg = registration_and_run_snippet(
-            "https://api.github.com/repos/owner/repo/actions/runners",
             "https://github.com/owner/repo",
-            "pat-token",
+            "reg-token",
             "vm-test",
             "self-hosted,local",
             "export PROXY=1",
         )
-        self.assertIn("registration-token", reg)
+        # The VM registers with the host-issued registration token; it never calls the
+        # registration-token API itself (that would require the PAT inside the VM).
+        self.assertNotIn("registration-token", reg)
+        self.assertNotIn("Authorization", reg)
+        self.assertIn("--token reg-token", reg)
         self.assertIn("./config.sh", reg)
         self.assertIn("./run.sh", reg)
         # Default cache_mount_block is "" -- no bind-mount lines injected when the
@@ -87,9 +90,8 @@ class TestOrbStackTemplates(unittest.TestCase):
 
     def test_registration_and_run_snippet_includes_cache_mount_block(self):
         reg = registration_and_run_snippet(
-            "https://api.github.com/repos/owner/repo/actions/runners",
             "https://github.com/owner/repo",
-            "pat-token",
+            "reg-token",
             "vm-test",
             "self-hosted,local",
             "export PROXY=1",
@@ -106,9 +108,8 @@ class TestOrbStackTemplates(unittest.TestCase):
 
     def test_registration_and_run_snippet_includes_network_self_healing(self):
         reg = registration_and_run_snippet(
-            "https://api.github.com/repos/owner/repo/actions/runners",
             "https://github.com/owner/repo",
-            "pat-token",
+            "reg-token",
             "vm-test",
             "self-hosted,local",
             "export PROXY=1",
@@ -133,14 +134,14 @@ class TestOrbStackTemplates(unittest.TestCase):
         # Every host path must be translated to OrbStack's automatic
         # /mnt/mac<absolute-macOS-path> share, and bind-mounted onto the exact
         # container-style destination path cache_manager.py expects.
-        self.assertIn('sudo mkdir -p "/home/runner/.npm"', snippet)
+        self.assertIn("sudo mkdir -p /home/runner/.npm", snippet)
         self.assertIn(
-            'sudo mount --bind "/mnt/mac/Users/dev/.local-github-runner/cache/npm" "/home/runner/.npm"',
+            "sudo mount --bind /mnt/mac/Users/dev/.local-github-runner/cache/npm /home/runner/.npm",
             snippet,
         )
-        self.assertIn('sudo mkdir -p "/home/runner/.cache/pip"', snippet)
+        self.assertIn("sudo mkdir -p /home/runner/.cache/pip", snippet)
         self.assertIn(
-            'sudo mount --bind "/mnt/mac/Users/dev/.local-github-runner/cache/pip" "/home/runner/.cache/pip"',
+            "sudo mount --bind /mnt/mac/Users/dev/.local-github-runner/cache/pip /home/runner/.cache/pip",
             snippet,
         )
         # Must guard against the mac share not (yet) exposing the path rather than
@@ -150,9 +151,16 @@ class TestOrbStackTemplates(unittest.TestCase):
 
     def test_cache_mount_snippet_chowns_runner_ancestor_directories(self):
         snippet = cache_mount_snippet({"/Users/dev/.local-github-runner/cache/rust": "/home/runner/.cargo/registry"})
-        self.assertIn('sudo mkdir -p "/home/runner/.cargo/registry"', snippet)
+        self.assertIn("sudo mkdir -p /home/runner/.cargo/registry", snippet)
         self.assertIn('sudo chown runner:runner "$_p"', snippet)
-        self.assertIn('sudo chown runner:runner "/home/runner/.cargo/registry"', snippet)
+        self.assertIn("sudo chown runner:runner /home/runner/.cargo/registry", snippet)
+
+    def test_cache_mount_snippet_quotes_hostile_paths(self):
+        # cache_mounts can arrive over the bridge; a path must never break out of its word.
+        snippet = cache_mount_snippet({'/Users/x"; touch /tmp/pwned; "': "/home/runner/$(id)"})
+        self.assertNotIn("$(id)\n", snippet.replace("'/home/runner/$(id)'", ""))
+        self.assertIn("'/home/runner/$(id)'", snippet)
+        self.assertIn("'/mnt/mac/Users/x\"; touch /tmp/pwned; \"'", snippet)
 
 
 class TestOrbStackVMDriver(unittest.TestCase):
@@ -177,6 +185,10 @@ class TestOrbStackVMDriver(unittest.TestCase):
     # fail loudly, right here, instead of silently destabilizing an unrelated
     # test later.
     def setUp(self):
+        # Spawning exchanges the PAT for a registration token via the GitHub API; stub it.
+        _reg = patch("drivers.create_registration_token", return_value="reg-token")
+        self.create_registration_token = _reg.start()
+        self.addCleanup(_reg.stop)
         self.driver = OrbStackVMDriver(distro="ubuntu:24.04")
 
     def tearDown(self):
@@ -432,7 +444,7 @@ class TestOrbStackVMDriver(unittest.TestCase):
         self.assertEqual(popen_args[:5], ["orb", "-m", name, "-u", "runner"])
         setup_script = popen_args[-1]
         self.assertIn(
-            'sudo mount --bind "/mnt/mac/Users/dev/.local-github-runner/cache/npm" "/home/runner/.npm"',
+            "sudo mount --bind /mnt/mac/Users/dev/.local-github-runner/cache/npm /home/runner/.npm",
             setup_script,
         )
 
@@ -2540,10 +2552,10 @@ class TestOrbStackVMDriver(unittest.TestCase):
                 cache_mounts=None,
                 proxies_enabled=False,
             )
+        self.create_registration_token.assert_called_once_with("el-j/run-zero", None, "tok123")
         mock_reg.assert_called_once_with(
-            "https://api.github.com/repos/el-j/run-zero/actions/runners",
             "https://github.com/el-j/run-zero",
-            "tok123",
+            "reg-token",
             name,
             "self-hosted,local,vm,amd64,rosetta",
             "",
@@ -2560,8 +2572,8 @@ class TestOrbStackVMDriver(unittest.TestCase):
         with patch("drivers.orbstack_vm_driver.registration_and_run_snippet", return_value="REG_SNIPPET") as mock_reg:
             self.driver.spawn_runner(org="my-org", arch="amd64", access_token="tok123")
         called_args = mock_reg.call_args[0]
-        self.assertEqual(called_args[0], "https://api.github.com/orgs/my-org/actions/runners")
-        self.assertEqual(called_args[1], "https://github.com/my-org")
+        self.assertEqual(called_args[0], "https://github.com/my-org")
+        self.create_registration_token.assert_called_once_with(None, "my-org", "tok123")
 
     @patch("subprocess.Popen")
     @patch("subprocess.run")

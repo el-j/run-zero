@@ -653,8 +653,12 @@ echo "Base image provisioning complete."
         cache_mounts: dict[str, str] | None = None,
         proxies_enabled: bool = True,
         extra_env: dict[str, str] | None = None,
+        runner_token: str | None = None,
     ) -> str | None:
         """Clone the golden base image and boot a per-job VM that registers, runs, then self-powers-off.
+
+        The VM receives only a registration token (see `RunnerDriver._prepare_spawn`), never
+        the PAT; returns None when inputs are invalid or no token can be obtained.
 
         If the base image for this arch doesn't exist yet, kicks off an async background build
         (see `_build_base_image_async`) and returns None immediately -- callers should treat that
@@ -731,18 +735,17 @@ CARGOCFG
 
         cache_mount_block = cache_mount_snippet(cache_mounts)
 
-        if repo:
-            api_base = f"https://api.github.com/repos/{repo}/actions/runners"
-            runner_url = f"https://github.com/{repo}"
-        else:
-            api_base = f"https://api.github.com/orgs/{org}/actions/runners"
-            runner_url = f"https://github.com/{org}"
+        runner_url = f"https://github.com/{repo or org}"
 
         if not self.ensure_runtime_assets(orb_arch):
             return None
         base_name = self.base_image_name(orb_arch)
 
-        reg_and_run = registration_and_run_snippet(api_base, runner_url, access_token or "", vm_name, runner_labels, proxy_env_block, cache_mount_block)
+        registration_token = self._prepare_spawn(repo, org, labels, access_token, runner_token, extra_env)
+        if not registration_token:
+            return None
+
+        reg_and_run = registration_and_run_snippet(runner_url, registration_token, vm_name, runner_labels, proxy_env_block, cache_mount_block)
 
         print(f"[Autoscaler:OrbStack-VM] 🚀 Spawning ephemeral [{arch.upper()}] Linux VM '{vm_name}' (cloned from golden image '{base_name}')...")
         clone_cmd = ["orbctl", "clone", base_name, vm_name]

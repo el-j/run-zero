@@ -13,6 +13,10 @@ from drivers.multipass_driver import MultipassDriver
 
 class TestMultipassDriver(unittest.TestCase):
     def setUp(self):
+        # Spawning exchanges the PAT for a registration token via the GitHub API; stub it.
+        _reg = patch("drivers.create_registration_token", return_value="reg-token")
+        self.create_registration_token = _reg.start()
+        self.addCleanup(_reg.stop)
         self.driver = MultipassDriver()
 
     def test_name(self):

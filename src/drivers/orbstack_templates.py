@@ -1,6 +1,10 @@
 """
 Shell script generation templates for OrbStack Linux VM provisioning.
+
+Every caller-supplied value interpolated into a script goes through `shlex.quote`.
 """
+
+import shlex
 
 
 def cache_mount_snippet(cache_mounts: dict[str, str] | None) -> str:
@@ -32,26 +36,26 @@ def cache_mount_snippet(cache_mounts: dict[str, str] | None) -> str:
         "# (see cache_mount_snippet() in orbstack_templates.py for why this works).",
     ]
     for host_path, container_path in cache_mounts.items():
-        mac_path = f"/mnt/mac{host_path}"
-        lines.append(f'sudo mkdir -p "{container_path}"')
+        mac = shlex.quote(f"/mnt/mac{host_path}")
+        dest = shlex.quote(container_path)
+        lines.append(f"sudo mkdir -p {dest}")
         if container_path.startswith("/home/runner/"):
             lines.append(
-                f'_p="{container_path}"\n'
+                f"_p={dest}\n"
                 f'while [ "$_p" != "/home/runner" ] && [ "$_p" != "/" ] && [ "$_p" != "." ]; do\n'
                 f'  sudo chown runner:runner "$_p" 2>/dev/null || true\n'
                 f'  _p="$(dirname "$_p")"\n'
                 f"done\n"
-                f'sudo chown runner:runner "{container_path}" 2>/dev/null || true'
+                f"sudo chown runner:runner {dest} 2>/dev/null || true"
             )
         lines.append(
-            f'if [ -d "{mac_path}" ]; then\n'
-            f'  sudo mount --bind "{mac_path}" "{container_path}" || '
-            f'echo "Warning: cache bind mount failed for {container_path}" >&2\n'
-            f'  sudo chmod 777 "{container_path}" 2>/dev/null || true\n'
-            f'  sudo chown runner:runner "{container_path}" 2>/dev/null || true\n'
+            f"if [ -d {mac} ]; then\n"
+            f"  sudo mount --bind {mac} {dest} || "
+            f"echo 'Warning: cache bind mount failed for' {dest} >&2\n"
+            f"  sudo chmod 777 {dest} 2>/dev/null || true\n"
+            f"  sudo chown runner:runner {dest} 2>/dev/null || true\n"
             f"else\n"
-            f'  echo "Warning: host cache dir {mac_path} not visible via OrbStack mac share -- '
-            f'skipping mount for {container_path}" >&2\n'
+            f"  echo 'Warning: host cache dir not visible via OrbStack mac share, skipping mount:' {mac} {dest} >&2\n"
             f"fi"
         )
     return "\n".join(lines)
@@ -123,9 +127,13 @@ sudo ./bin/installdependencies.sh
 
 
 def registration_and_run_snippet(
-    api_base: str, runner_url: str, access_token: str, vm_name: str, runner_labels: str, proxy_env_block: str, cache_mount_block: str = ""
+    runner_url: str, registration_token: str, vm_name: str, runner_labels: str, proxy_env_block: str, cache_mount_block: str = ""
 ) -> str:
-    """Generate shell snippet for obtaining registration token, registering with config.sh, and executing run.sh.
+    """Generate the shell snippet that registers the runner with config.sh and executes run.sh.
+
+    `registration_token` is the short-lived token the host exchanged the PAT for
+    (see `github_api.create_registration_token`); the PAT itself never enters the VM.
+    `runner_url`, `registration_token`, `vm_name` and `runner_labels` are shell-quoted.
 
     `cache_mount_block` (from `cache_mount_snippet()`) runs after the base directory
     chown/chmod pass and before the proxy env vars are exported, so the bind-mounted cache
@@ -193,33 +201,10 @@ mkdir -p /home/runner/.cache/go-build /home/runner/go/pkg 2>/dev/null || true
 {proxy_env_block}
 cd /home/runner/actions-runner
 
-echo "Fetching registration token from GitHub API..."
-REG_TOKEN=""
-TOKEN_RESPONSE=""
-for attempt in 1 2 3 4 5; do
-  TOKEN_RESPONSE=$(curl -s -X POST \\
-    -H "Authorization: Bearer {access_token}" \\
-    -H "Accept: application/vnd.github+json" \\
-    -H "X-GitHub-Api-Version: 2022-11-28" \\
-    --connect-timeout 10 \\
-    "{api_base}/registration-token" 2>&1)
-  REG_TOKEN=$(echo "$TOKEN_RESPONSE" | jq -r '.token // empty' 2>/dev/null || true)
-  if [ -n "$REG_TOKEN" ] && [ "$REG_TOKEN" != "null" ]; then
-    break
-  fi
-  echo "Warning: Failed to obtain registration token (attempt $attempt/5). Response: $TOKEN_RESPONSE"
-  sleep 3
-done
+./config.sh --url {shlex.quote(runner_url)} --token {shlex.quote(registration_token)} --name {shlex.quote(vm_name)} --work "_work" \\
+  --unattended --replace --ephemeral --labels {shlex.quote(runner_labels)}
 
-if [ -z "$REG_TOKEN" ] || [ "$REG_TOKEN" = "null" ]; then
-  echo "Error: Failed to obtain registration token after retries. Response: $TOKEN_RESPONSE"
-  exit 1
-fi
-
-./config.sh --url "{runner_url}" --token "$REG_TOKEN" --name "{vm_name}" --work "_work" \\
-  --unattended --replace --ephemeral --labels "{runner_labels}"
-
-echo "Starting runner {vm_name}..."
+echo "Starting runner "{shlex.quote(vm_name)}"..."
 ./run.sh || true
 
 echo "Ephemeral run finished -- powering off so the autoscaler prunes this VM."

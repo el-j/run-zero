@@ -61,6 +61,7 @@ class MultipassDriver(RunnerDriver):
         cache_mounts: dict[str, str] | None = None,
         proxies_enabled: bool = True,
         extra_env: dict[str, str] | None = None,
+        runner_token: str | None = None,
     ) -> str | None:
         """Launch a fresh Multipass VM (`multipass launch`) and bootstrap+register the runner inside it.
 
@@ -72,6 +73,13 @@ class MultipassDriver(RunnerDriver):
         name_suffix = f"-{repo.replace('/', '-')}" if repo else (f"-{org}" if org else "")
         vm_name = f"runzero-mp-{arch}{name_suffix}-{unique_id}"
         runner_labels = labels if labels else f"self-hosted,local,multipass,vm,{arch}"
+        registration_token = self._prepare_spawn(repo, org, labels, access_token, runner_token, extra_env)
+        if not registration_token:
+            return None
+        register = (
+            f"./config.sh --unattended --replace --ephemeral --url {shlex.quote(f'https://github.com/{repo or org}')} "
+            f"--token {shlex.quote(registration_token)} --name {shlex.quote(vm_name)} --labels {shlex.quote(runner_labels)}"
+        )
 
         proxy_env_block = ""
         if proxies_enabled:
@@ -134,8 +142,8 @@ mkdir -p /home/ubuntu/actions-runner && cd /home/ubuntu/actions-runner
 curl -O -L https://github.com/actions/runner/releases/download/v2.336.0/actions-runner-linux-arm64-2.336.0.tar.gz
 tar xzf ./actions-runner-linux-arm64-2.336.0.tar.gz
 sudo ./bin/installdependencies.sh
-export ACCESS_TOKEN="{access_token}"
-nohup ./run.sh --unattended --ephemeral --name "{vm_name}" --labels "{runner_labels}" > /home/ubuntu/runner.log 2>&1 &
+{register}
+nohup ./run.sh > /home/ubuntu/runner.log 2>&1 &
 """
             subprocess.Popen(["multipass", "exec", vm_name, "--", "bash", "-c", setup_script], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
             return vm_name
