@@ -2,6 +2,7 @@
 Unit tests for Docker container runner driver.
 """
 
+import json
 import os
 import subprocess
 import time
@@ -575,6 +576,16 @@ class TestDockerDriver(unittest.TestCase):
         with patch("builtins.print") as mock_print:
             self.driver._warn_if_registry_mirror_missing()
         self.assertFalse(any("registry mirror" in str(c.args[0]).lower() for c in mock_print.call_args_list if c.args))
+
+    @patch("subprocess.run")
+    def test_warn_if_registry_mirror_missing_silent_when_mirror_configured(self, mock_run):
+        for mirror in ("http://localhost:49502/", "https://host.orb.internal:49502"):
+            with self.subTest(mirror=mirror):
+                self.driver._registry_mirror_checked = False
+                mock_run.return_value = MagicMock(returncode=0, stdout=json.dumps([mirror]))
+                with patch("builtins.print") as mock_print:
+                    self.driver._warn_if_registry_mirror_missing()
+                mock_print.assert_not_called()
 
 
 class TestDockerDriverSpawnErrorPaths(unittest.TestCase):

@@ -388,6 +388,13 @@ class TestDashboardStateGaps(unittest.TestCase):
 
 class TestDashboardServer(unittest.TestCase):
     def setUp(self):
+        # clean-cache really deletes directories: point the shared state at a throwaway root
+        # so these tests can never touch the developer's real ~/.local-github-runner cache.
+        cache_root = tempfile.mkdtemp(prefix="runzero-dash-cache-")
+        self.addCleanup(shutil.rmtree, cache_root, ignore_errors=True)
+        cache_patch = patch.object(dashboard_state, "cache_dir", cache_root)
+        cache_patch.start()
+        self.addCleanup(cache_patch.stop)
         self.server = DashboardServer(host="127.0.0.1", port=0)
         self.server.start(blocking=False)
         assert self.server.httpd is not None
