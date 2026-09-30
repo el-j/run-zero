@@ -517,3 +517,16 @@ class TestWorkflowTextCacheBound(unittest.TestCase):
             calls = req.call_count
             get_workflow_text_for_run("o/r", 1)
             self.assertEqual(req.call_count, calls)  # still cached
+
+
+class TestRefreshGuards(unittest.TestCase):
+    """Refresh helpers must report failure without raising (previously only hit via real 401s)."""
+
+    def test_refresh_rate_limit_false_when_fetch_fails(self):
+        with patch("github_api.github_request", return_value=None):
+            self.assertFalse(github_api.refresh_rate_limit("t"))
+
+    def test_refresh_actions_billing_false_without_scope(self):
+        with patch("github_api.github_request") as req:
+            self.assertFalse(github_api.refresh_actions_billing("t", owner="  ", org=None))
+        req.assert_not_called()

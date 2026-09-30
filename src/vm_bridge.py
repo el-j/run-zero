@@ -17,6 +17,7 @@ from urllib.parse import urlparse
 from drivers import RunnerDriver, RunnerInfo, get_available_drivers, get_driver, validate_spawn_target
 from drivers.docker_driver import DockerDriver
 from http_security import RequestRejected, allowed_hosts_from_env, check_bearer_token, check_host_header, is_loopback_host, read_json_body
+from version import __version__
 
 DEFAULT_BRIDGE_PORT = 49504
 # Loopback by default. Containers still reach it as host.docker.internal on Docker Desktop
@@ -350,7 +351,7 @@ def main():
     signal.signal(signal.SIGTERM, signal_handler)
 
     print("=" * 65)
-    print(" 🌉 RunZero Host VM Bridge v0.1.0")
+    print(f" 🌉 RunZero Host VM Bridge v{__version__}")
     print(f" Listening: http://{host}:{port}")
     print(f" Platform:  {sys.platform}")
     print("=" * 65)

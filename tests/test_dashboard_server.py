@@ -11,6 +11,7 @@ from unittest.mock import MagicMock, patch
 import dashboard.server
 from dashboard.server import STATIC_DIR, DashboardRequestHandler, DashboardServer
 from dashboard.state import DashboardState, dashboard_state
+from version import __version__
 
 
 class TestDashboardState(unittest.TestCase):
@@ -20,7 +21,7 @@ class TestDashboardState(unittest.TestCase):
     def test_init_defaults_are_stable(self):
         self.assertEqual(self.state.max_log_lines, 50)
         self.assertEqual(self.state.log_buffer.maxlen, 50)
-        self.assertEqual(self.state.version, "0.1.0")
+        self.assertEqual(self.state.version, __version__)
         self.assertEqual(self.state.autoscaler_status, "running")
         self.assertEqual(self.state.default_engine, "docker")
         self.assertEqual(self.state.available_drivers, ["docker"])

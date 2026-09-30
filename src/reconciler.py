@@ -17,7 +17,6 @@ unknown scope proves nothing, so no runner that might be registered there is tor
 cycle (otherwise one failed API call would destroy every healthy, busy runner).
 """
 
-import os
 import sys
 import time
 from collections.abc import Iterable
@@ -43,7 +42,8 @@ UNREGISTERED_ORPHAN_TIMEOUT_SECONDS = 180
 # How long a runner marked busy by GitHub is allowed to run before being checked
 # for stale execution (e.g. hung workflow where cancellation lagged).
 # Normal CI test matrices and builds often take 10-45+ minutes; default is 2 hours.
-BUSY_RUNNER_TIMEOUT_SECONDS = int(os.getenv("RUNNER_BUSY_TIMEOUT_SECONDS", "7200"))
+# The autoscaler passes the validated RUNNER_BUSY_TIMEOUT_SECONDS (config.Config).
+BUSY_RUNNER_TIMEOUT_SECONDS = 7200
 
 
 def repo_scope(repo: str) -> str:

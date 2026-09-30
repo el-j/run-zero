@@ -14,6 +14,7 @@ from typing import Any
 from urllib.parse import urlparse
 
 from http_security import RequestRejected, allowed_hosts_from_env, check_host_header, read_json_body, resolve_static_path
+from version import __version__
 
 from .state import dashboard_state
 
@@ -266,7 +267,7 @@ def main():
     signal.signal(signal.SIGTERM, signal_handler)
 
     print("=" * 65)
-    print(" ⚡ RunZero Real-Time Observability Dashboard v0.1.0")
+    print(f" ⚡ RunZero Real-Time Observability Dashboard v{__version__}")
     print(f" Web UI:  http://localhost:{port}")
     print("=" * 65)
 

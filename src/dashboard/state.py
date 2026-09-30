@@ -13,6 +13,8 @@ import threading
 import time
 from typing import Any
 
+from version import __version__
+
 
 class DashboardState:
     """Thread-safe, process-wide singleton holding fleet/telemetry state and broadcasting it to SSE clients.
@@ -30,7 +32,7 @@ class DashboardState:
         self.subscribers: list[queue.Queue] = []
 
         # Telemetry & Fleet State
-        self.version = "0.1.0"
+        self.version = __version__
         self.start_time = time.time()
         self.autoscaler_status = "running"
         self.default_engine = "docker"
@@ -146,7 +148,7 @@ class DashboardState:
         rate_limit_reset: int | None = None,
         actions_billing: dict[str, Any] | None = None,
         default_engine: str = "docker",
-        version: str = "0.1.0",
+        version: str = __version__,
     ) -> None:
         """Replace the fleet/config snapshot with this poll's data, refresh cache sizes, and broadcast to SSE clients.
 

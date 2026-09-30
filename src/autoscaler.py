@@ -8,7 +8,6 @@ Includes persistent multi-language package caching, proxy registries, real-time 
 
 from __future__ import annotations
 
-import os
 import signal
 import sys
 import time
@@ -16,42 +15,43 @@ from typing import Any
 
 import github_api
 from cache_manager import init_cache_dirs
+from config import ConfigError, load_config
 from dashboard import DashboardServer, dashboard_state
 from discovery import discover_repositories
 from drivers import RunnerInfo, get_available_drivers, get_driver
 from github_api import get_queued_job_details, refresh_actions_billing, refresh_rate_limit
 from reconciler import reconcile_idle_orphans, reconcile_zombie_runners
 from router import select_driver_for_job
+from version import __version__
 
-# Configuration from environment variables
-ACCESS_TOKEN = os.getenv("ACCESS_TOKEN") or os.getenv("GITHUB_TOKEN")
-OWNER = os.getenv("OWNER", "").strip()
-ORG = os.getenv("ORG", "").strip()
-REPOS_CONFIG = os.getenv("REPOS") or os.getenv("REPO", "") or ""
-AUTO_DISCOVER = os.getenv("AUTO_DISCOVER_REPOS", "true").lower() in ("true", "1", "yes")
-ACTIVE_DAYS = int(os.getenv("ACTIVE_REPO_DAYS", "60"))
-DISCOVERY_INTERVAL = int(os.getenv("DISCOVERY_INTERVAL", "900"))
+# Validated once at startup; a bad value exits with a message naming the variable.
+# (Module-level names are kept for the poll loop until #55 moves them onto a Scaler.)
+try:
+    CONFIG = load_config()
+except ConfigError as exc:  # pragma: no cover -- import-time exit; tests/test_config.py runs it in a subprocess
+    sys.exit(f"[Autoscaler] Configuration error: {exc}")
 
-# Driver & Architecture configuration
-RUNNER_BACKEND = os.getenv("RUNNER_BACKEND", "auto").strip().lower()
-AUTO_ROUTE_VM = os.getenv("AUTO_ROUTE_VM", "true").lower() in ("true", "1", "yes")
-RUNNER_ARCH = os.getenv("RUNNER_ARCH", "both").strip().lower()
-PROXIES_ENABLED = os.getenv("PROXIES_ENABLED", "true").lower() in ("true", "1", "yes")
-
-# Concurrency & Cache settings
-CACHE_ENABLED = os.getenv("CACHE_ENABLED", "true").lower() in ("true", "1", "yes")
-HOST_CACHE_DIR = os.getenv("HOST_CACHE_DIR", "")
-MIN_RUNNERS = int(os.getenv("MIN_RUNNERS", "0"))
-MAX_RUNNERS = int(os.getenv("MAX_RUNNERS", "4"))
-POLL_INTERVAL = int(os.getenv("POLL_INTERVAL", "10"))
-RATE_LIMIT_REFRESH_INTERVAL = int(os.getenv("RATE_LIMIT_REFRESH_INTERVAL", "60"))
-ACTIONS_BILLING_REFRESH_INTERVAL = int(os.getenv("ACTIONS_BILLING_REFRESH_INTERVAL", "300"))
-
-# Dashboard settings
-DASHBOARD_ENABLED = os.getenv("DASHBOARD_ENABLED", "true").lower() in ("true", "1", "yes")
-DASHBOARD_PORT = int(os.getenv("DASHBOARD_PORT", "49505"))
-# Loopback unless overridden; the autoscaler image sets 0.0.0.0 so the published port works.
-DASHBOARD_HOST = os.getenv("DASHBOARD_HOST", "127.0.0.1")
+ACCESS_TOKEN = CONFIG.access_token
+OWNER = CONFIG.owner
+ORG = CONFIG.org
+REPOS_CONFIG = CONFIG.repos_config
+AUTO_DISCOVER = CONFIG.auto_discover
+ACTIVE_DAYS = CONFIG.active_days
+DISCOVERY_INTERVAL = CONFIG.discovery_interval
+RUNNER_BACKEND = CONFIG.runner_backend
+AUTO_ROUTE_VM = CONFIG.auto_route_vm
+RUNNER_ARCH = CONFIG.runner_arch
+PROXIES_ENABLED = CONFIG.proxies_enabled
+CACHE_ENABLED = CONFIG.cache_enabled
+HOST_CACHE_DIR = CONFIG.host_cache_dir
+MIN_RUNNERS = CONFIG.min_runners
+MAX_RUNNERS = CONFIG.max_runners
+POLL_INTERVAL = CONFIG.poll_interval
+RATE_LIMIT_REFRESH_INTERVAL = CONFIG.rate_limit_refresh_interval
+ACTIONS_BILLING_REFRESH_INTERVAL = CONFIG.actions_billing_refresh_interval
+DASHBOARD_ENABLED = CONFIG.dashboard_enabled
+DASHBOARD_PORT = CONFIG.dashboard_port
+DASHBOARD_HOST = CONFIG.dashboard_host
 
 running = True
 
@@ -142,11 +142,6 @@ def main():
     available_drivers = get_available_drivers(on_image_event=dashboard_state.report_image_build)
     default_driver = get_driver(RUNNER_BACKEND, on_image_event=dashboard_state.report_image_build)
     architectures = get_target_architectures()
-
-    try:
-        from version import __version__
-    except ImportError:
-        __version__ = "0.1.0"
 
     # Initialize dashboard state config
     dashboard_state.version = __version__
@@ -244,7 +239,7 @@ def main():
                 ensure_stopped()
 
         if tracked_repos and not ORG:
-            reconcile_idle_orphans(tracked_repos, all_runners, available_drivers, access_token=ACCESS_TOKEN)
+            reconcile_idle_orphans(tracked_repos, all_runners, available_drivers, access_token=ACCESS_TOKEN, busy_timeout_seconds=CONFIG.busy_timeout_seconds)
 
         active_runners = [r for r in all_runners if r.state in ("running", "pending")]
         active_count = len(active_runners)

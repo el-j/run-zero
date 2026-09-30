@@ -256,7 +256,7 @@
     if (!state) return;
 
     // Header & KPIs
-    statVersion.textContent = `v${state.version || '0.1.0'}`;
+    statVersion.textContent = state.version ? `v${state.version}` : 'v…';
     statEngine.textContent = (state.default_engine || 'DOCKER').toUpperCase();
     statUptime.textContent = state.uptime || '00:00:00';
 
