@@ -67,9 +67,11 @@ class MultipassDriver(RunnerDriver):
     ) -> str | None:
         """Launch a fresh Multipass VM (`multipass launch`) and bootstrap+register the runner inside it.
 
-        The launch itself is synchronous; the apt-get/runner-download/registration bootstrap script
-        runs detached (`multipass exec` via Popen) so this call returns as soon as the VM boots.
-        Returns None (and prints to stderr) only if the `multipass launch` step itself fails.
+        The launch itself is synchronous; the apt-get/runner-download bootstrap, `config.sh`
+        registration (with a host-issued registration token) and `run.sh` run detached
+        (`multipass exec` via Popen), so this call returns as soon as the VM boots. Returns None
+        if the inputs are invalid, no registration token can be obtained, or `multipass launch`
+        fails. Not yet verified on a real Multipass host (see #54).
         """
         unique_id = uuid.uuid4().hex[:6]
         name_suffix = f"-{repo.replace('/', '-')}" if repo else (f"-{org}" if org else "")

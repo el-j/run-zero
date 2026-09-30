@@ -63,7 +63,7 @@ RunZero is the **first local runner fleet that gives you the choice between ultr
 | 🪟 **Windows WSL2** (`RUNNER_BACKEND=wsl2`) | [Windows Subsystem for Linux 2](https://learn.microsoft.com/en-us/windows/wsl/) | Native Linux VM execution on Windows 10/11 & Windows Server. | ⚠️ Unit-tested only — **not yet verified against a real Windows/WSL2 host** |
 | 🐧 **Canonical Multipass** (`RUNNER_BACKEND=multipass`) | [Canonical Multipass](https://multipass.run/) | Universal cross-platform VM backend for macOS, Linux, and Windows. | ⚠️ Unit-tested only — **not yet verified against a real Multipass install** |
 
-The WSL2 and Multipass drivers are implemented and covered by unit tests that verify command
+The WSL2 and Multipass drivers register and run ephemeral runners and are covered by unit tests that verify command
 construction (every `subprocess` call to `wsl.exe` / `multipass` is mocked at the call site), but
 neither has been exercised against real hardware — this project has been developed and driven
 entirely from a macOS host with OrbStack. See [`E2E_TESTING.md`](E2E_TESTING.md) and
@@ -315,13 +315,20 @@ Full setup guide: [ACTIONS_BILLING_HOWTO.md](ACTIONS_BILLING_HOWTO.md)
 
 ## 🧪 Testing & Quality Suite
 
-RunZero includes a 100% verified test suite with type checking, linting, and mutation testing:
+`make check` is the single quality gate, run identically by CI and (for staged files) the
+pre-commit hook. It enforces: ruff lint + format, flake8, mypy on `src/` and `tests/`,
+docstring coverage (interrogate, currently ≥ 83%, rising to 100% in #58), pytest with **100%
+line coverage** and every warning treated as an error, plus `bash -n` and shellcheck on every
+maintained shell script. Unit tests are offline and hermetic: `tests/conftest.py` fails any test
+that reaches real `docker`/`orbctl`/`multipass`/`wsl` or the network.
 
 | Command | Description |
 |---|---|
-| `make test` | Run fast local unit tests directly (90 tests in ~1.0s) |
-| `make test-suite` | Run Flake8 linter, Mypy static type checker, and Pytest coverage |
-| `make mutation-test` | Run Mutmut mutation testing suite across all drivers and autoscaler |
+| `make dev-setup` | Create `.venv-dev` with the pinned tooling from `requirements-dev.txt` |
+| `make check` | Every quality gate above (what CI runs) |
+| `make test` | Just the pytest suite (with the coverage gate) |
+| `make test-suite` | The Python gates inside a clean `python:3.11-slim` container |
+| `make mutation-test` | Mutmut mutation testing -- currently scoped to `src/dashboard/state.py`; widening it is tracked in #60 |
 | `make mutation-report` | Export mutmut stats and generate weekly mutation trend dashboard artifacts |
 
 The suite is layered:
@@ -348,8 +355,9 @@ The suite is layered:
 | `make start` (or `make run`, `make up`) | Launch autoscaler, apt-cacher, Verdaccio, Athens, and Docker mirror |
 | `make stop` (or `make down`) | Gracefully stop the autoscaler, proxies, and active runners |
 | `make status` (or `make ps`) | Display running autoscaler, proxies & active ephemeral runners |
-| `make test` | Run fast local unit tests directly with `unittest` (85 tests in 0.04s) |
-| `make test-suite` | Run Flake8 linter, Mypy type-checker, and Pytest coverage report |
+| `make check` | Run every quality gate (ruff, flake8, mypy, interrogate, pytest 100% coverage, shellcheck) |
+| `make test` | Run the pytest suite with the coverage gate |
+| `make test-suite` | Run the Python gates inside a clean `python:3.11-slim` container |
 | `make install-hooks` | Install RunZero pre-commit quality guard into `.git/hooks/pre-commit` |
 | `make pre-commit` | Run the pre-commit quality guard manually with auto-fixes |
 | `make lint` | Run Flake8 linter and Mypy static type checker |

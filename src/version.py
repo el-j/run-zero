@@ -1,9 +1,12 @@
 """
 Dynamic Semantic Versioning for RunZero.
-Automatically determines version based on current git branch, tags, and environment:
-- main: 0.0.1 (Stable release)
-- develop: 0.0.1-beta.1 (Integration prerelease)
-- feat/*: 0.0.1-alpha.x (Feature branch snapshot)
+Resolved once at import, in this order:
+- RUNZERO_VERSION env var, if set (CI and Docker builds pass it explicitly)
+- main / master:              0.0.1            (stable release)
+- develop:                    0.0.1-beta.1     (integration prerelease)
+- feat/*, feature/*, fix/*:   0.0.1-alpha.<N>  (N = commit count on the branch)
+- any other branch:           0.0.1-dev.<N>
+- git unavailable (e.g. in an image without .git): bare 0.0.1
 """
 
 import os

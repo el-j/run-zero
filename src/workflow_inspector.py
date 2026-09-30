@@ -19,6 +19,16 @@ a very regular, predictable indentation style, so a structural (not
 semantic) indentation scan is enough to answer one narrow question: "does
 the job whose rendered `name:` is X have a `services:` or `container:` key
 as a direct child?"
+
+Known limitations (a False/None answer then falls back to the router's name/label
+heuristic, so these degrade routing accuracy rather than break it):
+- Exactly 2-space indentation is assumed: job keys must sit 2 spaces under `jobs:`,
+  and `name:`/`services:`/`container:` 2 spaces under their job key.
+- The FIRST line whose text starts with `jobs:` -- at any indentation, even inside a
+  block scalar -- is taken as the jobs map.
+- Jobs are matched by their key or literal `name:`; names built from `${{ }}`
+  expressions (e.g. matrix-rendered names) never match.
+- Anchors/aliases, flow-style mappings and reusable workflows (`uses:`) aren't resolved.
 """
 
 from collections.abc import Iterator

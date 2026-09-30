@@ -32,7 +32,7 @@ BRIDGE_TOKEN_ENV = "RUNZERO_BRIDGE_TOKEN"
 # _building_arches/_build_retry_after state (the backoff/dedup mechanism
 # that stops a golden-image build from being retried every poll tick)
 # between one request and the next. Confirmed live: the containerized
-# autoscaler polls the bridge every POLL_INTERVAL (default 5s); each poll
+# autoscaler polls the bridge every POLL_INTERVAL (default 10s); each poll
 # got served by a fresh, backoff-unaware driver instance, so the bridge
 # deleted and recreated the "-building" staging VM roughly every 5s,
 # forever -- provisioning never survived long enough to even write

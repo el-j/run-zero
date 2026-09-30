@@ -79,7 +79,7 @@ class RunnerInfo:
         self.target_repo = target_repo
         self.target_arch = target_arch
         self.backend = backend
-        # Unix timestamp, when the driver can report it (currently: Docker only).
+        # Unix timestamp of when the runner was spawned; every driver reports it (None only if unknown).
         # Lets the reconciler tell "just spawned, GitHub hasn't dispatched to it
         # yet" apart from "been sitting idle for way too long, orphaned".
         self.created_at = created_at

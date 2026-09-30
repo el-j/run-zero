@@ -372,10 +372,11 @@ class DockerDriver(RunnerDriver):
             # Headless Chrome (Lighthouse CI, Playwright) needs to create its own
             # user/PID namespace for its internal sandbox, which Docker blocks by
             # default. GitHub-hosted runners never hit this because they're full
-            # VMs, not containers. Jobs only skip this container path when their
-            # own `runs-on:` labels match a VM_TRIGGER_LABELS entry and a VM
-            # driver is available (see select_driver_for_job in autoscaler.py) —
-            # every other job, including browser-driven ones, lands here.
+            # VMs, not containers. Jobs only skip this container path when a VM
+            # driver is available AND the job needs one -- its workflow declares
+            # `services:`/`container:`, or a VM_TRIGGER_LABELS entry appears in its
+            # labels or job-name tokens (see router.select_driver_for_job). Every
+            # other job, including browser-driven ones, lands here.
             "--cap-add",
             "SYS_ADMIN",
             "--label",
