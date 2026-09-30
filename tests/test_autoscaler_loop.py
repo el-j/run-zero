@@ -1,119 +1,144 @@
 """
-Unit tests for autoscaler main execution loop and signal handling.
+Unit tests for the autoscaler: pure helpers, one `Scaler` poll cycle at a time, and `main()`.
+
+`Scaler.run_once()` is driven directly with a Config and mock drivers -- no module globals
+to patch and no loop to break out of. `main()` tests cover only process wiring: startup
+validation, dashboard lifecycle, signal handling and shutdown cleanup.
 """
 
+import dataclasses
 import io
 import shutil
 import signal
 import tempfile
 import unittest
+from typing import Any
 from unittest.mock import MagicMock, patch
 
 import autoscaler
+from autoscaler import Scaler
+from config import Config
 from drivers import RunnerInfo
 
 
-class TestAutoscalerLoop(unittest.TestCase):
+def mock_driver(name: str = "docker", runners: list[RunnerInfo] | None = None, spawn: Any = "runner-1") -> MagicMock:
+    driver = MagicMock()
+    driver.name.return_value = name
+    driver.list_runners.return_value = runners or []
+    if callable(spawn):
+        driver.spawn_runner.side_effect = spawn
+    else:
+        driver.spawn_runner.return_value = spawn
+    return driver
+
+
+def unique_ids(**kwargs: Any) -> str:
+    """spawn_runner side effect returning a fresh runner id per call."""
+    unique_ids.counter += 1  # type: ignore[attr-defined]
+    return f"runner-{unique_ids.counter}"  # type: ignore[attr-defined]
+
+
+unique_ids.counter = 0  # type: ignore[attr-defined]
+
+
+def running(name: str, target: str, backend: str = "docker") -> RunnerInfo:
+    return RunnerInfo(id=name, name=name, status="running", state="running", target_repo=target, target_arch="arm64", backend=backend)
+
+
+class ScalerTestCase(unittest.TestCase):
+    """Base: temp cache dir, offline GitHub/discovery stubs, and a Config factory."""
+
     def setUp(self):
         self.temp_cache = tempfile.mkdtemp()
-        # main() refreshes dashboard cache metrics by walking dashboard_state.cache_dir; keep
-        # that walk (and any purge) inside a throwaway dir, never the real host cache.
+        self.addCleanup(shutil.rmtree, self.temp_cache, ignore_errors=True)
         cache_patch = patch.object(autoscaler.dashboard_state, "cache_dir", self.temp_cache)
         cache_patch.start()
         self.addCleanup(cache_patch.stop)
-        # main() refreshes quota/billing from api.github.com every loop; unit tests stay offline.
-        for name, value in (("refresh_rate_limit", False), ("refresh_actions_billing", None)):
+        self.stubs: dict[str, MagicMock] = {}
+        for name, value in (
+            ("refresh_rate_limit", False),
+            ("refresh_actions_billing", None),
+            ("reconcile_zombie_runners", None),
+            ("reconcile_idle_orphans", None),
+            ("discover_repositories", ["el-j/run-zero"]),
+            ("get_queued_job_details", []),
+        ):
             p = patch(f"autoscaler.{name}", return_value=value)
-            p.start()
+            self.stubs[name] = p.start()
             self.addCleanup(p.stop)
-        # The signal handler sets this process-wide event; never let one test's shutdown leak.
         autoscaler.github_api.shutdown_event.clear()
         self.addCleanup(autoscaler.github_api.shutdown_event.clear)
 
-    def tearDown(self):
-        shutil.rmtree(self.temp_cache, ignore_errors=True)
+    def config(self, **overrides: Any) -> Config:
+        base = Config(access_token="fake-token", host_cache_dir=self.temp_cache, dashboard_enabled=False)
+        return dataclasses.replace(base, **overrides)
 
+    def scaler(self, config: Config | None = None, drivers: dict[str, Any] | None = None, default: Any = None, clock: Any = None) -> Scaler:
+        default = default or mock_driver()
+        drivers = drivers if drivers is not None else {default.name(): default}
+        return Scaler(config or self.config(), drivers, default, clock=clock or (lambda: 1_000_000.0), pause=lambda _s: None)
+
+    def queue(self, *jobs: dict[str, Any]) -> None:
+        self.stubs["get_queued_job_details"].return_value = list(jobs)
+
+
+def job(i: int = 1, *labels: str, **extra: Any) -> dict[str, Any]:
+    return {"id": i, "name": f"job-{i}", "labels": ["self-hosted", *labels], **extra}
+
+
+class TestPureHelpers(unittest.TestCase):
     def test_get_target_architectures(self):
-        with patch.object(autoscaler, "RUNNER_ARCH", "both"):
-            self.assertEqual(autoscaler.get_target_architectures(), ["arm64", "amd64"])
-        with patch.object(autoscaler, "RUNNER_ARCH", "amd64"):
-            self.assertEqual(autoscaler.get_target_architectures(), ["amd64"])
-        with patch.object(autoscaler, "RUNNER_ARCH", "arm64"):
-            self.assertEqual(autoscaler.get_target_architectures(), ["arm64"])
+        self.assertEqual(autoscaler.get_target_architectures("both"), ["arm64", "amd64"])
+        self.assertEqual(autoscaler.get_target_architectures("amd64"), ["amd64"])
+        self.assertEqual(autoscaler.get_target_architectures("arm64"), ["arm64"])
 
     def test_resolve_job_arch_defaults_to_amd64_like_github_hosted(self):
-        # No arch label at all -> must match what GitHub-hosted ubuntu-latest
-        # would use (amd64), not whatever's native to this Mac.
-        with patch.object(autoscaler, "RUNNER_ARCH", "both"):
-            self.assertEqual(autoscaler.resolve_job_arch([]), "amd64")
-            self.assertEqual(autoscaler.resolve_job_arch(["self-hosted", "vm"]), "amd64")
+        # No arch label at all -> must match GitHub-hosted ubuntu-latest (amd64), not the Mac's native arch.
+        self.assertEqual(autoscaler.resolve_job_arch([], "both"), "amd64")
+        self.assertEqual(autoscaler.resolve_job_arch(["self-hosted", "vm"], "both"), "amd64")
 
     def test_resolve_job_arch_explicit_arm_label_wins(self):
-        with patch.object(autoscaler, "RUNNER_ARCH", "both"):
-            self.assertEqual(autoscaler.resolve_job_arch(["self-hosted", "arm64"]), "arm64")
-            self.assertEqual(autoscaler.resolve_job_arch(["aarch64"]), "arm64")
-            self.assertEqual(autoscaler.resolve_job_arch(["arm"]), "arm64")
+        for label in ("arm64", "aarch64", "arm"):
+            self.assertEqual(autoscaler.resolve_job_arch(["self-hosted", label], "both"), "arm64")
 
     def test_resolve_job_arch_amd64_label_still_amd64(self):
-        with patch.object(autoscaler, "RUNNER_ARCH", "both"):
-            self.assertEqual(autoscaler.resolve_job_arch(["amd64"]), "amd64")
-            self.assertEqual(autoscaler.resolve_job_arch(["x64"]), "amd64")
+        self.assertEqual(autoscaler.resolve_job_arch(["amd64"], "both"), "amd64")
+        self.assertEqual(autoscaler.resolve_job_arch(["x64"], "both"), "amd64")
 
     def test_resolve_job_arch_single_arch_override_ignores_labels(self):
-        # Operator pinned the whole fleet to one arch -- that wins regardless
-        # of what an individual job's labels say.
-        with patch.object(autoscaler, "RUNNER_ARCH", "amd64"):
-            self.assertEqual(autoscaler.resolve_job_arch(["arm64"]), "amd64")
-        with patch.object(autoscaler, "RUNNER_ARCH", "arm64"):
-            self.assertEqual(autoscaler.resolve_job_arch([]), "arm64")
+        # Operator pinned the whole fleet to one arch -- that wins regardless of job labels.
+        self.assertEqual(autoscaler.resolve_job_arch(["arm64"], "amd64"), "amd64")
+        self.assertEqual(autoscaler.resolve_job_arch([], "arm64"), "arm64")
 
     def test_build_cache_scope_is_stable_across_different_runs_of_the_same_job(self):
-        # The whole point of this scope key: two separate runs of the SAME recurring job
-        # (different run_id/job id every time, as real GitHub runs always are) must produce
-        # the SAME scope, or the go-build cache directory it drives is thrown away and
-        # rebuilt from empty on every single run.
-        job_run_1 = {"id": 201, "run_id": 1001, "name": "test", "workflow_path": ".github/workflows/ci.yml"}
-        job_run_2 = {"id": 555, "run_id": 9999, "name": "test", "workflow_path": ".github/workflows/ci.yml"}
-        scope_1 = autoscaler.build_cache_scope("el-j/run-zero", job_run_1)
-        scope_2 = autoscaler.build_cache_scope("el-j/run-zero", job_run_2)
-        self.assertEqual(scope_1, scope_2)
+        # Two runs of the SAME recurring job (new run_id/id every time) must share a scope,
+        # or the go-build cache it drives is thrown away on every run.
+        job_1 = {"id": 1, "run_id": 100, "workflow_path": ".github/workflows/ci.yml", "name": "test (3.11)"}
+        job_2 = {**job_1, "id": 2, "run_id": 200}
+        self.assertEqual(autoscaler.build_cache_scope("el-j/run-zero", job_1), autoscaler.build_cache_scope("el-j/run-zero", job_2))
 
     def test_build_cache_scope_differs_across_different_jobs(self):
-        job_a = {"name": "test", "workflow_path": ".github/workflows/ci.yml"}
-        job_b = {"name": "build", "workflow_path": ".github/workflows/ci.yml"}
-        job_c = {"name": "test", "workflow_path": ".github/workflows/release.yml"}
-        scope_a = autoscaler.build_cache_scope("el-j/run-zero", job_a)
-        scope_b = autoscaler.build_cache_scope("el-j/run-zero", job_b)
-        scope_c = autoscaler.build_cache_scope("el-j/run-zero", job_c)
-        self.assertNotEqual(scope_a, scope_b)
-        self.assertNotEqual(scope_a, scope_c)
-        self.assertNotEqual(scope_b, scope_c)
+        a = autoscaler.build_cache_scope("o/r", {"workflow_path": "ci.yml", "name": "lint"})
+        b = autoscaler.build_cache_scope("o/r", {"workflow_path": "ci.yml", "name": "test"})
+        c = autoscaler.build_cache_scope("o/r", {"workflow_path": "release.yml", "name": "lint"})
+        self.assertEqual(len({a, b, c}), 3)
 
     def test_build_cache_scope_tolerates_missing_fields(self):
         self.assertEqual(autoscaler.build_cache_scope("el-j/run-zero", {}), "el-j/run-zero")
 
     def test_ensure_driver_runtime_assets_falls_back_to_positional_arg_on_typeerror(self):
-        # Some driver stand-ins (e.g. certain bridge/mocked drivers) may expose
-        # ensure_runtime_assets() without accepting the `arch=` keyword -- must still work.
-        driver = MagicMock()
+        calls: list[tuple] = []
 
-        def _positional_only(arch):
-            return arch == "amd64"
-
-        driver.ensure_runtime_assets.side_effect = TypeError("no kwarg")
-        # Replace with a callable that raises TypeError only for the kwarg call form,
-        # then succeeds positionally -- simulate via a small wrapper.
-        calls = []
-
-        def _ensure(*args, **kwargs):
+        def ensure(*args, **kwargs):
             calls.append((args, kwargs))
             if kwargs:
-                raise TypeError("unexpected keyword argument 'arch'")
-            return _positional_only(*args)
+                raise TypeError("no arch kwarg")
+            return True
 
-        driver.ensure_runtime_assets = _ensure
+        driver = MagicMock()
+        driver.ensure_runtime_assets = ensure
         self.assertTrue(autoscaler.ensure_driver_runtime_assets(driver, "amd64"))
-        self.assertEqual(len(calls), 2)  # first the kwarg attempt, then the positional fallback
+        self.assertEqual(len(calls), 2)
 
     def test_ensure_driver_runtime_assets_defaults_true_when_driver_has_no_such_method(self):
         class DriverWithoutRuntimeAssets:
@@ -121,912 +146,301 @@ class TestAutoscalerLoop(unittest.TestCase):
 
         self.assertTrue(autoscaler.ensure_driver_runtime_assets(DriverWithoutRuntimeAssets(), "amd64"))
 
-    @patch("autoscaler.ACCESS_TOKEN", "fake-token")
-    @patch("autoscaler.CACHE_ENABLED", True)
-    @patch("autoscaler.DASHBOARD_ENABLED", False)
-    @patch("autoscaler.discover_repositories", return_value=["el-j/run-zero", "el-j/custom-repo"])
-    @patch("autoscaler.reconcile_zombie_runners")
-    @patch("autoscaler.get_queued_job_details")
-    @patch("autoscaler.time.sleep")
-    def test_main_loop_repository_mode(self, mock_sleep, mock_jobs, mock_reconcile, mock_discover):
-        # Queue has 1 job for el-j/run-zero
-        mock_jobs.side_effect = [[{"id": 1, "name": "unit-test", "labels": ["self-hosted"]}], []]
-
-        def stop_after_one_loop(*args, **kwargs):
-            autoscaler.running = False
-
-        mock_sleep.side_effect = stop_after_one_loop
-
-        with (
-            patch.object(autoscaler, "HOST_CACHE_DIR", self.temp_cache),
-            patch("autoscaler.get_driver") as mock_get_driver,
-            patch("autoscaler.get_available_drivers") as mock_avail,
-        ):
-            mock_driver = MagicMock()
-            mock_driver.name.return_value = "docker"
-            mock_driver.list_runners.return_value = []
-            mock_driver.spawn_runner.return_value = "local-runner-arm64-1"
-
-            mock_get_driver.return_value = mock_driver
-            mock_avail.return_value = {"docker": mock_driver}
-
-            autoscaler.running = True
-            autoscaler.main()
-
-            mock_driver.spawn_runner.assert_called()
-            mock_driver.cleanup_all.assert_called()
-
-    @patch("autoscaler.ACCESS_TOKEN", "fake-token")
-    @patch("autoscaler.ORG", "my-test-org")
-    @patch("autoscaler.MIN_RUNNERS", 2)
-    @patch("autoscaler.MAX_RUNNERS", 4)
-    @patch("autoscaler.CACHE_ENABLED", True)
-    @patch("autoscaler.DASHBOARD_ENABLED", False)
-    @patch("autoscaler.time.sleep")
-    def test_main_loop_organization_mode(self, mock_sleep):
-        def stop_loop(*args, **kwargs):
-            autoscaler.running = False
-
-        mock_sleep.side_effect = stop_loop
-
-        with (
-            patch.object(autoscaler, "HOST_CACHE_DIR", self.temp_cache),
-            patch("autoscaler.get_driver") as mock_get_driver,
-            patch("autoscaler.get_available_drivers") as mock_avail,
-        ):
-            mock_driver = MagicMock()
-            mock_driver.name.return_value = "docker"
-            mock_driver.list_runners.return_value = []
-            mock_driver.spawn_runner.return_value = "local-runner-org-1"
-
-            mock_get_driver.return_value = mock_driver
-            mock_avail.return_value = {"docker": mock_driver}
-
-            autoscaler.running = True
-            autoscaler.main()
-
-            self.assertEqual(mock_driver.spawn_runner.call_count, 2)
-
-    @patch("autoscaler.ACCESS_TOKEN", "fake-token")
-    @patch("autoscaler.ORG", "my-test-org")
-    @patch("autoscaler.MIN_RUNNERS", 1)
-    @patch("autoscaler.MAX_RUNNERS", 4)
-    @patch("autoscaler.CACHE_ENABLED", True)
-    @patch("autoscaler.DASHBOARD_ENABLED", False)
-    @patch("autoscaler.time.sleep")
-    def test_main_loop_organization_mode_skips_spawn_when_runtime_assets_not_ready(self, mock_sleep):
-        def stop_loop(*args, **kwargs):
-            autoscaler.running = False
-
-        mock_sleep.side_effect = stop_loop
-
-        with (
-            patch.object(autoscaler, "HOST_CACHE_DIR", self.temp_cache),
-            patch("autoscaler.get_driver") as mock_get_driver,
-            patch("autoscaler.get_available_drivers") as mock_avail,
-        ):
-            mock_driver = MagicMock()
-            mock_driver.name.return_value = "docker"
-            mock_driver.list_runners.return_value = []
-            mock_driver.ensure_runtime_assets.return_value = False  # golden image still building
-            mock_driver.spawn_runner.return_value = "local-runner-org-1"
-
-            mock_get_driver.return_value = mock_driver
-            mock_avail.return_value = {"docker": mock_driver}
-
-            autoscaler.running = True
-            autoscaler.main()
-
-            mock_driver.spawn_runner.assert_not_called()
-
-    @patch("autoscaler.ACCESS_TOKEN", "fake-token")
-    @patch("autoscaler.CACHE_ENABLED", True)
-    @patch("autoscaler.DASHBOARD_ENABLED", False)
-    @patch("autoscaler.discover_repositories", return_value=["el-j/run-zero"])
-    @patch("autoscaler.reconcile_zombie_runners")
-    @patch("autoscaler.get_queued_job_details")
-    @patch("autoscaler.time.sleep")
-    def test_main_loop_repository_mode_skips_spawn_when_runtime_assets_not_ready(self, mock_sleep, mock_jobs, mock_reconcile, mock_discover):
-        mock_jobs.side_effect = [[{"id": 1, "name": "unit-test", "labels": ["self-hosted"]}], []]
-
-        def stop_after_one_loop(*args, **kwargs):
-            autoscaler.running = False
-
-        mock_sleep.side_effect = stop_after_one_loop
-
-        with (
-            patch.object(autoscaler, "HOST_CACHE_DIR", self.temp_cache),
-            patch("autoscaler.get_driver") as mock_get_driver,
-            patch("autoscaler.get_available_drivers") as mock_avail,
-        ):
-            mock_driver = MagicMock()
-            mock_driver.name.return_value = "docker"
-            mock_driver.list_runners.return_value = []
-            mock_driver.ensure_runtime_assets.return_value = False  # golden image still building
-            mock_driver.spawn_runner.return_value = "local-runner-arm64-1"
-
-            mock_get_driver.return_value = mock_driver
-            mock_avail.return_value = {"docker": mock_driver}
-
-            autoscaler.running = True
-            autoscaler.main()
-
-            mock_driver.spawn_runner.assert_not_called()
-
-    @patch("autoscaler.ACCESS_TOKEN", "fake-token")
-    @patch("autoscaler.CACHE_ENABLED", True)
-    @patch("autoscaler.DASHBOARD_ENABLED", False)
-    @patch("autoscaler.discover_repositories", return_value=["el-j/run-zero"])
-    @patch("autoscaler.reconcile_zombie_runners")
-    @patch("autoscaler.get_queued_job_details")
-    @patch("autoscaler.time.sleep")
-    def test_main_loop_falls_back_to_default_driver_when_vm_driver_spawn_fails(self, mock_sleep, mock_jobs, mock_reconcile, mock_discover):
-        # A "services"-labeled job routes to the VM driver (router.VM_TRIGGER_LABELS).
-        # When that driver's spawn_runner() fails, main() must retry with the default
-        # (docker) driver rather than just dropping the job.
-        mock_jobs.side_effect = [[{"id": 1, "name": "integration-test", "labels": ["self-hosted", "services"]}], []]
-
-        def stop_after_one_loop(*args, **kwargs):
-            autoscaler.running = False
-
-        mock_sleep.side_effect = stop_after_one_loop
-
-        with (
-            patch.object(autoscaler, "HOST_CACHE_DIR", self.temp_cache),
-            patch("autoscaler.get_driver") as mock_get_driver,
-            patch("autoscaler.get_available_drivers") as mock_avail,
-        ):
-            docker_driver = MagicMock()
-            docker_driver.name.return_value = "docker"
-            docker_driver.list_runners.return_value = []
-            docker_driver.spawn_runner.return_value = "local-runner-arm64-fallback"
-
-            vm_driver = MagicMock()
-            vm_driver.name.return_value = "orbstack-vm"
-            vm_driver.list_runners.return_value = []
-            vm_driver.spawn_runner.return_value = None  # VM spawn fails
-
-            mock_get_driver.return_value = docker_driver
-            mock_avail.return_value = {"docker": docker_driver, "orbstack-vm": vm_driver}
-
-            autoscaler.running = True
-            autoscaler.main()
-
-            vm_driver.spawn_runner.assert_called_once()
-            docker_driver.spawn_runner.assert_called_once()
-
-    @patch("autoscaler.ACCESS_TOKEN", "fake-token")
-    @patch("autoscaler.CACHE_ENABLED", True)
-    @patch("autoscaler.DASHBOARD_ENABLED", False)
-    @patch("autoscaler.discover_repositories", return_value=["el-j/run-zero"])
-    @patch("autoscaler.reconcile_zombie_runners")
-    @patch("autoscaler.get_queued_job_details", return_value=[])
-    @patch("autoscaler.refresh_actions_billing")
-    @patch("autoscaler.refresh_rate_limit")
-    @patch("autoscaler.time.time")
-    @patch("autoscaler.time.sleep")
-    def test_main_loop_derives_billing_owner_from_first_tracked_repo_on_later_poll(
-        self, mock_sleep, mock_time, mock_rate_limit, mock_billing, mock_jobs, mock_reconcile, mock_discover
-    ):
-        # billing_owner is only derived from tracked_repos on a poll where the
-        # ACTIONS_BILLING_REFRESH_INTERVAL gate (floor: 30 real seconds) actually
-        # fires again -- which by definition is never the very first poll, since
-        # discovery (which populates tracked_repos) runs later in that same
-        # iteration. Two ticks, 35 simulated seconds apart, with OWNER/ORG both
-        # unset, exercises the real "derive from tracked_repos[0]" fallback path.
-        # A strictly-increasing clock that jumps forward a lot on every single call, so
-        # every interval gate (rate limit/billing/discovery) fires on every poll no
-        # matter how many *other*, unrelated time.time() calls happen in between (e.g.
-        # dashboard_state.update_fleet()'s own internal one) -- exact call-count
-        # bookkeeping across the whole call graph would be far too brittle to hand-track.
-        clock = {"t": 1_000_000.0}
-
-        def _tick_clock():
-            clock["t"] += 100.0
-            return clock["t"]
-
-        mock_time.side_effect = _tick_clock
-        mock_rate_limit.return_value = True
-
-        tick_count = {"n": 0}
-
-        def _stop_after_second_poll_wait(*args, **kwargs):
-            # time.sleep() is also called for the unrelated per-repo 0.1s API throttle
-            # inside the queued-jobs loop -- only the real end-of-poll wait (sleep(1),
-            # from `for _ in range(POLL_INTERVAL): time.sleep(1)`) should count as a tick.
-            if args and args[0] == 1:
-                tick_count["n"] += 1
-                if tick_count["n"] >= 2:
-                    autoscaler.running = False
-
-        mock_sleep.side_effect = _stop_after_second_poll_wait
-
-        with (
-            patch.object(autoscaler, "HOST_CACHE_DIR", self.temp_cache),
-            patch.object(autoscaler, "POLL_INTERVAL", 1),
-            patch("autoscaler.get_driver") as mock_get_driver,
-            patch("autoscaler.get_available_drivers") as mock_avail,
-        ):
-            mock_driver = MagicMock()
-            mock_driver.name.return_value = "docker"
-            mock_driver.list_runners.return_value = []
-
-            mock_get_driver.return_value = mock_driver
-            mock_avail.return_value = {"docker": mock_driver}
-
-            autoscaler.running = True
-            autoscaler.main()
-
-        self.assertGreaterEqual(mock_billing.call_count, 2)
-        self.assertEqual(mock_billing.call_args_list[-1].kwargs["owner"], "el-j")
-
-    @patch("autoscaler.ACCESS_TOKEN", "fake-token")
-    @patch("autoscaler.CACHE_ENABLED", True)
-    @patch("autoscaler.DASHBOARD_ENABLED", False)
-    @patch("autoscaler.discover_repositories", return_value=["el-j/run-zero"])
-    @patch("autoscaler.reconcile_zombie_runners")
-    @patch("autoscaler.get_queued_job_details")
-    @patch("autoscaler.time.sleep")
-    def test_main_loop_prints_quota_when_rate_limit_known(self, mock_sleep, mock_jobs, mock_reconcile, mock_discover):
-        mock_jobs.return_value = []
-
-        def stop_after_one_loop(*args, **kwargs):
-            autoscaler.running = False
-
-        mock_sleep.side_effect = stop_after_one_loop
-
-        def _fake_refresh_rate_limit(access_token=None):
-            autoscaler.github_api.rate_limit_remaining = 4999
-            autoscaler.github_api.rate_limit_total = 5000
-            autoscaler.github_api.rate_limit_resource = "core"
-            return True
-
-        with (
-            patch.object(autoscaler, "HOST_CACHE_DIR", self.temp_cache),
-            patch("autoscaler.get_driver") as mock_get_driver,
-            patch("autoscaler.get_available_drivers") as mock_avail,
-            patch("autoscaler.refresh_rate_limit", side_effect=_fake_refresh_rate_limit),
-        ):
-            mock_driver = MagicMock()
-            mock_driver.name.return_value = "docker"
-            mock_driver.list_runners.return_value = []
-
-            mock_get_driver.return_value = mock_driver
-            mock_avail.return_value = {"docker": mock_driver}
-
-            autoscaler.running = True
-            with patch("autoscaler.log_print") as mock_log:
-                autoscaler.main()
-
-        quota_calls = [c for c in mock_log.call_args_list if c.args and "Quota remaining: 4999/5000" in c.args[0]]
-        self.assertEqual(len(quota_calls), 1)
-
-    @patch("autoscaler.ACCESS_TOKEN", "fake-token")
-    @patch("autoscaler.CACHE_ENABLED", True)
-    @patch("autoscaler.DASHBOARD_ENABLED", False)
-    @patch("autoscaler.discover_repositories", return_value=["el-j/run-zero"])
-    @patch("autoscaler.reconcile_zombie_runners")
-    @patch("autoscaler.get_queued_job_details")
-    @patch("autoscaler.time.sleep")
-    def test_main_loop_attaches_job_meta_to_runner_visible_on_a_later_poll(self, mock_sleep, mock_jobs, mock_reconcile, mock_discover):
-        # Iteration 1 spawns a runner and records its job metadata (job_url/run_url) in
-        # runner_job_meta, keyed by the spawned runner's name -- that dict lives outside
-        # the poll loop. Iteration 2's list_runners() now reports that same runner as
-        # active; the dashboard payload construction must attach its remembered metadata.
-        mock_jobs.side_effect = [
-            [{"id": 1, "name": "unit-test", "labels": ["self-hosted"], "run_id": 55, "job_url": "https://x/job", "run_url": "https://x/run"}],
-            [],
-        ]
-
-        tick_count = {"n": 0}
-
-        def _stop_after_second_tick(*args, **kwargs):
-            # Only the real end-of-poll wait (sleep(1)) marks a tick boundary -- the
-            # per-repo 0.1s API throttle inside the queued-jobs loop also calls
-            # time.sleep() and must not be counted as one.
-            if args and args[0] == 1:
-                tick_count["n"] += 1
-                if tick_count["n"] >= 2:
-                    autoscaler.running = False
-
-        mock_sleep.side_effect = _stop_after_second_tick
-
-        with (
-            patch.object(autoscaler, "HOST_CACHE_DIR", self.temp_cache),
-            patch.object(autoscaler, "POLL_INTERVAL", 1),
-            patch("autoscaler.get_driver") as mock_get_driver,
-            patch("autoscaler.get_available_drivers") as mock_avail,
-        ):
-            mock_driver = MagicMock()
-            mock_driver.name.return_value = "docker"
-            mock_driver.spawn_runner.return_value = "local-runner-arm64-1"
-            running_runner = RunnerInfo(
-                id="local-runner-arm64-1",
-                name="local-runner-arm64-1",
-                status="running",
-                state="running",
-                target_repo="el-j/run-zero",
-                target_arch="arm64",
-                backend="docker",
-            )
-            # list_runners() is called twice per driver per poll (once for prune_exited(),
-            # once to build all_runners) -- two ticks means four calls total.
-            mock_driver.list_runners.side_effect = [[], [], [running_runner], [running_runner]]
-
-            mock_get_driver.return_value = mock_driver
-            mock_avail.return_value = {"docker": mock_driver}
-
-            autoscaler.running = True
-            autoscaler.main()
-
-        snapshot = autoscaler.dashboard_state.get_snapshot()
-        runner_entry = next((r for r in snapshot["runners"] if r.get("name") == "local-runner-arm64-1"), None)
-        self.assertIsNotNone(runner_entry)
-        assert runner_entry is not None
-        self.assertEqual(runner_entry.get("job_url"), "https://x/job")
-
     def test_log_print_writes_to_given_file(self):
         buf = io.StringIO()
         autoscaler.log_print("hello world", file=buf)
         self.assertIn("hello world", buf.getvalue())
 
-    @patch("autoscaler.ACCESS_TOKEN", "")
-    def test_main_exits_when_access_token_missing(self):
-        with self.assertRaises(SystemExit) as cm:
-            autoscaler.main()
-        self.assertEqual(cm.exception.code, 1)
 
-    @patch("autoscaler.ACCESS_TOKEN", "fake-token")
-    @patch("autoscaler.CACHE_ENABLED", True)
-    @patch("autoscaler.HOST_CACHE_DIR", "")
-    def test_main_exits_when_cache_enabled_without_host_cache_dir(self):
-        with self.assertRaises(SystemExit) as cm:
-            autoscaler.main()
-        self.assertEqual(cm.exception.code, 1)
+class TestRepoMode(ScalerTestCase):
+    def test_spawns_one_runner_per_queued_job(self):
+        self.queue(job())
+        driver = mock_driver()
+        self.scaler(default=driver).run_once()
+        driver.spawn_runner.assert_called_once()
+        self.assertEqual(driver.spawn_runner.call_args.kwargs["repo"], "el-j/run-zero")
 
-    @patch("autoscaler.ACCESS_TOKEN", "fake-token")
-    @patch("autoscaler.CACHE_ENABLED", False)
-    @patch("autoscaler.DASHBOARD_ENABLED", True)
-    @patch("autoscaler.discover_repositories", return_value=[])
-    @patch("autoscaler.time.sleep")
-    def test_main_logs_warning_when_dashboard_fails_to_start(self, mock_sleep, mock_discover):
-        def stop_after_one_loop(*a, **kw):
-            autoscaler.running = False
+    def test_skips_spawn_when_runtime_assets_not_ready(self):
+        self.queue(job())
+        driver = mock_driver()
+        driver.ensure_runtime_assets.return_value = False
+        self.scaler(default=driver).run_once()
+        driver.spawn_runner.assert_not_called()
 
-        mock_sleep.side_effect = stop_after_one_loop
+    def test_stops_spawning_once_max_runners_reached(self):
+        self.queue(job(1), job(2), job(3))
+        driver = mock_driver(spawn=unique_ids)
+        self.scaler(config=self.config(max_runners=2), default=driver).run_once()
+        self.assertEqual(driver.spawn_runner.call_count, 2)
 
+    def test_needed_accounts_for_existing_active_runners_for_that_repo(self):
+        # 3 queued, 1 already running for this repo, 1 for another repo -> exactly 2 spawns.
+        self.queue(job(1), job(2), job(3))
+        driver = mock_driver(runners=[running("a", "el-j/run-zero"), running("b", "el-j/other")], spawn=unique_ids)
+        self.scaler(config=self.config(max_runners=10), default=driver).run_once()
+        self.assertEqual(driver.spawn_runner.call_count, 2)
+
+    def test_stops_exactly_when_needed_reaches_zero(self):
+        self.queue(job(1), job(2), job(3))
+        driver = mock_driver(runners=[running("a", "el-j/run-zero")], spawn=unique_ids)
+        self.scaler(config=self.config(max_runners=10), default=driver).run_once()
+        self.assertEqual(driver.spawn_runner.call_count, 2)
+
+    def test_dispatches_to_the_driver_the_router_selects(self):
+        self.queue(job(1, "vm"))
+        docker, vm = mock_driver("docker"), mock_driver("orbstack-vm", spawn="vm-1")
+        with patch("autoscaler.select_driver_for_job", return_value=(vm, "label:vm")):
+            self.scaler(drivers={"docker": docker, "orbstack-vm": vm}, default=docker).run_once()
+        vm.spawn_runner.assert_called_once()
+        docker.spawn_runner.assert_not_called()
+
+    def test_falls_back_to_default_driver_when_vm_driver_spawn_fails(self):
+        self.queue(job(1, "services"))
+        docker, vm = mock_driver("docker", spawn="docker-1"), mock_driver("orbstack-vm", spawn=None)
+        self.scaler(drivers={"docker": docker, "orbstack-vm": vm}, default=docker).run_once()
+        vm.spawn_runner.assert_called_once()
+        docker.spawn_runner.assert_called_once()
+
+    def test_no_fallback_when_default_driver_itself_failed(self):
+        self.queue(job())
+        driver = mock_driver(spawn=None)
+        self.scaler(default=driver).run_once()
+        driver.spawn_runner.assert_called_once()
+
+    def test_fallback_skipped_when_default_driver_assets_not_ready(self):
+        self.queue(job(1, "services"))
+        docker, vm = mock_driver("docker"), mock_driver("orbstack-vm", spawn=None)
+        docker.ensure_runtime_assets.return_value = False
+        self.scaler(drivers={"docker": docker, "orbstack-vm": vm}, default=docker).run_once()
+        vm.spawn_runner.assert_called_once()
+        docker.spawn_runner.assert_not_called()
+
+    def test_fallback_that_also_fails_spawns_nothing(self):
+        self.queue(job(1, "services"))
+        docker, vm = mock_driver("docker", spawn=None), mock_driver("orbstack-vm", spawn=None)
+        with patch.object(autoscaler.dashboard_state, "update_fleet") as update:
+            self.scaler(drivers={"docker": docker, "orbstack-vm": vm}, default=docker).run_once()
+        self.assertEqual(update.call_args.kwargs["runners"], [])
+
+    def test_reconcile_passes_configured_busy_timeout(self):
+        self.scaler(config=self.config(busy_timeout_seconds=1234)).run_once()
+        self.assertEqual(self.stubs["reconcile_idle_orphans"].call_args.kwargs["busy_timeout_seconds"], 1234)
+        self.stubs["reconcile_zombie_runners"].assert_called_once()
+
+
+class TestJobMetadataAndPublishing(ScalerTestCase):
+    def test_job_meta_attaches_to_runner_visible_on_a_later_poll(self):
+        # Cycle 1 spawns and records job links; cycle 2's list_runners() reports that runner,
+        # and the dashboard entry must carry the links recorded on cycle 1.
+        self.stubs["get_queued_job_details"].side_effect = [[job(7, run_id=70, job_url="https://x/job", run_url="https://x/run")], []]
+        driver = mock_driver(spawn="local-runner-arm64-1")
+        scaler = self.scaler(default=driver)
+        scaler.run_once()
+        driver.list_runners.return_value = [running("local-runner-arm64-1", "el-j/run-zero")]
+        scaler.run_once()
+        snapshot = autoscaler.dashboard_state.get_snapshot()
+        entry = next((r for r in snapshot["runners"] if r.get("name") == "local-runner-arm64-1"), None)
+        assert entry is not None
+        self.assertEqual(entry.get("job_url"), "https://x/job")
+
+    def test_job_meta_dropped_once_runner_is_gone(self):
+        self.queue(job(7, job_url="https://x/job"))
+        scaler = self.scaler(default=mock_driver(spawn="r-7"))
+        scaler.run_once()
+        self.assertIn("r-7", scaler.runner_job_meta)
+        self.queue()
+        scaler.run_once()
+        self.assertEqual(scaler.runner_job_meta, {})
+
+    def test_queued_jobs_are_published_with_their_repo(self):
+        self.queue(job())
+        with patch.object(autoscaler.dashboard_state, "update_fleet") as update:
+            self.scaler(default=mock_driver(spawn=None)).run_once()
+        self.assertEqual(update.call_args.kwargs["queued_jobs"][0]["repo"], "el-j/run-zero")
+
+
+class TestOrgMode(ScalerTestCase):
+    def org_config(self, **kw: Any) -> Config:
+        return self.config(org="my-test-org", **kw)
+
+    def test_spawns_min_runners_without_repo_discovery_or_reconciliation(self):
+        driver = mock_driver(spawn=unique_ids)
+        self.scaler(config=self.org_config(min_runners=2), default=driver).run_once()
+        self.assertEqual(driver.spawn_runner.call_count, 2)
+        self.stubs["discover_repositories"].assert_not_called()
+        self.stubs["reconcile_idle_orphans"].assert_not_called()
+
+    def test_rotates_architectures(self):
+        driver = mock_driver(spawn=unique_ids)
+        self.scaler(config=self.org_config(min_runners=3), default=driver).run_once()
+        self.assertEqual([c.kwargs["arch"] for c in driver.spawn_runner.call_args_list], ["arm64", "amd64", "arm64"])
+
+    def test_skips_spawn_when_runtime_assets_not_ready(self):
+        driver = mock_driver()
+        driver.ensure_runtime_assets.return_value = False
+        self.scaler(config=self.org_config(min_runners=2), default=driver).run_once()
+        driver.spawn_runner.assert_not_called()
+
+    def test_no_spawn_when_at_or_above_min_runners(self):
+        driver = mock_driver(runners=[running("a", "my-test-org"), running("b", "my-test-org")])
+        self.scaler(config=self.org_config(min_runners=2, max_runners=4), default=driver).run_once()
+        driver.spawn_runner.assert_not_called()
+
+    def test_no_spawn_when_at_max_runners(self):
+        driver = mock_driver(runners=[running("a", "my-test-org"), running("b", "my-test-org")])
+        cfg = dataclasses.replace(self.org_config(), min_runners=3, max_runners=2)
+        self.scaler(config=cfg, default=driver).run_once()
+        driver.spawn_runner.assert_not_called()
+
+    def test_needed_formula_subtracts_active_count(self):
+        driver = mock_driver(runners=[running("a", "my-test-org")], spawn=unique_ids)
+        self.scaler(config=self.org_config(min_runners=2, max_runners=4), default=driver).run_once()
+        self.assertEqual(driver.spawn_runner.call_count, 1)
+
+    def test_max_runners_caps_even_below_min_runners(self):
+        # Config forbids MIN > MAX, so build the (would-be misconfigured) Config directly.
+        cfg = dataclasses.replace(self.org_config(), min_runners=5, max_runners=2)
+        driver = mock_driver(runners=[running("a", "my-test-org")], spawn=unique_ids)
+        self.scaler(config=cfg, default=driver).run_once()
+        self.assertEqual(driver.spawn_runner.call_count, 1)
+
+    def test_failed_spawn_is_not_counted(self):
+        driver = mock_driver(spawn=None)
+        self.scaler(config=self.org_config(min_runners=2), default=driver).run_once()
+        self.assertEqual(driver.spawn_runner.call_count, 2)
+
+
+class TestQuotaAndDiscovery(ScalerTestCase):
+    def test_billing_owner_derived_from_first_tracked_repo_on_later_poll(self):
+        # The owner can only be derived once repos are tracked, i.e. on a later billing refresh.
+        times = iter([1_000_000.0, 1_000_400.0])
+        scaler = self.scaler(config=self.config(owner=""), clock=lambda: next(times))
+        scaler.run_once()
+        scaler.run_once()
+        billing = self.stubs["refresh_actions_billing"]
+        self.assertEqual(billing.call_count, 2)
+        self.assertEqual(billing.call_args_list[0].kwargs["owner"], "")
+        self.assertEqual(billing.call_args_list[-1].kwargs["owner"], "el-j")
+
+    def test_refresh_intervals_are_respected(self):
+        times = iter([1_000_000.0, 1_000_005.0])
+        scaler = self.scaler(clock=lambda: next(times))
+        scaler.run_once()
+        scaler.run_once()
+        self.assertEqual(self.stubs["refresh_rate_limit"].call_count, 1)
+        self.assertEqual(self.stubs["discover_repositories"].call_count, 1)
+
+    def test_empty_discovery_keeps_previous_repos(self):
+        times = iter([1_000_000.0, 1_010_000.0])
+        scaler = self.scaler(clock=lambda: next(times))
+        scaler.run_once()
+        self.stubs["discover_repositories"].return_value = []
+        scaler.run_once()
+        self.assertEqual(self.stubs["discover_repositories"].call_count, 2)
+        self.assertEqual(scaler.tracked_repos, ["el-j/run-zero"])
+
+    def test_no_repos_means_no_reconciliation(self):
+        self.stubs["discover_repositories"].return_value = []
+        self.scaler().run_once()
+        self.stubs["reconcile_zombie_runners"].assert_not_called()
+        self.stubs["reconcile_idle_orphans"].assert_not_called()
+
+    def _quota_lines(self, remaining: Any, total: Any) -> list[str]:
         with (
-            patch("autoscaler.DashboardServer", side_effect=RuntimeError("port already in use")),
-            patch("autoscaler.get_driver") as mock_get_driver,
-            patch("autoscaler.get_available_drivers") as mock_avail,
+            patch.object(autoscaler.github_api, "rate_limit_remaining", remaining),
+            patch.object(autoscaler.github_api, "rate_limit_total", total),
+            patch.object(autoscaler.github_api, "rate_limit_resource", "core"),
+            patch("autoscaler.log_print") as log,
         ):
-            mock_driver = MagicMock()
-            mock_driver.name.return_value = "docker"
-            mock_driver.list_runners.return_value = []
-            mock_get_driver.return_value = mock_driver
-            mock_avail.return_value = {"docker": mock_driver}
+            self.scaler().run_once()
+        return [c.args[0] for c in log.call_args_list if "Quota remaining" in c.args[0]]
 
-            autoscaler.running = True
+    def test_prints_quota_when_rate_limit_known(self):
+        self.assertEqual(self._quota_lines(4999, 5000), ["[Autoscaler] GitHub API Quota remaining: 4999/5000 (core)"])
+
+    def test_prints_quota_unknown_when_only_one_value_is_known(self):
+        self.assertEqual(self._quota_lines(4999, None), ["[Autoscaler] GitHub API Quota remaining: unknown/unknown"])
+        self.assertEqual(self._quota_lines(None, 5000), ["[Autoscaler] GitHub API Quota remaining: unknown/unknown"])
+
+
+class TestCollectAndShutdown(ScalerTestCase):
+    def test_prunes_and_stops_base_images(self):
+        driver = mock_driver()
+        self.scaler(default=driver).collect()
+        driver.prune_exited.assert_called_once()
+        driver.ensure_base_images_stopped.assert_called_once()
+
+    def test_driver_without_base_images_is_fine(self):
+        driver = mock_driver()
+        del driver.ensure_base_images_stopped
+        self.assertEqual(self.scaler(default=driver).collect(), [])
+
+    def test_shutdown_cleans_every_driver(self):
+        a, b = mock_driver("docker"), mock_driver("orbstack-vm")
+        self.scaler(drivers={"docker": a, "orbstack-vm": b}, default=a).shutdown()
+        a.cleanup_all.assert_called_once()
+        b.cleanup_all.assert_called_once()
+
+
+class TestMain(ScalerTestCase):
+    """Process wiring only: one cycle, then shutdown via the shared event."""
+
+    def run_main(self, config: Config | None, driver: MagicMock | None = None, on_signal: Any = None) -> MagicMock:
+        driver = driver or mock_driver()
+        with (
+            patch("autoscaler.get_available_drivers", return_value={driver.name(): driver}),
+            patch("autoscaler.get_driver", return_value=driver),
+            patch.object(Scaler, "run_once", autospec=True, side_effect=lambda _s: autoscaler.github_api.shutdown_event.set()),
+            patch("autoscaler.signal.signal", side_effect=on_signal),
+        ):
+            autoscaler.main(config)
+        return driver
+
+    def test_runs_until_shutdown_then_cleans_up(self):
+        self.run_main(self.config()).cleanup_all.assert_called_once()
+
+    def test_loads_config_from_environment_when_none_given(self):
+        with patch("autoscaler.load_config", return_value=self.config()) as load:
+            self.run_main(None)
+        load.assert_called_once()
+
+    def test_exits_when_access_token_missing(self):
+        with self.assertRaises(SystemExit) as cm, patch("sys.stderr"):
+            autoscaler.main(self.config(access_token=None))
+        self.assertEqual(cm.exception.code, 1)
+
+    def test_exits_when_cache_enabled_without_host_cache_dir(self):
+        with self.assertRaises(SystemExit) as cm, patch("sys.stderr"):
+            autoscaler.main(self.config(cache_enabled=True, host_cache_dir=""))
+        self.assertEqual(cm.exception.code, 1)
+
+    def test_exits_on_invalid_environment(self):
+        with patch.dict("os.environ", {"MAX_RUNNERS": "four"}), patch("autoscaler.log_print") as log, self.assertRaises(SystemExit) as cm:
             autoscaler.main()
+        self.assertEqual(cm.exception.code, 1)
+        self.assertIn("MAX_RUNNERS='four' is not an integer", log.call_args.args[0])
 
-            mock_driver.cleanup_all.assert_called()
+    def test_starts_and_stops_dashboard_server_on_success(self):
+        with patch("autoscaler.DashboardServer") as server_cls:
+            self.run_main(self.config(dashboard_enabled=True))
+        server_cls.assert_called_once()
+        server_cls.return_value.start.assert_called_once_with(blocking=False)
+        server_cls.return_value.stop.assert_called_once()
 
-    @patch("autoscaler.ACCESS_TOKEN", "fake-token")
-    @patch("autoscaler.CACHE_ENABLED", False)
-    @patch("autoscaler.DASHBOARD_ENABLED", False)
-    @patch("autoscaler.discover_repositories", return_value=[])
-    @patch("autoscaler.time.sleep")
-    @patch("autoscaler.signal.signal")
-    def test_main_registers_signal_handler_that_stops_the_loop(self, mock_signal, mock_sleep, mock_discover):
-        captured_handlers = {}
+    def test_logs_warning_when_dashboard_fails_to_start(self):
+        with patch("autoscaler.DashboardServer", side_effect=OSError("port in use")), patch("autoscaler.log_print") as log:
+            driver = self.run_main(self.config(dashboard_enabled=True))
+        self.assertTrue(any("Could not start Dashboard server" in str(c.args[0]) for c in log.call_args_list))
+        driver.cleanup_all.assert_called_once()
 
-        def capture(sig, handler):
-            captured_handlers[sig] = handler
-
-        mock_signal.side_effect = capture
-
-        def stop_after_one_loop(*a, **kw):
-            autoscaler.running = False
-
-        mock_sleep.side_effect = stop_after_one_loop
-
-        with patch("autoscaler.get_driver") as mock_get_driver, patch("autoscaler.get_available_drivers") as mock_avail:
-            mock_driver = MagicMock()
-            mock_driver.name.return_value = "docker"
-            mock_driver.list_runners.return_value = []
-            mock_get_driver.return_value = mock_driver
-            mock_avail.return_value = {"docker": mock_driver}
-
-            autoscaler.running = True
-            autoscaler.main()
-
-        self.assertIn(signal.SIGINT, captured_handlers)
-        self.assertIn(signal.SIGTERM, captured_handlers)
-
-        # Directly invoke the captured handler to exercise its body (the
-        # real OS signal delivery path can't be exercised in a unit test).
-        autoscaler.running = True
+    def test_registers_signal_handlers_that_request_shutdown(self):
+        captured: dict[int, Any] = {}
+        self.run_main(self.config(), on_signal=lambda sig, handler: captured.__setitem__(sig, handler))
+        self.assertEqual(set(captured), {signal.SIGINT, signal.SIGTERM})
         autoscaler.github_api.shutdown_event.clear()
-        captured_handlers[signal.SIGINT](signal.SIGINT, None)
-        self.assertFalse(autoscaler.running)
-        # #44: the handler must also wake any in-progress rate-limit throttle.
+        captured[signal.SIGTERM](signal.SIGTERM, None)
+        # #44: the handler wakes the poll wait and any in-progress rate-limit throttle.
         self.assertTrue(autoscaler.github_api.shutdown_event.is_set())
-
-    @patch("autoscaler.ACCESS_TOKEN", "fake-token")
-    @patch("autoscaler.CACHE_ENABLED", True)
-    @patch("autoscaler.DASHBOARD_ENABLED", False)
-    @patch("autoscaler.MAX_RUNNERS", 2)
-    @patch("autoscaler.discover_repositories", return_value=["el-j/run-zero"])
-    @patch("autoscaler.reconcile_zombie_runners")
-    @patch("autoscaler.get_queued_job_details")
-    @patch("autoscaler.time.sleep")
-    def test_main_loop_stops_spawning_once_max_runners_reached(self, mock_sleep, mock_jobs, mock_reconcile, mock_discover):
-        # 3 queued jobs but MAX_RUNNERS=2 -- the third job's spawn attempt
-        # must hit the "len(active_runners) >= MAX_RUNNERS" break rather
-        # than spawning a runner past the concurrency cap.
-        mock_jobs.return_value = [
-            {"id": 1, "name": "unit-test-1", "labels": ["self-hosted"]},
-            {"id": 2, "name": "unit-test-2", "labels": ["self-hosted"]},
-            {"id": 3, "name": "unit-test-3", "labels": ["self-hosted"]},
-        ]
-
-        def stop_after_one_loop(*a, **kw):
-            autoscaler.running = False
-
-        mock_sleep.side_effect = stop_after_one_loop
-
-        with (
-            patch.object(autoscaler, "HOST_CACHE_DIR", self.temp_cache),
-            patch("autoscaler.get_driver") as mock_get_driver,
-            patch("autoscaler.get_available_drivers") as mock_avail,
-        ):
-            mock_driver = MagicMock()
-            mock_driver.name.return_value = "docker"
-            mock_driver.list_runners.return_value = []
-            mock_driver.spawn_runner.side_effect = ["local-runner-1", "local-runner-2", "local-runner-3"]
-
-            mock_get_driver.return_value = mock_driver
-            mock_avail.return_value = {"docker": mock_driver}
-
-            autoscaler.running = True
-            autoscaler.main()
-
-            # Only 2 spawns should have actually happened -- the loop must
-            # break before attempting the third.
-            self.assertEqual(mock_driver.spawn_runner.call_count, 2)
-
-    @patch("autoscaler.ACCESS_TOKEN", "fake-token")
-    @patch("autoscaler.CACHE_ENABLED", False)
-    @patch("autoscaler.DASHBOARD_ENABLED", True)
-    @patch("autoscaler.discover_repositories", return_value=[])
-    @patch("autoscaler.time.sleep")
-    def test_main_starts_and_stops_dashboard_server_on_success(self, mock_sleep, mock_discover):
-        # Covers the success path of DASHBOARD_ENABLED=True: the dashboard
-        # actually starts (mocked, no real socket) and gets stopped again on
-        # shutdown -- distinct from test_main_logs_warning_when_dashboard_fails_to_start,
-        # which covers the constructor-raises branch instead.
-        def stop_after_one_loop(*a, **kw):
-            autoscaler.running = False
-
-        mock_sleep.side_effect = stop_after_one_loop
-
-        mock_dashboard_instance = MagicMock()
-        with (
-            patch("autoscaler.DashboardServer", return_value=mock_dashboard_instance) as mock_dashboard_cls,
-            patch("autoscaler.get_driver") as mock_get_driver,
-            patch("autoscaler.get_available_drivers") as mock_avail,
-        ):
-            mock_driver = MagicMock()
-            mock_driver.name.return_value = "docker"
-            mock_driver.list_runners.return_value = []
-            mock_get_driver.return_value = mock_driver
-            mock_avail.return_value = {"docker": mock_driver}
-
-            autoscaler.running = True
-            autoscaler.main()
-
-        mock_dashboard_cls.assert_called_once()
-        mock_dashboard_instance.start.assert_called_once_with(blocking=False)
-        mock_dashboard_instance.stop.assert_called_once()
-
-    @patch("autoscaler.ACCESS_TOKEN", "fake-token")
-    @patch("autoscaler.ORG", "my-test-org")
-    @patch("autoscaler.MIN_RUNNERS", 3)
-    @patch("autoscaler.MAX_RUNNERS", 5)
-    @patch("autoscaler.CACHE_ENABLED", True)
-    @patch("autoscaler.DASHBOARD_ENABLED", False)
-    @patch("autoscaler.time.sleep")
-    def test_main_loop_org_mode_respects_min_runners_with_rotation(self, mock_sleep):
-        # In ORG mode, when no runners exist, MIN_RUNNERS determines how many
-        # to spawn. Architecture should rotate (first runner arm64, second amd64, etc.)
-        def stop_loop(*args, **kwargs):
-            autoscaler.running = False
-
-        mock_sleep.side_effect = stop_loop
-
-        with (
-            patch.object(autoscaler, "HOST_CACHE_DIR", self.temp_cache),
-            patch.object(autoscaler, "RUNNER_ARCH", "both"),
-            patch("autoscaler.get_driver") as mock_get_driver,
-            patch("autoscaler.get_available_drivers") as mock_avail,
-        ):
-            mock_driver = MagicMock()
-            mock_driver.name.return_value = "docker"
-            mock_driver.list_runners.return_value = []
-            mock_driver.spawn_runner.side_effect = ["runner-0", "runner-1", "runner-2"]
-
-            mock_get_driver.return_value = mock_driver
-            mock_avail.return_value = {"docker": mock_driver}
-
-            autoscaler.running = True
-            autoscaler.main()
-
-            # MIN_RUNNERS=3, so 3 runners should be spawned
-            self.assertEqual(mock_driver.spawn_runner.call_count, 3)
-
-            # Verify architecture rotation (both arch available -> arm64, amd64, arm64)
-            calls = mock_driver.spawn_runner.call_args_list
-            self.assertEqual(calls[0][1]["arch"], "arm64")
-            self.assertEqual(calls[1][1]["arch"], "amd64")
-            self.assertEqual(calls[2][1]["arch"], "arm64")
-
-    @patch("autoscaler.ACCESS_TOKEN", "fake-token")
-    @patch("autoscaler.ORG", "my-test-org")
-    @patch("autoscaler.MIN_RUNNERS", 2)
-    @patch("autoscaler.MAX_RUNNERS", 3)
-    @patch("autoscaler.CACHE_ENABLED", True)
-    @patch("autoscaler.DASHBOARD_ENABLED", False)
-    @patch("autoscaler.time.sleep")
-    def test_main_loop_org_mode_stops_at_max_runners(self, mock_sleep):
-        # When MIN_RUNNERS < active_count < MAX_RUNNERS, no additional spawns.
-        # When active_count >= MAX_RUNNERS, still no spawns (MAX enforces hard cap).
-        def stop_loop(*args, **kwargs):
-            autoscaler.running = False
-
-        mock_sleep.side_effect = stop_loop
-
-        with (
-            patch.object(autoscaler, "HOST_CACHE_DIR", self.temp_cache),
-            patch("autoscaler.get_driver") as mock_get_driver,
-            patch("autoscaler.get_available_drivers") as mock_avail,
-        ):
-            mock_driver = MagicMock()
-            mock_driver.name.return_value = "docker"
-            # Start with MAX_RUNNERS already running
-            mock_driver.list_runners.return_value = [
-                MagicMock(state="running", target_repo="my-test-org", backend="docker"),
-                MagicMock(state="running", target_repo="my-test-org", backend="docker"),
-                MagicMock(state="running", target_repo="my-test-org", backend="docker"),
-            ]
-
-            mock_get_driver.return_value = mock_driver
-            mock_avail.return_value = {"docker": mock_driver}
-
-            autoscaler.running = True
-            autoscaler.main()
-
-            # No additional spawns because active_count >= MAX_RUNNERS
-            mock_driver.spawn_runner.assert_not_called()
-
-    @patch("autoscaler.ACCESS_TOKEN", "fake-token")
-    @patch("autoscaler.CACHE_ENABLED", True)
-    @patch("autoscaler.DASHBOARD_ENABLED", False)
-    @patch("autoscaler.discover_repositories", return_value=["el-j/run-zero"])
-    @patch("autoscaler.reconcile_zombie_runners")
-    @patch("autoscaler.get_queued_job_details")
-    @patch("autoscaler.time.sleep")
-    def test_main_loop_repo_mode_dispatches_to_correct_driver(self, mock_sleep, mock_jobs, mock_reconcile, mock_discover):
-        # select_driver_for_job may pick docker or VM driver based on labels;
-        # this test verifies the spawned runner gets the correct backend assignment
-        mock_jobs.return_value = [
-            {"id": 1, "name": "vm-job", "labels": ["self-hosted", "windows"]},
-        ]
-
-        def stop_after_one_loop(*a, **kw):
-            autoscaler.running = False
-
-        mock_sleep.side_effect = stop_after_one_loop
-
-        with (
-            patch.object(autoscaler, "HOST_CACHE_DIR", self.temp_cache),
-            patch("autoscaler.get_driver") as mock_get_default_driver,
-            patch("autoscaler.get_available_drivers") as mock_avail,
-            patch("autoscaler.select_driver_for_job") as mock_select,
-        ):
-            mock_docker_driver = MagicMock()
-            mock_docker_driver.name.return_value = "docker"
-            mock_docker_driver.list_runners.return_value = []
-
-            mock_vm_driver = MagicMock()
-            mock_vm_driver.name.return_value = "orbstack"
-            mock_vm_driver.spawn_runner.return_value = "vm-runner-1"
-
-            mock_get_default_driver.return_value = mock_docker_driver
-            mock_avail.return_value = {"docker": mock_docker_driver, "orbstack": mock_vm_driver}
-
-            # Simulate select_driver_for_job choosing the VM driver
-            mock_select.return_value = (mock_vm_driver, "vm")
-
-            autoscaler.running = True
-            autoscaler.main()
-
-            # Verify the VM driver was used for spawn, not the default
-            mock_vm_driver.spawn_runner.assert_called_once()
-            mock_docker_driver.spawn_runner.assert_not_called()
-
-    @patch("autoscaler.ACCESS_TOKEN", "fake-token")
-    @patch("autoscaler.ORG", "my-test-org")
-    @patch("autoscaler.MIN_RUNNERS", 2)
-    @patch("autoscaler.MAX_RUNNERS", 5)
-    @patch("autoscaler.CACHE_ENABLED", True)
-    @patch("autoscaler.DASHBOARD_ENABLED", False)
-    @patch("autoscaler.time.sleep")
-    def test_main_loop_org_mode_does_not_spawn_when_already_above_min_runners(self, mock_sleep):
-        # Documents the intended behavior of the `active_count < MIN_RUNNERS and
-        # active_count < MAX_RUNNERS` gate: MAX_RUNNERS is a hard cap, not a spawn
-        # *target* -- once active_count is at/above MIN_RUNNERS, no more scaling should
-        # be attempted no matter how far below MAX_RUNNERS it still is. (Note: mutating
-        # this gate's `and` to `or` is a verified-equivalent mutant, not a real gap --
-        # whenever the two conditions disagree, active_count >= MIN_RUNNERS, which makes
-        # `needed = min(MIN_RUNNERS - active_count, ...)` <= 0 regardless, so the
-        # `for i in range(needed)` loop is empty either way. See docker_driver.py's
-        # equivalent-mutant note in the mutation-triage report for the same pattern.)
-        def stop_loop(*args, **kwargs):
-            autoscaler.running = False
-
-        mock_sleep.side_effect = stop_loop
-
-        with (
-            patch.object(autoscaler, "HOST_CACHE_DIR", self.temp_cache),
-            patch("autoscaler.get_driver") as mock_get_driver,
-            patch("autoscaler.get_available_drivers") as mock_avail,
-        ):
-            mock_driver = MagicMock()
-            mock_driver.name.return_value = "docker"
-            mock_driver.list_runners.return_value = [
-                MagicMock(state="running", target_repo="my-test-org", backend="docker"),
-                MagicMock(state="running", target_repo="my-test-org", backend="docker"),
-                MagicMock(state="running", target_repo="my-test-org", backend="docker"),
-            ]
-
-            mock_get_driver.return_value = mock_driver
-            mock_avail.return_value = {"docker": mock_driver}
-
-            autoscaler.running = True
-            autoscaler.main()
-
-            mock_driver.spawn_runner.assert_not_called()
-
-    @patch("autoscaler.ACCESS_TOKEN", "fake-token")
-    @patch("autoscaler.ORG", "my-test-org")
-    @patch("autoscaler.MIN_RUNNERS", 3)
-    @patch("autoscaler.MAX_RUNNERS", 10)
-    @patch("autoscaler.CACHE_ENABLED", True)
-    @patch("autoscaler.DASHBOARD_ENABLED", False)
-    @patch("autoscaler.time.sleep")
-    def test_main_loop_org_mode_needed_formula_subtracts_active_count(self, mock_sleep):
-        # Mutation-prone: `needed = min(MIN_RUNNERS - active_count, MAX_RUNNERS - active_count)`
-        # had its first term's sign flippable to `MIN_RUNNERS + active_count` with zero
-        # detection, because every other test starts from active_count == 0 (where a sign
-        # flip on a zero term is invisible). With 2 already active and MIN_RUNNERS=3, the
-        # correct formula needs exactly 1 more; the mutant would try to spawn 5.
-        def stop_loop(*args, **kwargs):
-            autoscaler.running = False
-
-        mock_sleep.side_effect = stop_loop
-
-        with (
-            patch.object(autoscaler, "HOST_CACHE_DIR", self.temp_cache),
-            patch("autoscaler.get_driver") as mock_get_driver,
-            patch("autoscaler.get_available_drivers") as mock_avail,
-        ):
-            mock_driver = MagicMock()
-            mock_driver.name.return_value = "docker"
-            mock_driver.list_runners.return_value = [
-                MagicMock(state="running", target_repo="my-test-org", backend="docker"),
-                MagicMock(state="running", target_repo="my-test-org", backend="docker"),
-            ]
-            mock_driver.spawn_runner.return_value = "runner-new"
-
-            mock_get_driver.return_value = mock_driver
-            mock_avail.return_value = {"docker": mock_driver}
-
-            autoscaler.running = True
-            autoscaler.main()
-
-            self.assertEqual(mock_driver.spawn_runner.call_count, 1)
-
-    @patch("autoscaler.ACCESS_TOKEN", "fake-token")
-    @patch("autoscaler.ORG", "my-test-org")
-    @patch("autoscaler.MIN_RUNNERS", 8)
-    @patch("autoscaler.MAX_RUNNERS", 3)
-    @patch("autoscaler.CACHE_ENABLED", True)
-    @patch("autoscaler.DASHBOARD_ENABLED", False)
-    @patch("autoscaler.time.sleep")
-    def test_main_loop_org_mode_max_runners_caps_even_below_misconfigured_min_runners(self, mock_sleep):
-        # Mutation-prone: the second `min()` term's sign flip (`MAX_RUNNERS + active_count`
-        # instead of `- active_count`) is only observable when BOTH MAX_RUNNERS < MIN_RUNNERS
-        # (a real operator misconfiguration) AND active_count > 0 (a `- 0`/`+ 0` sign flip is
-        # invisible). With MIN=8, MAX=3, and 2 already active, the correct `needed` is
-        # min(8-2, 3-2) = 1; the `+`-flipped mutant computes min(6, 5) = 5 instead.
-        def stop_loop(*args, **kwargs):
-            autoscaler.running = False
-
-        mock_sleep.side_effect = stop_loop
-
-        with (
-            patch.object(autoscaler, "HOST_CACHE_DIR", self.temp_cache),
-            patch("autoscaler.get_driver") as mock_get_driver,
-            patch("autoscaler.get_available_drivers") as mock_avail,
-        ):
-            mock_driver = MagicMock()
-            mock_driver.name.return_value = "docker"
-            mock_driver.list_runners.return_value = [
-                MagicMock(state="running", target_repo="my-test-org", backend="docker"),
-                MagicMock(state="running", target_repo="my-test-org", backend="docker"),
-            ]
-            mock_driver.spawn_runner.side_effect = [f"runner-{i}" for i in range(10)]
-
-            mock_get_driver.return_value = mock_driver
-            mock_avail.return_value = {"docker": mock_driver}
-
-            autoscaler.running = True
-            autoscaler.main()
-
-            self.assertEqual(mock_driver.spawn_runner.call_count, 1)
-
-    @patch("autoscaler.ACCESS_TOKEN", "fake-token")
-    @patch("autoscaler.MAX_RUNNERS", 10)
-    @patch("autoscaler.CACHE_ENABLED", True)
-    @patch("autoscaler.DASHBOARD_ENABLED", False)
-    @patch("autoscaler.discover_repositories", return_value=["el-j/run-zero"])
-    @patch("autoscaler.reconcile_zombie_runners")
-    @patch("autoscaler.get_queued_job_details")
-    @patch("autoscaler.time.sleep")
-    def test_main_loop_repo_mode_needed_accounts_for_existing_active_runners_for_that_repo(self, mock_sleep, mock_jobs, mock_reconcile, mock_discover):
-        # Mutation-prone: `active_for_repo = sum(1 for r in active_runners if
-        # r.target_repo == repo)` had its `==` flippable to `!=` and its `1` flippable
-        # to `2` with zero detection -- every existing test starts with zero pre-existing
-        # runners for the target repo, so `active_for_repo` was always 0 regardless of
-        # which mutant ran. With 1 already-active runner and 3 queued jobs, the correct
-        # `needed = len(jobs) - active_for_repo` is 2; a `!=`-flipped mutant would instead
-        # compute active_for_repo=0 (needed=3, one extra spawn), and a weight-flipped
-        # (`sum(2 for ...)`) mutant would compute active_for_repo=2 (needed=1, one fewer).
-        mock_jobs.return_value = [
-            {"id": 1, "name": "job-1", "labels": ["self-hosted"]},
-            {"id": 2, "name": "job-2", "labels": ["self-hosted"]},
-            {"id": 3, "name": "job-3", "labels": ["self-hosted"]},
-        ]
-
-        def stop_after_one_loop(*a, **kw):
-            autoscaler.running = False
-
-        mock_sleep.side_effect = stop_after_one_loop
-
-        with (
-            patch.object(autoscaler, "HOST_CACHE_DIR", self.temp_cache),
-            patch("autoscaler.get_driver") as mock_get_driver,
-            patch("autoscaler.get_available_drivers") as mock_avail,
-        ):
-            mock_driver = MagicMock()
-            mock_driver.name.return_value = "docker"
-            mock_driver.list_runners.return_value = [
-                RunnerInfo(
-                    id="existing-1",
-                    name="existing-1",
-                    status="running",
-                    state="running",
-                    target_repo="el-j/run-zero",
-                    target_arch="arm64",
-                    backend="docker",
-                ),
-            ]
-            mock_driver.spawn_runner.side_effect = ["new-runner-1", "new-runner-2", "new-runner-3"]
-
-            mock_get_driver.return_value = mock_driver
-            mock_avail.return_value = {"docker": mock_driver}
-
-            autoscaler.running = True
-            autoscaler.main()
-
-            self.assertEqual(mock_driver.spawn_runner.call_count, 2)
-
-    @patch("autoscaler.ACCESS_TOKEN", "fake-token")
-    @patch("autoscaler.MAX_RUNNERS", 10)
-    @patch("autoscaler.CACHE_ENABLED", True)
-    @patch("autoscaler.DASHBOARD_ENABLED", False)
-    @patch("autoscaler.discover_repositories", return_value=["el-j/run-zero"])
-    @patch("autoscaler.reconcile_zombie_runners")
-    @patch("autoscaler.get_queued_job_details")
-    @patch("autoscaler.time.sleep")
-    def test_main_loop_repo_mode_stops_exactly_when_needed_reaches_zero(self, mock_sleep, mock_jobs, mock_reconcile, mock_discover):
-        # Mutation-prone: `if len(active_runners) >= MAX_RUNNERS or needed <= 0: break`
-        # mutated to `needed < 0` would let the loop spawn one job PAST the point where
-        # `needed` naturally reaches exactly zero. 3 queued jobs, 1 already-active for
-        # the repo -> needed starts at 2 -> exactly 2 spawns should happen, not 3.
-        mock_jobs.return_value = [
-            {"id": 1, "name": "job-1", "labels": ["self-hosted"]},
-            {"id": 2, "name": "job-2", "labels": ["self-hosted"]},
-            {"id": 3, "name": "job-3", "labels": ["self-hosted"]},
-        ]
-
-        def stop_after_one_loop(*a, **kw):
-            autoscaler.running = False
-
-        mock_sleep.side_effect = stop_after_one_loop
-
-        with (
-            patch.object(autoscaler, "HOST_CACHE_DIR", self.temp_cache),
-            patch("autoscaler.get_driver") as mock_get_driver,
-            patch("autoscaler.get_available_drivers") as mock_avail,
-        ):
-            mock_driver = MagicMock()
-            mock_driver.name.return_value = "docker"
-            mock_driver.list_runners.return_value = [
-                RunnerInfo(
-                    id="existing-1",
-                    name="existing-1",
-                    status="running",
-                    state="running",
-                    target_repo="el-j/run-zero",
-                    target_arch="arm64",
-                    backend="docker",
-                ),
-            ]
-            mock_driver.spawn_runner.side_effect = ["new-runner-1", "new-runner-2", "new-runner-3"]
-
-            mock_get_driver.return_value = mock_driver
-            mock_avail.return_value = {"docker": mock_driver}
-
-            autoscaler.running = True
-            autoscaler.main()
-
-            self.assertEqual(mock_driver.spawn_runner.call_count, 2)
-
-    @patch("autoscaler.ACCESS_TOKEN", "fake-token")
-    @patch("autoscaler.CACHE_ENABLED", True)
-    @patch("autoscaler.DASHBOARD_ENABLED", False)
-    @patch("autoscaler.discover_repositories", return_value=["el-j/run-zero"])
-    @patch("autoscaler.reconcile_zombie_runners")
-    @patch("autoscaler.get_queued_job_details")
-    @patch("autoscaler.time.sleep")
-    def test_main_loop_prints_quota_unknown_when_only_one_value_is_known(self, mock_sleep, mock_jobs, mock_reconcile, mock_discover):
-        # Mutation-prone: `if quota_remaining is None or quota_total is None:` mutated
-        # to `and` would only fall back to "unknown/unknown" when BOTH values are None
-        # simultaneously -- a partial API failure/race leaving just one of the two set
-        # would instead try to format a real number against a None partner.
-        mock_jobs.return_value = []
-
-        def stop_after_one_loop(*args, **kwargs):
-            autoscaler.running = False
-
-        mock_sleep.side_effect = stop_after_one_loop
-
-        def _fake_refresh_rate_limit(access_token=None):
-            autoscaler.github_api.rate_limit_remaining = 4999
-            autoscaler.github_api.rate_limit_total = None  # partial data
-            autoscaler.github_api.rate_limit_resource = "core"
-            return True
-
-        with (
-            patch.object(autoscaler, "HOST_CACHE_DIR", self.temp_cache),
-            patch("autoscaler.get_driver") as mock_get_driver,
-            patch("autoscaler.get_available_drivers") as mock_avail,
-            patch("autoscaler.refresh_rate_limit", side_effect=_fake_refresh_rate_limit),
-        ):
-            mock_driver = MagicMock()
-            mock_driver.name.return_value = "docker"
-            mock_driver.list_runners.return_value = []
-
-            mock_get_driver.return_value = mock_driver
-            mock_avail.return_value = {"docker": mock_driver}
-
-            autoscaler.running = True
-            with patch("autoscaler.log_print") as mock_log:
-                autoscaler.main()
-
-        unknown_calls = [c for c in mock_log.call_args_list if c.args and "unknown/unknown" in c.args[0]]
-        self.assertEqual(len(unknown_calls), 1)
 
 
 if __name__ == "__main__":

@@ -103,7 +103,7 @@ class TestConsistentDefaults(unittest.TestCase):
 class TestAutoscalerStartupOnBadConfig(unittest.TestCase):
     def test_bad_value_exits_with_named_variable(self):
         env = {**os.environ, "PYTHONPATH": os.path.join(REPO_ROOT, "src"), "MAX_RUNNERS": "four"}
-        res = subprocess.run([sys.executable, "-c", "import autoscaler"], env=env, capture_output=True, text=True, timeout=60, check=False)
+        res = subprocess.run([sys.executable, "-c", "import autoscaler; autoscaler.main()"], env=env, capture_output=True, text=True, timeout=60, check=False)
         self.assertEqual(res.returncode, 1)
         self.assertIn("Configuration error: MAX_RUNNERS='four' is not an integer", res.stderr)
 
