@@ -2523,15 +2523,15 @@ class TestOrbStackVMDriver(unittest.TestCase):
 
     @patch("subprocess.Popen")
     @patch("subprocess.run")
-    def test_spawn_runner_custom_labels_override_default(self, mock_run, mock_popen):
+    def test_spawn_runner_job_labels_are_merged_with_defaults(self, mock_run, mock_popen):
+        # #46: union of the VM defaults (incl. routing labels like "vm"/"rosetta") and the job's labels.
         mock_run.side_effect = [
             MagicMock(stdout=json.dumps([{"name": "runzero-vm-base-amd64", "state": "stopped"}]), returncode=0),
             MagicMock(returncode=0),
         ]
-        self.driver.spawn_runner(repo="el-j/run-zero", arch="amd64", access_token="token", labels="my,custom,labels")
+        self.driver.spawn_runner(repo="el-j/run-zero", arch="amd64", access_token="token", labels="my,custom,vm")
         setup_script = mock_popen.call_args[0][0][-1]
-        self.assertIn("my,custom,labels", setup_script)
-        self.assertNotIn("self-hosted,local,vm,amd64", setup_script)
+        self.assertIn("--labels self-hosted,local,vm,amd64,rosetta,my,custom", setup_script)
 
     @patch("subprocess.Popen")
     @patch("subprocess.run")

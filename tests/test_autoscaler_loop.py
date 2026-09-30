@@ -160,6 +160,13 @@ class TestRepoMode(ScalerTestCase):
         driver.spawn_runner.assert_called_once()
         self.assertEqual(driver.spawn_runner.call_args.kwargs["repo"], "el-j/run-zero")
 
+    def test_passes_the_jobs_runs_on_labels_to_the_driver(self):
+        # #46: without them a runs-on: [self-hosted, gpu] job was never dispatched to the runner.
+        self.queue(job(1, "gpu", "linux"))
+        driver = mock_driver()
+        self.scaler(default=driver).run_once()
+        self.assertEqual(driver.spawn_runner.call_args.kwargs["labels"], "self-hosted,gpu,linux")
+
     def test_skips_spawn_when_runtime_assets_not_ready(self):
         self.queue(job())
         driver = mock_driver()

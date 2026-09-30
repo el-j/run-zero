@@ -14,7 +14,7 @@ import time
 import uuid
 from datetime import datetime
 
-from . import ImageEventCallback, RunnerDriver, RunnerInfo
+from . import ImageEventCallback, RunnerDriver, RunnerInfo, merge_labels
 
 # `docker ps` output columns, `|`-separated; parsed positionally by `list_runners()`.
 _PS_FORMAT = "|".join(
@@ -357,7 +357,7 @@ class DockerDriver(RunnerDriver):
         if arch in ("amd64", "x64", "x86_64"):
             default_labels = "self-hosted,local,x64,amd64"
 
-        runner_labels = labels if labels else default_labels
+        runner_labels = merge_labels(default_labels, labels)
 
         cmd = [
             "docker",

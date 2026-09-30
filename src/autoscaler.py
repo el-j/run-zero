@@ -251,6 +251,8 @@ class Scaler:
             "access_token": cfg.access_token,
             "cache_mounts": mounts,
             "proxies_enabled": cfg.proxies_enabled,
+            # The job's runs-on labels, merged with the driver's defaults (#46).
+            "labels": ",".join(job.get("labels", [])),
         }
         spawned_id = driver.spawn_runner(**spawn_args)
         if spawned_id:

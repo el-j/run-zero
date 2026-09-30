@@ -299,3 +299,12 @@ class TestSelectDefaultDriver(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TestMergeLabels(unittest.TestCase):
+    def test_union_order_and_dedup(self):
+        from drivers import merge_labels
+
+        self.assertEqual(merge_labels("self-hosted,local,x64", "SELF-HOSTED, gpu ,,x64,cuda"), "self-hosted,local,x64,gpu,cuda")
+        self.assertEqual(merge_labels("a,b", None), "a,b")
+        self.assertEqual(merge_labels("a,b", ""), "a,b")

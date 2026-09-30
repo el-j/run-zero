@@ -25,6 +25,21 @@ _ENV_KEY_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]{0,127}$")
 _RESERVED_ENV_KEYS = frozenset({"ACCESS_TOKEN", "RUNNER_TOKEN", "REGISTRATION_TOKEN", "RUNNER_NAME", "RUNNER_LABELS", "REPO", "ORG", "EPHEMERAL"})
 
 
+def merge_labels(default_labels: str, job_labels: str | None) -> str:
+    """Union of a driver's default labels and the job's `runs-on` labels, order-preserving.
+
+    GitHub only dispatches a job to a runner carrying ALL of its labels, so a runner spawned
+    for `runs-on: [self-hosted, gpu]` must register "gpu" too -- replacing the defaults would
+    instead drop routing labels like "vm"/"rosetta" that other jobs rely on.
+    """
+    merged: list[str] = []
+    for label in [*default_labels.split(","), *(job_labels or "").split(",")]:
+        label = label.strip()
+        if label and label.lower() not in (seen.lower() for seen in merged):
+            merged.append(label)
+    return ",".join(merged)
+
+
 def validate_spawn_target(repo: str | None, org: str | None, labels: str | None, extra_env: dict[str, str] | None = None) -> None:
     """Raise ValueError unless `repo`/`org`/`labels`/`extra_env` are well-formed.
 

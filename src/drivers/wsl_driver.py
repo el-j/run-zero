@@ -12,7 +12,7 @@ import sys
 import time
 import uuid
 
-from . import RunnerDriver, RunnerInfo
+from . import RunnerDriver, RunnerInfo, merge_labels
 
 
 class WSL2Driver(RunnerDriver):
@@ -58,7 +58,7 @@ class WSL2Driver(RunnerDriver):
         unique_id = uuid.uuid4().hex[:6]
         name_suffix = f"-{repo.replace('/', '-')}" if repo else (f"-{org}" if org else "")
         instance_name = f"runzero-wsl{name_suffix}-{unique_id}"
-        runner_labels = labels if labels else "self-hosted,local,wsl,x64,windows-host"
+        runner_labels = merge_labels("self-hosted,local,wsl,x64,windows-host", labels)
         registration_token = self._prepare_spawn(repo, org, labels, access_token, runner_token, extra_env)
         if not registration_token:
             return None

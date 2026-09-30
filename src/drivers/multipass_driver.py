@@ -13,7 +13,7 @@ import sys
 import time
 import uuid
 
-from . import RunnerDriver, RunnerInfo
+from . import RunnerDriver, RunnerInfo, merge_labels
 
 
 class MultipassDriver(RunnerDriver):
@@ -72,7 +72,7 @@ class MultipassDriver(RunnerDriver):
         unique_id = uuid.uuid4().hex[:6]
         name_suffix = f"-{repo.replace('/', '-')}" if repo else (f"-{org}" if org else "")
         vm_name = f"runzero-mp-{arch}{name_suffix}-{unique_id}"
-        runner_labels = labels if labels else f"self-hosted,local,multipass,vm,{arch}"
+        runner_labels = merge_labels(f"self-hosted,local,multipass,vm,{arch}", labels)
         registration_token = self._prepare_spawn(repo, org, labels, access_token, runner_token, extra_env)
         if not registration_token:
             return None

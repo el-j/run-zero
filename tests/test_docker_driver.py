@@ -375,17 +375,15 @@ class TestDockerDriver(unittest.TestCase):
         self.assertIn("amd64", labels)
 
     @patch("subprocess.run")
-    def test_spawn_runner_explicit_labels_override_default(self, mock_run):
-        # Mutation-prone: `labels if labels else default_labels` had zero coverage of
-        # the "labels was actually passed" branch -- a mutant collapsing this to always
-        # fall through to default_labels (silently discarding a caller's explicit
-        # `labels=` argument) went completely undetected.
+    def test_spawn_runner_job_labels_are_merged_with_defaults(self, mock_run):
+        # #46: the job's runs-on labels are ADDED to the driver defaults (deduplicated,
+        # case-insensitively); replacing them would drop the routing labels.
         mock_run.return_value = MagicMock(returncode=0)
-        self.driver.spawn_runner(repo="el-j/run-zero", arch="arm64", access_token="tok", labels="custom,label-set")
+        self.driver.spawn_runner(repo="el-j/run-zero", arch="arm64", access_token="tok", labels="Self-Hosted,gpu,label-set")
         cmd = mock_run.call_args[0][0]
         env_pairs = [cmd[i + 1] for i, tok in enumerate(cmd) if tok == "-e"]
         runner_label_env = [p for p in env_pairs if p.startswith("RUNNER_LABELS=")]
-        self.assertEqual(runner_label_env, ["RUNNER_LABELS=custom,label-set"])
+        self.assertEqual(runner_label_env, ["RUNNER_LABELS=self-hosted,local,arm64,gpu,label-set"])
 
     @patch("subprocess.run")
     def test_spawn_runner_default_labels_arm64(self, mock_run):

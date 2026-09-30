@@ -17,7 +17,7 @@ import threading
 import time
 import uuid
 
-from . import ImageEventCallback, RunnerDriver, RunnerInfo
+from . import ImageEventCallback, RunnerDriver, RunnerInfo, merge_labels
 from .orbstack_templates import (
     cache_mount_snippet,
     docker_engine_snippet,
@@ -678,7 +678,7 @@ echo "Base image provisioning complete."
         default_labels = f"self-hosted,local,vm,{arch}"
         if arch in ("amd64", "x64", "x86_64"):
             default_labels += ",rosetta"
-        runner_labels = labels if labels else default_labels
+        runner_labels = merge_labels(default_labels, labels)
         orb_arch = "arm64" if arch == "arm64" else "amd64"
 
         cooldown_remaining = self._spawn_cooldown_remaining(orb_arch)
