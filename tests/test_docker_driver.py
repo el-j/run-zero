@@ -20,6 +20,11 @@ class TestDockerDriver(unittest.TestCase):
         _reg = patch("drivers.create_registration_token", return_value="reg-token")
         self.create_registration_token = _reg.start()
         self.addCleanup(_reg.stop)
+        # A "missing image" answer from mocked subprocess.run would otherwise start a real
+        # background `docker buildx build` thread that outlives this test's mocks.
+        _build = patch.object(DockerDriver, "_build_runner_image_async")
+        self.build_runner_image_async = _build.start()
+        self.addCleanup(_build.stop)
         self.driver = DockerDriver()
 
     def test_name(self):
