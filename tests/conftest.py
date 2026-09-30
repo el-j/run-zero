@@ -33,7 +33,6 @@ REAL_TOOLING_MODULES = frozenset(
     {
         "test_e2e_docker",
         "test_e2e_compose_deployment",
-        "test_blackbox_cli",
         "test_orbstack_live_integration",
         "test_e2e_github",
     }
