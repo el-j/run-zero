@@ -8,12 +8,19 @@ destructive (e.g. starting a real golden-image build). The guard wraps the *real
 subprocess entry points, so a test's own `patch("subprocess.run")` still takes precedence;
 only calls that would genuinely reach the host fail, naming the offending command.
 
+The same applies to the network: urlopen() to anything but a loopback address (the real
+dashboard/bridge servers tests start on 127.0.0.1) fails the test -- unit tests must never
+reach api.github.com.
+
 Modules that exist to exercise real tooling opt out via REAL_TOOLING_MODULES.
 """
 
 import os
 import subprocess
 import threading
+import urllib.error
+import urllib.parse
+import urllib.request
 from collections.abc import Iterator
 from typing import Any
 
@@ -59,6 +66,17 @@ def _forbid_real_host_tooling(request: pytest.FixtureRequest, monkeypatch: pytes
 
         return wrapper
 
+    real_urlopen = urllib.request.urlopen
+
+    def guarded_urlopen(url: Any, *a: Any, **kw: Any) -> Any:
+        target = url.full_url if isinstance(url, urllib.request.Request) else str(url)
+        host = urllib.parse.urlsplit(target).hostname or ""
+        if host not in ("127.0.0.1", "localhost", "::1"):
+            violations.append(f"urlopen {target}")
+            raise urllib.error.URLError(f"unit test attempted real network access to {host!r}")
+        return real_urlopen(url, *a, **kw)
+
+    monkeypatch.setattr(urllib.request, "urlopen", guarded_urlopen)
     monkeypatch.setattr(subprocess, "run", guard(subprocess.run))
     monkeypatch.setattr(subprocess, "Popen", guard(subprocess.Popen))
     monkeypatch.setattr(subprocess, "check_output", guard(subprocess.check_output))
@@ -73,4 +91,4 @@ def _forbid_real_host_tooling(request: pytest.FixtureRequest, monkeypatch: pytes
     if still_alive:
         pytest.fail(f"test leaked background build thread(s) {still_alive}; join them or mock the build", pytrace=False)
     if violations:
-        pytest.fail("unit test reached real host tooling (mock subprocess):\n  " + "\n  ".join(violations[:5]), pytrace=False)
+        pytest.fail("unit test reached real host tooling or network (mock it):\n  " + "\n  ".join(violations[:5]), pytrace=False)

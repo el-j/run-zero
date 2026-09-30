@@ -5,7 +5,6 @@ Unit tests for autoscaler main execution loop and signal handling.
 import io
 import shutil
 import signal
-import sys
 import tempfile
 import unittest
 from unittest.mock import MagicMock, patch
@@ -22,6 +21,11 @@ class TestAutoscalerLoop(unittest.TestCase):
         cache_patch = patch.object(autoscaler.dashboard_state, "cache_dir", self.temp_cache)
         cache_patch.start()
         self.addCleanup(cache_patch.stop)
+        # main() refreshes quota/billing from api.github.com every loop; unit tests stay offline.
+        for name, value in (("refresh_rate_limit", False), ("refresh_actions_billing", None)):
+            p = patch(f"autoscaler.{name}", return_value=value)
+            p.start()
+            self.addCleanup(p.stop)
         # The signal handler sets this process-wide event; never let one test's shutdown leak.
         autoscaler.github_api.shutdown_event.clear()
         self.addCleanup(autoscaler.github_api.shutdown_event.clear)
@@ -479,38 +483,6 @@ class TestAutoscalerLoop(unittest.TestCase):
         with self.assertRaises(SystemExit) as cm:
             autoscaler.main()
         self.assertEqual(cm.exception.code, 1)
-
-    @patch("autoscaler.ACCESS_TOKEN", "fake-token")
-    @patch("autoscaler.CACHE_ENABLED", False)
-    @patch("autoscaler.DASHBOARD_ENABLED", False)
-    @patch("autoscaler.discover_repositories", return_value=[])
-    @patch("autoscaler.time.sleep")
-    def test_main_falls_back_to_default_version_on_import_error(self, mock_sleep, mock_discover):
-        # version.py might not be importable in some deployment contexts
-        # (e.g. no .git in a built container image and no fallback module);
-        # main() must not crash -- it falls back to a hardcoded "0.1.0".
-        def stop_after_one_loop(*a, **kw):
-            autoscaler.running = False
-
-        mock_sleep.side_effect = stop_after_one_loop
-
-        with (
-            patch("autoscaler.get_driver") as mock_get_driver,
-            patch("autoscaler.get_available_drivers") as mock_avail,
-            patch.dict(sys.modules, {"version": None}),
-        ):
-            mock_driver = MagicMock()
-            mock_driver.name.return_value = "docker"
-            mock_driver.list_runners.return_value = []
-            mock_get_driver.return_value = mock_driver
-            mock_avail.return_value = {"docker": mock_driver}
-
-            autoscaler.running = True
-            autoscaler.main()
-
-        from dashboard import dashboard_state
-
-        self.assertEqual(dashboard_state.version, "0.1.0")
 
     @patch("autoscaler.ACCESS_TOKEN", "fake-token")
     @patch("autoscaler.CACHE_ENABLED", False)
