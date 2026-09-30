@@ -4,38 +4,11 @@ Host cache directory initialization and mount mapping manager.
 
 import contextlib
 import os
-import shutil
 
 
 def _sanitize_scope(scope: str) -> str:
     """Sanitize scope string to a safe directory name."""
     return "".join(c if c.isalnum() or c in ("-", "_") else "_" for c in scope).strip("_")
-
-
-def clean_build_cache(host_cache_dir: str, scope: str = "") -> None:
-    """Clean the build cache directory on host to remove corrupted files or stale locks."""
-    if not host_cache_dir:
-        return
-    if scope:
-        safe_scope = _sanitize_scope(scope)
-        target_dir = os.path.join(host_cache_dir, "build-cache", safe_scope, "go-build")
-    else:
-        target_dir = os.path.join(host_cache_dir, "go-build")
-
-    if os.path.exists(target_dir):
-        try:
-            for item in os.listdir(target_dir):
-                item_path = os.path.join(target_dir, item)
-                if os.path.isdir(item_path):
-                    shutil.rmtree(item_path, ignore_errors=True)
-                else:
-                    with contextlib.suppress(OSError):
-                        os.remove(item_path)
-        except OSError:
-            pass
-    os.makedirs(target_dir, exist_ok=True)
-    with contextlib.suppress(OSError):
-        os.chmod(target_dir, 0o777)
 
 
 def init_cache_dirs(
@@ -44,7 +17,12 @@ def init_cache_dirs(
     cache_enabled: bool = True,
     scope: str = "",
 ) -> dict[str, str]:
-    """Ensure host cache directories exist with strict permissions and return volume mounts.
+    """Ensure host cache directories exist and return host-path -> runner-path volume mounts.
+
+    Directories are made world-writable (0o777) on purpose: they are bind-mounted into
+    containers and VMs whose `runner` user has a different uid than the host user that
+    owns them, and the runner must be able to write its package caches. This is a shared,
+    trusted cache -- see SECURITY.md ("Proxy caches") for the implications.
 
     `scope` isolates mutable compilation build caches (such as `go-build`) per workflow/job
     so independent concurrent workflows never collide or lock the same build cache directory,
@@ -53,7 +31,8 @@ def init_cache_dirs(
     if not cache_enabled or not host_cache_dir:
         return {}
 
-    subdirs = ["npm", "pnpm", "yarn", "pip", "uv", "go-pkg", "dotnet", "rust", "hostedtoolcache", "apt"]
+    # apt is deliberately absent: .deb caching goes through the apt-cacher-ng proxy, not a mount.
+    subdirs = ["npm", "pnpm", "yarn", "pip", "uv", "go-pkg", "dotnet", "rust", "hostedtoolcache"]
 
     for sub in subdirs:
         p = os.path.join(host_cache_dir, sub)

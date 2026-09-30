@@ -3,12 +3,20 @@ Unit tests for repository auto-discovery.
 """
 
 import unittest
+from typing import Any
 from unittest.mock import patch
 
-from discovery import discover_repositories
+import discovery
+from discovery import _repo_listing_endpoint, discover_repositories
 
 
 class TestDiscovery(unittest.TestCase):
+    def setUp(self):
+        # These tests drive the listing loop; account-type detection is covered separately.
+        endpoint = patch("discovery._repo_listing_endpoint", return_value=discovery.USER_REPOS_ENDPOINT)
+        endpoint.start()
+        self.addCleanup(endpoint.stop)
+
     def test_explicit_repos_config(self):
         repos = discover_repositories(repos_config="el-j/run-zero, el-j/other-repo")
         self.assertEqual(repos, ["el-j/other-repo", "el-j/run-zero"])
@@ -66,6 +74,41 @@ class TestDiscovery(unittest.TestCase):
         repos = discover_repositories(owner="el-j", active_days=60, auto_discover=True, access_token="token")
         self.assertEqual(len(repos), 100)
         self.assertEqual(mock_gh.call_count, 2)
+
+
+class TestOrgOwnerDiscovery(unittest.TestCase):
+    """#51: an organization OWNER used to discover nothing via /user/repos."""
+
+    @patch("discovery.github_request")
+    def test_organization_owner_uses_org_listing(self, mock_gh):
+        mock_gh.return_value = {"login": "acme", "type": "Organization"}
+        self.assertEqual(_repo_listing_endpoint("acme", "t"), "/orgs/acme/repos?type=all&sort=pushed&direction=desc")
+        mock_gh.assert_called_once_with("/users/acme", access_token="t")
+
+    @patch("discovery.github_request")
+    def test_user_owner_or_failed_lookup_uses_user_listing(self, mock_gh):
+        accounts: tuple[Any, ...] = ({"type": "User"}, None, [])
+        for account in accounts:
+            with self.subTest(account=account):
+                mock_gh.return_value = account
+                self.assertEqual(_repo_listing_endpoint("el-j", "t"), discovery.USER_REPOS_ENDPOINT)
+
+    @patch("discovery.github_request")
+    def test_no_owner_skips_lookup(self, mock_gh):
+        self.assertEqual(_repo_listing_endpoint("", "t"), discovery.USER_REPOS_ENDPOINT)
+        mock_gh.assert_not_called()
+
+    @patch("discovery.github_request")
+    def test_end_to_end_org_discovery(self, mock_gh):
+        def route(endpoint, access_token=None):
+            if endpoint == "/users/acme":
+                return {"type": "Organization"}
+            if endpoint.startswith("/orgs/acme/repos?") and endpoint.endswith("&page=1"):
+                return [{"full_name": "acme/api", "archived": False, "pushed_at": "2099-01-01T00:00:00Z"}]
+            return []
+
+        mock_gh.side_effect = route
+        self.assertEqual(discover_repositories(owner="acme", access_token="t"), ["acme/api"])
 
 
 if __name__ == "__main__":

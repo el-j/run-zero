@@ -498,3 +498,22 @@ class TestGithubPaginate(unittest.TestCase):
                 self.assertEqual(mock.call_count, 2)
                 self.assertEqual(None if items is None else len(items), expected_len)
                 self.assertIn("only the first 200", printed.call_args.args[0])
+
+
+class TestWorkflowTextCacheBound(unittest.TestCase):
+    """#51: the per-run workflow cache is an LRU, not an ever-growing dict."""
+
+    def setUp(self):
+        github_api._workflow_text_cache.clear()
+        self.addCleanup(github_api._workflow_text_cache.clear)
+
+    def test_evicts_least_recently_used(self):
+        with patch.object(github_api, "WORKFLOW_TEXT_CACHE_SIZE", 2), patch("github_api.github_request", return_value=None) as req:
+            get_workflow_text_for_run("o/r", 1)
+            get_workflow_text_for_run("o/r", 2)
+            get_workflow_text_for_run("o/r", 1)  # hit: 1 becomes most recent
+            get_workflow_text_for_run("o/r", 3)  # evicts 2
+            self.assertEqual(list(github_api._workflow_text_cache), [1, 3])
+            calls = req.call_count
+            get_workflow_text_for_run("o/r", 1)
+            self.assertEqual(req.call_count, calls)  # still cached

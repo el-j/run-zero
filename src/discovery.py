@@ -15,6 +15,23 @@ def _parse_timestamp(value: str) -> datetime | None:
         return None
 
 
+USER_REPOS_ENDPOINT = "/user/repos?affiliation=owner&sort=pushed&direction=desc"
+
+
+def _repo_listing_endpoint(owner: str, access_token: str | None) -> str:
+    """Return the repo-listing endpoint for `owner`, most recently pushed first.
+
+    `/user/repos?affiliation=owner` only lists repos the token's *user* owns, so an
+    organization OWNER discovered nothing. When `owner` is an organization, its own
+    `/orgs/{owner}/repos` listing is used instead.
+    """
+    if owner:
+        account = github_request(f"/users/{owner}", access_token=access_token)
+        if isinstance(account, dict) and account.get("type") == "Organization":
+            return f"/orgs/{owner}/repos?type=all&sort=pushed&direction=desc"
+    return USER_REPOS_ENDPOINT
+
+
 def discover_repositories(
     owner: str = "", active_days: int = 60, auto_discover: bool = True, repos_config: str = "", access_token: str | None = None
 ) -> list[str]:
@@ -30,9 +47,10 @@ def discover_repositories(
 
     if auto_discover and access_token:
         cutoff_date = datetime.now(UTC) - timedelta(days=active_days)
+        endpoint = _repo_listing_endpoint(owner, access_token)
         page = 1
         while True:
-            data = github_request(f"/user/repos?per_page=100&affiliation=owner&sort=pushed&direction=desc&page={page}", access_token=access_token)
+            data = github_request(f"{endpoint}&per_page=100&page={page}", access_token=access_token)
             if not isinstance(data, list) or not data:
                 break
 

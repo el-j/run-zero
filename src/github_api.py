@@ -10,6 +10,7 @@ import threading
 import time
 import urllib.error
 import urllib.request
+from collections import OrderedDict
 from typing import Any
 
 from workflow_inspector import job_uses_services_or_container
@@ -37,9 +38,11 @@ MAX_PAGES = 10
 PAGE_SIZE = 100
 
 # A queued run's workflow file is pinned to that run's head_sha, so its content
-# never changes for the lifetime of the run -- caching by run_id forever avoids
-# re-fetching + re-parsing the same file on every ~10s poll while it's queued.
-_workflow_text_cache: dict[int, str | None] = {}
+# never changes for the lifetime of the run -- caching by run_id avoids re-fetching +
+# re-parsing the same file on every poll while it's queued. Bounded (LRU, least recently
+# used run evicted first) so a long-running daemon doesn't grow it without limit.
+WORKFLOW_TEXT_CACHE_SIZE = 512
+_workflow_text_cache: OrderedDict[int, str | None] = OrderedDict()
 
 
 def _update_rate_limit_from_headers(headers: Any) -> None:
@@ -307,6 +310,7 @@ def get_workflow_text_for_run(repo_full_name: str, run_id: int, access_token: st
     must treat that as "unknown", not "no services declared".
     """
     if run_id in _workflow_text_cache:
+        _workflow_text_cache.move_to_end(run_id)
         return _workflow_text_cache[run_id]
 
     text: str | None = None
@@ -323,6 +327,8 @@ def get_workflow_text_for_run(repo_full_name: str, run_id: int, access_token: st
                 text = None
 
     _workflow_text_cache[run_id] = text
+    while len(_workflow_text_cache) > WORKFLOW_TEXT_CACHE_SIZE:
+        _workflow_text_cache.popitem(last=False)
     return text
 
 

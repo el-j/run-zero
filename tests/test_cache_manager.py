@@ -8,7 +8,7 @@ import tempfile
 import unittest
 from unittest.mock import patch
 
-from cache_manager import clean_build_cache, init_cache_dirs
+from cache_manager import init_cache_dirs
 
 
 class TestCacheManager(unittest.TestCase):
@@ -43,69 +43,6 @@ class TestCacheManager(unittest.TestCase):
         self.assertTrue(os.path.isdir(go_build_1))
         self.assertTrue(os.path.isdir(go_build_2))
 
-    def test_clean_build_cache(self):
-        mounts = init_cache_dirs(self.temp_dir, "arm64", cache_enabled=True, scope="test-scope")
-        go_build_dir = next(k for k, v in mounts.items() if v == "/home/runner/.cache/go-build")
-
-        # Write dummy files and directories inside go-build
-        sub_dir = os.path.join(go_build_dir, "0a")
-        os.makedirs(sub_dir, exist_ok=True)
-        dummy_file = os.path.join(sub_dir, "dummy.txt")
-        with open(dummy_file, "w") as f:
-            f.write("hello")
-
-        self.assertTrue(os.path.exists(dummy_file))
-
-        # Clean build cache
-        clean_build_cache(self.temp_dir, scope="test-scope")
-        self.assertTrue(os.path.isdir(go_build_dir))
-        self.assertEqual(os.listdir(go_build_dir), [])
-
-    def test_clean_build_cache_noop_when_no_host_cache_dir(self):
-        # Must not raise -- and must not try to derive a path from an empty string.
-        clean_build_cache("")
-
-    def test_clean_build_cache_uses_flat_dir_when_no_scope(self):
-        clean_build_cache(self.temp_dir)
-        self.assertTrue(os.path.isdir(os.path.join(self.temp_dir, "go-build")))
-
-    def test_clean_build_cache_removes_files_and_subdirs(self):
-        target_dir = os.path.join(self.temp_dir, "build-cache", "test-scope", "go-build")
-        os.makedirs(os.path.join(target_dir, "0a"), exist_ok=True)
-        with open(os.path.join(target_dir, "0a", "entry.o"), "w") as f:
-            f.write("data")
-        with open(os.path.join(target_dir, "loose-file.txt"), "w") as f:
-            f.write("data")
-
-        clean_build_cache(self.temp_dir, scope="test-scope")
-
-        self.assertTrue(os.path.isdir(target_dir))
-        self.assertEqual(os.listdir(target_dir), [])
-
-    def test_clean_build_cache_tolerates_remove_failure(self):
-        target_dir = os.path.join(self.temp_dir, "build-cache", "test-scope", "go-build")
-        os.makedirs(target_dir, exist_ok=True)
-        with open(os.path.join(target_dir, "locked.txt"), "w") as f:
-            f.write("data")
-
-        with patch("os.remove", side_effect=OSError("busy")):
-            clean_build_cache(self.temp_dir, scope="test-scope")  # must not raise
-
-        self.assertTrue(os.path.isdir(target_dir))
-
-    def test_clean_build_cache_tolerates_listdir_failure(self):
-        target_dir = os.path.join(self.temp_dir, "build-cache", "test-scope", "go-build")
-        os.makedirs(target_dir, exist_ok=True)
-
-        with patch("os.listdir", side_effect=OSError("permission denied")):
-            clean_build_cache(self.temp_dir, scope="test-scope")  # must not raise
-
-        self.assertTrue(os.path.isdir(target_dir))
-
-    def test_clean_build_cache_tolerates_chmod_failure(self):
-        with patch("os.chmod", side_effect=OSError("not permitted")):
-            clean_build_cache(self.temp_dir, scope="test-scope")  # must not raise
-
     def test_init_cache_dirs_disabled(self):
         mounts = init_cache_dirs(self.temp_dir, "arm64", cache_enabled=False)
         self.assertEqual(mounts, {})
@@ -125,3 +62,16 @@ class TestCacheManager(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TestCacheLayoutDecisions(unittest.TestCase):
+    def test_no_unmounted_apt_directory_is_created(self):
+        # apt caching goes through the apt-cacher-ng proxy; an "apt" dir was created but never mounted.
+        with tempfile.TemporaryDirectory() as root:
+            init_cache_dirs(root, "arm64")
+            self.assertFalse(os.path.exists(os.path.join(root, "apt")))
+
+    def test_disabled_or_unset_returns_no_mounts(self):
+        self.assertEqual(init_cache_dirs("", "arm64"), {})
+        with tempfile.TemporaryDirectory() as root:
+            self.assertEqual(init_cache_dirs(root, "arm64", cache_enabled=False), {})
