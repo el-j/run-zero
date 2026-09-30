@@ -229,21 +229,86 @@ class TestGitHubApi(unittest.TestCase):
         text = get_workflow_text_for_run("el-j/herbful", 1, access_token="token")
         self.assertIsNone(text)
 
-    @patch("time.sleep")
-    @patch("urllib.request.urlopen")
-    def test_github_request_throttles_when_rate_limit_nearly_exhausted(self, mock_urlopen, mock_sleep):
-        import github_api
-
+    def _ok_response(self) -> MagicMock:
         mock_resp = MagicMock()
         mock_resp.read.return_value = b'{"status": "ok"}'
         mock_resp.headers = {"x-ratelimit-remaining": "4990", "x-ratelimit-reset": "1700000000"}
         mock_resp.__enter__.return_value = mock_resp
-        mock_urlopen.return_value = mock_resp
+        return mock_resp
 
-        with patch.object(github_api, "rate_limit_remaining", 5), patch.object(github_api, "rate_limit_reset", 9_999_999_999):
+    @patch("urllib.request.urlopen")
+    def test_github_request_throttles_then_proceeds_once_limit_resets(self, mock_urlopen):
+        import github_api
+
+        mock_urlopen.return_value = self._ok_response()
+        event = MagicMock()
+        event.wait.return_value = False  # no shutdown during the wait
+        with (
+            patch.object(github_api, "rate_limit_remaining", 5),
+            patch.object(github_api, "rate_limit_reset", 1_000_010),
+            patch.object(github_api, "shutdown_event", event),
+            patch("github_api.time.time", side_effect=[1_000_000, 1_000_011]),
+            patch("builtins.print"),
+        ):
             result = github_request("/test", access_token="secret")
         self.assertEqual(result, {"status": "ok"})
-        mock_sleep.assert_called_once()
+        event.wait.assert_called_once_with(11)
+
+    @patch("urllib.request.urlopen")
+    def test_github_request_throttle_is_capped_and_skips_request_if_not_reset(self, mock_urlopen):
+        # #44: the wait used to be time.sleep(reset - now) -- up to an hour on the main thread.
+        import github_api
+
+        event = MagicMock()
+        event.wait.return_value = False
+        with (
+            patch.object(github_api, "rate_limit_remaining", 5),
+            patch.object(github_api, "rate_limit_reset", 1_003_600),
+            patch.object(github_api, "shutdown_event", event),
+            patch("github_api.time.time", side_effect=[1_000_000, 1_000_060]),
+            patch("builtins.print"),
+        ):
+            self.assertIsNone(github_request("/test", access_token="secret"))
+        event.wait.assert_called_once_with(github_api.MAX_THROTTLE_WAIT_SECONDS)
+        mock_urlopen.assert_not_called()
+
+    @patch("urllib.request.urlopen")
+    def test_shutdown_signalled_mid_throttle_wakes_the_waiting_request(self, mock_urlopen):
+        import github_api
+
+        event = github_api.threading.Event()
+        timer = github_api.threading.Timer(0.2, event.set)
+        with (
+            patch.object(github_api, "rate_limit_remaining", 0),
+            patch.object(github_api, "rate_limit_reset", 9_999_999_999),
+            patch.object(github_api, "shutdown_event", event),
+            patch("builtins.print"),
+        ):
+            started = github_api.time.monotonic()
+            timer.start()
+            self.assertIsNone(github_request("/test", access_token="secret"))
+            elapsed = github_api.time.monotonic() - started
+        timer.join()
+        self.assertGreaterEqual(elapsed, 0.15)
+        self.assertLess(elapsed, 5.0)  # vs. up to MAX_THROTTLE_WAIT_SECONDS without the event
+        mock_urlopen.assert_not_called()
+
+    @patch("urllib.request.urlopen")
+    def test_github_request_throttle_returns_promptly_on_shutdown(self, mock_urlopen):
+        import github_api
+
+        event = github_api.threading.Event()
+        event.set()
+        with (
+            patch.object(github_api, "rate_limit_remaining", 0),
+            patch.object(github_api, "rate_limit_reset", 9_999_999_999),
+            patch.object(github_api, "shutdown_event", event),
+            patch("builtins.print"),
+        ):
+            started = github_api.time.monotonic()
+            self.assertIsNone(github_request("/test", access_token="secret"))
+            self.assertLess(github_api.time.monotonic() - started, 1.0)
+        mock_urlopen.assert_not_called()
 
     @patch("urllib.request.urlopen")
     def test_github_request_success_tolerates_malformed_ratelimit_headers(self, mock_urlopen):

@@ -185,6 +185,8 @@ def main():
         global running
         log_print("\n[Autoscaler] Received shutdown signal. Cleaning up...")
         running = False
+        # Wakes any in-progress rate-limit throttle and the poll-interval wait below.
+        github_api.shutdown_event.set()
 
     signal.signal(signal.SIGINT, signal_handler)
     signal.signal(signal.SIGTERM, signal_handler)
@@ -383,9 +385,9 @@ def main():
             version=__version__,
         )
 
-        # Sleep before next poll loop
+        # Sleep before next poll loop, in 1s steps so a shutdown request is noticed promptly.
         for _ in range(POLL_INTERVAL):
-            if not running:
+            if not running or github_api.shutdown_event.is_set():
                 break
             time.sleep(1)
 

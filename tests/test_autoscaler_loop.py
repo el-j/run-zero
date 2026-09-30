@@ -17,6 +17,14 @@ from drivers import RunnerInfo
 class TestAutoscalerLoop(unittest.TestCase):
     def setUp(self):
         self.temp_cache = tempfile.mkdtemp()
+        # main() refreshes dashboard cache metrics by walking dashboard_state.cache_dir; keep
+        # that walk (and any purge) inside a throwaway dir, never the real host cache.
+        cache_patch = patch.object(autoscaler.dashboard_state, "cache_dir", self.temp_cache)
+        cache_patch.start()
+        self.addCleanup(cache_patch.stop)
+        # The signal handler sets this process-wide event; never let one test's shutdown leak.
+        autoscaler.github_api.shutdown_event.clear()
+        self.addCleanup(autoscaler.github_api.shutdown_event.clear)
 
     def tearDown(self):
         shutil.rmtree(self.temp_cache, ignore_errors=True)
@@ -566,8 +574,11 @@ class TestAutoscalerLoop(unittest.TestCase):
         # Directly invoke the captured handler to exercise its body (the
         # real OS signal delivery path can't be exercised in a unit test).
         autoscaler.running = True
+        autoscaler.github_api.shutdown_event.clear()
         captured_handlers[signal.SIGINT](signal.SIGINT, None)
         self.assertFalse(autoscaler.running)
+        # #44: the handler must also wake any in-progress rate-limit throttle.
+        self.assertTrue(autoscaler.github_api.shutdown_event.is_set())
 
     @patch("autoscaler.ACCESS_TOKEN", "fake-token")
     @patch("autoscaler.CACHE_ENABLED", True)

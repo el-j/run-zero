@@ -6,6 +6,7 @@ from __future__ import annotations
 
 import base64
 import json
+import threading
 import time
 import urllib.error
 import urllib.request
@@ -20,6 +21,15 @@ rate_limit_used: int | None = None
 rate_limit_resource: str | None = None
 rate_limit_reset: int | None = None
 actions_billing: dict[str, Any] = {}
+
+# Set by the autoscaler's signal handler. Every wait in this module (the rate-limit throttle)
+# wakes on it, so a SIGTERM during a throttle stops promptly instead of sleeping up to an hour
+# while `docker stop` escalates to SIGKILL and runner cleanup never runs.
+shutdown_event = threading.Event()
+
+# Longest single throttle wait. If the limit still hasn't reset afterwards, the request is
+# skipped (returns None) rather than spending the last few calls; the caller retries next poll.
+MAX_THROTTLE_WAIT_SECONDS = 60
 
 # Hard ceiling on pages fetched by github_paginate(): 10 x 100 items. Bounds the API cost of a
 # single call; hitting it is logged, never silent.
@@ -206,12 +216,16 @@ def github_request(endpoint: str, access_token: str | None = None, method: str =
     """Perform an authenticated GitHub REST API request with rate-limit tracking.
 
     Returns the parsed JSON body, True for a bodiless success (204/202), or None on failure.
+    When the rate limit is nearly exhausted, waits (interruptibly, at most
+    MAX_THROTTLE_WAIT_SECONDS) for the reset, and returns None without calling GitHub if
+    shutdown was requested or the limit still hasn't reset.
     """
     now = time.time()
     if rate_limit_remaining is not None and rate_limit_reset is not None and rate_limit_remaining <= 10 and now < rate_limit_reset:
-        wait_seconds = int(rate_limit_reset - now) + 1
+        wait_seconds = min(int(rate_limit_reset - now) + 1, MAX_THROTTLE_WAIT_SECONDS)
         print(f"[Autoscaler:API] ⚠️ Rate limit nearly exhausted. Throttling for {wait_seconds}s...")
-        time.sleep(wait_seconds)
+        if shutdown_event.wait(wait_seconds) or time.time() < rate_limit_reset:
+            return None
 
     url = f"{API_BASE}{endpoint}"
     req = urllib.request.Request(url, method=method)
