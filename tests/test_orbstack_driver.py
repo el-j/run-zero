@@ -518,7 +518,7 @@ class TestOrbStackVMDriver(unittest.TestCase):
         mock_run.side_effect = [
             MagicMock(stdout=json.dumps([]), returncode=0),  # list VMs
         ]
-        self.driver._building_arches.add("amd64")
+        self.driver._backoff.in_progress.add("amd64")
         with patch.object(self.driver, "_build_base_image_async") as mock_async_build:
             name = self.driver.spawn_runner(repo="el-j/run-zero", arch="amd64", access_token="token")
         self.assertIsNone(name)
@@ -545,7 +545,7 @@ class TestOrbStackVMDriver(unittest.TestCase):
             self.assertTrue(driver.join_background_build_threads(timeout=5.0))
 
         self.assertEqual(calls, ["amd64"])
-        self.assertNotIn("amd64", driver._building_arches)
+        self.assertNotIn("amd64", driver._backoff.in_progress)
 
     def test_join_background_build_threads_reports_false_for_still_running_thread(self):
         # join_background_build_threads() must distinguish "finished" from
@@ -597,8 +597,8 @@ class TestOrbStackVMDriver(unittest.TestCase):
         with patch.object(driver, "build_base_image", side_effect=fake_build):
             self._run_async_build_and_wait(driver, "amd64")
             self.assertEqual(calls, ["amd64"])
-            self.assertEqual(driver._build_failure_counts["amd64"], 1)
-            self.assertGreater(driver._build_cooldown_remaining("amd64"), 0)
+            self.assertEqual(driver._backoff.failure_counts["amd64"], 1)
+            self.assertGreater(driver._backoff.remaining("amd64"), 0)
 
             # Immediate follow-up poll (what the real poll loop does every
             # ~15-20s) must be a no-op while the cooldown is in effect.
@@ -611,24 +611,24 @@ class TestOrbStackVMDriver(unittest.TestCase):
 
         with patch.object(driver, "build_base_image", side_effect=lambda arch: next(outcomes)):
             self._run_async_build_and_wait(driver, "amd64")
-            first_cooldown = driver._build_cooldown_remaining("amd64")
+            first_cooldown = driver._backoff.remaining("amd64")
 
             # Force the cooldown to have already elapsed so the second
             # attempt is actually allowed to run.
-            driver._build_retry_after["amd64"] = time.monotonic()
+            driver._backoff.retry_after["amd64"] = time.monotonic()
             self._run_async_build_and_wait(driver, "amd64")
-            second_cooldown = driver._build_cooldown_remaining("amd64")
+            second_cooldown = driver._backoff.remaining("amd64")
 
-        self.assertEqual(driver._build_failure_counts["amd64"], 2)
+        self.assertEqual(driver._backoff.failure_counts["amd64"], 2)
         self.assertGreater(second_cooldown, first_cooldown)
 
         # A subsequent success must clear both the failure count and cooldown
         # -- a build that starts working again shouldn't stay throttled.
-        driver._build_retry_after["amd64"] = time.monotonic()
+        driver._backoff.retry_after["amd64"] = time.monotonic()
         with patch.object(driver, "build_base_image", return_value=True):
             self._run_async_build_and_wait(driver, "amd64")
-        self.assertEqual(driver._build_failure_counts["amd64"], 0)
-        self.assertEqual(driver._build_cooldown_remaining("amd64"), 0.0)
+        self.assertEqual(driver._backoff.failure_counts["amd64"], 0)
+        self.assertEqual(driver._backoff.remaining("amd64"), 0.0)
 
     @patch("subprocess.Popen")
     @patch("subprocess.run")
@@ -639,7 +639,7 @@ class TestOrbStackVMDriver(unittest.TestCase):
         mock_run.side_effect = [
             MagicMock(stdout=json.dumps([]), returncode=0),  # list VMs
         ]
-        self.driver._build_retry_after["amd64"] = time.monotonic() + 60
+        self.driver._backoff.retry_after["amd64"] = time.monotonic() + 60
         with patch.object(self.driver, "_build_base_image_async") as mock_async_build:
             name = self.driver.spawn_runner(repo="el-j/run-zero", arch="amd64", access_token="token")
         self.assertIsNone(name)
@@ -796,7 +796,7 @@ class TestOrbStackVMDriver(unittest.TestCase):
 
     def test_ensure_base_images_stopped_skips_arch_currently_being_built(self):
         driver = OrbStackVMDriver(distro="ubuntu:24.04")
-        driver._building_arches.add("amd64")
+        driver._backoff.in_progress.add("amd64")
         with patch("subprocess.run") as mock_run:
             mock_run.return_value = MagicMock(stdout=json.dumps([{"name": "runzero-vm-base-amd64", "state": "running"}]), returncode=0)
             driver.ensure_base_images_stopped()
@@ -810,7 +810,7 @@ class TestOrbStackVMDriver(unittest.TestCase):
         # suffix before checking _building_arches, this would stop the VM out
         # from under its own provisioning script.
         driver = OrbStackVMDriver(distro="ubuntu:24.04")
-        driver._building_arches.add("amd64")
+        driver._backoff.in_progress.add("amd64")
         with patch("subprocess.run") as mock_run:
             mock_run.return_value = MagicMock(stdout=json.dumps([{"name": "runzero-vm-base-amd64-building", "state": "running"}]), returncode=0)
             driver.ensure_base_images_stopped()
@@ -1318,11 +1318,11 @@ class TestOrbStackVMDriver(unittest.TestCase):
             driver._build_base_image_async("amd64")
             self.assertTrue(driver.join_background_build_threads(timeout=5.0))
 
-        self.assertEqual(driver._build_failure_counts.get("amd64", 0), 1)
-        self.assertGreater(driver._build_cooldown_remaining("amd64"), 0)
+        self.assertEqual(driver._backoff.failure_counts.get("amd64", 0), 1)
+        self.assertGreater(driver._backoff.remaining("amd64"), 0)
 
     def test_build_base_image_async_success_from_clean_state_does_not_raise_in_thread(self):
-        # Regression guard: on the success path, `self._build_retry_after.pop(orb_arch,
+        # Regression guard: on the success path, `self._backoff.retry_after.pop(orb_arch,
         # None)` must tolerate orb_arch never having failed before (empty dict). A
         # `.pop(orb_arch)` without the default would raise KeyError *inside* the
         # background thread on the very first ever successful build -- which Python
@@ -1346,7 +1346,7 @@ class TestOrbStackVMDriver(unittest.TestCase):
         # Regression guard for the `_build_cooldown_remaining(orb_arch) > 0` gate:
         # a `> 1` mutant would let a build through with e.g. 0.5s of cooldown left.
         driver = OrbStackVMDriver(distro="ubuntu:24.04")
-        driver._build_retry_after["amd64"] = time.monotonic() + 0.5
+        driver._backoff.retry_after["amd64"] = time.monotonic() + 0.5
         with patch.object(driver, "build_base_image") as mock_build:
             driver._build_base_image_async("amd64")
             driver.join_background_build_threads(timeout=5.0)
@@ -1362,11 +1362,11 @@ class TestOrbStackVMDriver(unittest.TestCase):
         expected_by_failure_count = {1: 30, 2: 60, 3: 120, 4: 240, 5: 480, 6: 900, 7: 900}
         with patch.object(driver, "build_base_image", return_value=False):
             for n in sorted(expected_by_failure_count):
-                driver._build_retry_after["amd64"] = time.monotonic()  # bypass prior cooldown gate
+                driver._backoff.retry_after["amd64"] = time.monotonic()  # bypass prior cooldown gate
                 driver._build_base_image_async("amd64")
                 self.assertTrue(driver.join_background_build_threads(timeout=5.0))
-                self.assertEqual(driver._build_failure_counts["amd64"], n)
-                remaining = driver._build_cooldown_remaining("amd64")
+                self.assertEqual(driver._backoff.failure_counts["amd64"], n)
+                remaining = driver._backoff.remaining("amd64")
                 self.assertAlmostEqual(remaining, expected_by_failure_count[n], delta=2)
 
     def test_build_base_image_async_backoff_hint_appears_only_after_three_failures(self):
@@ -1383,7 +1383,7 @@ class TestOrbStackVMDriver(unittest.TestCase):
             for _ in range(2):
                 driver._build_base_image_async("amd64")
                 self.assertTrue(driver.join_background_build_threads(timeout=5.0))
-                driver._build_retry_after["amd64"] = time.monotonic()
+                driver._backoff.retry_after["amd64"] = time.monotonic()
             self.assertNotIn("orbctl create", events[-1]["detail"])
 
             driver._build_base_image_async("amd64")  # 3rd consecutive failure
@@ -1408,7 +1408,7 @@ class TestOrbStackVMDriver(unittest.TestCase):
         driver = OrbStackVMDriver(distro="ubuntu:24.04")
         with patch.object(driver, "build_base_image", return_value=True):
             driver._build_base_image_async("amd64")
-            thread = driver._build_threads["amd64"]
+            thread = driver._backoff.threads["amd64"]
             self.assertEqual(thread.name, "runzero-build-base-amd64")
             self.assertTrue(thread.daemon, "background build thread must be a daemon thread")
             self.assertTrue(driver.join_background_build_threads(timeout=5.0))
@@ -1417,7 +1417,7 @@ class TestOrbStackVMDriver(unittest.TestCase):
         # Regression guard: `.get(orb_arch, 0.0)` -- a mutant defaulting to 1.0
         # would report a phantom 1-second cooldown for an arch that never failed.
         driver = OrbStackVMDriver(distro="ubuntu:24.04")
-        self.assertEqual(driver._build_cooldown_remaining("amd64"), 0.0)
+        self.assertEqual(driver._backoff.remaining("amd64"), 0.0)
 
     def test_list_vm_names_calls_orbctl_list_with_expected_args(self):
         # Regression guard: _list_vm_names() had ZERO direct tests despite its own
@@ -1655,14 +1655,14 @@ class TestOrbStackVMDriver(unittest.TestCase):
 
     @patch("subprocess.run")
     def test_base_image_exists_skips_promotion_while_actively_building(self, mock_run):
-        # Regression guard: `being_built = orb_arch in self._building_arches`
+        # Regression guard: `being_built = orb_arch in self._backoff.in_progress`
         # gates whether a fully-provisioned staging VM gets auto-promoted.
         # No existing test exercised the branch where a build IS actively
         # in progress for this arch -- an `and`->`or` mutant, or the guard
         # being replaced outright, would let this auto-promote a staging VM
         # out from under a build that's still running against it.
         mock_run.return_value = MagicMock(stdout=json.dumps([{"name": "runzero-vm-base-amd64-building", "state": "stopped"}]), returncode=0)
-        self.driver._building_arches.add("amd64")
+        self.driver._backoff.in_progress.add("amd64")
         with (
             patch.object(self.driver, "_is_staging_provisioned", return_value=True) as mock_provisioned,
             patch.object(self.driver, "_promote_staging_to_base") as mock_promote,
@@ -2066,7 +2066,7 @@ class TestOrbStackVMDriver(unittest.TestCase):
         # Regression guard: same `continue`-not-`break` risk for the
         # `if being_built: continue` guard -- an arch actively building must
         # be skipped WITHOUT aborting the loop for every other tracked arch.
-        self.driver._building_arches.add("amd64")
+        self.driver._backoff.in_progress.add("amd64")
         mock_run.side_effect = [
             MagicMock(
                 stdout=json.dumps(
@@ -2168,7 +2168,7 @@ class TestOrbStackVMDriver(unittest.TestCase):
         mock_build.assert_called_once_with("arm64")
 
     def test_ensure_runtime_assets_does_not_start_build_while_already_building(self):
-        self.driver._building_arches.add("arm64")
+        self.driver._backoff.in_progress.add("arm64")
         with (
             patch.object(self.driver, "base_image_exists", return_value=False),
             patch.object(self.driver, "_build_base_image_async") as mock_build,
@@ -2182,7 +2182,7 @@ class TestOrbStackVMDriver(unittest.TestCase):
         self.assertIn("retried on the next poll", printed)
 
     def test_ensure_runtime_assets_cooldown_message_content(self):
-        self.driver._build_retry_after["arm64"] = time.monotonic() + 42
+        self.driver._backoff.retry_after["arm64"] = time.monotonic() + 42
         with (
             patch.object(self.driver, "base_image_exists", return_value=False),
             patch.object(self.driver, "_build_base_image_async") as mock_build,
@@ -2217,7 +2217,7 @@ class TestOrbStackVMDriver(unittest.TestCase):
 
         with patch.object(driver, "build_base_image", side_effect=blocked):
             driver._build_base_image_async("amd64")
-            thread = driver._build_threads["amd64"]
+            thread = driver._backoff.threads["amd64"]
             with patch.object(thread, "join") as mock_join:
                 driver.join_background_build_threads()
             mock_join.assert_called_once_with(timeout=10.0)

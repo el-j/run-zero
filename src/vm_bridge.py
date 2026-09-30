@@ -10,6 +10,7 @@ import os
 import signal
 import sys
 import threading
+from collections.abc import Callable
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from typing import Any
 from urllib.parse import urlparse
@@ -140,121 +141,128 @@ class VMBridgeRequestHandler(BaseHTTPRequestHandler):
         self._send_json(404, {"error": f"Endpoint not found: {path}"})
 
     def do_POST(self) -> None:
-        """Route POST requests to /api/drivers/{name}/{spawn,prune,destroy,cleanup,ensure-base-stopped,build-base}.
+        """Route POST /api/drivers/{name}/{action} through the ACTIONS dispatch table.
 
-        Dispatches each action to the corresponding method on the (cached) real driver for
-        `{name}`, translating its result/exception into a JSON response.
+        Each action runs against the (cached) real driver for `{name}`; a handler's
+        `_BadRequest` becomes a 400 and any other exception a 500.
         """
         if not self._admit(require_token=True):
             return
-        parsed = urlparse(self.path)
-        path = parsed.path.rstrip("/")
+        path = urlparse(self.path).path.rstrip("/")
         parts = [p for p in path.split("/") if p]
+        if len(parts) < 4 or parts[0] != "api" or parts[1] != "drivers":
+            self._send_json(404, {"error": f"Endpoint not found: {path}"})
+            return
 
-        if len(parts) >= 4 and parts[0] == "api" and parts[1] == "drivers":
-            driver_name = parts[2]
-            action = parts[3]
-            try:
-                body = read_json_body(self)
-            except RequestRejected as rej:
-                self._send_json(rej.status, {"error": rej.message})
-                return
+        driver_name, action = parts[2], parts[3]
+        try:
+            body = read_json_body(self)
+        except RequestRejected as rej:
+            self._send_json(rej.status, {"error": rej.message})
+            return
+        try:
+            driver = _get_cached_driver(driver_name)
+        except Exception as e:
+            self._send_json(400, {"error": f"Invalid driver: {driver_name} ({e})"})
+            return
 
-            try:
-                driver = _get_cached_driver(driver_name)
-            except Exception as e:
-                self._send_json(400, {"error": f"Invalid driver: {driver_name} ({e})"})
-                return
+        handler = ACTIONS.get(action)
+        if handler is None:
+            self._send_json(404, {"error": f"Endpoint not found: {path}"})
+            return
+        try:
+            self._send_json(200, {"status": "success", **handler(driver, driver_name, body, parts)})
+        except _BadRequest as bad:
+            self._send_json(400, bad.payload)
+        except Exception as e:
+            self._send_json(500, {"error": str(e), "driver": driver_name})
 
-            if action == "spawn":
-                try:
-                    validate_spawn_target(body.get("repo"), body.get("org"), body.get("labels"), body.get("extra_env"))
-                except ValueError as e:
-                    self._send_json(400, {"error": str(e), "driver": driver_name})
-                    return
-                try:
-                    # Only a registration token is accepted over the bridge -- never a PAT.
-                    runner_id = driver.spawn_runner(
-                        repo=body.get("repo"),
-                        org=body.get("org"),
-                        arch=body.get("arch", "arm64"),
-                        labels=body.get("labels"),
-                        runner_token=body.get("runner_token"),
-                        cache_mounts=body.get("cache_mounts"),
-                        proxies_enabled=body.get("proxies_enabled", True),
-                        extra_env=body.get("extra_env"),
-                    )
-                    self._send_json(200, {"status": "success", "driver": driver_name, "runner_id": runner_id})
-                except Exception as e:
-                    self._send_json(500, {"error": str(e), "driver": driver_name})
-                return
 
-            elif action == "prune":
-                try:
-                    runners_data = body.get("runners", [])
-                    runners = [
-                        RunnerInfo(
-                            id=r.get("id", ""),
-                            name=r.get("name", ""),
-                            status=r.get("status", ""),
-                            state=r.get("state", ""),
-                            target_repo=r.get("target_repo", ""),
-                            target_arch=r.get("target_arch", ""),
-                            backend=r.get("backend", driver_name),
-                            created_at=r.get("created_at"),
-                        )
-                        for r in runners_data
-                    ]
-                    driver.prune_exited(runners)
-                    self._send_json(200, {"status": "success", "driver": driver_name})
-                except Exception as e:
-                    self._send_json(500, {"error": str(e), "driver": driver_name})
-                return
+class _BadRequest(Exception):
+    """A bridge action rejected its input; `payload` is the 400 response body."""
 
-            elif action == "destroy":
-                runner_id = body.get("runner_id") or (parts[4] if len(parts) > 4 else None)
-                if not runner_id:
-                    self._send_json(400, {"error": "runner_id is required"})
-                    return
-                try:
-                    success = driver.destroy_runner(runner_id)
-                    self._send_json(200, {"status": "success", "destroyed": success, "runner_id": runner_id})
-                except Exception as e:
-                    self._send_json(500, {"error": str(e), "driver": driver_name})
-                return
+    def __init__(self, payload: dict[str, Any]):
+        """Carry the JSON body for the 400 response."""
+        super().__init__(payload.get("error", "bad request"))
+        self.payload = payload
 
-            elif action == "cleanup":
-                try:
-                    driver.cleanup_all()
-                    self._send_json(200, {"status": "success", "driver": driver_name})
-                except Exception as e:
-                    self._send_json(500, {"error": str(e), "driver": driver_name})
-                return
 
-            elif action == "ensure-base-stopped":
-                try:
-                    ensure_fn = getattr(driver, "ensure_base_images_stopped", None)
-                    if callable(ensure_fn):
-                        ensure_fn()
-                    self._send_json(200, {"status": "success", "driver": driver_name})
-                except Exception as e:
-                    self._send_json(500, {"error": str(e), "driver": driver_name})
-                return
+# Each action handler returns the success payload (merged into {"status": "success"}).
+ActionHandler = Callable[[RunnerDriver, str, dict[str, Any], list[str]], dict[str, Any]]
 
-            elif action == "build-base":
-                arch = body.get("arch", "arm64")
-                try:
-                    build_fn = getattr(driver, "build_base_image", None)
-                    if callable(build_fn):
-                        ok = build_fn(arch)
-                        self._send_json(200, {"status": "success", "driver": driver_name, "arch": arch, "built": ok})
-                    else:
-                        self._send_json(400, {"error": f"Driver {driver_name} does not support build_base_image"})
-                except Exception as e:
-                    self._send_json(500, {"error": str(e), "driver": driver_name})
-                return
 
-        self._send_json(404, {"error": f"Endpoint not found: {path}"})
+def _action_spawn(driver: RunnerDriver, driver_name: str, body: dict[str, Any], parts: list[str]) -> dict[str, Any]:
+    try:
+        validate_spawn_target(body.get("repo"), body.get("org"), body.get("labels"), body.get("extra_env"))
+    except ValueError as e:
+        raise _BadRequest({"error": str(e), "driver": driver_name}) from e
+    # Only a registration token is accepted over the bridge -- never a PAT.
+    runner_id = driver.spawn_runner(
+        repo=body.get("repo"),
+        org=body.get("org"),
+        arch=body.get("arch", "arm64"),
+        labels=body.get("labels"),
+        runner_token=body.get("runner_token"),
+        cache_mounts=body.get("cache_mounts"),
+        proxies_enabled=body.get("proxies_enabled", True),
+        extra_env=body.get("extra_env"),
+    )
+    return {"driver": driver_name, "runner_id": runner_id}
+
+
+def _action_prune(driver: RunnerDriver, driver_name: str, body: dict[str, Any], parts: list[str]) -> dict[str, Any]:
+    runners = [
+        RunnerInfo(
+            id=r.get("id", ""),
+            name=r.get("name", ""),
+            status=r.get("status", ""),
+            state=r.get("state", ""),
+            target_repo=r.get("target_repo", ""),
+            target_arch=r.get("target_arch", ""),
+            backend=r.get("backend", driver_name),
+            created_at=r.get("created_at"),
+        )
+        for r in body.get("runners", [])
+    ]
+    driver.prune_exited(runners)
+    return {"driver": driver_name}
+
+
+def _action_destroy(driver: RunnerDriver, driver_name: str, body: dict[str, Any], parts: list[str]) -> dict[str, Any]:
+    runner_id = body.get("runner_id") or (parts[4] if len(parts) > 4 else None)
+    if not runner_id:
+        raise _BadRequest({"error": "runner_id is required"})
+    return {"destroyed": driver.destroy_runner(runner_id), "runner_id": runner_id}
+
+
+def _action_cleanup(driver: RunnerDriver, driver_name: str, body: dict[str, Any], parts: list[str]) -> dict[str, Any]:
+    driver.cleanup_all()
+    return {"driver": driver_name}
+
+
+def _action_ensure_base_stopped(driver: RunnerDriver, driver_name: str, body: dict[str, Any], parts: list[str]) -> dict[str, Any]:
+    ensure_fn = getattr(driver, "ensure_base_images_stopped", None)
+    if callable(ensure_fn):
+        ensure_fn()
+    return {"driver": driver_name}
+
+
+def _action_build_base(driver: RunnerDriver, driver_name: str, body: dict[str, Any], parts: list[str]) -> dict[str, Any]:
+    arch = body.get("arch", "arm64")
+    build_fn = getattr(driver, "build_base_image", None)
+    if not callable(build_fn):
+        raise _BadRequest({"error": f"Driver {driver_name} does not support build_base_image"})
+    return {"driver": driver_name, "arch": arch, "built": build_fn(arch)}
+
+
+ACTIONS: dict[str, ActionHandler] = {
+    "spawn": _action_spawn,
+    "prune": _action_prune,
+    "destroy": _action_destroy,
+    "cleanup": _action_cleanup,
+    "ensure-base-stopped": _action_ensure_base_stopped,
+    "build-base": _action_build_base,
+}
 
 
 class VMBridgeServer:

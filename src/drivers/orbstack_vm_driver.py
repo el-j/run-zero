@@ -13,11 +13,11 @@ import os
 import shutil
 import subprocess
 import sys
-import threading
 import time
 import uuid
 
 from . import ImageEventCallback, RunnerDriver, RunnerInfo, merge_labels
+from .backoff import BuildBackoff
 from .orbstack_templates import (
     cache_mount_snippet,
     docker_engine_snippet,
@@ -112,45 +112,18 @@ class OrbStackVMDriver(RunnerDriver):
         self._provision_script_path = os.path.join(
             os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))), "docker", "provision-toolchain.sh"
         )
-        # main()'s poll loop is single-threaded and synchronous -- a golden-image
-        # build blocking in-line here used to freeze the ENTIRE autoscaler (every
-        # repo, both engines) for up to 30 minutes on the first VM-routed job
-        # after this image goes missing (fresh checkout, `make vm-clean-all`, a
-        # new arch). Building in a background thread lets spawn_runner() return
-        # None (skip this poll, retry later) so Docker-engine jobs and other
-        # repos keep flowing while the one-time build finishes.
-        self._building_lock = threading.Lock()
-        self._building_arches: set = set()
-        # Consecutive build_base_image() failures per arch, and the earliest
-        # time (time.monotonic()) the next attempt may start. Without this,
-        # a build failure that ISN'T transient (confirmed live: OrbStack's own
-        # `orbctl create` failing "machine didn't start in 30s (missing IP
-        # address)" for EVERY new VM regardless of arch -- reproduced with a
-        # bare `orbctl create`, no run-zero code involved at all, pointing at
-        # host/OrbStack network-stack state rather than anything this driver
-        # controls) gets retried on every single poll tick (~15-20s) forever:
-        # delete the half-built staging VM, recreate it, fail identically,
-        # repeat -- burning CPU/OrbStack-daemon load with zero chance of
-        # success and no operator-visible signal that this isn't self-healing.
-        self._build_failure_counts: dict[str, int] = {}
-        self._build_retry_after: dict[str, float] = {}
-        # Same backoff idea as _build_failure_counts/_build_retry_after above, but for
-        # a different failure mode: `orbctl clone` (not `orbctl create`) succeeding, then
+        # Golden-image builds run on a background thread (so the poll loop never blocks for
+        # the 15-25 min a build takes) with per-arch dedup and exponential backoff after a
+        # failure -- confirmed live: `orbctl create` can fail "machine didn't start in 30s
+        # (missing IP address)" for EVERY new VM because of host/OrbStack network-stack state,
+        # and retrying that every poll tick only burns OrbStack daemon load. See BuildBackoff.
+        self._backoff = BuildBackoff()
+        # Separate backoff for a different failure mode: `orbctl clone` (not `orbctl create`) succeeding, then
         # the clone itself never getting a network address -- see _record_spawn_outcome().
         self._spawn_failure_counts: dict[str, int] = {}
         self._spawn_retry_after: dict[str, float] = {}
         self._runner_created_at: dict[str, float] = {}
         self._runner_repos: dict[str, str] = {}
-        # Tracks the most recently started background build thread per arch
-        # (see _build_base_image_async below). Exists so callers -- mainly
-        # tests -- can deterministically wait for a driver-owned background
-        # thread to fully exit via join_background_build_threads() instead
-        # of polling shared state or letting it run un-joined past the
-        # caller's own scope (see issue #20: a thread left running past a
-        # test's mock.patch context stops seeing the test's mocked
-        # subprocess.run and starts issuing REAL orbctl/orb calls against a
-        # real OrbStack daemon, if one is installed).
-        self._build_threads: dict[str, threading.Thread] = {}
 
     def _report_image_event(self, status: str, arch: str, detail: str, profile: str | None = None) -> None:
         """Emit a structured build-status event alongside the existing stdout/stderr prints.
@@ -223,8 +196,8 @@ class OrbStackVMDriver(RunnerDriver):
         # Check if an existing -building staging VM was already fully provisioned
         staging_name = f"{base_name}-building"
         if staging_name in names:
-            with self._building_lock:
-                being_built = orb_arch in self._building_arches
+            with self._backoff.lock:
+                being_built = orb_arch in self._backoff.in_progress
             if not being_built and self._is_staging_provisioned(staging_name):
                 print(f"[Autoscaler:OrbStack-VM] Found fully provisioned staging VM '{staging_name}' -- promoting to golden base image '{base_name}'...")
                 if self._promote_staging_to_base(staging_name, base_name):
@@ -408,8 +381,8 @@ echo "Base image provisioning complete."
                 continue
             is_building_suffix = name.endswith("-building")
             orb_arch = name[len(BASE_IMAGE_PREFIX) :].removesuffix("-building")
-            with self._building_lock:
-                being_built = orb_arch in self._building_arches
+            with self._backoff.lock:
+                being_built = orb_arch in self._backoff.in_progress
             if being_built:
                 continue
 
@@ -456,11 +429,6 @@ echo "Base image provisioning complete."
                 print(f"[Autoscaler:OrbStack-VM] Golden base image '{name}' is running idle -- stopping it to free host resources for job VMs.")
                 self._stop_vm(name)
 
-    def _build_cooldown_remaining(self, orb_arch: str) -> float:
-        """Seconds until the next build_base_image() attempt for orb_arch is
-        allowed, or 0.0 if none is in effect. Caller must hold _building_lock."""
-        return max(0.0, self._build_retry_after.get(orb_arch, 0.0) - time.monotonic())
-
     def _spawn_cooldown_remaining(self, orb_arch: str) -> float:
         """Seconds until the next spawn_runner() clone for orb_arch is allowed, or 0.0 if none is in effect."""
         return max(0.0, self._spawn_retry_after.get(orb_arch, 0.0) - time.monotonic())
@@ -473,7 +441,7 @@ echo "Base image provisioning complete."
         about to delete that died younger than FAST_FAILURE_WINDOW_SECONDS, and `got_network=True`
         for every still-running clone older than that window (proof this arch is currently healthy).
 
-        This exists for a *different* failure mode than `_build_failure_counts`/`_build_retry_after`
+        This exists for a *different* failure mode than the build backoff (`_backoff`)
         above: that pair guards `orbctl create` (building the golden image) failing outright.  This
         one guards `orbctl clone` succeeding -- so spawn_runner() has already returned a VM name and
         the caller thinks a runner is on its way -- but the clone then never gets a network address
@@ -544,50 +512,24 @@ echo "Base image provisioning complete."
         next poll: guaranteed to fail the same way again, with zero chance of
         self-resolving and no operator-visible signal that it isn't.
         """
-        with self._building_lock:
-            if orb_arch in self._building_arches:
-                return
-            if self._build_cooldown_remaining(orb_arch) > 0:
-                return
-            self._building_arches.add(orb_arch)
 
-        def _run() -> None:
-            ok = False
-            try:
-                ok = self.build_base_image(orb_arch)
-            except Exception as exc:
-                # A crash counts as a failed build (backoff below). Logging it here keeps
-                # it from escaping as an unhandled thread exception with only a raw traceback.
-                print(f"[Autoscaler:OrbStack-VM] Golden base image build for '{orb_arch}' crashed: {exc}", file=sys.stderr)
-            finally:
-                with self._building_lock:
-                    self._building_arches.discard(orb_arch)
-                    if ok:
-                        self._build_failure_counts[orb_arch] = 0
-                        self._build_retry_after.pop(orb_arch, None)
-                    else:
-                        failures = self._build_failure_counts.get(orb_arch, 0) + 1
-                        self._build_failure_counts[orb_arch] = failures
-                        cooldown = min(30 * (2 ** (failures - 1)), 900)
-                        self._build_retry_after[orb_arch] = time.monotonic() + cooldown
-                        hint = (
-                            " This many consecutive failures usually isn't transient -- if "
-                            "'orbctl create' is failing with a 'missing IP address' timeout, a "
-                            "plain OrbStack app restart often doesn't clear it, but a full host "
-                            "reboot usually does (stale macOS virtual-network-extension state "
-                            "after long uptime). Verify with a bare `orbctl create -a "
-                            f"{orb_arch} ubuntu:24.04 diag-test` outside run-zero before assuming "
-                            "this is a run-zero bug."
-                            if failures >= 3
-                            else ""
-                        )
-                        detail = f"Has now failed {failures} time(s) in a row. Backing off {cooldown}s before retrying.{hint}"
-                        print(f"[Autoscaler:OrbStack-VM] Golden base image build for '{orb_arch}' {detail}", file=sys.stderr)
-                        self._report_image_event("cooldown", orb_arch, detail)
+        def on_failure(failures: int, cooldown: int) -> None:
+            hint = (
+                " This many consecutive failures usually isn't transient -- if "
+                "'orbctl create' is failing with a 'missing IP address' timeout, a "
+                "plain OrbStack app restart often doesn't clear it, but a full host "
+                "reboot usually does (stale macOS virtual-network-extension state "
+                "after long uptime). Verify with a bare `orbctl create -a "
+                f"{orb_arch} ubuntu:24.04 diag-test` outside run-zero before assuming "
+                "this is a run-zero bug."
+                if failures >= 3
+                else ""
+            )
+            detail = f"Has now failed {failures} time(s) in a row. Backing off {cooldown}s before retrying.{hint}"
+            print(f"[Autoscaler:OrbStack-VM] Golden base image build for '{orb_arch}' {detail}", file=sys.stderr)
+            self._report_image_event("cooldown", orb_arch, detail)
 
-        thread = threading.Thread(target=_run, name=f"runzero-build-base-{orb_arch}", daemon=True)
-        self._build_threads[orb_arch] = thread
-        thread.start()
+        self._backoff.run_async(orb_arch, lambda: self.build_base_image(orb_arch), f"runzero-build-base-{orb_arch}", on_failure, "[Autoscaler:OrbStack-VM]")
 
     def ensure_runtime_assets(self, arch: str = "arm64") -> bool:
         """Ensure the per-arch golden VM base image exists, triggering async build when missing."""
@@ -597,9 +539,9 @@ echo "Base image provisioning complete."
         if self.base_image_exists(orb_arch):
             return True
 
-        with self._building_lock:
-            already_building = orb_arch in self._building_arches
-            cooldown_remaining = self._build_cooldown_remaining(orb_arch)
+        with self._backoff.lock:
+            already_building = orb_arch in self._backoff.in_progress
+            cooldown_remaining = self._backoff.remaining(orb_arch)
 
         if not already_building and cooldown_remaining <= 0:
             print(
@@ -637,13 +579,7 @@ echo "Base image provisioning complete."
         Callers that must guarantee "no thread survives past this point"
         (e.g. a test's tearDown) should treat False as a hard failure.
         """
-        all_finished = True
-        for thread in list(self._build_threads.values()):
-            if thread.is_alive():
-                thread.join(timeout=timeout)
-            if thread.is_alive():
-                all_finished = False
-        return all_finished
+        return self._backoff.join(timeout)
 
     def spawn_runner(
         self,

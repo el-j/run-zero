@@ -9,12 +9,12 @@ import os
 import shutil
 import subprocess
 import sys
-import threading
 import time
 import uuid
 from datetime import datetime
 
 from . import ImageEventCallback, RunnerDriver, RunnerInfo, merge_labels
+from .backoff import BuildBackoff
 
 # `docker ps` output columns, `|`-separated; parsed positionally by `list_runners()`.
 _PS_FORMAT = "|".join(
@@ -63,10 +63,8 @@ class DockerDriver(RunnerDriver):
         self.runner_cpus = os.getenv("RUNNER_CPUS") or None
         self.runner_memory = os.getenv("RUNNER_MEMORY") or None
         self._on_image_event: ImageEventCallback = on_image_event or (lambda event: None)
-        self._building_lock = threading.Lock()
-        self._building_arches: set = set()
-        self._build_failure_counts: dict[str, int] = {}
-        self._build_retry_after: dict[str, float] = {}
+        # Background runner-image builds: per-arch dedup + exponential backoff (see BuildBackoff).
+        self._backoff = BuildBackoff()
         self._registry_mirror_checked = False
 
     def _report_image_event(self, status: str, arch: str, detail: str, profile: str | None = None) -> None:
@@ -123,9 +121,6 @@ class DockerDriver(RunnerDriver):
             if os.path.isfile(dockerfile) and os.path.isfile(provision_script) and os.path.isfile(start_script):
                 return path
         return None
-
-    def _build_cooldown_remaining(self, arch: str) -> float:
-        return max(0.0, self._build_retry_after.get(arch, 0.0) - time.monotonic())
 
     def _build_runner_image(self, arch: str) -> bool:
         normalized_arch = self._normalize_arch(arch)
@@ -198,34 +193,21 @@ class DockerDriver(RunnerDriver):
             return False
 
     def _build_runner_image_async(self, arch: str) -> None:
+        """Build the runner image for `arch` on a background thread (deduped, with backoff)."""
         normalized_arch = self._normalize_arch(arch)
-        with self._building_lock:
-            if normalized_arch in self._building_arches:
-                return
-            if self._build_cooldown_remaining(normalized_arch) > 0:
-                return
-            self._building_arches.add(normalized_arch)
 
-        def _run() -> None:
-            ok = False
-            try:
-                ok = self._build_runner_image(normalized_arch)
-            finally:
-                with self._building_lock:
-                    self._building_arches.discard(normalized_arch)
-                    if ok:
-                        self._build_failure_counts[normalized_arch] = 0
-                        self._build_retry_after.pop(normalized_arch, None)
-                    else:
-                        failures = self._build_failure_counts.get(normalized_arch, 0) + 1
-                        self._build_failure_counts[normalized_arch] = failures
-                        cooldown = min(30 * (2 ** (failures - 1)), 900)
-                        self._build_retry_after[normalized_arch] = time.monotonic() + cooldown
-                        detail = f"Failed {failures} time(s). Backing off {cooldown}s before retry."
-                        print(f"[Autoscaler:Docker] Golden runner image build for '{normalized_arch}' {detail}", file=sys.stderr)
-                        self._report_image_event("cooldown", normalized_arch, detail)
+        def on_failure(failures: int, cooldown: int) -> None:
+            detail = f"Failed {failures} time(s). Backing off {cooldown}s before retry."
+            print(f"[Autoscaler:Docker] Golden runner image build for '{normalized_arch}' {detail}", file=sys.stderr)
+            self._report_image_event("cooldown", normalized_arch, detail)
 
-        threading.Thread(target=_run, name=f"runzero-build-docker-{normalized_arch}", daemon=True).start()
+        self._backoff.run_async(
+            normalized_arch,
+            lambda: self._build_runner_image(normalized_arch),
+            f"runzero-build-docker-{normalized_arch}",
+            on_failure,
+            "[Autoscaler:Docker]",
+        )
 
     def ensure_runtime_assets(self, arch: str = "arm64") -> bool:
         normalized_arch = self._normalize_arch(arch)
@@ -233,9 +215,9 @@ class DockerDriver(RunnerDriver):
         if self._image_exists(normalized_arch):
             return True
 
-        with self._building_lock:
-            already_building = normalized_arch in self._building_arches
-            cooldown_remaining = self._build_cooldown_remaining(normalized_arch)
+        with self._backoff.lock:
+            already_building = normalized_arch in self._backoff.in_progress
+            cooldown_remaining = self._backoff.remaining(normalized_arch)
 
         if already_building:
             print(f"[Autoscaler:Docker] Golden runner image '{image_tag}' is currently building. This queued job will be retried on the next poll.")

@@ -327,6 +327,12 @@ class TestBridgeHardeningLive(_LiveServerMixin, unittest.TestCase):
         self.assertEqual(self._spawn({**auth, "Host": "host.docker.internal:49504"}), 200)
         self.assertEqual(self._spawn({**auth, "Host": "rebind.attacker.example"}), 421)
 
+    def test_unknown_driver_action_is_404(self):
+        status, _ = self.request(
+            "POST", "/api/drivers/orbstack-vm/reboot-the-host", b"{}", {"Content-Type": "application/json", "Authorization": f"Bearer {self.TOKEN}"}
+        )
+        self.assertEqual(status, 404)
+
     def test_text_plain_spawn_is_refused(self):
         status, _ = self.request(
             "POST", "/api/drivers/orbstack-vm/spawn", b'{"repo":"o/r"}', {"Content-Type": "text/plain", "Authorization": f"Bearer {self.TOKEN}"}

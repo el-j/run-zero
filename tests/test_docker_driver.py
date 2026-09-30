@@ -44,8 +44,8 @@ class TestDockerDriver(unittest.TestCase):
         self.assertEqual(driver.network, "host")
         self.assertEqual(driver.runner_image_prefix, "local-github-runner")
         self.assertIs(driver._registry_mirror_checked, False)
-        self.assertEqual(driver._build_failure_counts, {})
-        self.assertEqual(driver._build_retry_after, {})
+        self.assertEqual(driver._backoff.failure_counts, {})
+        self.assertEqual(driver._backoff.retry_after, {})
 
     def test_init_env_vars_override_constructor_defaults(self):
         # DOCKER_SOCK/DOCKER_NETWORK env vars must win over the constructor's own
@@ -91,7 +91,7 @@ class TestDockerDriver(unittest.TestCase):
         self.assertFalse(self.driver._image_exists("amd64"))
 
     def test_build_cooldown_remaining_zero_when_never_failed(self):
-        self.assertEqual(self.driver._build_cooldown_remaining("amd64"), 0.0)
+        self.assertEqual(self.driver._backoff.remaining("amd64"), 0.0)
 
     @patch("shutil.which", return_value="/usr/local/bin/docker")
     @patch("subprocess.run")
@@ -744,14 +744,14 @@ class TestDockerDriverImageBuildReporting(unittest.TestCase):
 
     @patch("threading.Thread", _SyncThread)
     def test_build_runner_image_async_dedupes_when_already_building(self):
-        self.driver._building_arches.add("amd64")
+        self.driver._backoff.in_progress.add("amd64")
         with patch("subprocess.run") as mock_run:
             self.driver._build_runner_image_async("amd64")
             mock_run.assert_not_called()
 
     @patch("threading.Thread", _SyncThread)
     def test_build_runner_image_async_skips_during_cooldown(self):
-        self.driver._build_retry_after["amd64"] = time.monotonic() + 100
+        self.driver._backoff.retry_after["amd64"] = time.monotonic() + 100
         with patch("subprocess.run") as mock_run:
             self.driver._build_runner_image_async("amd64")
             mock_run.assert_not_called()
@@ -759,27 +759,27 @@ class TestDockerDriverImageBuildReporting(unittest.TestCase):
     @patch("threading.Thread", _SyncThread)
     @patch.object(DockerDriver, "_build_runner_image", return_value=True)
     def test_build_runner_image_async_success_resets_failure_state(self, mock_build):
-        self.driver._build_failure_counts["amd64"] = 2
-        self.driver._build_retry_after["amd64"] = time.monotonic() - 1  # cooldown already expired
+        self.driver._backoff.failure_counts["amd64"] = 2
+        self.driver._backoff.retry_after["amd64"] = time.monotonic() - 1  # cooldown already expired
         self.driver._build_runner_image_async("amd64")
-        self.assertNotIn("amd64", self.driver._building_arches)
-        self.assertEqual(self.driver._build_failure_counts["amd64"], 0)
-        self.assertNotIn("amd64", self.driver._build_retry_after)
+        self.assertNotIn("amd64", self.driver._backoff.in_progress)
+        self.assertEqual(self.driver._backoff.failure_counts["amd64"], 0)
+        self.assertNotIn("amd64", self.driver._backoff.retry_after)
 
     @patch("threading.Thread", _SyncThread)
     @patch.object(DockerDriver, "_build_runner_image", return_value=False)
     def test_build_runner_image_async_failure_sets_cooldown_and_reports(self, mock_build):
         before = time.monotonic()
         self.driver._build_runner_image_async("amd64")
-        self.assertNotIn("amd64", self.driver._building_arches)
-        self.assertEqual(self.driver._build_failure_counts["amd64"], 1)
-        self.assertIn("amd64", self.driver._build_retry_after)
+        self.assertNotIn("amd64", self.driver._backoff.in_progress)
+        self.assertEqual(self.driver._backoff.failure_counts["amd64"], 1)
+        self.assertIn("amd64", self.driver._backoff.retry_after)
         self.assertEqual(self.events[-1]["status"], "cooldown")
         # Mutation-prone: the previous assertion only checked key *presence*, not the
         # actual value -- a `+` -> `-` typo in the retry_after assignment would set the
         # cooldown deadline in the PAST (i.e. no cooldown at all) and still pass. The
         # deadline must be strictly in the future, ~30s out for the first failure.
-        remaining = self.driver._build_retry_after["amd64"] - before
+        remaining = self.driver._backoff.retry_after["amd64"] - before
         self.assertGreater(remaining, 25)
         self.assertLess(remaining, 35)
 
@@ -794,11 +794,11 @@ class TestDockerDriverImageBuildReporting(unittest.TestCase):
         # backing off 900s each time" retry pattern.
         expected_by_failure_count = {1: 30, 2: 60, 3: 120, 4: 240, 5: 480, 6: 900, 7: 900}
         for failures, expected_cooldown in expected_by_failure_count.items():
-            self.driver._build_failure_counts["amd64"] = failures - 1
-            self.driver._build_retry_after.pop("amd64", None)
+            self.driver._backoff.failure_counts["amd64"] = failures - 1
+            self.driver._backoff.retry_after.pop("amd64", None)
             before = time.monotonic()
             self.driver._build_runner_image_async("amd64")
-            actual_cooldown = self.driver._build_retry_after["amd64"] - before
+            actual_cooldown = self.driver._backoff.retry_after["amd64"] - before
             self.assertAlmostEqual(actual_cooldown, expected_cooldown, delta=2)
 
     @patch("subprocess.run")
@@ -809,13 +809,13 @@ class TestDockerDriverImageBuildReporting(unittest.TestCase):
     @patch("subprocess.run")
     def test_ensure_runtime_assets_returns_false_when_already_building(self, mock_run):
         mock_run.return_value = MagicMock(returncode=1)  # _image_exists() -> False
-        self.driver._building_arches.add("amd64")
+        self.driver._backoff.in_progress.add("amd64")
         self.assertFalse(self.driver.ensure_runtime_assets("amd64"))
 
     @patch("subprocess.run")
     def test_ensure_runtime_assets_returns_false_during_cooldown(self, mock_run):
         mock_run.return_value = MagicMock(returncode=1)  # _image_exists() -> False
-        self.driver._build_retry_after["amd64"] = time.monotonic() + 100
+        self.driver._backoff.retry_after["amd64"] = time.monotonic() + 100
         self.assertFalse(self.driver.ensure_runtime_assets("amd64"))
 
     @patch("threading.Thread", _SyncThread)
