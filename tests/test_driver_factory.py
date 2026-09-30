@@ -3,9 +3,10 @@ Unit tests for Driver Factory and RunnerInfo model.
 """
 
 import unittest
-from unittest.mock import patch
+from typing import Any
+from unittest.mock import MagicMock, patch
 
-from drivers import RunnerDriver, RunnerInfo, get_available_drivers, get_driver
+from drivers import RunnerDriver, RunnerInfo, canonical_backend, get_available_drivers, get_driver, select_default_driver
 from drivers.bridge_driver import BridgeVMDriver
 from drivers.docker_driver import DockerDriver
 from drivers.multipass_driver import MultipassDriver
@@ -261,6 +262,39 @@ class TestDriverFactory(unittest.TestCase):
             driver = get_driver("auto")
         self.assertIsInstance(driver, BridgeVMDriver)
         self.assertEqual(driver.name(), "multipass")
+
+
+class TestSelectDefaultDriver(unittest.TestCase):
+    """#43: the default driver comes FROM the registry, never a second instance."""
+
+    def test_explicit_backend_alias_returns_registry_instance(self):
+        vm = MagicMock()
+        registry: dict[str, Any] = {"docker": MagicMock(), "orbstack-vm": vm}
+        self.assertIs(select_default_driver(registry, "OrbStack"), vm)
+
+    def test_auto_follows_priority_within_registry(self):
+        wsl = MagicMock()
+        self.assertIs(select_default_driver({"multipass": MagicMock(), "wsl2": wsl}, "auto"), wsl)
+
+    def test_unavailable_backend_is_created_once_and_registered(self):
+        registry: dict[str, Any] = {}
+        with patch.object(DockerDriver, "is_available", return_value=False):
+            first = select_default_driver(registry, "docker")
+        self.assertIsInstance(first, DockerDriver)
+        self.assertIs(registry["docker"], first)
+        self.assertIs(select_default_driver(registry, "docker"), first)
+
+    def test_auto_with_empty_registry_falls_back_to_docker(self):
+        registry: dict[str, Any] = {}
+        self.assertIsInstance(select_default_driver(registry, "hybrid"), DockerDriver)
+
+    def test_unknown_backend_raises(self):
+        with self.assertRaises(ValueError):
+            select_default_driver({}, "kubernetes")
+
+    def test_canonical_backend(self):
+        self.assertEqual(canonical_backend(" WSL "), "wsl2")
+        self.assertEqual(canonical_backend("container"), "docker")
 
 
 if __name__ == "__main__":

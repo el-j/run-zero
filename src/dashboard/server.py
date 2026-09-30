@@ -185,11 +185,15 @@ class DashboardRequestHandler(BaseHTTPRequestHandler):
             self._send_json(200, res)
             return
 
-        # Only /api/actions/prune remains.
+        # Only /api/actions/prune remains. Use the autoscaler's own driver registry when one
+        # was injected (so pruning shares its build/cooldown state); a standalone dashboard
+        # has none and discovers drivers itself.
         try:
-            from drivers import get_available_drivers
+            drivers = getattr(self.server, "runner_drivers", None)
+            if drivers is None:
+                from drivers import get_available_drivers
 
-            drivers = get_available_drivers()
+                drivers = get_available_drivers()
             for d in drivers.values():
                 runners = d.list_runners()
                 d.prune_exited(runners)
@@ -202,10 +206,15 @@ class DashboardRequestHandler(BaseHTTPRequestHandler):
 class DashboardServer:
     """Manages the Dashboard HTTP & SSE server lifecycle."""
 
-    def __init__(self, host: str = DEFAULT_DASHBOARD_HOST, port: int = DEFAULT_DASHBOARD_PORT):
-        """Store the bind address/port; the server isn't started until `start()` is called."""
+    def __init__(self, host: str = DEFAULT_DASHBOARD_HOST, port: int = DEFAULT_DASHBOARD_PORT, drivers: dict[str, Any] | None = None):
+        """Store the bind address/port and optional driver registry; nothing starts until `start()`.
+
+        `drivers` is the autoscaler's registry, used by the prune action instead of building
+        fresh driver instances per request.
+        """
         self.host = host
         self.port = port
+        self.drivers = drivers
         self.httpd: ThreadingHTTPServer | None = None
         self.thread: threading.Thread | None = None
         self._is_running = False
@@ -227,6 +236,7 @@ class DashboardServer:
         # dependency) gives each connection its own thread so a long-lived
         # SSE stream can't starve every other request.
         self.httpd = ThreadingHTTPServer((self.host, self.port), DashboardRequestHandler)
+        self.httpd.runner_drivers = self.drivers  # type: ignore[attr-defined]
         self._is_running = True
         print(f"[Dashboard] 📊 Real-Time Web UI running at http://localhost:{self.port}")
 

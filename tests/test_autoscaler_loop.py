@@ -201,6 +201,16 @@ class TestRepoMode(ScalerTestCase):
         vm.spawn_runner.assert_called_once()
         docker.spawn_runner.assert_called_once()
 
+    def test_no_fallback_to_a_different_instance_of_the_same_backend(self):
+        # #43: the fallback compared object identity, so a duplicate instance of the default
+        # backend counted as "different" and the same backend was tried twice.
+        self.queue(job(1, "services"))
+        default, duplicate = mock_driver("docker", spawn=None), mock_driver("docker", spawn=None)
+        with patch("autoscaler.select_driver_for_job", return_value=(duplicate, "services")):
+            self.scaler(drivers={"docker": default}, default=default).run_once()
+        duplicate.spawn_runner.assert_called_once()
+        default.spawn_runner.assert_not_called()
+
     def test_no_fallback_when_default_driver_itself_failed(self):
         self.queue(job())
         driver = mock_driver(spawn=None)
@@ -389,12 +399,36 @@ class TestMain(ScalerTestCase):
         driver = driver or mock_driver()
         with (
             patch("autoscaler.get_available_drivers", return_value={driver.name(): driver}),
-            patch("autoscaler.get_driver", return_value=driver),
             patch.object(Scaler, "run_once", autospec=True, side_effect=lambda _s: autoscaler.github_api.shutdown_event.set()),
             patch("autoscaler.signal.signal", side_effect=on_signal),
         ):
             autoscaler.main(config)
         return driver
+
+    def test_default_driver_is_taken_from_the_single_registry(self):
+        # #43: main() used to build the default driver separately from the registry, so the
+        # process held two instances of the same backend with independent build locks.
+        docker, vm = mock_driver("docker"), mock_driver("orbstack-vm")
+        registry = {"docker": docker, "orbstack-vm": vm}
+        built: list[Scaler] = []
+
+        def record_and_stop(scaler: Scaler) -> None:
+            built.append(scaler)
+            autoscaler.github_api.shutdown_event.set()
+
+        with (
+            patch("autoscaler.get_available_drivers", return_value=registry),
+            patch.object(Scaler, "run_once", autospec=True, side_effect=record_and_stop),
+            patch("autoscaler.signal.signal"),
+        ):
+            autoscaler.main(self.config(runner_backend="orbstack-vm"))
+        self.assertIs(built[0].default_driver, registry["orbstack-vm"])
+        self.assertIs(built[0].drivers, registry)
+
+    def test_dashboard_gets_the_scalers_driver_registry(self):
+        with patch("autoscaler.DashboardServer") as server_cls:
+            driver = self.run_main(self.config(dashboard_enabled=True))
+        self.assertEqual(server_cls.call_args.kwargs["drivers"], {"docker": driver})
 
     def test_runs_until_shutdown_then_cleans_up(self):
         self.run_main(self.config()).cleanup_all.assert_called_once()

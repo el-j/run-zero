@@ -496,6 +496,20 @@ class TestDashboardServer(unittest.TestCase):
             mock_driver.prune_exited.assert_called_once()
 
     @patch("drivers.get_available_drivers")
+    def test_action_prune_uses_injected_registry(self, mock_get_avail):
+        # #43: with the autoscaler's registry injected, prune must use those instances
+        # rather than constructing fresh drivers on every request.
+        injected = MagicMock()
+        injected.list_runners.return_value = []
+        assert self.server.httpd is not None
+        self.server.httpd.runner_drivers = {"docker": injected}  # type: ignore[attr-defined]
+        req = urllib.request.Request(f"{self.base_url}/api/actions/prune", data=b"{}", headers={"Content-Type": "application/json"}, method="POST")
+        with urllib.request.urlopen(req, timeout=3.0) as resp:
+            self.assertEqual(resp.status, 200)
+        injected.prune_exited.assert_called_once()
+        mock_get_avail.assert_not_called()
+
+    @patch("drivers.get_available_drivers")
     def test_action_prune_exception_returns_500(self, mock_get_avail):
         mock_get_avail.side_effect = RuntimeError("driver discovery failed")
         req = urllib.request.Request(f"{self.base_url}/api/actions/prune", data=b"{}", headers={"Content-Type": "application/json"}, method="POST")

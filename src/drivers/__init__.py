@@ -175,105 +175,115 @@ class RunnerDriver(ABC):
         return True
 
 
+# Every accepted RUNNER_BACKEND spelling -> canonical backend name ("auto" picks one).
+BACKEND_ALIASES: dict[str, str] = {
+    "docker": "docker",
+    "container": "docker",
+    "orb": "orbstack-vm",
+    "orbstack": "orbstack-vm",
+    "orbstack-vm": "orbstack-vm",
+    "vm-orb": "orbstack-vm",
+    "wsl": "wsl2",
+    "wsl2": "wsl2",
+    "windows": "wsl2",
+    "multipass": "multipass",
+    "canonical-multipass": "multipass",
+    "auto": "auto",
+    "hybrid": "auto",
+}
+
+# Order in which "auto" prefers backends: Docker is the fast, lightweight baseline.
+AUTO_PRIORITY = ("docker", "orbstack-vm", "wsl2", "multipass")
+
+
+def canonical_backend(name: str) -> str:
+    """Resolve a RUNNER_BACKEND alias to its canonical name; ValueError if unknown."""
+    canonical = BACKEND_ALIASES.get(name.lower().strip())
+    if canonical is None:
+        raise ValueError(f"Unknown runner backend driver: '{name}'. Valid options: docker, orbstack-vm, wsl2, multipass, auto")
+    return canonical
+
+
+def _native_factories(on_image_event: ImageEventCallback | None) -> dict[str, Callable[[], RunnerDriver]]:
+    """Canonical backend name -> constructor for the host-native driver, in AUTO_PRIORITY order."""
+    from .docker_driver import DockerDriver
+    from .multipass_driver import MultipassDriver
+    from .orbstack_vm_driver import OrbStackVMDriver
+    from .wsl_driver import WSL2Driver
+
+    return {
+        "docker": lambda: DockerDriver(on_image_event=on_image_event),
+        "orbstack-vm": lambda: OrbStackVMDriver(on_image_event=on_image_event),
+        "wsl2": WSL2Driver,
+        "multipass": MultipassDriver,
+    }
+
+
+def _usable_driver(backend: str, on_image_event: ImageEventCallback | None) -> RunnerDriver | None:
+    """The native driver if available, else a reachable Host VM Bridge proxy for it, else None."""
+    from .bridge_driver import BridgeVMDriver
+
+    native = _native_factories(on_image_event)[backend]()
+    if native.is_available():
+        return native
+    bridge = BridgeVMDriver(backend)
+    return bridge if bridge.is_available() else None
+
+
 def get_available_drivers(on_image_event: ImageEventCallback | None = None) -> dict[str, RunnerDriver]:
-    """Discover and return all drivers available on the host system or via Host VM Bridge.
+    """Discover every usable backend (native, or via the Host VM Bridge) as a name -> driver registry.
+
+    The autoscaler builds this ONCE per process and takes its default driver from it (see
+    `select_default_driver`): per-instance state such as golden-image build locks and
+    spawn cooldowns must not be split across duplicate driver objects.
 
     `on_image_event`, when given, is forwarded to drivers that build golden images (currently
     Docker and OrbStack VM) so they can report structured build-status events (see
     `dashboard.state.DashboardState.report_image_build`) instead of only printing to stdout/stderr.
     """
-    from .bridge_driver import BridgeVMDriver
-    from .docker_driver import DockerDriver
-    from .multipass_driver import MultipassDriver
-    from .orbstack_vm_driver import OrbStackVMDriver
-    from .wsl_driver import WSL2Driver
-
-    drivers = {}
-    candidates = [DockerDriver(on_image_event=on_image_event), OrbStackVMDriver(on_image_event=on_image_event), WSL2Driver(), MultipassDriver()]
-
-    for d in candidates:
-        if d.is_available():
-            drivers[d.name()] = d
-        else:
-            # If native CLI tool is not available (e.g. inside a container), check Host VM Bridge
-            bridge_candidate = BridgeVMDriver(d.name())
-            if bridge_candidate.is_available():
-                drivers[d.name()] = bridge_candidate
-
+    drivers: dict[str, RunnerDriver] = {}
+    for backend in AUTO_PRIORITY:
+        driver = _usable_driver(backend, on_image_event)
+        if driver is not None:
+            drivers[backend] = driver
     return drivers
 
 
-def get_driver(name: str = "auto", on_image_event: ImageEventCallback | None = None) -> RunnerDriver:
-    """Instantiate and return the requested driver or auto-select best available.
+def select_default_driver(drivers: dict[str, RunnerDriver], backend: str, on_image_event: ImageEventCallback | None = None) -> RunnerDriver:
+    """Return the default driver for RUNNER_BACKEND, taken from the `drivers` registry.
 
-    See `get_available_drivers()` for what `on_image_event` is used for.
+    "auto" picks the first available backend in AUTO_PRIORITY. When the requested backend
+    isn't in the registry (unavailable), its native driver is created and ADDED to the
+    registry, so the process still holds exactly one instance per backend (it will fail to
+    spawn and log why, as before). With an empty registry "auto" falls back to Docker.
     """
-    from .bridge_driver import BridgeVMDriver
-    from .docker_driver import DockerDriver
-    from .multipass_driver import MultipassDriver
-    from .orbstack_vm_driver import OrbStackVMDriver
-    from .wsl_driver import WSL2Driver
+    canonical = canonical_backend(backend)
+    if canonical == "auto":
+        canonical = next((name for name in AUTO_PRIORITY if name in drivers), "docker")
+    if canonical not in drivers:
+        drivers[canonical] = _native_factories(on_image_event)[canonical]()
+    return drivers[canonical]
 
-    name = name.lower().strip()
 
-    if name in ("docker", "container"):
-        return DockerDriver(on_image_event=on_image_event)
-    elif name in ("orb", "orbstack", "orbstack-vm", "vm-orb"):
-        orb_native = OrbStackVMDriver(on_image_event=on_image_event)
-        if orb_native.is_available():
-            return orb_native
-        bridge = BridgeVMDriver("orbstack-vm")
-        if bridge.is_available():
-            return bridge
-        return orb_native
-    elif name in ("wsl", "wsl2", "windows"):
-        wsl_native = WSL2Driver()
-        if wsl_native.is_available():
-            return wsl_native
-        wsl_bridge = BridgeVMDriver("wsl2")
-        if wsl_bridge.is_available():
-            return wsl_bridge
-        return wsl_native
-    elif name in ("multipass", "canonical-multipass"):
-        mp_native = MultipassDriver()
-        if mp_native.is_available():
-            return mp_native
-        mp_bridge = BridgeVMDriver("multipass")
-        if mp_bridge.is_available():
-            return mp_bridge
-        return mp_native
-    elif name in ("auto", "hybrid"):
-        # Auto-selection priority:
-        # 1. Docker (fastest, lightweight baseline)
-        docker_driver = DockerDriver(on_image_event=on_image_event)
-        if docker_driver.is_available():
-            return docker_driver
+def get_driver(name: str = "auto", on_image_event: ImageEventCallback | None = None) -> RunnerDriver:
+    """Build one driver for `name` outside any registry (used by the VM bridge and build scripts).
 
-        # 2. OrbStack VM (if on macOS without docker daemon)
-        orb_driver = OrbStackVMDriver(on_image_event=on_image_event)
-        if orb_driver.is_available():
-            return orb_driver
-        orb_bridge = BridgeVMDriver("orbstack-vm")
-        if orb_bridge.is_available():
-            return orb_bridge
-
-        # 3. WSL2 (if on Windows)
-        wsl_driver = WSL2Driver()
-        if wsl_driver.is_available():
-            return wsl_driver
-        wsl_bridge = BridgeVMDriver("wsl2")
-        if wsl_bridge.is_available():
-            return wsl_bridge
-
-        # 4. Multipass
-        multipass_driver = MultipassDriver()
-        if multipass_driver.is_available():
-            return multipass_driver
-        mp_bridge = BridgeVMDriver("multipass")
-        if mp_bridge.is_available():
-            return mp_bridge
-
-        # Fallback to Docker driver
-        return docker_driver
-
-    raise ValueError(f"Unknown runner backend driver: '{name}'. Valid options: docker, orbstack-vm, wsl2, multipass, auto")
+    Explicit backends return the native driver if available, else a reachable bridge proxy,
+    else the native driver anyway ("docker" is returned without probing). "auto" follows
+    AUTO_PRIORITY. Raises ValueError for an unknown backend name.
+    """
+    canonical = canonical_backend(name)
+    if canonical == "auto":
+        # Stop at the first usable backend -- no need to probe the rest. Docker is only
+        # considered natively here; the Host VM Bridge exists for the VM backends.
+        docker = _native_factories(on_image_event)["docker"]()
+        if docker.is_available():
+            return docker
+        for backend in AUTO_PRIORITY[1:]:
+            driver = _usable_driver(backend, on_image_event)
+            if driver is not None:
+                return driver
+        return docker
+    if canonical == "docker":
+        return _native_factories(on_image_event)["docker"]()
+    return _usable_driver(canonical, on_image_event) or _native_factories(on_image_event)[canonical]()

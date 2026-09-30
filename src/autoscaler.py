@@ -23,7 +23,7 @@ from cache_manager import init_cache_dirs
 from config import Config, ConfigError, load_config
 from dashboard import DashboardServer, dashboard_state
 from discovery import discover_repositories
-from drivers import RunnerDriver, RunnerInfo, get_available_drivers, get_driver
+from drivers import RunnerDriver, RunnerInfo, get_available_drivers, select_default_driver
 from github_api import get_queued_job_details, refresh_actions_billing, refresh_rate_limit
 from reconciler import reconcile_idle_orphans, reconcile_zombie_runners
 from router import select_driver_for_job
@@ -255,8 +255,8 @@ class Scaler:
         spawned_id = driver.spawn_runner(**spawn_args)
         if spawned_id:
             return spawned_id, driver, arch
-        if driver == self.default_driver:
-            return None
+        if driver is self.default_driver or driver.name() == self.default_driver.name():
+            return None  # already tried the default backend; nothing different to fall back to
         log_print(f"[Autoscaler] Driver '{driver.name()}' could not spawn runner for '{job.get('name')}' -- falling back to '{self.default_driver.name()}'.")
         if not ensure_driver_runtime_assets(self.default_driver, arch):
             return None
@@ -341,7 +341,7 @@ def _init_dashboard(scaler: Scaler) -> DashboardServer | None:
     if not cfg.dashboard_enabled:
         return None
     try:
-        server = DashboardServer(host=cfg.dashboard_host, port=cfg.dashboard_port)
+        server = DashboardServer(host=cfg.dashboard_host, port=cfg.dashboard_port, drivers=scaler.drivers)
         server.start(blocking=False)
         return server
     except Exception as e:
@@ -386,8 +386,10 @@ def main(config: Config | None = None) -> None:
             sys.exit(1)
     validate_startup(config)
 
+    # One registry per process; the default driver is taken FROM it (#43), so golden-image
+    # build locks and cooldowns are never split across duplicate driver instances.
     drivers = get_available_drivers(on_image_event=dashboard_state.report_image_build)
-    default_driver = get_driver(config.runner_backend, on_image_event=dashboard_state.report_image_build)
+    default_driver = select_default_driver(drivers, config.runner_backend, on_image_event=dashboard_state.report_image_build)
     scaler = Scaler(config, drivers, default_driver)
     dashboard_server = _init_dashboard(scaler)
     _print_banner(scaler)
