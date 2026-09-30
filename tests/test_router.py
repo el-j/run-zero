@@ -28,13 +28,13 @@ class TestRouter(unittest.TestCase):
         job = {"name": "e2e", "labels": ["self-hosted", "browser"]}
         driver, mode = select_driver_for_job(job, self.docker_driver, self.available_drivers, auto_route_vm=True)
         self.assertEqual(driver.name(), "orbstack-vm")
-        self.assertEqual(mode, "vm")
+        self.assertEqual(mode, "label:browser")
 
     def test_select_driver_job_name_tokenization(self):
         job = {"name": "run-lighthouse-audit", "labels": ["self-hosted"]}
         driver, mode = select_driver_for_job(job, self.docker_driver, self.available_drivers, auto_route_vm=True)
         self.assertEqual(driver.name(), "orbstack-vm")
-        self.assertEqual(mode, "vm")
+        self.assertEqual(mode, "name:lighthouse")
 
     def test_select_driver_auto_route_disabled(self):
         job = {"name": "chrome-e2e", "labels": ["browser"]}
@@ -53,7 +53,7 @@ class TestRouter(unittest.TestCase):
         job = {"name": "API — Tests", "labels": ["self-hosted", "local", "amd64"], "declares_services": True}
         driver, mode = select_driver_for_job(job, self.docker_driver, self.available_drivers, auto_route_vm=True)
         self.assertEqual(driver.name(), "orbstack-vm")
-        self.assertEqual(mode, "vm")
+        self.assertEqual(mode, "services")
 
     def test_select_driver_declares_services_false_no_name_match_stays_container(self):
         job = {"name": "API — Lint", "labels": ["self-hosted", "local"], "declares_services": False}
@@ -67,7 +67,7 @@ class TestRouter(unittest.TestCase):
         job = {"name": "run-lighthouse-audit", "labels": ["self-hosted"], "declares_services": None}
         driver, mode = select_driver_for_job(job, self.docker_driver, self.available_drivers, auto_route_vm=True)
         self.assertEqual(driver.name(), "orbstack-vm")
-        self.assertEqual(mode, "vm")
+        self.assertEqual(mode, "name:lighthouse")
 
     def test_select_driver_declares_services_none_and_no_name_match_stays_container(self):
         # Unknown workflow resolution (declares_services=None) should defer to
@@ -82,7 +82,13 @@ class TestRouter(unittest.TestCase):
         job = {"name": "API — Tests", "labels": ["self-hosted"], "declares_services": True}
         driver, mode = select_driver_for_job(job, self.docker_driver, {"docker": self.docker_driver}, auto_route_vm=True)
         self.assertEqual(driver.name(), "docker")
-        self.assertEqual(mode, "container")
+        self.assertEqual(mode, "container:no-vm-driver")
+
+    def test_reason_prefers_services_then_label_then_name(self):
+        both = {"name": "e2e-suite", "labels": ["self-hosted", "vm"], "declares_services": True}
+        self.assertEqual(select_driver_for_job(both, self.docker_driver, self.available_drivers)[1], "services")
+        label_and_name = {"name": "e2e-suite", "labels": ["self-hosted", "vm"]}
+        self.assertEqual(select_driver_for_job(label_and_name, self.docker_driver, self.available_drivers)[1], "label:vm")
 
 
 if __name__ == "__main__":

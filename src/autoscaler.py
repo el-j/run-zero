@@ -15,6 +15,7 @@ from __future__ import annotations
 import signal
 import sys
 import time
+from collections import OrderedDict
 from collections.abc import Callable
 from typing import Any
 
@@ -30,6 +31,8 @@ from router import select_driver_for_job
 from version import __version__
 
 ARM_LABELS = ("arm64", "aarch64", "arm")
+# Job ids remembered for once-per-job routing statistics (oldest forgotten first).
+RECORDED_JOBS_LIMIT = 4096
 AMD_ARCH_ALIASES = ("amd64", "x64", "x86_64")
 
 
@@ -122,6 +125,7 @@ class Scaler:
         self._last_rate_limit_refresh = 0.0
         self._last_billing_refresh = 0.0
         self._standby_cursor = 0
+        self._recorded_jobs: OrderedDict[Any, None] = OrderedDict()
 
     # -- quota & discovery --------------------------------------------------------------
 
@@ -278,9 +282,8 @@ class Scaler:
     def _spawn_for_job(self, repo: str, job: dict[str, Any]) -> tuple[str, RunnerDriver, str] | None:
         """Route `job` to a driver and spawn, falling back to the default driver on failure."""
         cfg = self.config
-        driver, _ = select_driver_for_job(job, self.default_driver, self.drivers, cfg.auto_route_vm)
+        driver, reason = select_driver_for_job(job, self.default_driver, self.drivers, cfg.auto_route_vm)
         arch = resolve_job_arch(job.get("labels", []), cfg.runner_arch)
-        dashboard_state.record_routing_decision(driver.name(), job.get("name", ""))
         if not ensure_driver_runtime_assets(driver, arch):
             return None
 
@@ -296,6 +299,7 @@ class Scaler:
         }
         spawned_id = driver.spawn_runner(**spawn_args)
         if spawned_id:
+            self._record_routing(job, driver, reason)
             return spawned_id, driver, arch
         if driver is self.default_driver or driver.name() == self.default_driver.name():
             return None  # already tried the default backend; nothing different to fall back to
@@ -303,7 +307,25 @@ class Scaler:
         if not ensure_driver_runtime_assets(self.default_driver, arch):
             return None
         spawned_id = self.default_driver.spawn_runner(**spawn_args)
-        return (spawned_id, self.default_driver, arch) if spawned_id else None
+        if not spawned_id:
+            return None
+        self._record_routing(job, self.default_driver, "container")
+        return spawned_id, self.default_driver, arch
+
+    def _record_routing(self, job: dict[str, Any], driver: RunnerDriver, reason: str) -> None:
+        """Count a routing decision once per job, and only after its runner actually spawned.
+
+        Counting before the spawn (as this used to) re-counted every queued job on every poll
+        while it waited, e.g. for a golden-image build.
+        """
+        job_id = job.get("id")
+        if job_id is not None:
+            if job_id in self._recorded_jobs:
+                return
+            self._recorded_jobs[job_id] = None
+            while len(self._recorded_jobs) > RECORDED_JOBS_LIMIT:
+                self._recorded_jobs.popitem(last=False)
+        dashboard_state.record_routing_decision(driver.is_vm, reason)
 
     # -- telemetry ---------------------------------------------------------------------
 

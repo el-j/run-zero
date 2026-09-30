@@ -33,7 +33,13 @@ VM_TRIGGER_LABELS = {
 def select_driver_for_job(
     job: dict[str, Any], default_driver: RunnerDriver, available_drivers: dict[str, RunnerDriver], auto_route_vm: bool = True
 ) -> tuple[RunnerDriver, str]:
-    """Determine whether a job requires a VM driver or a standard container driver."""
+    """Pick the driver for a job and return it with a structured routing reason.
+
+    The reason is "services" (the workflow declares `services:`/`container:`),
+    "label:<label>" or "name:<token>" (a VM trigger in the job's labels / name),
+    "container" (no VM needed or routing disabled), or "container:no-vm-driver"
+    (a VM was needed but none is available).
+    """
     job_labels = job.get("labels", [])
 
     # Tokenize job name and check labels for VM triggers. This is a best-effort
@@ -60,18 +66,29 @@ def select_driver_for_job(
     # behavior for simple jobs while still honoring explicit services/container
     # detections.
     needs_vm = name_or_label_match or declares_services is True
+    if not needs_vm or not auto_route_vm:
+        return default_driver, "container"
 
-    if needs_vm and auto_route_vm:
-        for vm_name in ("orbstack-vm", "wsl2", "multipass"):
-            if vm_name in available_drivers:
-                return available_drivers[vm_name], "vm"
-        print(
-            f"[Router] ⚠️ Job '{job.get('name', '?')}' needs a VM "
-            f"(declares_services={declares_services}, name/label match={name_or_label_match}) "
-            f"but no VM driver is available -- falling back to {default_driver.name()}. "
-            "A services:/container: job running here will likely fail to reach "
-            "its service containers at localhost.",
-            file=sys.stderr,
-        )
+    reason = _vm_reason(declares_services, job_labels, job_name_tokens)
+    for vm_name in ("orbstack-vm", "wsl2", "multipass"):
+        if vm_name in available_drivers:
+            return available_drivers[vm_name], reason
+    print(
+        f"[Router] ⚠️ Job '{job.get('name', '?')}' needs a VM "
+        f"(declares_services={declares_services}, name/label match={name_or_label_match}) "
+        f"but no VM driver is available -- falling back to {default_driver.name()}. "
+        "A services:/container: job running here will likely fail to reach "
+        "its service containers at localhost.",
+        file=sys.stderr,
+    )
+    return default_driver, "container:no-vm-driver"
 
-    return default_driver, "container"
+
+def _vm_reason(declares_services: Any, job_labels: list[str], job_name_tokens: set[str]) -> str:
+    """The most specific reason a job needs a VM: declared services, then a label, then its name."""
+    if declares_services is True:
+        return "services"
+    label = next((label for label in job_labels if label in VM_TRIGGER_LABELS), None)
+    if label:
+        return f"label:{label}"
+    return f"name:{sorted(job_name_tokens & VM_TRIGGER_LABELS)[0]}"

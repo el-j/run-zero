@@ -352,6 +352,56 @@ class TestOrgMode(ScalerTestCase):
         self.assertEqual(driver.spawn_runner.call_count, 2)
 
 
+class TestRoutingStatistics(ScalerTestCase):
+    """#49: counted once per job, after a successful spawn, VM-ness from the driver type."""
+
+    def setUp(self):
+        super().setUp()
+        p = patch.object(autoscaler.dashboard_state, "record_routing_decision")
+        self.record = p.start()
+        self.addCleanup(p.stop)
+
+    def test_not_recorded_when_spawn_fails(self):
+        self.queue(job())
+        self.scaler(default=mock_driver(spawn=None)).run_once()
+        self.record.assert_not_called()
+
+    def test_recorded_once_per_job_across_polls(self):
+        self.queue(job(42))
+        driver = mock_driver(spawn=unique_ids)
+        driver.is_vm = False
+        scaler = self.scaler(config=self.config(max_runners=10), default=driver)
+        scaler.run_once()
+        driver.list_runners.return_value = []  # runner vanished; job still queued -> respawn
+        scaler.run_once()
+        self.assertEqual(driver.spawn_runner.call_count, 2)
+        self.record.assert_called_once_with(False, "container")
+
+    def test_vm_route_records_driver_is_vm_and_reason(self):
+        self.queue(job(1, "browser"))
+        docker, vm = mock_driver("docker"), mock_driver("wsl2", spawn="wsl-1")
+        vm.is_vm = True
+        self.scaler(drivers={"docker": docker, "wsl2": vm}, default=docker).run_once()
+        self.record.assert_called_once_with(True, "label:browser")
+
+    def test_fallback_counts_as_container_job(self):
+        self.queue(job(1, "services"))
+        docker, vm = mock_driver("docker", spawn="d-1"), mock_driver("orbstack-vm", spawn=None)
+        docker.is_vm = False
+        self.scaler(drivers={"docker": docker, "orbstack-vm": vm}, default=docker).run_once()
+        self.record.assert_called_once_with(False, "container")
+
+    def test_memory_of_recorded_jobs_is_bounded(self):
+        driver = mock_driver(spawn=unique_ids)
+        scaler = self.scaler(default=driver)
+        with patch.object(autoscaler, "RECORDED_JOBS_LIMIT", 2):
+            for i in range(4):
+                scaler._record_routing({"id": i}, driver, "container")
+        self.assertEqual(list(scaler._recorded_jobs), [2, 3])
+        scaler._record_routing({}, driver, "container")  # no id: counted, not remembered
+        self.assertEqual(self.record.call_count, 5)
+
+
 class TestStandbyInRepoMode(ScalerTestCase):
     """#47: MIN_RUNNERS used to be honoured only in ORG mode."""
 

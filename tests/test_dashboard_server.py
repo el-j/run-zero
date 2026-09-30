@@ -118,22 +118,19 @@ class TestDashboardState(unittest.TestCase):
         self.assertEqual(self.state.image_builds, {})
 
     def test_routing_stats(self):
-        self.state.record_routing_decision("docker")
-        self.state.record_routing_decision("orbstack-vm", "services")
-        self.state.record_routing_decision("orbstack-vm", "dind")
-        self.state.record_routing_decision("orbstack-vm", "browser")
-        self.state.record_routing_decision("orbstack-vm", "e2e")
-        self.state.record_routing_decision("orbstack-vm", "systemd")
-        self.state.record_routing_decision("orbstack-vm", "custom")
+        self.state.record_routing_decision(False, "container")
+        for reason in ("services", "label:postgres", "label:dind", "name:chrome", "label:e2e", "name:systemd", "label:vm"):
+            self.state.record_routing_decision(True, reason)
 
-        self.assertEqual(self.state.routing_stats["docker_jobs"], 1)
-        self.assertEqual(self.state.routing_stats["vm_jobs"], 6)
-        self.assertEqual(self.state.routing_stats["vm_triggers_breakdown"]["services"], 1)
-        self.assertEqual(self.state.routing_stats["vm_triggers_breakdown"]["dind"], 1)
-        self.assertEqual(self.state.routing_stats["vm_triggers_breakdown"]["browser"], 1)
-        self.assertEqual(self.state.routing_stats["vm_triggers_breakdown"]["e2e"], 1)
-        self.assertEqual(self.state.routing_stats["vm_triggers_breakdown"]["systemd"], 1)
-        self.assertEqual(self.state.routing_stats["vm_triggers_breakdown"]["custom_label"], 1)
+        stats = self.state.routing_stats
+        self.assertEqual(stats["docker_jobs"], 1)
+        self.assertEqual(stats["vm_jobs"], 7)
+        self.assertEqual(stats["vm_triggers_breakdown"], {"services": 2, "dind": 1, "browser": 1, "e2e": 1, "systemd": 1, "custom_label": 1})
+
+    def test_routing_vm_ness_comes_from_driver_type_not_name(self):
+        # #49: "vm" in engine-name meant wsl2/multipass jobs were counted as Docker jobs.
+        self.state.record_routing_decision(True, "label:wsl")
+        self.assertEqual((self.state.routing_stats["docker_jobs"], self.state.routing_stats["vm_jobs"]), (0, 1))
 
     def test_update_fleet_and_snapshot(self):
         mock_runner = MagicMock()

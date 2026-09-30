@@ -101,6 +101,9 @@ class RunnerInfo:
 class RunnerDriver(ABC):
     """Abstract interface for RunZero execution drivers (Docker containers, OrbStack VMs, WSL2, Multipass)."""
 
+    #: True for drivers that run each job in a full Linux VM (OrbStack, WSL2, Multipass).
+    is_vm: bool = False
+
     @abstractmethod
     def name(self) -> str:
         """Return the unique identifier for this driver."""

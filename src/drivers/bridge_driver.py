@@ -28,6 +28,11 @@ class BridgeVMDriver(RunnerDriver):
         url = bridge_url or os.getenv("HOST_VM_BRIDGE_URL") or DEFAULT_BRIDGE_URL
         self.bridge_url = url.rstrip("/")
 
+    @property
+    def is_vm(self) -> bool:  # type: ignore[override]
+        """A bridge proxy is a VM driver unless it fronts the host's Docker backend."""
+        return self.target_backend != "docker"
+
     def name(self) -> str:
         """Return the wrapped backend's identifier (e.g. "orbstack-vm"), not "bridge" itself."""
         return self.target_backend

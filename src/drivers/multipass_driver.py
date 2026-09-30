@@ -19,6 +19,8 @@ from . import RunnerDriver, RunnerInfo, merge_labels
 class MultipassDriver(RunnerDriver):
     """Runs ephemeral runners as Canonical Multipass VMs -- cross-platform fallback (macOS/Linux/Windows)."""
 
+    is_vm = True
+
     def __init__(self, image: str = "24.04"):
         """Configure the Multipass base image (falls back to the MULTIPASS_IMAGE env var)."""
         self.image = os.getenv("MULTIPASS_IMAGE", image)

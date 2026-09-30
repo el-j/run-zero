@@ -86,6 +86,8 @@ def _vm_created_at_from_ulid(vm_id: str) -> float | None:
 class OrbStackVMDriver(RunnerDriver):
     """Runs ephemeral runners as dedicated OrbStack Linux VMs, cloned per-job from a golden base image."""
 
+    is_vm = True
+
     def __init__(self, distro: str = "ubuntu:24.04", on_image_event: ImageEventCallback | None = None):
         """Configure the base distro golden images are built from, and init per-arch build/tracking state.
 

@@ -308,3 +308,17 @@ class TestMergeLabels(unittest.TestCase):
         self.assertEqual(merge_labels("self-hosted,local,x64", "SELF-HOSTED, gpu ,,x64,cuda"), "self-hosted,local,x64,gpu,cuda")
         self.assertEqual(merge_labels("a,b", None), "a,b")
         self.assertEqual(merge_labels("a,b", ""), "a,b")
+
+
+class TestIsVm(unittest.TestCase):
+    """#49: VM-ness is a property of the driver type, not a substring of its name."""
+
+    def test_driver_types(self):
+        self.assertFalse(DockerDriver.is_vm)
+        self.assertTrue(OrbStackVMDriver.is_vm)
+        self.assertTrue(WSL2Driver.is_vm)
+        self.assertTrue(MultipassDriver.is_vm)
+
+    def test_bridge_follows_its_target_backend(self):
+        self.assertTrue(BridgeVMDriver("wsl2", bridge_url="http://x").is_vm)
+        self.assertFalse(BridgeVMDriver("docker", bridge_url="http://x").is_vm)

@@ -18,6 +18,8 @@ from . import RunnerDriver, RunnerInfo, merge_labels
 class WSL2Driver(RunnerDriver):
     """Runs ephemeral runners as processes inside a WSL2 Linux distro, for the Windows host case."""
 
+    is_vm = True
+
     def __init__(self, distro_base: str = "Ubuntu-24.04"):
         """Configure which WSL distro to run jobs in (falls back to the WSL_DISTRO_BASE env var)."""
         self.distro_base = os.getenv("WSL_DISTRO_BASE", distro_base)

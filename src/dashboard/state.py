@@ -11,7 +11,7 @@ import queue
 import shutil
 import threading
 import time
-from typing import Any
+from typing import Any, ClassVar
 
 from version import __version__
 
@@ -198,31 +198,38 @@ class DashboardState:
         self._refresh_cache_metrics()
         self.broadcast_state()
 
-    def record_routing_decision(self, engine: str, trigger: str | None = None) -> None:
-        """Increment the Docker-vs-VM job counter for `engine`, and classify `trigger` into a bucket if it's a VM job.
+    # Router reason token (after "label:"/"name:") -> dashboard trigger bucket.
+    TRIGGER_BUCKETS: ClassVar[dict[str, str]] = {
+        "services": "services",
+        "service": "services",
+        "postgres": "services",
+        "mysql": "services",
+        "redis": "services",
+        "db": "services",
+        "database": "services",
+        "integration": "services",
+        "dind": "dind",
+        "browser": "browser",
+        "chrome": "browser",
+        "lighthouse": "browser",
+        "e2e": "e2e",
+        "systemd": "systemd",
+    }
 
-        `trigger` is matched by substring against a fixed set of known reasons (service containers,
-        Docker-in-Docker, browser/e2e testing, systemd) and falls into "custom_label" otherwise.
+    def record_routing_decision(self, is_vm: bool, reason: str = "") -> None:
+        """Count one successfully spawned job as Docker or VM, bucketing VM jobs by routing reason.
+
+        `is_vm` comes from the driver type (RunnerDriver.is_vm). `reason` is the router's
+        structured reason ("services", "label:<x>", "name:<token>"); its token maps to a bucket
+        via TRIGGER_BUCKETS, and anything else (e.g. an explicit "vm" label) is "custom_label".
         """
         with self._lock:
-            if "vm" in engine.lower():
-                self.routing_vm_jobs += 1
-                if trigger:
-                    t = trigger.lower()
-                    if "service" in t:
-                        self.routing_triggers["services"] += 1
-                    elif "dind" in t or "docker" in t:
-                        self.routing_triggers["dind"] += 1
-                    elif "browser" in t or "chrome" in t or "lighthouse" in t:
-                        self.routing_triggers["browser"] += 1
-                    elif "e2e" in t or "test" in t:
-                        self.routing_triggers["e2e"] += 1
-                    elif "systemd" in t:
-                        self.routing_triggers["systemd"] += 1
-                    else:
-                        self.routing_triggers["custom_label"] += 1
-            else:
+            if not is_vm:
                 self.routing_docker_jobs += 1
+                return
+            self.routing_vm_jobs += 1
+            token = reason.split(":", 1)[-1].lower()
+            self.routing_triggers[self.TRIGGER_BUCKETS.get(token, "custom_label")] += 1
 
     def report_image_build(self, event: dict[str, Any]) -> None:
         """Record a golden-image build status transition and broadcast it to SSE clients.
