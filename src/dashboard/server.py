@@ -9,11 +9,11 @@ import queue
 import signal
 import sys
 import threading
-from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from http.server import BaseHTTPRequestHandler
 from typing import Any
 from urllib.parse import urlparse
 
-from http_security import RequestRejected, allowed_hosts_from_env, check_host_header, read_json_body, resolve_static_path
+from http_security import ControlPlaneHTTPServer, RequestRejected, allowed_hosts_from_env, check_host_header, read_json_body, resolve_static_path
 from version import __version__
 
 from .state import dashboard_state
@@ -215,7 +215,7 @@ class DashboardServer:
         self.host = host
         self.port = port
         self.drivers = drivers
-        self.httpd: ThreadingHTTPServer | None = None
+        self.httpd: ControlPlaneHTTPServer | None = None
         self.thread: threading.Thread | None = None
         self._is_running = False
 
@@ -235,7 +235,7 @@ class DashboardServer:
         # healthcheck timeout). ThreadingHTTPServer (stdlib since 3.7, no new
         # dependency) gives each connection its own thread so a long-lived
         # SSE stream can't starve every other request.
-        self.httpd = ThreadingHTTPServer((self.host, self.port), DashboardRequestHandler)
+        self.httpd = ControlPlaneHTTPServer((self.host, self.port), DashboardRequestHandler)
         self.httpd.runner_drivers = self.drivers  # type: ignore[attr-defined]
         self._is_running = True
         print(f"[Dashboard] 📊 Real-Time Web UI running at http://localhost:{self.port}")

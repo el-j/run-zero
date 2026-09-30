@@ -350,14 +350,14 @@ class TestBridgeBindPolicy(unittest.TestCase):
             self.assertIsNone(server.httpd)
 
     def test_non_loopback_bind_with_token_allowed(self):
-        with patch.dict(os.environ, {"RUNZERO_BRIDGE_TOKEN": "t"}), patch("vm_bridge.ThreadingHTTPServer") as httpd:
+        with patch.dict(os.environ, {"RUNZERO_BRIDGE_TOKEN": "t"}), patch("vm_bridge.ControlPlaneHTTPServer") as httpd:
             VMBridgeServer(host="0.0.0.0", port=0).start(blocking=False)
         httpd.assert_called_once()
 
     def test_loopback_without_token_warns(self):
         with (
             patch.dict(os.environ, {"RUNZERO_BRIDGE_TOKEN": ""}),
-            patch("vm_bridge.ThreadingHTTPServer"),
+            patch("vm_bridge.ControlPlaneHTTPServer"),
             patch("sys.stderr", new_callable=io.StringIO) as err,
         ):
             VMBridgeServer(host="127.0.0.1", port=0).start(blocking=False)
@@ -377,6 +377,31 @@ class TestBridgeClientSendsToken(unittest.TestCase):
 
     def test_no_header_without_token(self):
         self.assertNotIn("authorization", self._captured_headers({"RUNZERO_BRIDGE_TOKEN": ""}))
+
+
+class TestControlPlaneHTTPServer(unittest.TestCase):
+    """Request-thread error reporting must never raise or spam for client disconnects."""
+
+    def _server(self) -> Any:
+        server = http_security.ControlPlaneHTTPServer.__new__(http_security.ControlPlaneHTTPServer)
+        return server
+
+    def _handle(self, exc: BaseException) -> Any:
+        with patch("sys.exception", return_value=exc), patch("socketserver.BaseServer.handle_error") as base:
+            self._server().handle_error(None, ("127.0.0.1", 1))
+        return base
+
+    def test_client_disconnects_are_ignored(self):
+        for exc in (ConnectionResetError(), BrokenPipeError(), ConnectionAbortedError(), TimeoutError()):
+            with self.subTest(exc=type(exc).__name__):
+                self._handle(exc).assert_not_called()
+
+    def test_other_errors_are_reported(self):
+        self._handle(ValueError("boom")).assert_called_once()
+
+    def test_reporting_failure_never_escapes(self):
+        with patch("sys.exception", return_value=ValueError("boom")), patch("socketserver.BaseServer.handle_error", side_effect=OSError(9, "EBADF")):
+            self._server().handle_error(None, ("127.0.0.1", 1))
 
 
 if __name__ == "__main__":

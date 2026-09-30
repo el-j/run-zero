@@ -600,7 +600,7 @@ class TestDashboardServer(unittest.TestCase):
 
 
 class TestDashboardServerLifecycle(unittest.TestCase):
-    @patch("dashboard.server.ThreadingHTTPServer")
+    @patch("dashboard.server.ControlPlaneHTTPServer")
     def test_start_blocking_stops_cleanly_on_keyboard_interrupt(self, mock_server_cls):
         mock_httpd = MagicMock()
         mock_httpd.serve_forever.side_effect = KeyboardInterrupt()

@@ -11,13 +11,21 @@ import signal
 import sys
 import threading
 from collections.abc import Callable
-from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from http.server import BaseHTTPRequestHandler
 from typing import Any
 from urllib.parse import urlparse
 
 from drivers import RunnerDriver, RunnerInfo, get_available_drivers, get_driver, validate_spawn_target
 from drivers.docker_driver import DockerDriver
-from http_security import RequestRejected, allowed_hosts_from_env, check_bearer_token, check_host_header, is_loopback_host, read_json_body
+from http_security import (
+    ControlPlaneHTTPServer,
+    RequestRejected,
+    allowed_hosts_from_env,
+    check_bearer_token,
+    check_host_header,
+    is_loopback_host,
+    read_json_body,
+)
 from version import __version__
 
 DEFAULT_BRIDGE_PORT = 49504
@@ -272,7 +280,7 @@ class VMBridgeServer:
         """Store the bind address/port; the server isn't started until `start()` is called."""
         self.host = host
         self.port = port
-        self.httpd: ThreadingHTTPServer | None = None
+        self.httpd: ControlPlaneHTTPServer | None = None
         self.thread: threading.Thread | None = None
         self._is_running = False
 
@@ -301,7 +309,7 @@ class VMBridgeServer:
         # runs). ThreadingHTTPServer (stdlib since 3.7, no new dependency)
         # gives each connection its own thread so one long call can't starve
         # the rest of the bridge.
-        self.httpd = ThreadingHTTPServer((self.host, self.port), VMBridgeRequestHandler)
+        self.httpd = ControlPlaneHTTPServer((self.host, self.port), VMBridgeRequestHandler)
         self._is_running = True
         print(f"[VMBridge] 🚀 Host VM Bridge listening on http://{self.host}:{self.port}")
 

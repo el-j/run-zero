@@ -16,11 +16,13 @@ caller-supplied credentials, and destroy VMs. They are therefore protected in la
   or not at all.
 """
 
+import contextlib
 import hmac
 import ipaddress
 import json
 import os
-from http.server import BaseHTTPRequestHandler
+import sys
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from typing import Any
 
 MAX_JSON_BODY_BYTES = 64 * 1024
@@ -38,6 +40,27 @@ class RequestRejected(Exception):
         super().__init__(message)
         self.status = status
         self.message = message
+
+
+# Peer went away mid-request (browser tab closed, SSE client dropped, probe hung up).
+CLIENT_DISCONNECT_ERRORS = (ConnectionResetError, BrokenPipeError, ConnectionAbortedError, TimeoutError)
+
+
+class ControlPlaneHTTPServer(ThreadingHTTPServer):
+    """ThreadingHTTPServer whose per-request error reporting can never take a thread down.
+
+    The stdlib's `handle_error` prints a traceback for every client that disconnects before
+    finishing its request -- routine for a dashboard (closed tabs, dropped SSE streams) -- and
+    if stderr itself is unusable that print raises and escapes the request thread. Client
+    disconnects are ignored; anything else is still reported, best-effort.
+    """
+
+    def handle_error(self, request: Any, client_address: Any) -> None:
+        """Ignore client disconnects; report other request errors without ever raising."""
+        if isinstance(sys.exception(), CLIENT_DISCONNECT_ERRORS):
+            return
+        with contextlib.suppress(Exception):
+            super().handle_error(request, client_address)
 
 
 def is_loopback_host(host: str) -> bool:

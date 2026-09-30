@@ -434,7 +434,7 @@ class TestVMBridge(unittest.TestCase):
 
 
 class TestVMBridgeServerLifecycle(unittest.TestCase):
-    @patch("vm_bridge.ThreadingHTTPServer")
+    @patch("vm_bridge.ControlPlaneHTTPServer")
     def test_start_blocking_stops_cleanly_on_keyboard_interrupt(self, mock_server_cls):
         # serve_forever() now always runs on its own thread (see start()'s
         # comment on why: shutdown() deadlocks if called from the same
