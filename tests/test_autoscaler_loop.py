@@ -280,12 +280,37 @@ class TestOrgMode(ScalerTestCase):
     def org_config(self, **kw: Any) -> Config:
         return self.config(org="my-test-org", **kw)
 
-    def test_spawns_min_runners_without_repo_discovery_or_reconciliation(self):
+    def test_spawns_min_runners_at_org_scope(self):
         driver = mock_driver(spawn=unique_ids)
         self.scaler(config=self.org_config(min_runners=2), default=driver).run_once()
         self.assertEqual(driver.spawn_runner.call_count, 2)
-        self.stubs["discover_repositories"].assert_not_called()
-        self.stubs["reconcile_idle_orphans"].assert_not_called()
+        for call in driver.spawn_runner.call_args_list:
+            self.assertEqual(call.kwargs["org"], "my-test-org")
+            self.assertNotIn("repo", call.kwargs)
+
+    def test_discovers_org_repos_and_reconciles_at_org_scope(self):
+        # #48: ORG mode used to skip discovery, queued jobs and all reconciliation.
+        self.stubs["discover_repositories"].return_value = ["my-test-org/api"]
+        self.scaler(config=self.org_config()).run_once()
+        self.assertEqual(self.stubs["discover_repositories"].call_args.kwargs["owner"], "my-test-org")
+        self.assertEqual(self.stubs["reconcile_zombie_runners"].call_args.kwargs["org"], "my-test-org")
+        self.assertEqual(self.stubs["reconcile_idle_orphans"].call_args.kwargs["org"], "my-test-org")
+
+    def test_scales_on_queued_org_jobs_with_org_registration(self):
+        self.stubs["discover_repositories"].return_value = ["my-test-org/api", "my-test-org/web"]
+        self.stubs["get_queued_job_details"].side_effect = [[job(1)], [job(2), job(3)]]
+        driver = mock_driver(spawn=unique_ids)
+        self.scaler(config=self.org_config(max_runners=10), default=driver).run_once()
+        self.assertEqual(driver.spawn_runner.call_count, 3)
+        self.assertTrue(all(c.kwargs["org"] == "my-test-org" for c in driver.spawn_runner.call_args_list))
+
+    def test_org_runners_cover_jobs_from_any_repo(self):
+        # Two org runners already exist (any repo's job can go to them) -> 1 of 3 jobs uncovered.
+        self.stubs["discover_repositories"].return_value = ["my-test-org/api", "my-test-org/web"]
+        self.stubs["get_queued_job_details"].side_effect = [[job(1)], [job(2), job(3)]]
+        driver = mock_driver(runners=[running("a", "my-test-org"), running("b", "")], spawn=unique_ids)
+        self.scaler(config=self.org_config(max_runners=10), default=driver).run_once()
+        self.assertEqual(driver.spawn_runner.call_count, 1)
 
     def test_rotates_architectures(self):
         driver = mock_driver(spawn=unique_ids)
@@ -325,6 +350,42 @@ class TestOrgMode(ScalerTestCase):
         driver = mock_driver(spawn=None)
         self.scaler(config=self.org_config(min_runners=2), default=driver).run_once()
         self.assertEqual(driver.spawn_runner.call_count, 2)
+
+
+class TestStandbyInRepoMode(ScalerTestCase):
+    """#47: MIN_RUNNERS used to be honoured only in ORG mode."""
+
+    def test_keeps_min_runners_warm_round_robin_across_repos(self):
+        self.stubs["discover_repositories"].return_value = ["o/a", "o/b"]
+        driver = mock_driver(spawn=unique_ids)
+        self.scaler(config=self.config(min_runners=3), default=driver).run_once()
+        self.assertEqual([c.kwargs["repo"] for c in driver.spawn_runner.call_args_list], ["o/a", "o/b", "o/a"])
+
+    def test_round_robin_continues_across_cycles(self):
+        self.stubs["discover_repositories"].return_value = ["o/a", "o/b"]
+        driver = mock_driver(spawn=unique_ids)
+        scaler = self.scaler(config=self.config(min_runners=1), default=driver)
+        scaler.run_once()
+        scaler.run_once()  # list_runners still reports none -> tops up again
+        self.assertEqual([c.kwargs["repo"] for c in driver.spawn_runner.call_args_list], ["o/a", "o/b"])
+
+    def test_jobs_get_capacity_before_standby(self):
+        self.queue(job(1))
+        driver = mock_driver(spawn=unique_ids)
+        self.scaler(config=self.config(min_runners=2, max_runners=2), default=driver).run_once()
+        self.assertEqual(driver.spawn_runner.call_count, 2)
+        self.assertIn("labels", driver.spawn_runner.call_args_list[0].kwargs)  # the job's runner first
+        self.assertNotIn("labels", driver.spawn_runner.call_args_list[1].kwargs)
+
+    def test_no_standby_without_tracked_repos(self):
+        self.stubs["discover_repositories"].return_value = []
+        driver = mock_driver()
+        self.scaler(config=self.config(min_runners=2), default=driver).run_once()
+        driver.spawn_runner.assert_not_called()
+
+    def test_reconciler_spares_the_standby_pool(self):
+        self.scaler(config=self.config(min_runners=2)).run_once()
+        self.assertEqual(self.stubs["reconcile_idle_orphans"].call_args.kwargs["standby_count"], 2)
 
 
 class TestQuotaAndDiscovery(ScalerTestCase):

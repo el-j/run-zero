@@ -121,6 +121,7 @@ class Scaler:
         self._last_discovery = 0.0
         self._last_rate_limit_refresh = 0.0
         self._last_billing_refresh = 0.0
+        self._standby_cursor = 0
 
     # -- quota & discovery --------------------------------------------------------------
 
@@ -137,21 +138,32 @@ class Scaler:
             refresh_actions_billing(access_token=cfg.access_token, owner=owner, org=cfg.org)
             self._last_billing_refresh = now
 
+    @property
+    def org(self) -> str | None:
+        """The organization in ORG mode (runners register at org scope), else None."""
+        return self.config.org or None
+
     def discover(self, now: float) -> None:
-        """Refresh the tracked repositories (repo mode) and reconcile zombie runners."""
+        """Refresh the tracked repositories and reconcile zombie runners.
+
+        In ORG mode the org's own active repositories are tracked (discovery lists
+        `/orgs/{org}/repos` for an organization owner) and runners are reconciled at org scope.
+        """
         cfg = self.config
-        if cfg.org:
-            return
         if now - self._last_discovery > cfg.discovery_interval or not self.tracked_repos:
             discovered = discover_repositories(
-                owner=cfg.owner, active_days=cfg.active_days, auto_discover=cfg.auto_discover, repos_config=cfg.repos_config, access_token=cfg.access_token
+                owner=cfg.org or cfg.owner,
+                active_days=cfg.active_days,
+                auto_discover=cfg.auto_discover,
+                repos_config=cfg.repos_config,
+                access_token=cfg.access_token,
             )
             self._last_discovery = now
             if discovered:
                 self.tracked_repos = discovered
                 self._log_tracked_repos()
         if self.tracked_repos:
-            reconcile_zombie_runners(self.tracked_repos, access_token=cfg.access_token)
+            reconcile_zombie_runners(self.tracked_repos, access_token=cfg.access_token, org=self.org)
 
     def _log_tracked_repos(self) -> None:
         log_print(f"[Autoscaler] Monitoring {len(self.tracked_repos)} active repository(ies):")
@@ -174,34 +186,52 @@ class Scaler:
             ensure_stopped = getattr(driver, "ensure_base_images_stopped", None)
             if callable(ensure_stopped):
                 ensure_stopped()
-        if self.tracked_repos and not self.config.org:
+        if self.tracked_repos:
             reconcile_idle_orphans(
-                self.tracked_repos, all_runners, self.drivers, access_token=self.config.access_token, busy_timeout_seconds=self.config.busy_timeout_seconds
+                self.tracked_repos,
+                all_runners,
+                self.drivers,
+                access_token=self.config.access_token,
+                busy_timeout_seconds=self.config.busy_timeout_seconds,
+                org=self.org,
+                standby_count=self.config.min_runners,
             )
         return all_runners
 
     # -- scaling -----------------------------------------------------------------------
 
-    def scale_org(self, active_runners: list[RunnerInfo]) -> None:
-        """ORG mode: keep MIN_RUNNERS warm runners (capped by MAX_RUNNERS), rotating arches."""
+    def ensure_standby(self, active_runners: list[RunnerInfo]) -> None:
+        """Top the fleet up to MIN_RUNNERS warm runners (capped by MAX_RUNNERS), rotating arches.
+
+        Standby runners register at org scope in ORG mode, otherwise round-robin across the
+        tracked repositories. Runs after job scaling, so queued jobs get first claim on
+        capacity. The reconciler spares up to MIN_RUNNERS idle runners (see collect()).
+        """
         cfg = self.config
+        targets = [cfg.org] if cfg.org else self.tracked_repos
         active_count = len(active_runners)
-        if active_count >= cfg.min_runners or active_count >= cfg.max_runners:
+        if not targets or active_count >= cfg.min_runners or active_count >= cfg.max_runners:
             return
         needed = min(cfg.min_runners - active_count, cfg.max_runners - active_count)
         for i in range(needed):
             arch = self.architectures[i % len(self.architectures)]
+            target = targets[self._standby_cursor % len(targets)]
+            self._standby_cursor += 1
             if not ensure_driver_runtime_assets(self.default_driver, arch):
                 continue
             spawned_id = self.default_driver.spawn_runner(
-                org=cfg.org,
+                **self._scope_args(target),
                 arch=arch,
                 access_token=cfg.access_token,
                 cache_mounts=init_cache_dirs(cfg.host_cache_dir, arch, cfg.cache_enabled),
                 proxies_enabled=cfg.proxies_enabled,
             )
             if spawned_id:
-                active_runners.append(_new_runner(spawned_id, cfg.org, arch, self.default_driver))
+                active_runners.append(_new_runner(spawned_id, target, arch, self.default_driver))
+
+    def _scope_args(self, repo: str) -> dict[str, Any]:
+        """spawn_runner() target kwargs: org-scope registration in ORG mode, else the repo."""
+        return {"org": self.config.org} if self.config.org else {"repo": repo}
 
     def gather_queued_jobs(self) -> dict[str, list[dict[str, Any]]]:
         """Queued self-hosted jobs per tracked repo (repos with none are omitted)."""
@@ -216,24 +246,34 @@ class Scaler:
             log_print(f"[Autoscaler] Detected {total} queued unclaimed job(s) across repos.")
         return queued
 
-    def scale_repos(self, queued_by_repo: dict[str, list[dict[str, Any]]], active_runners: list[RunnerInfo]) -> None:
-        """Repo mode: one runner per queued job not already covered, up to MAX_RUNNERS overall."""
+    def scale_jobs(self, queued_by_repo: dict[str, list[dict[str, Any]]], active_runners: list[RunnerInfo]) -> None:
+        """One runner per queued job not already covered, up to MAX_RUNNERS overall.
+
+        Repo mode counts coverage per repository. In ORG mode every org runner can take any
+        repo's job, so coverage is counted across the whole org.
+        """
+        uncovered = self._uncovered_jobs(queued_by_repo, active_runners)
         for repo, jobs in queued_by_repo.items():
-            needed = len(jobs) - sum(1 for r in active_runners if r.target_repo == repo)
             for job in jobs:
-                if len(active_runners) >= self.config.max_runners or needed <= 0:
+                if len(active_runners) >= self.config.max_runners or uncovered.get(repo if not self.org else "*", 0) <= 0:
                     break
                 spawned = self._spawn_for_job(repo, job)
                 if spawned:
                     spawned_id, driver, arch = spawned
-                    needed -= 1
+                    uncovered[repo if not self.org else "*"] -= 1
                     self.runner_job_meta[spawned_id] = {
                         "job_id": job.get("id"),
                         "run_id": job.get("run_id"),
                         "job_url": job.get("job_url", ""),
                         "run_url": job.get("run_url", ""),
                     }
-                    active_runners.append(_new_runner(spawned_id, repo, arch, driver))
+                    active_runners.append(_new_runner(spawned_id, self.org or repo, arch, driver))
+
+    def _uncovered_jobs(self, queued_by_repo: dict[str, list[dict[str, Any]]], active_runners: list[RunnerInfo]) -> dict[str, int]:
+        """Queued jobs minus runners already serving them: per repo, or org-wide under "*"."""
+        if self.org:
+            return {"*": sum(len(jobs) for jobs in queued_by_repo.values()) - sum(1 for r in active_runners if r.target_repo in (self.org, ""))}
+        return {repo: len(jobs) - sum(1 for r in active_runners if r.target_repo == repo) for repo, jobs in queued_by_repo.items()}
 
     def _spawn_for_job(self, repo: str, job: dict[str, Any]) -> tuple[str, RunnerDriver, str] | None:
         """Route `job` to a driver and spawn, falling back to the default driver on failure."""
@@ -246,7 +286,7 @@ class Scaler:
 
         mounts = init_cache_dirs(cfg.host_cache_dir, arch, cfg.cache_enabled, scope=build_cache_scope(repo, job))
         spawn_args: dict[str, Any] = {
-            "repo": repo,
+            **self._scope_args(repo),
             "arch": arch,
             "access_token": cfg.access_token,
             "cache_mounts": mounts,
@@ -295,12 +335,9 @@ class Scaler:
         self.discover(now)
         all_runners = self.collect()
         active_runners = [r for r in all_runners if r.state in ("running", "pending")]
-        queued_by_repo: dict[str, list[dict[str, Any]]] = {}
-        if self.config.org:
-            self.scale_org(active_runners)
-        else:
-            queued_by_repo = self.gather_queued_jobs()
-            self.scale_repos(queued_by_repo, active_runners)
+        queued_by_repo = self.gather_queued_jobs()
+        self.scale_jobs(queued_by_repo, active_runners)
+        self.ensure_standby(active_runners)
         self.publish(all_runners, active_runners, queued_by_repo)
 
     def shutdown(self) -> None:

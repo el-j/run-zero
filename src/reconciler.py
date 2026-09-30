@@ -310,14 +310,17 @@ def reconcile_idle_orphans(
     busy_timeout_seconds: int = BUSY_RUNNER_TIMEOUT_SECONDS,
     now: float | None = None,
     org: str | None = None,
+    standby_count: int = 0,
 ) -> None:
     """Destroy our own runners that GitHub never dispatched to, that finished, or whose busy flag is stale.
 
     A local container/VM can end up permanently unused for reasons other than the zombie
     case -- a completed ephemeral job where the VM didn't power off, a mislabeled workflow,
     a race between our poll and GitHub's dispatch, or an API hiccup. With `org`, runners
-    are matched against org-scope registrations. Makes no API calls when no runner is old
-    enough to be eligible.
+    are matched against org-scope registrations. Up to `standby_count` idle, registered
+    runners are kept as the MIN_RUNNERS warm pool instead of being reaped (otherwise the
+    standby pool would be torn down and respawned every idle timeout). Makes no API calls
+    when no runner is old enough to be eligible.
     """
     now = now if now is not None else time.time()
     timeouts = Timeouts(idle=idle_timeout_seconds, unregistered=unregistered_timeout_seconds, busy=busy_timeout_seconds)
@@ -327,6 +330,7 @@ def reconcile_idle_orphans(
 
     registry = RunnerRegistry.fetch([org_scope(org)] if org else [repo_scope(repo) for repo in repos], access_token)
     executor = _OrphanExecutor(repos, drivers, access_token)
+    standby_left = standby_count
     for runner in candidates:
         assert runner.created_at is not None  # guaranteed by _managed_candidates
         age_seconds = now - runner.created_at
@@ -334,4 +338,7 @@ def reconcile_idle_orphans(
         target_scope = org_scope(org) if org else (repo_scope(target_repo) if target_repo else None)
         registration = registry.find(runner.name)
         action = classify(age_seconds, registration, registry.is_conclusive_for(target_scope), timeouts)
+        if action is Action.REAP_IDLE and standby_left > 0:
+            standby_left -= 1
+            continue
         executor.execute(action, runner, registration, age_seconds)

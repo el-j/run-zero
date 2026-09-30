@@ -152,6 +152,21 @@ class TestReconcileIdleOrphans(unittest.TestCase):
         _, driver = self.run_reconcile(routes, [runner(age=600)], idle_timeout_seconds=600)
         driver.destroy_runner.assert_not_called()
 
+    def test_standby_count_spares_idle_registered_runners(self):
+        # #47: up to MIN_RUNNERS idle runners are the warm pool, not orphans.
+        names = [f"local-runner-arm64-el-j-run-zero-{i}" for i in range(3)]
+        routes = {
+            **runners_route("el-j/run-zero", [{"id": i, "name": n, "busy": False} for i, n in enumerate(names)]),
+            **{("DELETE", f"/repos/el-j/run-zero/actions/runners/{i}"): True for i in range(3)},
+        }
+        runners = [runner(name=n, rid=n) for n in names]
+        _, driver = self.run_reconcile(routes, runners, standby_count=2)
+        driver.destroy_runner.assert_called_once_with(names[2])
+
+    def test_standby_never_spares_unregistered_runners(self):
+        _, driver = self.run_reconcile(runners_route("el-j/run-zero", []), [runner()], standby_count=5)
+        driver.destroy_runner.assert_called_once_with("container123")
+
     def test_unregistered_runner_is_destroyed(self):
         _, driver = self.run_reconcile(runners_route("el-j/run-zero", []), [runner(age=700)])
         driver.destroy_runner.assert_called_once_with("container123")

@@ -381,7 +381,7 @@ The suite is layered:
 | `ACCESS_TOKEN` | GitHub Personal Access Token (PAT) with `repo` scope | *Required* |
 | `OWNER` | GitHub username to auto-discover all owned repos | *None* |
 | `REPOS` | Comma-separated list of target repos (`owner/repo`) | *None* |
-| `ORG` | Target GitHub Organization name | *None* |
+| `ORG` | Organization mode: runners register at org scope and serve queued jobs from the org's active repos | *None* |
 | `RUNNER_BACKEND` | Execution driver (`auto`, `docker`, `orbstack-vm`, `wsl2`, `multipass`) | `auto` |
 | `AUTO_ROUTE_VM` | Automatically route browser/systemd/e2e jobs to VMs | `true` |
 | `AUTO_DISCOVER_REPOS` | Automatically discover and monitor all user repos | `true` |
@@ -389,7 +389,7 @@ The suite is layered:
 | `RUNNER_ARCH` | Runner architectures to spawn (`arm64`, `amd64`, or `both`) | `both` |
 | `PROXIES_ENABLED` | Enable apt-cacher, Verdaccio & Athens proxy registries for runners | `true` |
 | `CACHE_ENABLED` | Enable persistent package/tool caching across runners | `true` |
-| `MIN_RUNNERS` | Minimum idle runners on standby | `0` |
+| `MIN_RUNNERS` | Warm standby pool topped up after queued jobs are served (org scope in ORG mode, else round-robin across tracked repos; capped by `MAX_RUNNERS`; exempt from idle reaping) | `0` |
 | `MAX_RUNNERS` | Maximum concurrent runner instances | `4` |
 | `POLL_INTERVAL` | Queue check interval in seconds | `10` |
 | `DISCOVERY_INTERVAL` | Auto-discovery refresh interval in seconds | `900` |
