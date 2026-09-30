@@ -37,11 +37,12 @@ class TestMakeCLIBlackboxContract(unittest.TestCase):
         cls._sandbox = tempfile.mkdtemp(prefix="runzero-cli-")
         stub_bin = os.path.join(cls._sandbox, "bin")
         os.makedirs(stub_bin)
+        # Symlinks to the system `true` (exits 0, prints nothing, ignores args) rather than
+        # freshly written scripts: macOS security-scans a new executable on its first run,
+        # which alone cost ~40s per test run.
+        true_bin = shutil.which("true") or "/usr/bin/true"
         for tool in ("docker", "orbctl"):
-            path = os.path.join(stub_bin, tool)
-            with open(path, "w", encoding="utf-8") as fh:
-                fh.write("#!/bin/sh\nexit 0\n")
-            os.chmod(path, 0o755)
+            os.symlink(true_bin, os.path.join(stub_bin, tool))
         cls._env = {**os.environ, "PATH": f"{stub_bin}{os.pathsep}{os.environ.get('PATH', '')}", "HOME": cls._sandbox}
 
     @classmethod
