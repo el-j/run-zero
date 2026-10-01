@@ -14,10 +14,6 @@ on:
       - '.gitattributes'
       - '.github/workflows/deploy-pages.yml'
   workflow_dispatch:
-
-concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
     inputs:
       version_bump:
         description: 'Semantic Version Bump'
@@ -28,6 +24,10 @@ concurrency:
           - patch
           - minor
           - major
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 
 permissions:
   contents: write
