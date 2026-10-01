@@ -32,6 +32,7 @@ class DashboardRequestHandler(BaseHTTPRequestHandler):
     """HTTP & SSE Handler for the RunZero Web Dashboard."""
 
     server_version = "RunZero-Dashboard/1.0"
+    sse_heartbeat_interval: float = 5.0
 
     def log_message(self, format: str, *args: Any) -> None:
         """Suppress default stdout access logging unless RUNZERO_DEBUG is set."""
@@ -139,9 +140,10 @@ class DashboardRequestHandler(BaseHTTPRequestHandler):
                 self.wfile.flush()
 
                 # Stream continuous events & keep-alive
+                heartbeat_interval = float(getattr(self.server, "sse_heartbeat_interval", getattr(self, "sse_heartbeat_interval", 5.0)))
                 while True:
                     try:
-                        item = client_queue.get(timeout=5.0)
+                        item = client_queue.get(timeout=heartbeat_interval)
                         event_type = item.get("type", "message")
                         data_json = json.dumps(item.get("data", {}))
                         event_msg = f"event: {event_type}\ndata: {data_json}\n\n"
@@ -208,15 +210,23 @@ class DashboardRequestHandler(BaseHTTPRequestHandler):
 class DashboardServer:
     """Manages the Dashboard HTTP & SSE server lifecycle."""
 
-    def __init__(self, host: str = DEFAULT_DASHBOARD_HOST, port: int = DEFAULT_DASHBOARD_PORT, drivers: dict[str, Any] | None = None):
-        """Store the bind address/port and optional driver registry; nothing starts until `start()`.
+    def __init__(
+        self,
+        host: str = DEFAULT_DASHBOARD_HOST,
+        port: int = DEFAULT_DASHBOARD_PORT,
+        drivers: dict[str, Any] | None = None,
+        sse_heartbeat_interval: float = 5.0,
+    ):
+        """Store the bind address/port, optional driver registry, and heartbeat interval; nothing starts until `start()`.
 
         `drivers` is the autoscaler's registry, used by the prune action instead of building
         fresh driver instances per request.
+        `sse_heartbeat_interval` is the queue timeout in seconds before sending an SSE keepalive ping.
         """
         self.host = host
         self.port = port
         self.drivers = drivers
+        self.sse_heartbeat_interval = sse_heartbeat_interval
         self.httpd: ControlPlaneHTTPServer | None = None
         self.thread: threading.Thread | None = None
         self._is_running = False
@@ -238,7 +248,8 @@ class DashboardServer:
         # dependency) gives each connection its own thread so a long-lived
         # SSE stream can't starve every other request.
         self.httpd = ControlPlaneHTTPServer((self.host, self.port), DashboardRequestHandler)
-        self.httpd.runner_drivers = self.drivers  # type: ignore[attr-defined]
+        self.httpd.runner_drivers = self.drivers
+        self.httpd.sse_heartbeat_interval = self.sse_heartbeat_interval
         self._is_running = True
         print(f"[Dashboard] 📊 Real-Time Web UI running at http://localhost:{self.port}")
 

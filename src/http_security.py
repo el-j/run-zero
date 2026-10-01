@@ -55,6 +55,9 @@ class ControlPlaneHTTPServer(ThreadingHTTPServer):
     disconnects are ignored; anything else is still reported, best-effort.
     """
 
+    runner_drivers: dict[str, Any] | None = None
+    sse_heartbeat_interval: float = 5.0
+
     def handle_error(self, request: Any, client_address: Any) -> None:
         """Ignore client disconnects; report other request errors without ever raising."""
         if isinstance(sys.exception(), CLIENT_DISCONNECT_ERRORS):

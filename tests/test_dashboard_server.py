@@ -589,6 +589,32 @@ class TestDashboardServer(unittest.TestCase):
                 break
         self.assertTrue(found)
 
+    def test_sse_stream_delivers_heartbeat_ping_deterministically(self):
+        # Issue #59: verify that when queue.Empty occurs, an SSE keepalive ping
+        # is emitted deterministically without waiting for real 5s timeout.
+        assert self.server.httpd is not None
+        orig_interval = self.server.httpd.sse_heartbeat_interval
+        self.server.httpd.sse_heartbeat_interval = 0.05
+        try:
+            sse_req = urllib.request.Request(f"{self.base_url}/api/events")
+            sse_resp = urllib.request.urlopen(sse_req, timeout=5.0)
+            self.addCleanup(sse_resp.close)
+
+            # First lines are the initial state snapshot event
+            first_line = sse_resp.readline()
+            self.assertTrue(first_line.startswith(b"event:"))
+
+            # Without pushing any new events, the 50ms heartbeat should fire quickly
+            found_ping = False
+            for _ in range(10):
+                line = sse_resp.readline()
+                if line.strip() == b": ping":
+                    found_ping = True
+                    break
+            self.assertTrue(found_ping, "Expected ': ping' heartbeat from SSE stream")
+        finally:
+            self.server.httpd.sse_heartbeat_interval = orig_interval
+
     def test_serve_file_500_on_read_error(self):
         # _serve_file()'s exception branch: the file exists (os.path.isfile
         # is real and true for index.html) but open() itself fails.
