@@ -57,6 +57,15 @@ class TestShellScripts(unittest.TestCase):
         res = subprocess.run(["bash", "-n", script_path], capture_output=True, text=True, check=False)
         self.assertEqual(res.returncode, 0, f"Syntax error in pre-commit.sh: {res.stderr}")
 
+    def test_pre_push_sh_syntax(self):
+        script_path = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "scripts", "pre-push.sh"))
+        if not os.path.isfile(script_path):
+            script_path = os.path.abspath("scripts/pre-push.sh")
+        if not os.path.isfile(script_path):
+            self.skipTest("pre-push.sh not found")
+        res = subprocess.run(["bash", "-n", script_path], capture_output=True, text=True, check=False)
+        self.assertEqual(res.returncode, 0, f"Syntax error in pre-push.sh: {res.stderr}")
+
     def test_provision_toolchain_sh_syntax(self):
         script_path = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "docker", "provision-toolchain.sh"))
         if not os.path.isfile(script_path):

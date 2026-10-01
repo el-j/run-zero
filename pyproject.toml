@@ -80,7 +80,15 @@ do_not_mutate = [
 # these, mutmut's own baseline run fails ("No rule to make target" /
 # "provisioning script not found") because those paths were never mirrored
 # into the sandbox.
-also_copy = ["Makefile", "docker/"]
+also_copy = [
+    "Makefile",
+    "docker/",
+    "docker-compose.yml",
+    ".env",
+    ".env.example",
+    "scripts/",
+    "src/",
+]
 # mutmut 3.x runs pytest in-process via `pytest.main()`, so it inherits
 # [tool.pytest.ini_options]'s addopts -- including --cov-fail-under=100.
 # Each mutant run only executes the narrow subset of tests mutmut's own
@@ -89,8 +97,14 @@ also_copy = ["Makefile", "docker/"]
 # Without --no-cov here, that unrelated coverage gate would fail (and thus
 # mark "killed") almost every mutant regardless of whether its actual
 # behavior change was caught by a real assertion -- silently invalidating
-# the whole run's results.
-pytest_add_cli_args = ["--no-cov"]
+# the whole run's results. Live container/VM e2e tests are ignored during
+# mutation testing to keep runs lightweight and purely unit-focused.
+pytest_add_cli_args = [
+    "--no-cov",
+    "--ignore=tests/test_e2e_compose_deployment.py",
+    "--ignore=tests/test_e2e_docker.py",
+    "--ignore=tests/test_orbstack_live_integration.py",
+]
 # The old `runner = "python -m pytest -q"` key from mutmut 2.x is not read
 # by mutmut 3.x at all (it always drives pytest directly in-process) --
 # removed rather than left as dead, misleading config.

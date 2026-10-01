@@ -328,7 +328,7 @@ that reaches real `docker`/`orbctl`/`multipass`/`wsl` or the network.
 | `make check` | Every quality gate above (what CI runs) |
 | `make test` | Just the pytest suite (with the coverage gate) |
 | `make test-suite` | The Python gates inside a clean `python:3.11-slim` container |
-| `make mutation-test` | Mutmut mutation testing -- currently scoped to `src/dashboard/state.py`; widening it is tracked in #60 |
+| `make mutation-test` | Fast differential mutation testing locally on changed files only (`scripts/mutation_changed.py`) |
 | `make mutation-report` | Export mutmut stats and generate weekly mutation trend dashboard artifacts |
 
 The suite is layered:
@@ -358,11 +358,13 @@ The suite is layered:
 | `make check` | Run every quality gate (ruff, flake8, mypy, interrogate, pytest 100% coverage, shellcheck) |
 | `make test` | Run the pytest suite with the coverage gate |
 | `make test-suite` | Run the Python gates inside a clean `python:3.11-slim` container |
-| `make install-hooks` | Install RunZero pre-commit quality guard into `.git/hooks/pre-commit` |
+| `make install-hooks` | Install RunZero pre-commit and pre-push quality guards into `.git/hooks/` |
 | `make pre-commit` | Run the pre-commit quality guard manually with auto-fixes |
+| `make pre-push` | Run the pre-push quality guard manually |
 | `make lint` | Run Flake8 linter and Mypy static type checker |
 | `make lint-fix` | Auto-fix Python code formatting and strip trailing whitespace |
-| `make mutation-test` | Run Mutmut mutation testing suite |
+| `make mutation-test` | Run differential mutation testing locally on changed files only |
+| `make mutation-test-all` | Run mutation testing across all configured paths |
 | `make mutation-report` | Generate mutation trend dashboard and export stats artifacts |
 | `make build-vm-base` | Build golden OrbStack VM base image for near-instant VM spins |
 | `make website-dev` | Start Astro documentation website development server |

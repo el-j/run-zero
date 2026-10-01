@@ -6,7 +6,7 @@ from __future__ import annotations
 import argparse
 import json
 from collections import Counter
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 
 
@@ -148,7 +148,7 @@ def main() -> int:
     current = read_stats(stats_path)
     status_counts = read_status_counts(Path(args.results) if args.results else None)
 
-    today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+    today = datetime.now(UTC).strftime("%Y-%m-%d")
     history = load_history(Path(args.history))
 
     new_entry: dict[str, object] = {"date": today, **current}

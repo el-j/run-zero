@@ -430,31 +430,36 @@ test-suite: ## Run the Python quality gates inside a clean python:3.11-slim cont
 	@echo "$(GREEN)All tests passed with 0 warnings!$(RESET)"
 
 .PHONY: mutation-test
-mutation-test: ## Run mutation testing suite (mutmut) -- fails the build on surviving mutants
-	@echo "$(CYAN)Running Mutmut Mutation Testing Suite...$(RESET)"
-	@docker run --rm -v "$$(pwd):/app" -w /app python:3.11-slim bash -c "\
-		apt-get update -qq && apt-get install -y -qq --no-install-recommends make > /dev/null && \
-		pip install --quiet pytest pytest-cov mutmut && \
-		PYTHONPATH=src mutmut run; \
-		status=\$$?; \
-		mutmut results; \
-		exit \$$status"
+mutation-test: ## Run differential mutation testing locally on changed files only
+	@echo "$(CYAN)Running differential mutation testing on changed files...$(RESET)"
+	$(PY) scripts/mutation_changed.py
+
+.PHONY: mutation-test-all
+mutation-test-all: ## Run mutation testing across all configured source paths
+	@echo "$(CYAN)Running mutation testing across all configured paths...$(RESET)"
+	$(PY) scripts/mutation_changed.py --all
 
 .PHONY: test
 test: ## Run local unit tests directly
 	$(PY) -m pytest
 
 .PHONY: install-hooks
-install-hooks: ## Install RunZero pre-commit quality guard into .git/hooks/pre-commit
-	@echo "$(CYAN)Installing RunZero pre-commit hook...$(RESET)"
+install-hooks: ## Install RunZero pre-commit and pre-push quality guards into .git/hooks/
+	@echo "$(CYAN)Installing RunZero Git hooks (pre-commit & pre-push)...$(RESET)"
 	@mkdir -p .git/hooks
 	@printf '%s\n' '#!/usr/bin/env bash' 'set -euo pipefail' '' 'PROJECT_ROOT="$$(git rev-parse --show-toplevel 2>/dev/null || pwd)"' 'exec "$$PROJECT_ROOT/scripts/pre-commit.sh"' > .git/hooks/pre-commit
 	@chmod +x .git/hooks/pre-commit
-	@echo "$(GREEN)Pre-commit hook installed successfully! It now always runs scripts/pre-commit.sh.$(RESET)"
+	@printf '%s\n' '#!/usr/bin/env bash' 'set -euo pipefail' '' 'PROJECT_ROOT="$$(git rev-parse --show-toplevel 2>/dev/null || pwd)"' 'exec "$$PROJECT_ROOT/scripts/pre-push.sh"' > .git/hooks/pre-push
+	@chmod +x .git/hooks/pre-push
+	@echo "$(GREEN)Hooks installed successfully! pre-commit and pre-push guards are active.$(RESET)"
 
 .PHONY: pre-commit
 pre-commit: ## Run the RunZero pre-commit quality guard manually
 	@bash scripts/pre-commit.sh
+
+.PHONY: pre-push
+pre-push: ## Run the RunZero pre-push quality guard manually
+	@bash scripts/pre-push.sh
 
 .PHONY: lint
 lint: ## Run ruff + Flake8 linters, Mypy type checker, and website Oxlint
@@ -599,11 +604,9 @@ run-dev: check-env init-cache ## Run local autoscaler in foreground for interact
 mutation-report: ## Export mutation stats and generate weekly trend dashboard artifacts
 	@echo "$(CYAN)Generating mutation trend dashboard artifacts...$(RESET)"
 	@mkdir -p reports/mutation
-	@docker run --rm -v "$$(pwd):/app" -w /app python:3.11-slim bash -c "\
-		pip install --quiet mutmut pytest >/dev/null && \
-		PYTHONPATH=src mutmut results > reports/mutation/mutmut-results.txt && \
-		PYTHONPATH=src mutmut export-cicd-stats"
-	@python3 scripts/generate_mutation_report.py \
+	@PYTHONPATH=src $(PY) -m mutmut results > reports/mutation/mutmut-results.txt 2>/dev/null || true
+	@PYTHONPATH=src $(PY) -m mutmut export-cicd-stats >/dev/null 2>&1 || true
+	@$(PY) scripts/generate_mutation_report.py \
 		--stats mutants/mutmut-cicd-stats.json \
 		--results reports/mutation/mutmut-results.txt \
 		--history reports/mutation/history.json \
