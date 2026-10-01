@@ -101,6 +101,15 @@ class RunnerDriver(ABC):
     def cleanup_all(self) -> None:
         """Destroy every runner this driver manages. Best-effort: swallows per-runner failures."""
 
+    def ensure_runtime_assets(self, arch: str = "arm64") -> bool:
+        """Ensure architecture-specific golden artifacts are ready before spawn.
+
+        Drivers that require a prebuilt asset (e.g. Docker runner image, VM base image)
+        should override this and return False while preparing it in the background.
+        Drivers without such prerequisites can keep this default True behavior.
+        """
+        return True
+
 
 def get_available_drivers() -> Dict[str, RunnerDriver]:
     """Discover and return all drivers available on the host system or via Host VM Bridge."""

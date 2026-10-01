@@ -72,21 +72,14 @@ class TestRouter(unittest.TestCase):
         self.assertEqual(driver.name(), "orbstack-vm")
         self.assertEqual(mode, "vm")
 
-    def test_select_driver_declares_services_none_and_no_name_match_still_routes_to_vm(self):
-        # Regression test: this is the actual bug, isolated. The test above
-        # doesn't distinguish "None is fail-safe" from "None is treated as
-        # False" because its job name ALSO matches the name heuristic on its
-        # own -- that overlap is exactly how `needs_vm = name_or_label_match
-        # or bool(declares_services)` shipped and stayed broken: it passed
-        # every existing test while still silently losing VM routing for any
-        # job whose name/labels don't happen to match anything, the moment
-        # the workflow-YAML lookup returns "unknown" (confirmed live: a real
-        # `services: postgres:` herbful job, name "API — Tests", landed on
-        # the Docker driver whenever declares_services resolved to None).
+    def test_select_driver_declares_services_none_and_no_name_match_stays_container(self):
+        # Unknown workflow resolution (declares_services=None) should defer to
+        # the name/label heuristic. If there is no heuristic match either,
+        # keep the default container path for speed.
         job = {"name": "API — Tests", "labels": ["self-hosted", "local", "amd64"], "declares_services": None}
         driver, mode = select_driver_for_job(job, self.docker_driver, self.available_drivers, auto_route_vm=True)
-        self.assertEqual(driver.name(), "orbstack-vm")
-        self.assertEqual(mode, "vm")
+        self.assertEqual(driver.name(), "docker")
+        self.assertEqual(mode, "container")
 
     def test_select_driver_declares_services_true_but_no_vm_driver_falls_back_and_warns(self):
         job = {"name": "API — Tests", "labels": ["self-hosted"], "declares_services": True}

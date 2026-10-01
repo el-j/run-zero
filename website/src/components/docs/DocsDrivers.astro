@@ -4,30 +4,65 @@
 
 <h2 id="dual-engine">Dual-Engine Fleet Architecture</h2>
 <p>
-  Unlike traditional runner solutions that force you into a single execution model, RunZero offers a pluggable driver architecture:
+  Unlike traditional runner solutions that force you into a single execution
+  model, RunZero offers a pluggable driver architecture:
 </p>
 
-<h3 id="orbstack-driver">🪐 OrbStack Linux VM Driver (<code>RUNNER_BACKEND=orbstack-vm</code>)</h3>
+<h3 id="orbstack-driver">
+  🪐 OrbStack Linux VM Driver (<code>RUNNER_BACKEND=orbstack-vm</code>)
+</h3>
 <p>
-  Spawns dedicated lightweight Linux machines via <a href="https://orbstack.dev" target="_blank" rel="noopener">OrbStack</a> and Apple Virtualization.framework. Provides <strong>full systemd support</strong>, unconfined Google Chrome sandboxing, background daemons, and internal Docker-in-VM capabilities. Automatically connects to host Verdaccio, Athens, and apt-cacher proxies via <code>host.orb.internal</code>.
+  Spawns dedicated lightweight Linux machines via <a
+    href="https://orbstack.dev"
+    target="_blank"
+    rel="noopener">OrbStack</a
+  > and Apple Virtualization.framework. Provides <strong
+    >full systemd support</strong
+  >, unconfined Google Chrome sandboxing, background daemons, and internal
+  Docker-in-VM capabilities. Automatically connects to host Verdaccio, Athens,
+  and apt-cacher proxies via <code>host.orb.internal</code>.
 </p>
 
-<h3 id="golden-vm">🏗️ Golden VM Base Image (<code>make build-vm-base</code>)</h3>
+<h3 id="golden-vm">
+  🏗️ Golden VM Base Image (<code>make build-vm-base</code>)
+</h3>
 <p>
-  To make VM boot times near-instant, <code>make build-vm-base</code> pre-bakes the shared toolchain into a golden base image (<code>runzero-vm-base-&lt;arch&gt;</code>). Subsequent VM jobs spin up in seconds by cloning the base image!
+  To make VM boot times near-instant, <code>make build-vm-base</code> pre-bakes the
+  shared toolchain into a golden base image (<code
+    >runzero-vm-base-&lt;arch&gt;</code
+  >). Subsequent VM jobs spin up in seconds by cloning the base image!
 </p>
 
-<h3 id="docker-driver">🐳 Docker Container Driver (<code>RUNNER_BACKEND=docker</code>)</h3>
+<h3 id="docker-driver">
+  🐳 Docker Container Driver (<code>RUNNER_BACKEND=docker</code>)
+</h3>
 <p>
-  Launches ultra-fast ephemeral containers powered by <a href="https://docs.docker.com/engine/" target="_blank" rel="noopener">Docker Engine</a>. Starts in <strong>~0.3 seconds</strong> and consumes zero RAM when idle. Ideal for unit tests, linting, build pipelines, and JavaScript/Python workflows.
+  Launches ultra-fast ephemeral containers powered by <a
+    href="https://docs.docker.com/engine/"
+    target="_blank"
+    rel="noopener">Docker Engine</a
+  >. Starts in <strong>~0.3 seconds</strong> and consumes zero RAM when idle. Ideal
+  for unit tests, linting, build pipelines, and JavaScript/Python workflows.
 </p>
 
-<h3 id="wsl-driver">🪟 Windows WSL2 Driver (<code>RUNNER_BACKEND=wsl2</code>)</h3>
+<h3 id="wsl-driver">
+  🪟 Windows WSL2 Driver (<code>RUNNER_BACKEND=wsl2</code>)
+</h3>
 <p>
-  Runs native Linux runners directly inside <a href="https://learn.microsoft.com/en-us/windows/wsl/" target="_blank" rel="noopener">Windows Subsystem for Linux 2</a> (Windows 10/11 and Windows Server) without requiring Docker Desktop.
+  Runs native Linux runners directly inside <a
+    href="https://learn.microsoft.com/en-us/windows/wsl/"
+    target="_blank"
+    rel="noopener">Windows Subsystem for Linux 2</a
+  > (Windows 10/11 and Windows Server) without requiring Docker Desktop.
 </p>
 
-<h3 id="multipass-driver">🚀 Canonical Multipass Driver (<code>RUNNER_BACKEND=multipass</code>)</h3>
+<h3 id="multipass-driver">
+  🚀 Canonical Multipass Driver (<code>RUNNER_BACKEND=multipass</code>)
+</h3>
 <p>
-  Universal cross-platform virtual machine backend using <a href="https://multipass.run/" target="_blank" rel="noopener">Canonical Multipass</a> via QEMU, Hyper-V, or VirtualBox.
+  Universal cross-platform virtual machine backend using <a
+    href="https://multipass.run/"
+    target="_blank"
+    rel="noopener">Canonical Multipass</a
+  > via QEMU, Hyper-V, or VirtualBox.
 </p>

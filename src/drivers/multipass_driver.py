@@ -65,7 +65,21 @@ class MultipassDriver(RunnerDriver):
             proxy_env_block = """
 HOST_IP=$(ip route | awk '/default/ { print $3 }' || echo "192.168.64.1")
 export NPM_CONFIG_REGISTRY="http://${HOST_IP}:49501/"
+export YARN_REGISTRY="http://${HOST_IP}:49501/"
 export GOPROXY="http://${HOST_IP}:49500,https://proxy.golang.org,direct"
+export PIP_INDEX_URL="http://${HOST_IP}:49507/root/pypi/+simple/"
+export UV_INDEX_URL="${PIP_INDEX_URL}"
+export PIP_TRUSTED_HOST="${HOST_IP}"
+sudo mkdir -p /etc/apt/apt.conf.d
+echo "Acquire::http::Proxy \"http://${HOST_IP}:49503\";" | sudo tee /etc/apt/apt.conf.d/01runzero-proxy > /dev/null
+mkdir -p /home/ubuntu/.cargo
+cat > /home/ubuntu/.cargo/config.toml <<CARGOCFG
+[source.crates-io]
+replace-with = "kellnr-proxy"
+
+[source.kellnr-proxy]
+registry = "sparse+http://${HOST_IP}:49506/api/v1/cratesio/"
+CARGOCFG
 """
 
         print(f"[Autoscaler:Multipass] 🚀 Launching ephemeral VM '{vm_name}' with caching proxies...")
@@ -78,8 +92,8 @@ export GOPROXY="http://${HOST_IP}:49500,https://proxy.golang.org,direct"
             # 2. Run bootstrap script inside the VM
             setup_script = f"""
 export DEBIAN_FRONTEND=noninteractive
-sudo apt-get update -y && sudo apt-get install -y curl jq git git-lfs ca-certificates build-essential
 {proxy_env_block}
+sudo apt-get update -y && sudo apt-get install -y curl jq git git-lfs ca-certificates build-essential
 mkdir -p /home/ubuntu/actions-runner && cd /home/ubuntu/actions-runner
 curl -O -L https://github.com/actions/runner/releases/download/v2.336.0/actions-runner-linux-arm64-2.336.0.tar.gz
 tar xzf ./actions-runner-linux-arm64-2.336.0.tar.gz

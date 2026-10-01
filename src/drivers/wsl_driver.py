@@ -64,7 +64,21 @@ class WSL2Driver(RunnerDriver):
             proxy_env_block = """
 HOST_IP=$(ip route show default 2>/dev/null | awk '{print $3}' || echo "localhost")
 export NPM_CONFIG_REGISTRY="http://${HOST_IP}:49501/"
+export YARN_REGISTRY="http://${HOST_IP}:49501/"
 export GOPROXY="http://${HOST_IP}:49500,https://proxy.golang.org,direct"
+export PIP_INDEX_URL="http://${HOST_IP}:49507/root/pypi/+simple/"
+export UV_INDEX_URL="${PIP_INDEX_URL}"
+export PIP_TRUSTED_HOST="${HOST_IP}"
+sudo mkdir -p /etc/apt/apt.conf.d
+echo "Acquire::http::Proxy \"http://${HOST_IP}:49503\";" | sudo tee /etc/apt/apt.conf.d/01runzero-proxy > /dev/null
+mkdir -p /home/runner/.cargo
+cat > /home/runner/.cargo/config.toml <<CARGOCFG
+[source.crates-io]
+replace-with = "kellnr-proxy"
+
+[source.kellnr-proxy]
+registry = "sparse+http://${HOST_IP}:49506/api/v1/cratesio/"
+CARGOCFG
 """
 
         print(f"[Autoscaler:WSL2] 🚀 Spawning ephemeral WSL2 runner '{instance_name}' for {repo or org} with caching proxies...")

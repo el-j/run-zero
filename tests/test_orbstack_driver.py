@@ -328,10 +328,12 @@ class TestOrbStackVMDriver(unittest.TestCase):
         ]
         self.driver.spawn_runner(repo="el-j/run-zero", arch="amd64", access_token="token", proxies_enabled=True)
         setup_script = mock_popen.call_args[0][0][-1]
+        self.assertIn('export NPM_CONFIG_REGISTRY="http://host.orb.internal:49501/"', setup_script)
         self.assertIn('export PIP_INDEX_URL="http://host.orb.internal:49507/root/pypi/+simple/"', setup_script)
         self.assertIn('export UV_INDEX_URL="http://host.orb.internal:49507/root/pypi/+simple/"', setup_script)
         # pip refuses a plain-HTTP non-localhost index without this (verified live).
         self.assertIn('export PIP_TRUSTED_HOST="host.orb.internal"', setup_script)
+        self.assertIn('Acquire::http::Proxy "http://host.orb.internal:49503";', setup_script)
         # Cargo has no working single-URL env var for a custom [source.*] table
         # (verified live) -- must write a real ~/.cargo/config.toml instead.
         self.assertIn("cat > /home/runner/.cargo/config.toml", setup_script)

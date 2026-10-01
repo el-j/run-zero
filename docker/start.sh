@@ -165,16 +165,23 @@ REPO="${REPO:-${REPOSITORY}}"
 ORG="${ORG:-${ORGANIZATION}}"
 ACCESS_TOKEN="${ACCESS_TOKEN:-${TOKEN:-${PAT_TOKEN:-${GITHUB_TOKEN}}}}"
 RUNNER_TOKEN="${RUNNER_TOKEN:-${REGISTRATION_TOKEN}}"
-BASE_RUNNER_NAME="${RUNNER_NAME:-runner-${ARCH_LABEL%%,*}}"
+BASE_RUNNER_NAME="${RUNNER_NAME:-}"
 RUNNER_WORKDIR="${RUNNER_WORKDIR:-_work}"
 RUNNER_GROUP="${RUNNER_GROUP:-}"
 RUNNER_LABELS="${RUNNER_LABELS:-self-hosted,local,${ARCH_LABEL}}"
 EPHEMERAL="${EPHEMERAL:-false}"
 DISABLE_AUTO_UPDATE="${DISABLE_AUTO_UPDATE:-true}"
 
-# Ensure unique runner name to avoid collisions when scaling
-RAND_ID=$(head /dev/urandom | LC_ALL=C tr -dc 'a-z0-9' | head -c 6 || echo "${RANDOM}")
-RUNNER_NAME="${BASE_RUNNER_NAME}-${RAND_ID}"
+# Keep an explicit RUNNER_NAME stable so autoscaler -> GitHub runner correlation
+# remains exact (required for safe orphan/zombie reconciliation). When absent,
+# generate a unique default runner name.
+if [ -n "${BASE_RUNNER_NAME}" ]; then
+  RUNNER_NAME="${BASE_RUNNER_NAME}"
+else
+  BASE_RUNNER_NAME="runner-${ARCH_LABEL%%,*}"
+  RAND_ID=$(head /dev/urandom | LC_ALL=C tr -dc 'a-z0-9' | head -c 6 || echo "${RANDOM}")
+  RUNNER_NAME="${BASE_RUNNER_NAME}-${RAND_ID}"
+fi
 
 if [ -z "${REPO}" ] && [ -z "${ORG}" ]; then
   echo "Error: You must set either REPO (e.g. owner/repo) or ORG (e.g. my-org) environment variable."

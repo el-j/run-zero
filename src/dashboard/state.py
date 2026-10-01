@@ -3,13 +3,15 @@ RunZero Dashboard State & Telemetry Aggregator
 Maintains thread-safe in-memory metrics, fleet status, log ring buffer, and SSE broadcasting.
 """
 
+from __future__ import annotations
+
 import collections
 import os
 import queue
 import shutil
 import threading
 import time
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 
 class DashboardState:
@@ -25,31 +27,35 @@ class DashboardState:
         self._lock = threading.Lock()
         self.max_log_lines = max_log_lines
         self.log_buffer: collections.deque = collections.deque(maxlen=max_log_lines)
-        self.subscribers: List[queue.Queue] = []
+        self.subscribers: list[queue.Queue] = []
 
         # Telemetry & Fleet State
         self.version = "0.1.0"
         self.start_time = time.time()
         self.autoscaler_status = "running"
         self.default_engine = "docker"
-        self.available_drivers: List[str] = ["docker"]
+        self.available_drivers: list[str] = ["docker"]
         self.hybrid_routing_enabled = True
-        self.target_architectures: List[str] = ["arm64", "amd64"]
+        self.target_architectures: list[str] = ["arm64", "amd64"]
         self.cache_dir = os.getenv("HOST_CACHE_DIR", "")
         self.cache_enabled = True
         self.max_concurrency = 4
         self.min_runners = 0
-        self.github_rate_limit_remaining = 5000
-        self.github_rate_limit_total = 5000
-        self.monitored_repos: List[str] = []
+        self.github_rate_limit_remaining: int | None = None
+        self.github_rate_limit_total: int | None = None
+        self.github_rate_limit_used: int | None = None
+        self.github_rate_limit_resource: str | None = None
+        self.github_rate_limit_reset: int | None = None
+        self.github_actions_billing: dict[str, Any] = {}
+        self.monitored_repos: list[str] = []
         self.total_queued_jobs = 0
-        self.queued_jobs: List[Dict[str, Any]] = []
-        self.active_runners: List[Dict[str, Any]] = []
+        self.queued_jobs: list[dict[str, Any]] = []
+        self.active_runners: list[dict[str, Any]] = []
 
         # Routing telemetry counters
         self.routing_docker_jobs: int = 0
         self.routing_vm_jobs: int = 0
-        self.routing_triggers: Dict[str, int] = {
+        self.routing_triggers: dict[str, int] = {
             "services": 0,
             "dind": 0,
             "browser": 0,
@@ -59,7 +65,7 @@ class DashboardState:
         }
 
         # Cache telemetry
-        self.cache_sizes: Dict[str, str] = {
+        self.cache_sizes: dict[str, str] = {
             "npm": "0 B",
             "yarn": "0 B",
             "pnpm": "0 B",
@@ -77,7 +83,7 @@ class DashboardState:
         }
 
     @property
-    def routing_stats(self) -> Dict[str, Any]:
+    def routing_stats(self) -> dict[str, Any]:
         """Return the Docker-vs-VM job routing counters and per-trigger breakdown as a plain dict."""
         return {
             "docker_jobs": self.routing_docker_jobs,
@@ -134,11 +140,16 @@ class DashboardState:
 
     def update_fleet(
         self,
-        runners: List[Any],
-        rate_limit: int,
-        queued_jobs: List[Dict[str, Any]],
-        monitored_repos: List[str],
-        available_drivers: List[str],
+        runners: list[Any],
+        rate_limit: int | None,
+        queued_jobs: list[dict[str, Any]],
+        monitored_repos: list[str],
+        available_drivers: list[str],
+        rate_limit_total: int | None = None,
+        rate_limit_used: int | None = None,
+        rate_limit_resource: str | None = None,
+        rate_limit_reset: int | None = None,
+        actions_billing: dict[str, Any] | None = None,
         default_engine: str = "docker",
         version: str = "0.1.0"
     ) -> None:
@@ -153,6 +164,11 @@ class DashboardState:
             self.default_engine = default_engine
             self.available_drivers = available_drivers
             self.github_rate_limit_remaining = rate_limit
+            self.github_rate_limit_total = rate_limit_total
+            self.github_rate_limit_used = rate_limit_used
+            self.github_rate_limit_resource = rate_limit_resource
+            self.github_rate_limit_reset = rate_limit_reset
+            self.github_actions_billing = dict(actions_billing or {})
             self.monitored_repos = monitored_repos
             self.queued_jobs = queued_jobs
             self.total_queued_jobs = len(queued_jobs)
@@ -185,7 +201,7 @@ class DashboardState:
         self._refresh_cache_metrics()
         self.broadcast_state()
 
-    def record_routing_decision(self, engine: str, trigger: Optional[str] = None) -> None:
+    def record_routing_decision(self, engine: str, trigger: str | None = None) -> None:
         """Increment the Docker-vs-VM job counter for `engine`, and classify `trigger` into a bucket if it's a VM job.
 
         `trigger` is matched by substring against a fixed set of known reasons (service containers,
@@ -231,8 +247,8 @@ class DashboardState:
                     fp = os.path.join(dirpath, f)
                     if not os.path.islink(fp):
                         total += os.path.getsize(fp)
-        except Exception:
-            pass
+        except OSError:
+            return total
         return total
 
     def _refresh_cache_metrics(self) -> None:
@@ -256,7 +272,7 @@ class DashboardState:
                 self.cache_sizes[name] = self._format_bytes(sz)
             self.cache_sizes["total_host"] = self._format_bytes(total_host)
 
-    def clean_cache(self, category: str = "all") -> Dict[str, Any]:
+    def clean_cache(self, category: str = "all") -> dict[str, Any]:
         """Clear specific or all host package caches."""
         cache_root = self.cache_dir or os.path.expanduser("~/.local-github-runner/cache")
         category = category.lower().strip()
@@ -291,7 +307,7 @@ class DashboardState:
         self.broadcast_state()
         return {"status": "success", "cleared": cleared}
 
-    def get_snapshot(self) -> Dict[str, Any]:
+    def get_snapshot(self) -> dict[str, Any]:
         """Return a complete JSON-serializable state snapshot."""
         with self._lock:
             uptime_secs = max(0, int(time.time() - self.start_time))
@@ -317,6 +333,10 @@ class DashboardState:
                 "github": {
                     "rate_limit_remaining": self.github_rate_limit_remaining,
                     "rate_limit_total": self.github_rate_limit_total,
+                    "rate_limit_used": self.github_rate_limit_used,
+                    "rate_limit_resource": self.github_rate_limit_resource,
+                    "rate_limit_reset": self.github_rate_limit_reset,
+                    "actions_billing": self.github_actions_billing,
                     "monitored_repos": self.monitored_repos,
                     "queued_jobs_count": self.total_queued_jobs,
                     "queued_jobs": self.queued_jobs

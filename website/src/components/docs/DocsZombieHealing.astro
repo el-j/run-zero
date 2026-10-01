@@ -4,8 +4,12 @@
 
 <h2 id="zombie-healing">Zombie Runner Healing &amp; Auto-Reconciliation</h2>
 <p>
-  If an ephemeral runner machine is stopped abruptly mid-job (e.g. during workstation sleep or <code>make stop</code>), GitHub might mark it as <code>offline</code> but <code>busy: true</code>.
+  If an ephemeral runner machine is stopped abruptly mid-job (e.g. during
+  workstation sleep or <code>make stop</code>), GitHub might mark it as <code
+    >offline</code
+  > but <code>busy: true</code>.
 </p>
 <p>
-  RunZero's autoscaler automatically reconciles zombie runners by cancelling stranded runs and unsticking GitHub's runner queue so jobs never hang.
+  RunZero's autoscaler automatically reconciles zombie runners by cancelling
+  stranded runs and unsticking GitHub's runner queue so jobs never hang.
 </p>

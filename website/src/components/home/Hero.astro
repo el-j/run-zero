@@ -1,8 +1,8 @@
 ---
 // Hero component with high-impact headline, telemetry badge, and CTAs
-import Terminal from '../Terminal.astro';
+import Terminal from "../Terminal.astro";
 
-const baseUrl = import.meta.env.BASE_URL.replace(/\/$/, '');
+const baseUrl = import.meta.env.BASE_URL.replace(/\/$/, "");
 ---
 
 <section class="hero-section">
@@ -19,8 +19,11 @@ const baseUrl = import.meta.env.BASE_URL.replace(/\/$/, '');
   </h1>
 
   <p class="hero-lead">
-    The hardware-optimized, autoscaling GitHub Actions runner fleet for developer workstations. 
-    Instantly launches ephemeral Docker containers (<strong>~0.3s</strong>) for rapid builds, or provisions dedicated Linux Virtual Machines with full <code>systemd</code> and unconfined Chrome sandboxing for browser E2E tests.
+    The hardware-optimized, autoscaling GitHub Actions runner fleet for
+    developer workstations. Instantly launches ephemeral Docker containers (<strong
+      >~0.3s</strong
+    >) for rapid builds, or provisions dedicated Linux Virtual Machines with
+    full <code>systemd</code> and unconfined Chrome sandboxing for browser E2E tests.
   </p>
 
   <div class="hero-actions">
@@ -100,7 +103,11 @@ const baseUrl = import.meta.env.BASE_URL.replace(/\/$/, '');
   }
 
   @media (max-width: 768px) {
-    .hero-title { font-size: 2.7rem; }
-    .hero-lead { font-size: 1.05rem; }
+    .hero-title {
+      font-size: 2.7rem;
+    }
+    .hero-lead {
+      font-size: 1.05rem;
+    }
   }
 </style>

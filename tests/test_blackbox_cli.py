@@ -17,6 +17,7 @@ Docker/OrbStack/GitHub access.
 """
 
 import os
+import shutil
 import subprocess
 import unittest
 
@@ -25,6 +26,11 @@ REPO_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 
 class TestMakeCLIBlackboxContract(unittest.TestCase):
     """Shells out to the real `make` binary against the real Makefile at the repo root."""
+
+    @classmethod
+    def setUpClass(cls) -> None:
+        if shutil.which("make") is None:
+            raise unittest.SkipTest("`make` is not available on this test host")
 
     def _run_make(self, *targets, timeout=60):
         return subprocess.run(

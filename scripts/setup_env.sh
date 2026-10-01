@@ -47,6 +47,7 @@ fi
 # 1. GitHub Personal Access Token
 echo -e "${BOLD}1. GitHub Personal Access Token (PAT)${RESET}"
 echo -e "   Create one at: ${CYAN}https://github.com/settings/tokens${RESET} (Classic PAT with ${BOLD}repo${RESET} scope)"
+echo -e "   If you want the ${BOLD}GitHub Actions Minutes${RESET} dashboard panel, grant this token billing-read access for your target owner/org too."
 read -r -p "   🔑 Enter your GitHub ACCESS_TOKEN: " ACCESS_TOKEN
 while [ -z "$ACCESS_TOKEN" ]; do
     echo -e "   ${RED}ACCESS_TOKEN is required.${RESET}"

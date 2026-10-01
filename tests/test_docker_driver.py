@@ -3,6 +3,8 @@ Unit tests for Docker container runner driver.
 """
 
 import subprocess
+import tempfile
+import time
 import unittest
 from unittest.mock import MagicMock, patch
 
@@ -150,6 +152,7 @@ class TestDockerDriver(unittest.TestCase):
         uv_entries = [v for v in env_values if v.startswith("UV_INDEX_URL=")]
         self.assertEqual(pip_entries, ["PIP_INDEX_URL=http://localhost:49507/root/pypi/+simple/"])
         self.assertEqual(uv_entries, ["UV_INDEX_URL=http://localhost:49507/root/pypi/+simple/"])
+        self.assertIn("YARN_REGISTRY=http://localhost:49501/", env_values)
         self.assertFalse(any(v.startswith("PIP_TRUSTED_HOST=") for v in env_values))
 
     @patch("subprocess.run")
@@ -164,6 +167,7 @@ class TestDockerDriver(unittest.TestCase):
         driver.spawn_runner(repo="el-j/run-zero", arch="arm64", access_token="tok", proxies_enabled=True)
         cmd = mock_run.call_args[0][0]
         env_values = [cmd[i + 1] for i, tok in enumerate(cmd) if tok == "-e"]
+        self.assertIn("YARN_REGISTRY=http://verdaccio:4873/", env_values)
         self.assertIn("PIP_INDEX_URL=http://devpi:3141/root/pypi/+simple/", env_values)
         self.assertIn("UV_INDEX_URL=http://devpi:3141/root/pypi/+simple/", env_values)
         self.assertIn("PIP_TRUSTED_HOST=devpi", env_values)
@@ -182,6 +186,142 @@ class TestDockerDriver(unittest.TestCase):
         mock_run.side_effect = subprocess.CalledProcessError(1, "docker", stderr=b"Docker daemon error")
         name = self.driver.spawn_runner(repo="el-j/run-zero")
         self.assertIsNone(name)
+
+    @patch("subprocess.run")
+    def test_ensure_runtime_assets_returns_true_when_image_exists(self, mock_run):
+        mock_run.return_value = MagicMock(returncode=0)
+        with patch.object(self.driver, "_build_runner_image_async") as mock_async_build:
+            self.assertTrue(self.driver.ensure_runtime_assets("amd64"))
+        mock_async_build.assert_not_called()
+
+    @patch("subprocess.run")
+    def test_ensure_runtime_assets_triggers_background_build_when_missing(self, mock_run):
+        mock_run.return_value = MagicMock(returncode=1)
+        with patch.object(self.driver, "_build_runner_image_async") as mock_async_build:
+            ready = self.driver.ensure_runtime_assets("amd64")
+        self.assertFalse(ready)
+        mock_async_build.assert_called_once_with("amd64")
+
+    @patch("subprocess.run")
+    def test_spawn_runner_skips_launch_and_starts_build_when_image_missing(self, mock_run):
+        mock_run.return_value = MagicMock(returncode=1)
+        with patch.object(self.driver, "_build_runner_image_async") as mock_async_build:
+            name = self.driver.spawn_runner(repo="el-j/run-zero", arch="amd64", access_token="secret-pat")
+        self.assertIsNone(name)
+        mock_async_build.assert_called_once_with("amd64")
+        # Only docker image inspect should have run; docker run is skipped until image is ready.
+        called_cmd = mock_run.call_args_list[0][0][0]
+        self.assertEqual(called_cmd[:3], ["docker", "image", "inspect"])
+
+    @patch("subprocess.run")
+    def test_spawn_runner_missing_image_error_triggers_background_build(self, mock_run):
+        mock_run.side_effect = subprocess.CalledProcessError(
+            1,
+            "docker",
+            stderr=b"Unable to find image 'local-github-runner:amd64' locally",
+        )
+        with patch.object(self.driver, "ensure_runtime_assets", return_value=True), \
+             patch.object(self.driver, "_build_runner_image_async") as mock_async_build:
+            name = self.driver.spawn_runner(repo="el-j/run-zero", arch="amd64", access_token="secret-pat")
+        self.assertIsNone(name)
+        mock_async_build.assert_called_once_with("amd64")
+
+    @patch("subprocess.run")
+    def test_image_exists_returns_false_on_exception(self, mock_run):
+        mock_run.side_effect = OSError("docker unavailable")
+        self.assertFalse(self.driver._image_exists("amd64"))
+
+    def test_resolve_build_context_dir_prefers_env_path_when_complete(self):
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            dockerfile = f"{tmp_dir}/Dockerfile"
+            provision = f"{tmp_dir}/provision-toolchain.sh"
+            start = f"{tmp_dir}/start.sh"
+            for p in (dockerfile, provision, start):
+                with open(p, "w", encoding="utf-8") as f:
+                    f.write("x")
+            with patch.dict("os.environ", {"RUNNER_IMAGE_DOCKER_DIR": tmp_dir}):
+                self.assertEqual(self.driver._resolve_build_context_dir(), tmp_dir)
+
+    @patch("os.path.isfile", return_value=False)
+    def test_resolve_build_context_dir_returns_none_when_no_candidate_complete(self, mock_isfile):
+        with patch.dict("os.environ", {}, clear=False):
+            self.assertIsNone(self.driver._resolve_build_context_dir())
+
+    def test_build_runner_image_returns_true_when_image_already_exists(self):
+        with patch.object(self.driver, "_image_exists", return_value=True):
+            self.assertTrue(self.driver._build_runner_image("amd64"))
+
+    def test_build_runner_image_returns_false_when_context_missing(self):
+        with patch.object(self.driver, "_image_exists", return_value=False), \
+             patch.object(self.driver, "_resolve_build_context_dir", return_value=None):
+            self.assertFalse(self.driver._build_runner_image("amd64"))
+
+    @patch("subprocess.run")
+    def test_build_runner_image_success_runs_docker_build(self, mock_run):
+        mock_run.side_effect = [MagicMock(returncode=0), MagicMock(returncode=0)]
+        with patch.object(self.driver, "_image_exists", return_value=False), \
+             patch.object(self.driver, "_resolve_build_context_dir", return_value="/tmp/dockerctx"):
+            self.assertTrue(self.driver._build_runner_image("amd64"))
+        cmd = mock_run.call_args_list[1][0][0]
+        self.assertEqual(cmd[:3], ["docker", "buildx", "build"])
+        self.assertIn("--platform", cmd)
+
+    @patch("subprocess.run")
+    def test_build_runner_image_returns_false_when_buildx_missing(self, mock_run):
+        mock_run.return_value = MagicMock(returncode=1)
+        with patch.object(self.driver, "_image_exists", return_value=False), \
+             patch.object(self.driver, "_resolve_build_context_dir", return_value="/tmp/dockerctx"):
+            self.assertFalse(self.driver._build_runner_image("amd64"))
+
+    @patch("subprocess.run")
+    def test_build_runner_image_failure_returns_false(self, mock_run):
+        mock_run.side_effect = [
+            MagicMock(returncode=0),
+            subprocess.CalledProcessError(1, "docker", stderr=b"build failed"),
+        ]
+        with patch.object(self.driver, "_image_exists", return_value=False), \
+             patch.object(self.driver, "_resolve_build_context_dir", return_value="/tmp/dockerctx"):
+            self.assertFalse(self.driver._build_runner_image("amd64"))
+
+    def test_build_runner_image_async_skips_when_already_building(self):
+        self.driver._building_arches.add("amd64")
+        with patch.object(self.driver, "_build_runner_image") as mock_build:
+            self.driver._build_runner_image_async("amd64")
+        mock_build.assert_not_called()
+
+    def test_build_runner_image_async_skips_during_cooldown(self):
+        self.driver._build_retry_after["amd64"] = time.monotonic() + 30
+        with patch.object(self.driver, "_build_runner_image") as mock_build:
+            self.driver._build_runner_image_async("amd64")
+        mock_build.assert_not_called()
+
+    def test_build_runner_image_async_success_resets_failure_state(self):
+        self.driver._build_failure_counts["amd64"] = 3
+        self.driver._build_retry_after["amd64"] = time.monotonic() - 1
+
+        with patch.object(self.driver, "_build_runner_image", return_value=True):
+            self.driver._build_runner_image_async("amd64")
+
+        deadline = time.time() + 2.0
+        while "amd64" in self.driver._building_arches and time.time() < deadline:
+            time.sleep(0.01)
+
+        self.assertEqual(self.driver._build_failure_counts.get("amd64"), 0)
+        self.assertNotIn("amd64", self.driver._build_retry_after)
+
+    def test_ensure_runtime_assets_returns_false_while_already_building(self):
+        self.driver._building_arches.add("amd64")
+        with patch.object(self.driver, "_image_exists", return_value=False), \
+             patch.object(self.driver, "_build_runner_image_async") as mock_async_build:
+            self.assertFalse(self.driver.ensure_runtime_assets("amd64"))
+        mock_async_build.assert_not_called()
+
+    def test_ensure_runtime_assets_returns_false_during_retry_cooldown(self):
+        self.driver._build_retry_after["amd64"] = time.monotonic() + 30
+        with patch.object(self.driver, "_image_exists", return_value=False), \
+             patch.object(self.driver, "_build_runner_image_async") as mock_async_build:
+            self.assertFalse(self.driver.ensure_runtime_assets("amd64"))
+        mock_async_build.assert_not_called()
 
     @patch("subprocess.run")
     def test_prune_and_destroy(self, mock_run):
