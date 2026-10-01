@@ -17,9 +17,9 @@ import time
 from collections.abc import Callable
 
 from .backoff import BuildBackoff
-from .orbstack_templates import docker_engine_snippet, runner_download_snippet
+from .orbstack_templates import docker_engine_snippet
+from .runner_bootstrap import RUNNER_VERSION, runner_download_snippet
 
-RUNNER_VERSION = "2.336.0"
 BASE_IMAGE_PREFIX = "runzero-vm-base-"
 
 DEFAULT_PROVISION_SCRIPT = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))), "docker", "provision-toolchain.sh")

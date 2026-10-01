@@ -5,9 +5,14 @@ Every caller-supplied value interpolated into a script goes through `shlex.quote
 """
 
 import shlex
+from collections.abc import Callable
+
+from .runner_bootstrap import POWEROFF, register_and_run_snippet, runner_download_snippet
+
+__all__ = ["cache_mount_snippet", "docker_engine_snippet", "registration_and_run_snippet", "runner_download_snippet"]
 
 
-def cache_mount_snippet(cache_mounts: dict[str, str] | None) -> str:
+def cache_mount_snippet(cache_mounts: dict[str, str] | None, host_to_guest: Callable[[str], str] | None = None) -> str:
     """Generate a shell snippet that bind-mounts host-backed package caches into this VM.
 
     A Docker container shares the host's mount namespace, so `DockerDriver` can turn
@@ -25,6 +30,9 @@ def cache_mount_snippet(cache_mounts: dict[str, str] | None) -> str:
     managers see an ordinary local directory that happens to persist on the real host disk
     across every VM cloned from this golden image.
 
+    `host_to_guest` maps a host path to where the guest sees it; the default is OrbStack's
+    `/mnt/mac<path>` share (WSL2 passes its `/mnt/<drive>/...` translation instead).
+
     Returns "" when `cache_mounts` is empty/None (matches `if cache_mounts:` guards
     elsewhere in the codebase -- no snippet, no bind mounts, VM behaves as before).
     """
@@ -36,7 +44,7 @@ def cache_mount_snippet(cache_mounts: dict[str, str] | None) -> str:
         "# (see cache_mount_snippet() in orbstack_templates.py for why this works).",
     ]
     for host_path, container_path in cache_mounts.items():
-        mac = shlex.quote(f"/mnt/mac{host_path}")
+        mac = shlex.quote(host_to_guest(host_path) if host_to_guest else f"/mnt/mac{host_path}")
         dest = shlex.quote(container_path)
         lines.append(f"sudo mkdir -p {dest}")
         if container_path.startswith("/home/runner/"):
@@ -55,7 +63,7 @@ def cache_mount_snippet(cache_mounts: dict[str, str] | None) -> str:
             f"  sudo chmod 777 {dest} 2>/dev/null || true\n"
             f"  sudo chown runner:runner {dest} 2>/dev/null || true\n"
             f"else\n"
-            f"  echo 'Warning: host cache dir not visible via OrbStack mac share, skipping mount:' {mac} {dest} >&2\n"
+            f"  echo 'Warning: host cache dir not visible in the guest, skipping mount:' {mac} {dest} >&2\n"
             f"fi"
         )
     return "\n".join(lines)
@@ -110,19 +118,6 @@ sudo tee /etc/docker/daemon.json > /dev/null <<'DAEMONJSON'
 }
 DAEMONJSON
 sudo systemctl enable docker
-"""
-
-
-def runner_download_snippet(orb_arch: str, runner_version: str = "2.336.0") -> str:
-    """Generate shell snippet for downloading and unpacking the GitHub Actions runner package."""
-    return f"""
-mkdir -p /home/runner/actions-runner && cd /home/runner/actions-runner
-RUNNER_ARCH="{orb_arch}"
-[ "$RUNNER_ARCH" = "amd64" ] && RUNNER_ARCH="x64"
-curl -O -L "https://github.com/actions/runner/releases/download/v{runner_version}/actions-runner-linux-${{RUNNER_ARCH}}-{runner_version}.tar.gz"
-tar xzf "./actions-runner-linux-${{RUNNER_ARCH}}-{runner_version}.tar.gz"
-rm "./actions-runner-linux-${{RUNNER_ARCH}}-{runner_version}.tar.gz"
-sudo ./bin/installdependencies.sh
 """
 
 
@@ -199,14 +194,4 @@ sudo chown -R runner:runner /home/runner/.cache /home/runner/go /home/runner/.ca
 sudo chmod -R 777 /home/runner/.cache /home/runner/go 2>/dev/null || true
 mkdir -p /home/runner/.cache/go-build /home/runner/go/pkg 2>/dev/null || true
 {proxy_env_block}
-cd /home/runner/actions-runner
-
-./config.sh --url {shlex.quote(runner_url)} --token {shlex.quote(registration_token)} --name {shlex.quote(vm_name)} --work "_work" \\
-  --unattended --replace --ephemeral --labels {shlex.quote(runner_labels)}
-
-echo "Starting runner "{shlex.quote(vm_name)}"..."
-./run.sh || true
-
-echo "Ephemeral run finished -- powering off so the autoscaler prunes this VM."
-sudo systemctl poweroff 2>/dev/null || sudo poweroff 2>/dev/null || sudo shutdown -h now 2>/dev/null || true
-"""
+{register_and_run_snippet(runner_url, registration_token, vm_name, runner_labels, finish=POWEROFF)}"""

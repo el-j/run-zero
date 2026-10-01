@@ -59,7 +59,7 @@ class TestMultipassDriver(unittest.TestCase):
         self.assertEqual(runners[0].state, "running")
 
         self.assertEqual(runners[1].name, "runzero-mp-amd64-my-org-456")
-        self.assertEqual(runners[1].target_arch, "arm64")
+        self.assertEqual(runners[1].target_arch, "amd64")
         self.assertEqual(runners[1].state, "exited")
 
     @patch("subprocess.run")
@@ -177,6 +177,11 @@ class TestMultipassDriver(unittest.TestCase):
         delete_calls = [c for c in mock_run.call_args_list if c[0][0][:2] == ["multipass", "delete"]]
         self.assertEqual(len(delete_calls), 1)
         self.assertEqual(delete_calls[0][0][0], ["multipass", "delete", "--purge", "runzero-mp-arm64-el-j-run-zero-abc123"])
+
+    def test_spawn_runner_refuses_mismatched_arch(self):
+        with patch("drivers.multipass_driver.host_arch", return_value="arm64"), patch("sys.stderr"):
+            res = self.driver.spawn_runner(repo="el-j/run-zero", arch="amd64", access_token="token")
+            self.assertIsNone(res)
 
 
 if __name__ == "__main__":
