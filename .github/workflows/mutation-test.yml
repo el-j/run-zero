@@ -1,15 +1,12 @@
 name: Mutation Testing
 
-# Mutation testing (mutmut) is intentionally not run on every push -- it's
-# far slower than the regular unit-test suite. It runs on a weekly schedule
-# for baseline drift visibility, on PRs targeting main as a release gate,
-# and can be triggered manually. See issue #17.
+# Mutation testing is run locally and differentially on changed files via:
+#   make mutation-test (or scripts/mutation_changed.py)
+#
+# Automated CI triggers (schedule / pull_request) have been removed to eliminate
+# wasted GitHub Actions runner minutes. This workflow is retained exclusively for
+# manual, on-demand cloud dispatch when a full audit is explicitly requested.
 on:
-  schedule:
-    - cron: '0 6 * * 1' # Every Monday 06:00 UTC
-  pull_request:
-    branches:
-      - main
   workflow_dispatch: {}
 
 jobs:
@@ -22,3 +19,25 @@ jobs:
 
       - name: Run mutation testing suite
         run: make mutation-test
+
+      - name: Generate mutation dashboard artifacts
+        if: always()
+        run: make mutation-report
+
+      - name: Publish mutation artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: mutation-report
+          path: |
+            reports/mutation/
+            mutants/mutmut-cicd-stats.json
+
+      - name: Append mutation summary to workflow
+        if: always()
+        run: |
+          if [ -f reports/mutation/latest.md ]; then
+            cat reports/mutation/latest.md >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "Mutation report was not generated." >> "$GITHUB_STEP_SUMMARY"
+          fi

@@ -17,6 +17,9 @@ RUN apt-get update && \
 WORKDIR /app
 COPY src /app
 ENV PYTHONPATH=/app
+# Inside the container the dashboard must listen on all interfaces for the published
+# port to reach it; docker-compose publishes that port on the host's loopback only.
+ENV DASHBOARD_HOST=0.0.0.0
 
 EXPOSE 49505
 

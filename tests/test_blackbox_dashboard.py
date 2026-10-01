@@ -50,6 +50,7 @@ class TestDashboardBlackboxContract(unittest.TestCase):
     def setUp(self):
         self.server = DashboardServer(host="127.0.0.1", port=0)
         self.server.start(blocking=False)
+        assert self.server.httpd is not None
         self.port = self.server.httpd.server_port
         self.base_url = f"http://127.0.0.1:{self.port}"
 
@@ -138,6 +139,7 @@ class TestDashboardBlackboxContract(unittest.TestCase):
         # touches a real host package cache.
         import shutil
         import tempfile
+
         temp_cache = tempfile.mkdtemp(prefix="runzero-blackbox-cache-")
         self.addCleanup(shutil.rmtree, temp_cache, True)
         original_cache_dir = dashboard_state.cache_dir
@@ -184,7 +186,8 @@ class TestDashboardBlackboxContract(unittest.TestCase):
         req = urllib.request.Request(f"{self.base_url}/api/status", method="OPTIONS")
         with urllib.request.urlopen(req, timeout=3.0) as resp:
             self.assertEqual(resp.status, 204)
-            self.assertEqual(resp.headers.get("Access-Control-Allow-Origin"), "*")
+            # No CORS grant: a foreign origin must not be able to preflight into the API.
+            self.assertIsNone(resp.headers.get("Access-Control-Allow-Origin"))
 
     def test_unknown_get_route_returns_404_contract(self):
         with self.assertRaises(urllib.error.HTTPError) as cm:

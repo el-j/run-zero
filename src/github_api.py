@@ -6,9 +6,11 @@ from __future__ import annotations
 
 import base64
 import json
+import threading
 import time
 import urllib.error
 import urllib.request
+from collections import OrderedDict
 from typing import Any
 
 from workflow_inspector import job_uses_services_or_container
@@ -21,10 +23,26 @@ rate_limit_resource: str | None = None
 rate_limit_reset: int | None = None
 actions_billing: dict[str, Any] = {}
 
+# Set by the autoscaler's signal handler. Every wait in this module (the rate-limit throttle)
+# wakes on it, so a SIGTERM during a throttle stops promptly instead of sleeping up to an hour
+# while `docker stop` escalates to SIGKILL and runner cleanup never runs.
+shutdown_event = threading.Event()
+
+# Longest single throttle wait. If the limit still hasn't reset afterwards, the request is
+# skipped (returns None) rather than spending the last few calls; the caller retries next poll.
+MAX_THROTTLE_WAIT_SECONDS = 60
+
+# Hard ceiling on pages fetched by github_paginate(): 10 x 100 items. Bounds the API cost of a
+# single call; hitting it is logged, never silent.
+MAX_PAGES = 10
+PAGE_SIZE = 100
+
 # A queued run's workflow file is pinned to that run's head_sha, so its content
-# never changes for the lifetime of the run -- caching by run_id forever avoids
-# re-fetching + re-parsing the same file on every ~10s poll while it's queued.
-_workflow_text_cache: dict[int, str | None] = {}
+# never changes for the lifetime of the run -- caching by run_id avoids re-fetching +
+# re-parsing the same file on every poll while it's queued. Bounded (LRU, least recently
+# used run evicted first) so a long-running daemon doesn't grow it without limit.
+WORKFLOW_TEXT_CACHE_SIZE = 512
+_workflow_text_cache: OrderedDict[int, str | None] = OrderedDict()
 
 
 def _update_rate_limit_from_headers(headers: Any) -> None:
@@ -34,6 +52,8 @@ def _update_rate_limit_from_headers(headers: Any) -> None:
     if not headers or "x-ratelimit-remaining" not in headers:
         return
 
+    # Malformed header values stop the update at the first bad field (earlier fields are kept),
+    # matching GitHub's own all-or-nothing header set in practice.
     try:
         rate_limit_remaining = int(headers["x-ratelimit-remaining"])
         if "x-ratelimit-limit" in headers:
@@ -44,8 +64,8 @@ def _update_rate_limit_from_headers(headers: Any) -> None:
             rate_limit_resource = str(headers["x-ratelimit-resource"])
         if "x-ratelimit-reset" in headers:
             rate_limit_reset = int(headers["x-ratelimit-reset"])
-    except Exception:
-        pass
+    except (TypeError, ValueError):
+        return
 
 
 def _update_rate_limit_from_payload(payload: Any) -> None:
@@ -84,8 +104,8 @@ def _update_rate_limit_from_payload(payload: Any) -> None:
             rate_limit_reset = int(resource_data["reset"])
         if resource_key:
             rate_limit_resource = resource_key
-    except Exception:
-        pass
+    except (TypeError, ValueError):
+        return
 
 
 def refresh_rate_limit(access_token: str | None = None) -> bool:
@@ -107,6 +127,7 @@ def _normalize_actions_billing(payload: Any, scope_type: str, scope_name: str) -
     included_minutes = payload.get("included_minutes")
 
     def _to_int(v: Any) -> int | None:
+        """Convert a value to integer, returning None if absent or invalid."""
         try:
             return int(v) if v is not None else None
         except Exception:
@@ -199,12 +220,16 @@ def github_request(endpoint: str, access_token: str | None = None, method: str =
     """Perform an authenticated GitHub REST API request with rate-limit tracking.
 
     Returns the parsed JSON body, True for a bodiless success (204/202), or None on failure.
+    When the rate limit is nearly exhausted, waits (interruptibly, at most
+    MAX_THROTTLE_WAIT_SECONDS) for the reset, and returns None without calling GitHub if
+    shutdown was requested or the limit still hasn't reset.
     """
     now = time.time()
     if rate_limit_remaining is not None and rate_limit_reset is not None and rate_limit_remaining <= 10 and now < rate_limit_reset:
-        wait_seconds = int(rate_limit_reset - now) + 1
+        wait_seconds = min(int(rate_limit_reset - now) + 1, MAX_THROTTLE_WAIT_SECONDS)
         print(f"[Autoscaler:API] ⚠️ Rate limit nearly exhausted. Throttling for {wait_seconds}s...")
-        time.sleep(wait_seconds)
+        if shutdown_event.wait(wait_seconds) or time.time() < rate_limit_reset:
+            return None
 
     url = f"{API_BASE}{endpoint}"
     req = urllib.request.Request(url, method=method)
@@ -224,29 +249,69 @@ def github_request(endpoint: str, access_token: str | None = None, method: str =
     except urllib.error.HTTPError as e:
         _update_rate_limit_from_headers(e.headers or {})
         if e.code in (401, 403) and rate_limit_remaining == 0:
-            if rate_limit_reset:
-                reset_time = time.strftime('%Y-%m-%d %H:%M:%S UTC', time.gmtime(rate_limit_reset))
-            else:
-                reset_time = "unknown"
+            reset_time = time.strftime("%Y-%m-%d %H:%M:%S UTC", time.gmtime(rate_limit_reset)) if rate_limit_reset else "unknown"
             limit_text = str(rate_limit_total) if rate_limit_total is not None else "unknown"
             print(f"[Autoscaler:API] ❌ Rate limit exceeded (0/{limit_text} remaining). Resets at {reset_time}.")
         elif e.code != 404:
             print(f"[Autoscaler:API] HTTP Error {e.code} for {endpoint}: {e.reason}")
         return None
-    except Exception as e:  # noqa: BLE001
+    except Exception as e:
         print(f"[Autoscaler:API] Connection error for {endpoint}: {e}")
         return None
 
 
-def get_workflow_text_for_run(
-    repo_full_name: str, run_id: int, access_token: str | None = None
-) -> str | None:
+def create_registration_token(repo: str | None, org: str | None, access_token: str | None) -> str | None:
+    """Exchange the admin PAT for a short-lived (1 hour) runner registration token.
+
+    Runners only ever receive this token -- never the PAT -- so a job running on them
+    cannot reuse the autoscaler's credentials. `repo` wins over `org` when both are set.
+    Returns None when there is no PAT/target or GitHub refuses the request.
+    """
+    if not access_token or not (repo or org):
+        return None
+    scope = f"/repos/{repo}" if repo else f"/orgs/{org}"
+    data = github_request(f"{scope}/actions/runners/registration-token", access_token=access_token, method="POST")
+    token = data.get("token") if isinstance(data, dict) else None
+    return token if isinstance(token, str) and token else None
+
+
+def github_paginate(
+    endpoint: str, key: str, access_token: str | None = None, max_pages: int = MAX_PAGES, allow_truncated: bool = True
+) -> list[dict[str, Any]] | None:
+    """Fetch every page of a GitHub list endpoint and return the concatenated `key` items.
+
+    GitHub list endpoints default to 30 items per page; without this, a matrix of more than
+    30 jobs or a repo with more than 30 runners is silently truncated. Requests
+    `per_page=100` and follows pages until a short page, up to `max_pages` (a truncation
+    warning is printed if the cap is hit).
+
+    Returns None if ANY page fails or is malformed: a partial list would be mistaken for the
+    complete set (e.g. "these are all the registered runners") by callers. For the same
+    reason, callers that treat the result as exhaustive pass `allow_truncated=False` to get
+    None instead of a capped list.
+    """
+    sep = "&" if "?" in endpoint else "?"
+    items: list[dict[str, Any]] = []
+    for page in range(1, max_pages + 1):
+        data = github_request(f"{endpoint}{sep}per_page={PAGE_SIZE}&page={page}", access_token=access_token)
+        batch = data.get(key) if isinstance(data, dict) else None
+        if not isinstance(batch, list):
+            return None
+        items.extend(item for item in batch if isinstance(item, dict))
+        if len(batch) < PAGE_SIZE:
+            return items
+    print(f"[Autoscaler:API] ⚠️ {endpoint} has more than {max_pages * PAGE_SIZE} {key}; only the first {max_pages * PAGE_SIZE} were read.")
+    return items if allow_truncated else None
+
+
+def get_workflow_text_for_run(repo_full_name: str, run_id: int, access_token: str | None = None) -> str | None:
     """Fetch the raw workflow YAML that produced a given run, at the exact
     commit it ran against. Returns None (and caches the miss) if the run,
     its workflow path, or the file content can't be resolved -- callers
     must treat that as "unknown", not "no services declared".
     """
     if run_id in _workflow_text_cache:
+        _workflow_text_cache.move_to_end(run_id)
         return _workflow_text_cache[run_id]
 
     text: str | None = None
@@ -255,9 +320,7 @@ def get_workflow_text_for_run(
     head_sha = run_data.get("head_sha") if isinstance(run_data, dict) else None
 
     if path and head_sha:
-        contents = github_request(
-            f"/repos/{repo_full_name}/contents/{path}?ref={head_sha}", access_token=access_token
-        )
+        contents = github_request(f"/repos/{repo_full_name}/contents/{path}?ref={head_sha}", access_token=access_token)
         if isinstance(contents, dict) and contents.get("encoding") == "base64" and contents.get("content"):
             try:
                 text = base64.b64decode(contents["content"]).decode("utf-8")
@@ -265,16 +328,14 @@ def get_workflow_text_for_run(
                 text = None
 
     _workflow_text_cache[run_id] = text
+    while len(_workflow_text_cache) > WORKFLOW_TEXT_CACHE_SIZE:
+        _workflow_text_cache.popitem(last=False)
     return text
 
 
 def get_queued_job_details(repo_full_name: str, access_token: str | None = None) -> list[dict[str, Any]]:
     """Retrieve detailed metadata for unclaimed queued jobs in a repository."""
-    data = github_request(f"/repos/{repo_full_name}/actions/runs?status=queued", access_token=access_token)
-    if not isinstance(data, dict) or "workflow_runs" not in data:
-        return []
-
-    queued_runs = data["workflow_runs"]
+    queued_runs = github_paginate(f"/repos/{repo_full_name}/actions/runs?status=queued", "workflow_runs", access_token=access_token)
     if not queued_runs:
         return []
 
@@ -283,8 +344,8 @@ def get_queued_job_details(repo_full_name: str, access_token: str | None = None)
         run_id = run.get("id")
         if not run_id:
             continue
-        jobs_data = github_request(f"/repos/{repo_full_name}/actions/runs/{run_id}/jobs", access_token=access_token)
-        if not isinstance(jobs_data, dict) or "jobs" not in jobs_data:
+        jobs = github_paginate(f"/repos/{repo_full_name}/actions/runs/{run_id}/jobs", "jobs", access_token=access_token)
+        if jobs is None:
             continue
 
         # GitHub only ever dispatches a job to one of our runners if its
@@ -295,10 +356,7 @@ def get_queued_job_details(repo_full_name: str, access_token: str | None = None)
         # never be assigned to us) still causes a container/VM spawn
         # that then sits registered and idle forever, since GitHub
         # dispatches it to its own hosted fleet instead.
-        qualifying_jobs = [
-            job for job in jobs_data["jobs"]
-            if job.get("status") == "queued" and "self-hosted" in job.get("labels", [])
-        ]
+        qualifying_jobs = [job for job in jobs if job.get("status") == "queued" and "self-hosted" in job.get("labels", [])]
         if not qualifying_jobs:
             continue
 
@@ -307,28 +365,29 @@ def get_queued_job_details(repo_full_name: str, access_token: str | None = None)
         workflow_text = get_workflow_text_for_run(repo_full_name, run_id, access_token=access_token)
 
         for job in qualifying_jobs:
-            declares_services = (
-                job_uses_services_or_container(workflow_text, job.get("name", ""))
-                if workflow_text is not None else None
+            declares_services = job_uses_services_or_container(workflow_text, job.get("name", "")) if workflow_text is not None else None
+            detailed_jobs.append(
+                {
+                    "id": job.get("id"),
+                    "name": job.get("name", ""),
+                    "run_id": run_id,
+                    # The workflow FILE path (e.g. ".github/workflows/ci.yml"), stable across every
+                    # run of this workflow -- unlike run_id/id, which are unique per execution and
+                    # therefore useless as a cache scope key (see build_cache_scope() in
+                    # autoscaler.py: it's combined with the job name for a stable, reusable
+                    # per-job build-cache directory instead of one that's thrown away every run).
+                    "workflow_path": run.get("path", ""),
+                    "job_url": job.get("html_url")
+                    or (f"https://github.com/{repo_full_name}/actions/runs/{run_id}/job/{job.get('id')}" if run_id and job.get("id") else ""),
+                    "run_url": run.get("html_url") or (f"https://github.com/{repo_full_name}/actions/runs/{run_id}" if run_id else ""),
+                    "labels": job.get("labels", []),
+                    "head_branch": run.get("head_branch", ""),
+                    "event": run.get("event", ""),
+                    # True/False when the workflow file could be located and
+                    # parsed and the job matched by name; None ("unknown") if
+                    # not -- router.py must fall back to its name/label
+                    # heuristic rather than treat None as "no services".
+                    "declares_services": declares_services,
+                }
             )
-            detailed_jobs.append({
-                "id": job.get("id"),
-                "name": job.get("name", ""),
-                "run_id": run_id,
-                "job_url": job.get("html_url") or (
-                    f"https://github.com/{repo_full_name}/actions/runs/{run_id}/job/{job.get('id')}"
-                    if run_id and job.get("id") else ""
-                ),
-                "run_url": run.get("html_url") or (
-                    f"https://github.com/{repo_full_name}/actions/runs/{run_id}" if run_id else ""
-                ),
-                "labels": job.get("labels", []),
-                "head_branch": run.get("head_branch", ""),
-                "event": run.get("event", ""),
-                # True/False when the workflow file could be located and
-                # parsed and the job matched by name; None ("unknown") if
-                # not -- router.py must fall back to its name/label
-                # heuristic rather than treat None as "no services".
-                "declares_services": declares_services,
-            })
     return detailed_jobs

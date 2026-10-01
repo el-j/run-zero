@@ -90,28 +90,68 @@ case "${ARCH}" in
   *) ARCH_LABEL="${ARCH}" ;;
 esac
 
-# Proxy Registry auto-detection (Verdaccio for NPM & Athens for Go). Uses
-# localhost, not container names — the runner runs with --network host (needed
-# for GitHub Actions `services:` containers to be reachable at localhost), so
-# there's no container-name DNS between the runner and these proxy containers,
-# only whatever ports they publish to the host.
-if curl -s --connect-timeout 1 http://localhost:49501/ >/dev/null 2>&1; then
+# Proxy Registry auto-detection (Verdaccio/Athens/devpi). Try explicit env vars first,
+# then discover across common runtime topologies:
+# 1) --network host via published localhost ports
+# 2) Compose bridge networking via service DNS names
+# 3) OrbStack host DNS alias
+if [ -n "${NPM_CONFIG_REGISTRY:-}" ]; then
+  export NPM_CONFIG_REGISTRY="${NPM_CONFIG_REGISTRY}"
+  export npm_config_registry="${NPM_CONFIG_REGISTRY}"
+  npm config set registry "${NPM_CONFIG_REGISTRY}" --global 2>/dev/null || true
+  echo "⚡ Verdaccio NPM proxy configured from env: ${NPM_CONFIG_REGISTRY}"
+elif curl -s --connect-timeout 1 http://localhost:49501/ >/dev/null 2>&1; then
   export NPM_CONFIG_REGISTRY="http://localhost:49501/"
-  npm config set registry http://localhost:49501/ --global 2>/dev/null || true
-  echo "⚡ Verdaccio NPM proxy connected: http://localhost:49501/"
+  export npm_config_registry="${NPM_CONFIG_REGISTRY}"
+  npm config set registry "${NPM_CONFIG_REGISTRY}" --global 2>/dev/null || true
+  echo "⚡ Verdaccio NPM proxy connected: ${NPM_CONFIG_REGISTRY}"
+elif curl -s --connect-timeout 1 http://verdaccio:4873/ >/dev/null 2>&1; then
+  export NPM_CONFIG_REGISTRY="http://verdaccio:4873/"
+  export npm_config_registry="${NPM_CONFIG_REGISTRY}"
+  npm config set registry "${NPM_CONFIG_REGISTRY}" --global 2>/dev/null || true
+  echo "⚡ Verdaccio NPM proxy connected: ${NPM_CONFIG_REGISTRY}"
+elif curl -s --connect-timeout 1 http://host.orb.internal:49501/ >/dev/null 2>&1; then
+  export NPM_CONFIG_REGISTRY="http://host.orb.internal:49501/"
+  export npm_config_registry="${NPM_CONFIG_REGISTRY}"
+  npm config set registry "${NPM_CONFIG_REGISTRY}" --global 2>/dev/null || true
+  echo "⚡ Verdaccio NPM proxy connected: ${NPM_CONFIG_REGISTRY}"
 fi
 
-if curl -s --connect-timeout 1 http://localhost:49500/ >/dev/null 2>&1; then
+if [ -n "${GOPROXY:-}" ]; then
+  echo "⚡ Athens Go proxy configured from env: ${GOPROXY}"
+elif curl -s --connect-timeout 1 http://localhost:49500/ >/dev/null 2>&1; then
   export GOPROXY="http://localhost:49500,https://proxy.golang.org,direct"
   echo "⚡ Athens Go proxy connected: http://localhost:49500"
+elif curl -s --connect-timeout 1 http://athens:3000/ >/dev/null 2>&1; then
+  export GOPROXY="http://athens:3000,https://proxy.golang.org,direct"
+  echo "⚡ Athens Go proxy connected: http://athens:3000"
+elif curl -s --connect-timeout 1 http://host.orb.internal:49500/ >/dev/null 2>&1; then
+  export GOPROXY="http://host.orb.internal:49500,https://proxy.golang.org,direct"
+  echo "⚡ Athens Go proxy connected: http://host.orb.internal:49500"
 fi
 
 # devpi's default "root/pypi" index is a real pull-through PyPI mirror; both pip and uv
 # honor PIP_INDEX_URL, uv additionally reads UV_INDEX_URL.
-if curl -s --connect-timeout 1 http://localhost:49507/root/pypi/+simple/ >/dev/null 2>&1; then
+if [ -n "${PIP_INDEX_URL:-}" ]; then
+  export UV_INDEX_URL="${UV_INDEX_URL:-${PIP_INDEX_URL}}"
+  pip config set global.index-url "${PIP_INDEX_URL}" 2>/dev/null || true
+  echo "⚡ devpi PyPI proxy configured from env: ${PIP_INDEX_URL}"
+elif curl -s --connect-timeout 1 http://localhost:49507/root/pypi/+simple/ >/dev/null 2>&1; then
   export PIP_INDEX_URL="http://localhost:49507/root/pypi/+simple/"
   export UV_INDEX_URL="${PIP_INDEX_URL}"
   pip config set global.index-url "${PIP_INDEX_URL}" 2>/dev/null || true
+  echo "⚡ devpi PyPI proxy connected: ${PIP_INDEX_URL}"
+elif curl -s --connect-timeout 1 http://devpi:3141/root/pypi/+simple/ >/dev/null 2>&1; then
+  export PIP_INDEX_URL="http://devpi:3141/root/pypi/+simple/"
+  export UV_INDEX_URL="${PIP_INDEX_URL}"
+  pip config set global.index-url "${PIP_INDEX_URL}" 2>/dev/null || true
+  export PIP_TRUSTED_HOST="${PIP_TRUSTED_HOST:-devpi}"
+  echo "⚡ devpi PyPI proxy connected: ${PIP_INDEX_URL}"
+elif curl -s --connect-timeout 1 http://host.orb.internal:49507/root/pypi/+simple/ >/dev/null 2>&1; then
+  export PIP_INDEX_URL="http://host.orb.internal:49507/root/pypi/+simple/"
+  export UV_INDEX_URL="${PIP_INDEX_URL}"
+  pip config set global.index-url "${PIP_INDEX_URL}" 2>/dev/null || true
+  export PIP_TRUSTED_HOST="${PIP_TRUSTED_HOST:-host.orb.internal}"
   echo "⚡ devpi PyPI proxy connected: ${PIP_INDEX_URL}"
 fi
 
@@ -136,16 +176,26 @@ fi
 # container). host.orb.internal is OrbStack's universal DNS name for the Mac host and
 # resolves correctly from every context this stack runs runners in -- verified live from
 # a real OrbStack VM, a --network host container, and a plain bridge-network container.
+KELLNR_REGISTRY_URL=""
 if curl -fsS --connect-timeout 1 http://host.orb.internal:49506/api/v1/cratesio/config.json >/dev/null 2>&1; then
+  KELLNR_REGISTRY_URL="sparse+http://host.orb.internal:49506/api/v1/cratesio/"
+elif curl -fsS --connect-timeout 1 http://kellnr:8000/api/v1/cratesio/config.json >/dev/null 2>&1; then
+  KELLNR_REGISTRY_URL="sparse+http://kellnr:8000/api/v1/cratesio/"
+elif curl -fsS --connect-timeout 1 http://localhost:49506/api/v1/cratesio/config.json >/dev/null 2>&1; then
+  KELLNR_REGISTRY_URL="sparse+http://localhost:49506/api/v1/cratesio/"
+fi
+
+if [ -n "${KELLNR_REGISTRY_URL}" ]; then
   mkdir -p "${HOME}/.cargo"
   cat > "${HOME}/.cargo/config.toml" <<'CARGOCFG'
 [source.crates-io]
 replace-with = "kellnr-proxy"
 
 [source.kellnr-proxy]
-registry = "sparse+http://host.orb.internal:49506/api/v1/cratesio/"
+registry = "__RUNZERO_KELLNR_REGISTRY__"
 CARGOCFG
-  echo "⚡ kellnr Cargo/crates.io proxy connected: ${KELLNR_URL}"
+  sed -i "s|__RUNZERO_KELLNR_REGISTRY__|${KELLNR_REGISTRY_URL}|g" "${HOME}/.cargo/config.toml"
+  echo "⚡ kellnr Cargo/crates.io proxy connected: ${KELLNR_REGISTRY_URL}"
 fi
 
 # apt-cacher-ng only gets wired into the image if it happened to be running at
@@ -158,6 +208,12 @@ fi
 if curl -fsS --connect-timeout 1 http://localhost:49503/acng-report.html >/dev/null 2>&1; then
   echo 'Acquire::http::Proxy "http://localhost:49503";' | sudo tee /etc/apt/apt.conf.d/01runzero-proxy > /dev/null
   echo "⚡ apt-cacher-ng proxy connected: http://localhost:49503"
+elif curl -fsS --connect-timeout 1 http://apt-cacher:3142/acng-report.html >/dev/null 2>&1; then
+  echo 'Acquire::http::Proxy "http://apt-cacher:3142";' | sudo tee /etc/apt/apt.conf.d/01runzero-proxy > /dev/null
+  echo "⚡ apt-cacher-ng proxy connected: http://apt-cacher:3142"
+elif curl -fsS --connect-timeout 1 http://host.orb.internal:49503/acng-report.html >/dev/null 2>&1; then
+  echo 'Acquire::http::Proxy "http://host.orb.internal:49503";' | sudo tee /etc/apt/apt.conf.d/01runzero-proxy > /dev/null
+  echo "⚡ apt-cacher-ng proxy connected: http://host.orb.internal:49503"
 fi
 
 # Fallback/alias for environment variable names
@@ -206,7 +262,8 @@ echo "NPM Registry:  ${NPM_CONFIG_REGISTRY:-https://registry.npmjs.org/}"
 echo "Go Proxy:      ${GOPROXY:-https://proxy.golang.org,direct}"
 echo "Pip Index:     ${PIP_INDEX_URL:-https://pypi.org/simple/}"
 if [ -f "${HOME}/.cargo/config.toml" ] && grep -q "kellnr-proxy" "${HOME}/.cargo/config.toml" 2>/dev/null; then
-  echo "Cargo Source:  kellnr proxy (http://localhost:49506)"
+  CARGO_REGISTRY_URL="${KELLNR_REGISTRY_URL:-$(grep -E '^registry\s*=\s*"' "${HOME}/.cargo/config.toml" 2>/dev/null | head -1 | sed -E 's/^registry\s*=\s*"(.*)"/\1/')}"
+  echo "Cargo Source:  kellnr proxy (${CARGO_REGISTRY_URL:-configured})"
 else
   echo "Cargo Source:  crates.io (default)"
 fi
@@ -236,6 +293,14 @@ if [ -z "${RUNNER_TOKEN}" ]; then
 else
   REG_TOKEN="${RUNNER_TOKEN}"
 fi
+
+# Keep credentials out of every job step: run.sh and its children inherit only exported
+# variables, so drop the export attribute from all credential names. The autoscaler only
+# ever passes RUNNER_TOKEN (a registration token); a PAT supplied for standalone use stays
+# in this shell solely for cleanup()'s remove-token call. NOTE: the container's initial
+# environment remains readable via /proc/1/environ by the same user -- see SECURITY.md.
+export -n ACCESS_TOKEN TOKEN PAT_TOKEN GITHUB_TOKEN RUNNER_TOKEN REGISTRATION_TOKEN
+unset TOKEN PAT_TOKEN RUNNER_TOKEN REGISTRATION_TOKEN
 
 cd /home/runner/actions-runner
 

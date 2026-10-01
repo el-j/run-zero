@@ -22,9 +22,8 @@
       <h3>1. Real-Time Web Dashboard (Port 49505)</h3>
     </div>
     <p>
-      The Web Dashboard starts automatically alongside the autoscaler daemon on <code
-        >http://localhost:49505</code
-      >.
+      The Web Dashboard starts automatically alongside the autoscaler daemon on{" "}
+      <code>http://localhost:49505</code>.
     </p>
 
     <div class="code-block-wrap">
@@ -41,30 +40,31 @@
     <h4>Key Dashboard Capabilities</h4>
     <ul class="styled-list">
       <li>
-        <strong>Live Ephemeral Runner Fleet:</strong> Real-time status halos, active
-        duration stopwatches, target repo/workflow name, and runtime engine (Docker
-        vs OrbStack / WSL2 / Multipass VM).
+        <strong>Live Ephemeral Runner Fleet:</strong> Real-time status halos,
+        active duration stopwatches, target repo/workflow name, and runtime
+        engine (Docker vs OrbStack / WSL2 / Multipass VM).
       </li>
       <li>
-        <strong>Server-Sent Events (SSE) Stream:</strong> Instant UI updates delivered
-        via <code>/api/events</code> with zero page polling and zero socket bloat.
+        <strong>Server-Sent Events (SSE) Stream:</strong> Instant UI updates
+        delivered via <code>/api/events</code> with zero page polling and zero
+        socket bloat.
       </li>
       <li>
-        <strong>GitHub API Quota Tracker:</strong> Visual gauge tracking live GitHub
-        REST API rate-limit headroom.
+        <strong>GitHub API Quota Tracker:</strong> Visual gauge tracking live
+        GitHub REST API rate-limit headroom.
       </li>
       <li>
-        <strong>Hybrid Routing Breakdown:</strong> Real-time counts of jobs routed
-        to Docker vs VM backends (Services/DIND, Browser E2E, Systemd).
+        <strong>Hybrid Routing Breakdown:</strong> Real-time counts of jobs
+        routed to Docker vs VM backends (Services/DIND, Browser E2E, Systemd).
       </li>
       <li>
-        <strong>Proxy Cache Analytics:</strong> Disk usage breakdown across NPM (Verdaccio),
-        Go (Athens), APT, Docker, and Toolcache directories, with one-click purge
-        actions.
+        <strong>Proxy Cache Analytics:</strong> Disk usage breakdown across NPM
+        (Verdaccio), Go (Athens), APT, Docker, and Toolcache directories, with
+        one-click purge actions.
       </li>
       <li>
-        <strong>Streaming Terminal Log Viewer:</strong> Live tailing ring buffer of
-        autoscaler daemon logs with auto-scroll and pause controls.
+        <strong>Streaming Terminal Log Viewer:</strong> Live tailing ring buffer
+        of autoscaler daemon logs with auto-scroll and pause controls.
       </li>
     </ul>
 
@@ -80,18 +80,30 @@
         </thead>
         <tbody>
           <tr>
-            <td><code>DASHBOARD_ENABLED</code></td>
-            <td><code>true</code></td>
+            <td>
+              <code>DASHBOARD_ENABLED</code>
+            </td>
+            <td>
+              <code>true</code>
+            </td>
             <td>Enables the built-in HTTP and SSE dashboard server.</td>
           </tr>
           <tr>
-            <td><code>DASHBOARD_HOST</code></td>
-            <td><code>0.0.0.0</code></td>
+            <td>
+              <code>DASHBOARD_HOST</code>
+            </td>
+            <td>
+              <code>0.0.0.0</code>
+            </td>
             <td>Host address the dashboard binds to.</td>
           </tr>
           <tr>
-            <td><code>DASHBOARD_PORT</code></td>
-            <td><code>49505</code></td>
+            <td>
+              <code>DASHBOARD_PORT</code>
+            </td>
+            <td>
+              <code>49505</code>
+            </td>
             <td>Web UI dashboard listening port.</td>
           </tr>
         </tbody>
@@ -100,9 +112,10 @@
 
     <h4 id="actions-billing-setup">GitHub Actions Minutes Panel Setup</h4>
     <p>
-      The dashboard's <strong>GitHub Actions Minutes</strong> panel uses GitHub billing
-      endpoints and does not reuse API rate-limit values. Configure account scope and
-      token permissions correctly to populate this panel with real data.
+      The dashboard's <strong>GitHub Actions Minutes</strong> panel uses GitHub
+      billing endpoints and does not reuse API rate-limit values. Configure
+      account scope and token permissions correctly to populate this panel with
+      real data.
     </p>
 
     <div class="code-block-wrap">
@@ -123,21 +136,28 @@
 
     <ul class="styled-list">
       <li>
-        <strong>Primary runner operations:</strong> Token needs repository access for queue
-        discovery and runner registration.
+        <strong>Primary runner operations:</strong> Token needs repository
+        access for queue discovery and runner registration.
       </li>
       <li>
-        <strong>Minutes panel:</strong> Token also needs billing-read access for the target
-        owner/org scope.
+        <strong>Minutes panel:</strong> Token also needs billing-read access for
+        the target owner/org scope.
       </li>
       <li>
-        <strong>Validation:</strong> If permissions are insufficient, panel status shows
-        a clear error instead of fake numbers.
+        <strong>Validation:</strong> If permissions are insufficient, panel
+        status shows a clear error instead of fake numbers.
       </li>
     </ul>
 
     <p>
-      Full HOWTO: <a href="https://github.com/el-j/run-zero/blob/develop/ACTIONS_BILLING_HOWTO.md" target="_blank" rel="noopener">ACTIONS_BILLING_HOWTO.md</a>
+      Full HOWTO:{" "}
+      <a
+        href="https://github.com/el-j/run-zero/blob/develop/ACTIONS_BILLING_HOWTO.md"
+        target="_blank"
+        rel="noopener"
+      >
+        ACTIONS_BILLING_HOWTO.md
+      </a>
     </p>
   </div>
 
@@ -148,13 +168,12 @@
       <h3>2. Host VM Bridge (Port 49504)</h3>
     </div>
     <p>
-      When running RunZero's autoscaler inside a Docker container (<code
-        >make start-container</code
-      >), native virtualization CLI tools like <code>orbctl</code>, <code
-        >wsl.exe</code
-      >, or <code>multipass</code> are not directly executable within the container.
-      The <strong>Host VM Bridge</strong> bridges this gap by exposing a zero-dependency
-      HTTP control daemon on the host.
+      When running RunZero's autoscaler inside a Docker container (
+      <code>make start-container</code>), native virtualization CLI tools like{" "}
+      <code>orbctl</code>, <code>wsl.exe</code>, or <code>multipass</code> are
+      not directly executable within the container. The{" "}
+      <strong>Host VM Bridge</strong> bridges this gap by exposing a
+      zero-dependency HTTP control daemon on the host.
     </p>
 
     <div class="code-block-wrap">
@@ -186,16 +205,24 @@
         </thead>
         <tbody>
           <tr>
-            <td><code>HOST_VM_BRIDGE_PORT</code></td>
-            <td><code>49504</code></td>
+            <td>
+              <code>HOST_VM_BRIDGE_PORT</code>
+            </td>
+            <td>
+              <code>49504</code>
+            </td>
             <td>Port the host bridge HTTP daemon listens on.</td>
           </tr>
           <tr>
-            <td><code>HOST_VM_BRIDGE_URL</code></td>
-            <td><code>http://host.docker.internal:49504</code></td>
-            <td
-              >URL the containerized autoscaler uses to reach the host bridge.</td
-            >
+            <td>
+              <code>HOST_VM_BRIDGE_URL</code>
+            </td>
+            <td>
+              <code>http://host.docker.internal:49504</code>
+            </td>
+            <td>
+              URL the containerized autoscaler uses to reach the host bridge.
+            </td>
           </tr>
         </tbody>
       </table>

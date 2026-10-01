@@ -7,13 +7,36 @@ name = "run-zero"
 version = "0.0.1"
 description = "Dual-Engine Autoscaling GitHub Actions Runner Fleet for Docker & Linux VMs"
 readme = "README.md"
-requires-python = ">=3.9"
+requires-python = ">=3.11"
+
+[tool.ruff]
+line-length = 160
+target-version = "py311"
+extend-exclude = ["mutants", "website", "docs"]
+
+[tool.ruff.lint]
+# Ratchet: rules are only listed here once the codebase is clean against them, so
+# `make check` is always green-or-regressed, never "known red". Still to enable
+# (tracked in #58, after the P4 decomposition removes most module globals):
+# BLE (blind except), PLW1510 (subprocess.run without check=), PLW0603 (global).
+select = ["E", "W", "F", "B", "UP", "SIM", "I", "C4", "PIE", "RUF", "PLE", "S110"]
+
+[tool.ruff.lint.isort]
+known-first-party = ["autoscaler", "cache_manager", "dashboard", "discovery", "drivers", "github_api", "reconciler", "router", "version", "vm_bridge", "workflow_inspector"]
+
+[tool.interrogate]
+ignore-init-module = true
+# Ratchet floor = current baseline; #58 raises this to 100.
+fail-under = 100
+verbose = 0
 
 [tool.pytest.ini_options]
 minversion = "7.0"
 testpaths = ["tests"]
 pythonpath = ["src"]
 addopts = "-ra -q --cov=src --cov-report=term-missing --cov-fail-under=100"
+# Any warning raised during the suite is a failure (#40): "no code warnings" is enforced, not hoped for.
+filterwarnings = ["error"]
 
 [tool.coverage.run]
 source = ["src"]
@@ -27,6 +50,7 @@ skip_covered = false
 
 [tool.mypy]
 python_version = "3.11"
+mypy_path = "src"
 ignore_missing_imports = true
 warn_unused_configs = true
 disallow_untyped_defs = false
@@ -42,7 +66,13 @@ check_untyped_defs = true
 # completed a real run -- the previous single-string config could never have
 # worked. `paths_to_mutate` (mutmut 2.x's key) still works via mutmut 3.x's
 # back-compat shim but is deprecated in favor of `source_paths`.
-source_paths = ["src/"]
+source_paths = ["src/autoscaler.py", "src/config.py", "src/dashboard/server.py", "src/dashboard/state.py", "src/drivers/backoff.py", "src/drivers/bridge_driver.py", "src/drivers/docker_driver.py", "src/drivers/instance_store.py", "src/drivers/orbstack_image.py", "src/drivers/orbstack_vm_driver.py", "src/drivers/wsl_driver.py", "src/github_api.py", "src/http_security.py", "src/reconciler.py", "src/vm_bridge.py", "src/workflow_inspector.py"]
+# Equivalent-mutant policy: skip low-signal modules that are mostly templates
+# or version metadata rather than runtime decision logic.
+do_not_mutate = [
+    "src/drivers/orbstack_templates.py",
+    "src/version.py",
+]
 # tests/test_blackbox_cli.py shells out to the real `make` binary, and
 # OrbStackVMDriver reads docker/provision-toolchain.sh from disk -- both
 # resolve their path via `__file__`, which lands inside mutmut's mutants/
@@ -50,7 +80,15 @@ source_paths = ["src/"]
 # these, mutmut's own baseline run fails ("No rule to make target" /
 # "provisioning script not found") because those paths were never mirrored
 # into the sandbox.
-also_copy = ["Makefile", "docker/"]
+also_copy = [
+    "Makefile",
+    "docker/",
+    "docker-compose.yml",
+    ".env",
+    ".env.example",
+    "scripts/",
+    "src/",
+]
 # mutmut 3.x runs pytest in-process via `pytest.main()`, so it inherits
 # [tool.pytest.ini_options]'s addopts -- including --cov-fail-under=100.
 # Each mutant run only executes the narrow subset of tests mutmut's own
@@ -59,8 +97,14 @@ also_copy = ["Makefile", "docker/"]
 # Without --no-cov here, that unrelated coverage gate would fail (and thus
 # mark "killed") almost every mutant regardless of whether its actual
 # behavior change was caught by a real assertion -- silently invalidating
-# the whole run's results.
-pytest_add_cli_args = ["--no-cov"]
+# the whole run's results. Live container/VM e2e tests are ignored during
+# mutation testing to keep runs lightweight and purely unit-focused.
+pytest_add_cli_args = [
+    "--no-cov",
+    "--ignore=tests/test_e2e_compose_deployment.py",
+    "--ignore=tests/test_e2e_docker.py",
+    "--ignore=tests/test_orbstack_live_integration.py",
+]
 # The old `runner = "python -m pytest -q"` key from mutmut 2.x is not read
 # by mutmut 3.x at all (it always drives pytest directly in-process) --
 # removed rather than left as dead, misleading config.

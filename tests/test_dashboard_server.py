@@ -9,21 +9,64 @@ import urllib.request
 from unittest.mock import MagicMock, patch
 
 import dashboard.server
-from dashboard.server import DashboardRequestHandler, DashboardServer
+from dashboard.server import STATIC_DIR, DashboardRequestHandler, DashboardServer
 from dashboard.state import DashboardState, dashboard_state
+from version import __version__
 
 
 class TestDashboardState(unittest.TestCase):
     def setUp(self):
         self.state = DashboardState(max_log_lines=50)
 
-    def test_quota_defaults_are_unknown_until_first_github_sync(self):
-        snapshot = self.state.get_snapshot()
-        self.assertIsNone(snapshot["github"]["rate_limit_remaining"])
-        self.assertIsNone(snapshot["github"]["rate_limit_total"])
-        self.assertIsNone(snapshot["github"]["rate_limit_used"])
-        self.assertIsNone(snapshot["github"]["rate_limit_resource"])
-        self.assertIsNone(snapshot["github"]["rate_limit_reset"])
+    def test_init_defaults_are_stable(self):
+        self.assertEqual(self.state.max_log_lines, 50)
+        self.assertEqual(self.state.log_buffer.maxlen, 50)
+        self.assertEqual(self.state.version, __version__)
+        self.assertEqual(self.state.autoscaler_status, "running")
+        self.assertEqual(self.state.default_engine, "docker")
+        self.assertEqual(self.state.available_drivers, ["docker"])
+        self.assertTrue(self.state.hybrid_routing_enabled)
+        self.assertEqual(self.state.target_architectures, ["arm64", "amd64"])
+        self.assertEqual(self.state.max_concurrency, 4)
+        self.assertEqual(self.state.min_runners, 0)
+        self.assertIsNone(self.state.github_rate_limit_remaining)
+        self.assertIsNone(self.state.github_rate_limit_total)
+        self.assertEqual(self.state.total_queued_jobs, 0)
+        self.assertEqual(self.state.active_runners, [])
+        self.assertEqual(self.state.routing_docker_jobs, 0)
+        self.assertEqual(self.state.routing_vm_jobs, 0)
+        self.assertEqual(
+            self.state.routing_triggers,
+            {
+                "services": 0,
+                "dind": 0,
+                "browser": 0,
+                "e2e": 0,
+                "systemd": 0,
+                "custom_label": 0,
+            },
+        )
+
+    def test_init_cache_size_keys_exist(self):
+        expected_keys = {
+            "npm",
+            "yarn",
+            "pnpm",
+            "pip",
+            "uv",
+            "go-mod",
+            "go-build",
+            "cargo",
+            "toolcache",
+            "total_host",
+            "verdaccio",
+            "athens",
+            "docker_mirror",
+            "apt_cacher",
+        }
+        self.assertEqual(set(self.state.cache_sizes.keys()), expected_keys)
+        for value in self.state.cache_sizes.values():
+            self.assertEqual(value, "0 B")
 
     def test_append_log(self):
         self.state.append_log("Test log line 1")
@@ -32,23 +75,62 @@ class TestDashboardState(unittest.TestCase):
         self.assertEqual(entry["message"], "Test log line 1")
         self.assertTrue("timestamp" in entry)
 
-    def test_routing_stats(self):
-        self.state.record_routing_decision("docker")
-        self.state.record_routing_decision("orbstack-vm", "services")
-        self.state.record_routing_decision("orbstack-vm", "dind")
-        self.state.record_routing_decision("orbstack-vm", "browser")
-        self.state.record_routing_decision("orbstack-vm", "e2e")
-        self.state.record_routing_decision("orbstack-vm", "systemd")
-        self.state.record_routing_decision("orbstack-vm", "custom")
+    def test_report_image_build_records_event_and_appears_in_snapshot(self):
+        self.state.report_image_build(
+            {
+                "driver": "docker",
+                "arch": "amd64",
+                "profile": None,
+                "status": "building",
+                "detail": "Building...",
+                "ts": 123.0,
+            }
+        )
+        key = "docker:amd64:base"
+        self.assertIn(key, self.state.image_builds)
+        self.assertEqual(self.state.image_builds[key]["status"], "building")
+        snapshot = self.state.get_snapshot()
+        expected = {"driver": "docker", "arch": "amd64", "profile": None, "status": "building", "detail": "Building...", "ts": 123.0}
+        self.assertIn(expected, snapshot["image_builds"])
 
-        self.assertEqual(self.state.routing_stats["docker_jobs"], 1)
-        self.assertEqual(self.state.routing_stats["vm_jobs"], 6)
-        self.assertEqual(self.state.routing_stats["vm_triggers_breakdown"]["services"], 1)
-        self.assertEqual(self.state.routing_stats["vm_triggers_breakdown"]["dind"], 1)
-        self.assertEqual(self.state.routing_stats["vm_triggers_breakdown"]["browser"], 1)
-        self.assertEqual(self.state.routing_stats["vm_triggers_breakdown"]["e2e"], 1)
-        self.assertEqual(self.state.routing_stats["vm_triggers_breakdown"]["systemd"], 1)
-        self.assertEqual(self.state.routing_stats["vm_triggers_breakdown"]["custom_label"], 1)
+    def test_report_image_build_keys_by_profile_when_given(self):
+        self.state.report_image_build(
+            {
+                "driver": "docker",
+                "arch": "amd64",
+                "profile": "cuda",
+                "status": "ready",
+                "detail": "ok",
+                "ts": 1.0,
+            }
+        )
+        self.assertIn("docker:amd64:cuda", self.state.image_builds)
+        self.assertNotIn("docker:amd64:base", self.state.image_builds)
+
+    def test_report_image_build_overwrites_status_for_same_key(self):
+        self.state.report_image_build({"driver": "docker", "arch": "amd64", "status": "building", "detail": "x"})
+        self.state.report_image_build({"driver": "docker", "arch": "amd64", "status": "ready", "detail": "y"})
+        self.assertEqual(len(self.state.image_builds), 1)
+        self.assertEqual(self.state.image_builds["docker:amd64:base"]["status"], "ready")
+
+    def test_report_image_build_ignores_malformed_event(self):
+        self.state.report_image_build({"status": "building"})  # missing driver/arch
+        self.assertEqual(self.state.image_builds, {})
+
+    def test_routing_stats(self):
+        self.state.record_routing_decision(False, "container")
+        for reason in ("services", "label:postgres", "label:dind", "name:chrome", "label:e2e", "name:systemd", "label:vm"):
+            self.state.record_routing_decision(True, reason)
+
+        stats = self.state.routing_stats
+        self.assertEqual(stats["docker_jobs"], 1)
+        self.assertEqual(stats["vm_jobs"], 7)
+        self.assertEqual(stats["vm_triggers_breakdown"], {"services": 2, "dind": 1, "browser": 1, "e2e": 1, "systemd": 1, "custom_label": 1})
+
+    def test_routing_vm_ness_comes_from_driver_type_not_name(self):
+        # #49: "vm" in engine-name meant wsl2/multipass jobs were counted as Docker jobs.
+        self.state.record_routing_decision(True, "label:wsl")
+        self.assertEqual((self.state.routing_stats["docker_jobs"], self.state.routing_stats["vm_jobs"]), (0, 1))
 
     def test_update_fleet_and_snapshot(self):
         mock_runner = MagicMock()
@@ -60,7 +142,7 @@ class TestDashboardState(unittest.TestCase):
             "target_repo": "owner/repo",
             "target_arch": "arm64",
             "backend": "docker",
-            "created_at": 1000.0
+            "created_at": 1000.0,
         }
         self.state.update_fleet(
             runners=[mock_runner],
@@ -68,21 +150,11 @@ class TestDashboardState(unittest.TestCase):
             queued_jobs=[{"repo": "owner/repo", "name": "build"}],
             monitored_repos=["owner/repo"],
             available_drivers=["docker", "orbstack-vm"],
-            actions_billing={
-                "scope_type": "user",
-                "scope_name": "el-j",
-                "included_minutes": 3000,
-                "total_minutes_used": 400,
-                "total_paid_minutes_used": 120,
-                "minutes_remaining": 2880,
-                "status": "ok",
-            },
             default_engine="docker",
-            version="0.1.0"
+            version="0.1.0",
         )
         snapshot = self.state.get_snapshot()
         self.assertEqual(snapshot["github"]["rate_limit_remaining"], 4800)
-        self.assertEqual(snapshot["github"]["actions_billing"]["scope_name"], "el-j")
         self.assertEqual(snapshot["github"]["queued_jobs_count"], 1)
         self.assertEqual(len(snapshot["runners"]), 1)
         self.assertEqual(snapshot["default_engine"], "docker")
@@ -121,27 +193,40 @@ class TestDashboardStateGaps(unittest.TestCase):
     def test_update_fleet_accepts_plain_dict_runner(self):
         self.state.update_fleet(
             runners=[{"id": "r1", "name": "r1", "status": "running", "state": "running"}],
-            rate_limit=5000, queued_jobs=[], monitored_repos=[], available_drivers=["docker"]
+            rate_limit=5000,
+            queued_jobs=[],
+            monitored_repos=[],
+            available_drivers=["docker"],
         )
         self.assertEqual(self.state.active_runners[0]["id"], "r1")
         # No created_at on the dict -> falls back to "active".
         self.assertEqual(self.state.active_runners[0]["duration"], "active")
+
+    def test_update_fleet_default_engine_stays_docker_when_omitted(self):
+        self.state.default_engine = "orbstack-vm"
+        self.state.update_fleet(
+            runners=[],
+            rate_limit=4999,
+            queued_jobs=[],
+            monitored_repos=[],
+            available_drivers=["docker"],
+        )
+        self.assertEqual(self.state.default_engine, "docker")
+        self.assertEqual(self.state.github_rate_limit_remaining, 4999)
 
     def test_update_fleet_accepts_arbitrary_object_runner(self):
         class Plain:
             def __str__(self):
                 return "weird-runner"
 
-        self.state.update_fleet(
-            runners=[Plain()], rate_limit=5000, queued_jobs=[], monitored_repos=[], available_drivers=["docker"]
-        )
+        self.state.update_fleet(runners=[Plain()], rate_limit=5000, queued_jobs=[], monitored_repos=[], available_drivers=["docker"])
         self.assertEqual(self.state.active_runners[0]["id"], "weird-runner")
 
     def test_format_bytes_scales_through_kb_mb_gb(self):
         self.assertEqual(self.state._format_bytes(500), "500 B")
         self.assertIn("KB", self.state._format_bytes(2048))
-        self.assertIn("MB", self.state._format_bytes(5 * 1024 ** 2))
-        self.assertIn("GB", self.state._format_bytes(3 * 1024 ** 3))
+        self.assertIn("MB", self.state._format_bytes(5 * 1024**2))
+        self.assertIn("GB", self.state._format_bytes(3 * 1024**3))
 
     def test_get_dir_size_walks_real_files(self):
         sub = os.path.join(self.temp_cache, "npm")
@@ -176,11 +261,141 @@ class TestDashboardStateGaps(unittest.TestCase):
         self.assertTrue(os.path.isdir(pip_dir))
         self.assertEqual(os.listdir(pip_dir), [])
 
+    def test_clean_cache_default_argument_clears_all(self):
+        npm_dir = os.path.join(self.temp_cache, "npm")
+        yarn_dir = os.path.join(self.temp_cache, "yarn")
+        os.makedirs(npm_dir, exist_ok=True)
+        os.makedirs(yarn_dir, exist_ok=True)
+        with open(os.path.join(npm_dir, "a.txt"), "w") as f:
+            f.write("x")
+        with open(os.path.join(yarn_dir, "b.txt"), "w") as f:
+            f.write("x")
+
+        result = self.state.clean_cache()
+        self.assertIn("npm", result["cleared"])
+        self.assertIn("yarn", result["cleared"])
+        self.assertEqual(os.listdir(npm_dir), [])
+        self.assertEqual(os.listdir(yarn_dir), [])
+
+    def test_refresh_cache_metrics_reads_real_cache_manager_directory_names(self):
+        # Regression guard: cache_manager.init_cache_dirs() creates "go-pkg"/"rust"/
+        # "hostedtoolcache" on disk, not "go-mod"/"cargo-registry"/"toolcache" -- these
+        # display keys must read from the real directories or they always show empty
+        # despite real, growing on-disk cache data.
+        go_pkg_dir = os.path.join(self.temp_cache, "go-pkg")
+        rust_dir = os.path.join(self.temp_cache, "rust")
+        toolcache_dir = os.path.join(self.temp_cache, "hostedtoolcache")
+        for d in (go_pkg_dir, rust_dir, toolcache_dir):
+            os.makedirs(d, exist_ok=True)
+            with open(os.path.join(d, "data.bin"), "wb") as f:
+                f.write(b"x" * 4096)
+
+        self.state._refresh_cache_metrics()
+
+        self.assertIn("KB", self.state.cache_sizes["go-mod"])
+        self.assertIn("KB", self.state.cache_sizes["cargo"])
+        self.assertIn("KB", self.state.cache_sizes["toolcache"])
+
+    def test_go_build_dirs_swallows_listdir_errors(self):
+        os.makedirs(os.path.join(self.temp_cache, "build-cache"), exist_ok=True)
+        with patch("os.listdir", side_effect=OSError("permission denied")):
+            found = self.state._go_build_dirs(self.temp_cache)
+        self.assertEqual(found, [])
+
+    def test_go_build_dirs_finds_flat_and_scoped_directories(self):
+        flat = os.path.join(self.temp_cache, "go-build")
+        scoped_a = os.path.join(self.temp_cache, "build-cache", "el-j_run-zero_.github-workflows-ci.yml_test", "go-build")
+        scoped_b = os.path.join(self.temp_cache, "build-cache", "el-j_run-zero_.github-workflows-ci.yml_build", "go-build")
+        for d in (flat, scoped_a, scoped_b):
+            os.makedirs(d, exist_ok=True)
+
+        found = self.state._go_build_dirs(self.temp_cache)
+        self.assertEqual(set(found), {flat, scoped_a, scoped_b})
+
+    def test_refresh_cache_metrics_sums_go_build_across_scoped_directories(self):
+        scoped_a = os.path.join(self.temp_cache, "build-cache", "job-a", "go-build")
+        scoped_b = os.path.join(self.temp_cache, "build-cache", "job-b", "go-build")
+        os.makedirs(scoped_a, exist_ok=True)
+        os.makedirs(scoped_b, exist_ok=True)
+        with open(os.path.join(scoped_a, "a.o"), "wb") as f:
+            f.write(b"x" * 1024)
+        with open(os.path.join(scoped_b, "b.o"), "wb") as f:
+            f.write(b"x" * 1024)
+
+        self.state._refresh_cache_metrics()
+
+        self.assertIn("KB", self.state.cache_sizes["go-build"])
+
+    def test_clean_cache_go_build_clears_scoped_directories_and_reports(self):
+        scoped = os.path.join(self.temp_cache, "build-cache", "job-a", "go-build")
+        os.makedirs(scoped, exist_ok=True)
+        with open(os.path.join(scoped, "leftover.o"), "w") as f:
+            f.write("data")
+
+        result = self.state.clean_cache("go-build")
+
+        self.assertEqual(result["cleared"], ["go-build"])
+        self.assertTrue(os.path.isdir(scoped))
+        self.assertEqual(os.listdir(scoped), [])
+
+    def test_clean_cache_go_build_reports_nothing_when_no_directories_exist(self):
+        result = self.state.clean_cache("go-build")
+        self.assertEqual(result["cleared"], [])
+
+    def test_clean_cache_all_also_clears_scoped_go_build_directories(self):
+        scoped = os.path.join(self.temp_cache, "build-cache", "job-a", "go-build")
+        os.makedirs(scoped, exist_ok=True)
+        with open(os.path.join(scoped, "leftover.o"), "w") as f:
+            f.write("data")
+
+        result = self.state.clean_cache("all")
+
+        self.assertIn("go-build", result["cleared"])
+        self.assertEqual(os.listdir(scoped), [])
+
+    def test_refresh_cache_metrics_uses_fallback_when_cache_dir_empty(self):
+        fallback_root = tempfile.mkdtemp()
+        try:
+            npm_dir = os.path.join(fallback_root, "npm")
+            os.makedirs(npm_dir, exist_ok=True)
+            with open(os.path.join(npm_dir, "pkg.tgz"), "wb") as f:
+                f.write(b"x" * 2048)
+
+            self.state.cache_dir = ""
+            with patch("os.path.expanduser", return_value=fallback_root):
+                self.state._refresh_cache_metrics()
+
+            self.assertIn("KB", self.state.cache_sizes["npm"])
+            self.assertNotEqual(self.state.cache_sizes["total_host"], "0 B")
+        finally:
+            shutil.rmtree(fallback_root, ignore_errors=True)
+
+    def test_get_snapshot_uptime_floor_and_format(self):
+        # Explicitly guard the floor at 0 and the minute/hour divmod math.
+        self.state.start_time = 1000.0
+        with patch("time.time", return_value=999.0):
+            snapshot = self.state.get_snapshot()
+            self.assertEqual(snapshot["uptime_seconds"], 0)
+            self.assertEqual(snapshot["uptime"], "0h 0m 0s")
+
+        with patch("time.time", return_value=4661.0):
+            snapshot = self.state.get_snapshot()
+            self.assertEqual(snapshot["uptime_seconds"], 3661)
+            self.assertEqual(snapshot["uptime"], "1h 1m 1s")
+
 
 class TestDashboardServer(unittest.TestCase):
     def setUp(self):
+        # clean-cache really deletes directories: point the shared state at a throwaway root
+        # so these tests can never touch the developer's real ~/.local-github-runner cache.
+        cache_root = tempfile.mkdtemp(prefix="runzero-dash-cache-")
+        self.addCleanup(shutil.rmtree, cache_root, ignore_errors=True)
+        cache_patch = patch.object(dashboard_state, "cache_dir", cache_root)
+        cache_patch.start()
+        self.addCleanup(cache_patch.stop)
         self.server = DashboardServer(host="127.0.0.1", port=0)
         self.server.start(blocking=False)
+        assert self.server.httpd is not None
         self.port = self.server.httpd.server_port
         self.base_url = f"http://127.0.0.1:{self.port}"
 
@@ -257,12 +472,7 @@ class TestDashboardServer(unittest.TestCase):
 
     def test_action_clean_cache(self):
         payload = json.dumps({"category": "npm"}).encode("utf-8")
-        req = urllib.request.Request(
-            f"{self.base_url}/api/actions/clean-cache",
-            data=payload,
-            headers={"Content-Type": "application/json"},
-            method="POST"
-        )
+        req = urllib.request.Request(f"{self.base_url}/api/actions/clean-cache", data=payload, headers={"Content-Type": "application/json"}, method="POST")
         with urllib.request.urlopen(req, timeout=3.0) as resp:
             data = json.loads(resp.read().decode("utf-8"))
             self.assertEqual(resp.status, 200)
@@ -275,12 +485,7 @@ class TestDashboardServer(unittest.TestCase):
         mock_get_avail.return_value = {"docker": mock_driver}
 
         payload = b"{}"
-        req = urllib.request.Request(
-            f"{self.base_url}/api/actions/prune",
-            data=payload,
-            headers={"Content-Type": "application/json"},
-            method="POST"
-        )
+        req = urllib.request.Request(f"{self.base_url}/api/actions/prune", data=payload, headers={"Content-Type": "application/json"}, method="POST")
         with urllib.request.urlopen(req, timeout=3.0) as resp:
             data = json.loads(resp.read().decode("utf-8"))
             self.assertEqual(resp.status, 200)
@@ -288,14 +493,23 @@ class TestDashboardServer(unittest.TestCase):
             mock_driver.prune_exited.assert_called_once()
 
     @patch("drivers.get_available_drivers")
+    def test_action_prune_uses_injected_registry(self, mock_get_avail):
+        # #43: with the autoscaler's registry injected, prune must use those instances
+        # rather than constructing fresh drivers on every request.
+        injected = MagicMock()
+        injected.list_runners.return_value = []
+        assert self.server.httpd is not None
+        self.server.httpd.runner_drivers = {"docker": injected}  # type: ignore[attr-defined]
+        req = urllib.request.Request(f"{self.base_url}/api/actions/prune", data=b"{}", headers={"Content-Type": "application/json"}, method="POST")
+        with urllib.request.urlopen(req, timeout=3.0) as resp:
+            self.assertEqual(resp.status, 200)
+        injected.prune_exited.assert_called_once()
+        mock_get_avail.assert_not_called()
+
+    @patch("drivers.get_available_drivers")
     def test_action_prune_exception_returns_500(self, mock_get_avail):
         mock_get_avail.side_effect = RuntimeError("driver discovery failed")
-        req = urllib.request.Request(
-            f"{self.base_url}/api/actions/prune",
-            data=b"{}",
-            headers={"Content-Type": "application/json"},
-            method="POST"
-        )
+        req = urllib.request.Request(f"{self.base_url}/api/actions/prune", data=b"{}", headers={"Content-Type": "application/json"}, method="POST")
         with self.assertRaises(urllib.error.HTTPError) as cm:
             urllib.request.urlopen(req, timeout=3.0)
         self.assertEqual(cm.exception.code, 500)
@@ -322,29 +536,25 @@ class TestDashboardServer(unittest.TestCase):
         req = urllib.request.Request(f"{self.base_url}/api/status", method="OPTIONS")
         with urllib.request.urlopen(req, timeout=3.0) as resp:
             self.assertEqual(resp.status, 204)
-            self.assertEqual(resp.headers.get("Access-Control-Allow-Origin"), "*")
-            self.assertIn("GET", resp.headers.get("Access-Control-Allow-Methods", ""))
+            # No CORS grant: a foreign origin must not be able to preflight into the API.
+            self.assertIsNone(resp.headers.get("Access-Control-Allow-Origin"))
+            self.assertIsNone(resp.headers.get("Access-Control-Allow-Methods"))
 
-    def test_malformed_json_body_defaults_to_empty(self):
+    def test_malformed_json_body_is_rejected_without_acting(self):
+        # A malformed body used to be swallowed and treated as {} -> category "all",
+        # i.e. garbage input purged every cache. It must now be a 400 with no side effect.
         req = urllib.request.Request(
-            f"{self.base_url}/api/actions/clean-cache",
-            data=b"not valid json{{{",
-            headers={"Content-Type": "application/json"},
-            method="POST"
+            f"{self.base_url}/api/actions/clean-cache", data=b"not valid json{{{", headers={"Content-Type": "application/json"}, method="POST"
         )
-        with urllib.request.urlopen(req, timeout=3.0) as resp:
-            data = json.loads(resp.read().decode("utf-8"))
-            self.assertEqual(resp.status, 200)
-            # _read_json() swallowed the bad body -> defaults category to "all".
-            self.assertEqual(data.get("status"), "success")
+        with patch("dashboard.server.dashboard_state.clean_cache") as clean, self.assertRaises(urllib.error.HTTPError) as cm:
+            urllib.request.urlopen(req, timeout=3.0)
+        self.assertEqual(cm.exception.code, 400)
+        clean.assert_not_called()
 
     def test_post_with_no_body_defaults_to_empty_dict(self):
         # _read_json() with Content-Length 0 (no body at all, not even "{}")
         # must return {} rather than erroring.
-        req = urllib.request.Request(
-            f"{self.base_url}/api/actions/clean-cache",
-            method="POST"
-        )
+        req = urllib.request.Request(f"{self.base_url}/api/actions/clean-cache", method="POST")
         with urllib.request.urlopen(req, timeout=3.0) as resp:
             data = json.loads(resp.read().decode("utf-8"))
             self.assertEqual(resp.status, 200)
@@ -379,18 +589,44 @@ class TestDashboardServer(unittest.TestCase):
                 break
         self.assertTrue(found)
 
+    def test_sse_stream_delivers_heartbeat_ping_deterministically(self):
+        # Issue #59: verify that when queue.Empty occurs, an SSE keepalive ping
+        # is emitted deterministically without waiting for real 5s timeout.
+        assert self.server.httpd is not None
+        orig_interval = self.server.httpd.sse_heartbeat_interval
+        self.server.httpd.sse_heartbeat_interval = 0.05
+        try:
+            sse_req = urllib.request.Request(f"{self.base_url}/api/events")
+            sse_resp = urllib.request.urlopen(sse_req, timeout=5.0)
+            self.addCleanup(sse_resp.close)
+
+            # First lines are the initial state snapshot event
+            first_line = sse_resp.readline()
+            self.assertTrue(first_line.startswith(b"event:"))
+
+            # Without pushing any new events, the 50ms heartbeat should fire quickly
+            found_ping = False
+            for _ in range(10):
+                line = sse_resp.readline()
+                if line.strip() == b": ping":
+                    found_ping = True
+                    break
+            self.assertTrue(found_ping, "Expected ': ping' heartbeat from SSE stream")
+        finally:
+            self.server.httpd.sse_heartbeat_interval = orig_interval
+
     def test_serve_file_500_on_read_error(self):
         # _serve_file()'s exception branch: the file exists (os.path.isfile
         # is real and true for index.html) but open() itself fails.
         mock_handler = MagicMock()
         with patch("builtins.open", side_effect=OSError("disk read error")):
-            DashboardRequestHandler._serve_file(mock_handler, "index.html", "text/html; charset=utf-8")
+            DashboardRequestHandler._serve_file(mock_handler, STATIC_DIR, "index.html", "text/html; charset=utf-8")
         mock_handler.send_response.assert_called_once_with(500)
         mock_handler.wfile.write.assert_called_once()
 
 
 class TestDashboardServerLifecycle(unittest.TestCase):
-    @patch("dashboard.server.ThreadingHTTPServer")
+    @patch("dashboard.server.ControlPlaneHTTPServer")
     def test_start_blocking_stops_cleanly_on_keyboard_interrupt(self, mock_server_cls):
         mock_httpd = MagicMock()
         mock_httpd.serve_forever.side_effect = KeyboardInterrupt()

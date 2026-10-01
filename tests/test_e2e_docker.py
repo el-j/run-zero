@@ -88,6 +88,9 @@ def _host_arch() -> str:
 class TestDockerEngineEndToEnd(unittest.TestCase):
     """Real, unmocked Docker container lifecycle via DockerDriver's own real subprocess calls."""
 
+    arch: str
+    image_tag: str
+
     @classmethod
     def setUpClass(cls):
         cls.arch = _host_arch()
@@ -100,8 +103,7 @@ class TestDockerEngineEndToEnd(unittest.TestCase):
         )
         if build.returncode != 0:
             raise unittest.SkipTest(
-                f"could not build disposable e2e test image (docker build exited {build.returncode}): "
-                f"{build.stderr.decode(errors='replace')}"
+                f"could not build disposable e2e test image (docker build exited {build.returncode}): {build.stderr.decode(errors='replace')}"
             )
 
     @classmethod
@@ -116,10 +118,11 @@ class TestDockerEngineEndToEnd(unittest.TestCase):
         runner_id = driver.spawn_runner(
             repo=repo,
             arch=self.arch,
-            access_token="e2e-test-token-never-read-by-the-sleep-entrypoint",
+            runner_token="e2e-test-token-never-read-by-the-sleep-entrypoint",
             proxies_enabled=False,
         )
         self.assertIsNotNone(runner_id, "spawn_runner() failed to create a real container")
+        assert runner_id is not None
         # Guaranteed real cleanup even if a later assertion fails.
         self.addCleanup(lambda: subprocess.run(["docker", "rm", "-f", runner_id], capture_output=True))
 
@@ -127,7 +130,9 @@ class TestDockerEngineEndToEnd(unittest.TestCase):
         marker = f"real-e2e-exec-{uuid.uuid4().hex[:8]}"
         exec_res = subprocess.run(
             ["docker", "exec", runner_id, "sh", "-c", f"echo {marker}"],
-            capture_output=True, text=True, timeout=15,
+            capture_output=True,
+            text=True,
+            timeout=15,
         )
         self.assertEqual(exec_res.returncode, 0, f"docker exec failed: {exec_res.stderr}")
         self.assertIn(marker, exec_res.stdout)

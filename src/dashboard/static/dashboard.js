@@ -29,6 +29,9 @@
   const runnersCountBadge = document.getElementById('runners-count-badge');
   const reposList = document.getElementById('repos-list');
   const reposCountBadge = document.getElementById('repos-count-badge');
+  const imageBuildsList = document.getElementById('image-builds-list');
+  const imageBuildsEmptyState = document.getElementById('image-builds-empty-state');
+  const imageBuildsCountBadge = document.getElementById('image-builds-count-badge');
 
   const logTerminal = document.getElementById('log-terminal');
   const autoScrollToggle = document.getElementById('auto-scroll-toggle');
@@ -253,7 +256,7 @@
     if (!state) return;
 
     // Header & KPIs
-    statVersion.textContent = `v${state.version || '0.1.0'}`;
+    statVersion.textContent = state.version ? `v${state.version}` : 'v…';
     statEngine.textContent = (state.default_engine || 'DOCKER').toUpperCase();
     statUptime.textContent = state.uptime || '00:00:00';
 
@@ -333,6 +336,9 @@
 
     // Repositories List
     renderRepos(repos, github.queued_jobs || []);
+
+    // Golden image build status
+    renderImageBuilds(state.image_builds || []);
 
     // Driver availability
     renderDrivers(state.available_drivers || []);
@@ -453,6 +459,46 @@
             ${quickLinks}
           </div>
           <span class="repo-queue-badge ${qClass}">${qText}</span>
+        </div>
+      `;
+    }).join('');
+  }
+
+  function renderImageBuilds(imageBuilds) {
+    imageBuildsCountBadge.textContent = `${imageBuilds.length} TRACKED`;
+    if (imageBuilds.length === 0) {
+      imageBuildsEmptyState.classList.remove('hidden');
+      imageBuildsList.classList.add('hidden');
+      imageBuildsList.innerHTML = '';
+      return;
+    }
+
+    imageBuildsEmptyState.classList.add('hidden');
+    imageBuildsList.classList.remove('hidden');
+
+    const statusClass = {
+      building: 'image-status-building',
+      ready: 'image-status-ready',
+      failed: 'image-status-failed',
+      cooldown: 'image-status-cooldown',
+    };
+
+    const sorted = imageBuilds.slice().sort((a, b) => (b.ts || 0) - (a.ts || 0));
+
+    imageBuildsList.innerHTML = sorted.map(build => {
+      const driver = (build.driver || 'unknown').toUpperCase();
+      const arch = (build.arch || '?').toUpperCase();
+      const profile = build.profile ? ` / ${escapeHtml(build.profile)}` : '';
+      const status = (build.status || 'unknown').toLowerCase();
+      const pillClass = statusClass[status] || 'image-status-cooldown';
+
+      return `
+        <div class="image-build-row">
+          <div class="image-build-main">
+            <span class="image-build-name font-mono">${escapeHtml(driver)} · ${escapeHtml(arch)}${profile}</span>
+            <span class="image-build-detail">${escapeHtml(build.detail || '')}</span>
+          </div>
+          <span class="image-status-pill ${pillClass}">${escapeHtml(status)}</span>
         </div>
       `;
     }).join('');

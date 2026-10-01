@@ -46,30 +46,28 @@ const archiveIndexBaseUrl =
 
   <div class="version-dropdown" id="version-dropdown">
     <div class="dropdown-header">// RELEASES_MANIFEST</div>
-    {
-      versionsData.map((v) => (
-        <a
-          href={v.url}
-          class={`version-item ${v.version === currentVersion ? "active" : ""}`}
-        >
-          <div class="item-title">
-            <span>{v.version}</span>
-            {v.status === "latest" && (
-              <span class="badge-pill latest">LATEST</span>
-            )}
-            {v.status === "archived" && (
-              <span class="badge-pill archived">ARCHIVED</span>
-            )}
-          </div>
-          <span class="item-desc">{v.notes}</span>
-        </a>
-      ))
-    }
+    {versionsData.map((v) => (
+      <a
+        href={v.url}
+        class={`version-item ${v.version === currentVersion ? "active" : ""}`}
+      >
+        <div class="item-title">
+          <span>{v.version}</span>
+          {v.status === "latest" && (
+            <span class="badge-pill latest">LATEST</span>
+          )}
+          {v.status === "archived" && (
+            <span class="badge-pill archived">ARCHIVED</span>
+          )}
+        </div>
+        <span class="item-desc">{v.notes}</span>
+      </a>
+    ))}
 
     <div class="dropdown-footer">
-      <a href={`${archiveIndexBaseUrl}/versions/`} class="all-versions-link"
-        >// ARCHIVE_INDEX →</a
-      >
+      <a href={`${archiveIndexBaseUrl}/versions/`} class="all-versions-link">
+        // ARCHIVE_INDEX →
+      </a>
     </div>
   </div>
 </div>

@@ -57,6 +57,15 @@ class TestShellScripts(unittest.TestCase):
         res = subprocess.run(["bash", "-n", script_path], capture_output=True, text=True, check=False)
         self.assertEqual(res.returncode, 0, f"Syntax error in pre-commit.sh: {res.stderr}")
 
+    def test_pre_push_sh_syntax(self):
+        script_path = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "scripts", "pre-push.sh"))
+        if not os.path.isfile(script_path):
+            script_path = os.path.abspath("scripts/pre-push.sh")
+        if not os.path.isfile(script_path):
+            self.skipTest("pre-push.sh not found")
+        res = subprocess.run(["bash", "-n", script_path], capture_output=True, text=True, check=False)
+        self.assertEqual(res.returncode, 0, f"Syntax error in pre-push.sh: {res.stderr}")
+
     def test_provision_toolchain_sh_syntax(self):
         script_path = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "docker", "provision-toolchain.sh"))
         if not os.path.isfile(script_path):
@@ -83,6 +92,7 @@ class TestShellScripts(unittest.TestCase):
 
         match = re.search(r"CACHE_DIRS=\((.*?)\)", content, re.DOTALL)
         self.assertIsNotNone(match, "Could not find CACHE_DIRS fallback array in start.sh")
+        assert match is not None
         fallback_dirs = set(match.group(1).split())
 
         expected = init_cache_dirs("/tmp/fake-host-cache", "arm64")
@@ -91,8 +101,7 @@ class TestShellScripts(unittest.TestCase):
         self.assertEqual(
             fallback_dirs,
             expected_dirs,
-            "start.sh's CACHE_DIRS fallback has drifted from cache_manager.init_cache_dirs() "
-            "mount destinations — update start.sh to match.",
+            "start.sh's CACHE_DIRS fallback has drifted from cache_manager.init_cache_dirs() mount destinations — update start.sh to match.",
         )
 
 

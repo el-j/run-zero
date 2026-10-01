@@ -10,15 +10,29 @@ import os
 import signal
 import sys
 import threading
-from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
-from typing import Any, Dict, Optional
+from collections.abc import Callable
+from http.server import BaseHTTPRequestHandler
+from typing import Any
 from urllib.parse import urlparse
 
-from drivers import RunnerDriver, RunnerInfo, get_available_drivers, get_driver
+from drivers import RunnerDriver, RunnerInfo, get_available_drivers, get_driver, validate_spawn_target
 from drivers.docker_driver import DockerDriver
+from http_security import (
+    ControlPlaneHTTPServer,
+    RequestRejected,
+    allowed_hosts_from_env,
+    check_bearer_token,
+    check_host_header,
+    is_loopback_host,
+    read_json_body,
+)
+from version import __version__
 
 DEFAULT_BRIDGE_PORT = 49504
-DEFAULT_BRIDGE_HOST = "0.0.0.0"
+# Loopback by default. Containers still reach it as host.docker.internal on Docker Desktop
+# and OrbStack (verified on OrbStack 2026-09-29). Binding anything else requires a token.
+DEFAULT_BRIDGE_HOST = "127.0.0.1"
+BRIDGE_TOKEN_ENV = "RUNZERO_BRIDGE_TOKEN"
 
 # get_driver() constructs a brand-new driver instance on every call -- fine
 # for autoscaler.py, which calls it once at startup and holds the result for
@@ -27,18 +41,19 @@ DEFAULT_BRIDGE_HOST = "0.0.0.0"
 # _building_arches/_build_retry_after state (the backoff/dedup mechanism
 # that stops a golden-image build from being retried every poll tick)
 # between one request and the next. Confirmed live: the containerized
-# autoscaler polls the bridge every POLL_INTERVAL (default 5s); each poll
+# autoscaler polls the bridge every POLL_INTERVAL (default 10s); each poll
 # got served by a fresh, backoff-unaware driver instance, so the bridge
 # deleted and recreated the "-building" staging VM roughly every 5s,
 # forever -- provisioning never survived long enough to even write
 # provision.log, let alone finish, stop, and rename. Caching one instance
 # per driver name here makes the bridge behave like autoscaler.py's own
 # persistent-driver model.
-_driver_cache: Dict[str, RunnerDriver] = {}
+_driver_cache: dict[str, RunnerDriver] = {}
 _driver_cache_lock = threading.Lock()
 
 
 def _get_cached_driver(name: str) -> RunnerDriver:
+    """Retrieve or instantiate a cached driver singleton by name."""
     key = name.lower().strip()
     with _driver_cache_lock:
         driver = _driver_cache.get(key)
@@ -58,61 +73,67 @@ class VMBridgeRequestHandler(BaseHTTPRequestHandler):
         if os.getenv("RUNZERO_DEBUG", "").lower() in ("true", "1"):
             sys.stderr.write(f"[VMBridge:HTTP] {format % args}\n")
 
-    def _send_json(self, status_code: int, data: Dict[str, Any]) -> None:
+    def _send_json(self, status_code: int, data: dict[str, Any]) -> None:
+        """Send JSON response payload with HTTP status code and headers."""
         try:
             payload = json.dumps(data).encode("utf-8")
             self.send_response(status_code)
             self.send_header("Content-Type", "application/json")
             self.send_header("Content-Length", str(len(payload)))
-            self.send_header("Access-Control-Allow-Origin", "*")
             self.end_headers()
             self.wfile.write(payload)
         except (BrokenPipeError, ConnectionResetError):
             pass
 
-    def _read_json(self) -> Dict[str, Any]:
-        content_length = int(self.headers.get("Content-Length", 0))
-        if content_length > 0:
-            raw_body = self.rfile.read(content_length).decode("utf-8")
-            try:
-                return json.loads(raw_body)
-            except json.JSONDecodeError:
-                return {}
-        return {}
+    def _admit(self, require_token: bool) -> bool:
+        """Apply the Host allowlist and, for driver routes, the bearer token.
+
+        On rejection the error response is sent and False is returned.
+        """
+        try:
+            check_host_header(self, allowed_hosts_from_env())
+            if require_token:
+                check_bearer_token(self, os.getenv(BRIDGE_TOKEN_ENV, ""))
+        except RequestRejected as rej:
+            self._send_json(rej.status, {"error": rej.message})
+            return False
+        return True
 
     def do_OPTIONS(self) -> None:
-        """Answer a CORS preflight request with an empty 204 and the allowed methods/headers."""
+        """Answer a CORS preflight with 204 but grant nothing: the bridge has no browser clients."""
         self.send_response(204)
-        self.send_header("Access-Control-Allow-Origin", "*")
-        self.send_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
-        self.send_header("Access-Control-Allow-Headers", "Content-Type, Authorization")
         self.end_headers()
 
     def do_GET(self) -> None:
-        """Route GET requests: /health(-alias)es, /api/status, and /api/drivers/{name}/runners."""
+        """Route GET requests: /health(-alias)es, /api/status, and /api/drivers/{name}/runners.
+
+        Health/status are unauthenticated (they reveal only driver availability); the
+        driver routes require the bridge token when one is configured.
+        """
         parsed = urlparse(self.path)
         path = parsed.path.rstrip("/")
+        if not self._admit(require_token=path.startswith("/api/drivers")):
+            return
 
         if path in ("", "/health", "/api/health"):
             drivers = get_available_drivers()
             # VM bridge is for VM drivers (orbstack-vm, multipass, wsl2)
             vm_drivers = [k for k, d in drivers.items() if not isinstance(d, DockerDriver)]
-            self._send_json(200, {
-                "status": "ok",
-                "service": "runzero-vm-bridge",
-                "platform": sys.platform,
-                "available_vm_drivers": vm_drivers,
-                "all_drivers": list(drivers.keys())
-            })
+            self._send_json(
+                200,
+                {
+                    "status": "ok",
+                    "service": "runzero-vm-bridge",
+                    "platform": sys.platform,
+                    "available_vm_drivers": vm_drivers,
+                    "all_drivers": list(drivers.keys()),
+                },
+            )
             return
 
         if path == "/api/status":
             drivers = get_available_drivers()
-            self._send_json(200, {
-                "status": "ok",
-                "available_drivers": list(drivers.keys()),
-                "platform": sys.platform
-            })
+            self._send_json(200, {"status": "ok", "available_drivers": list(drivers.keys()), "platform": sys.platform})
             return
 
         # /api/drivers/{driver_name}/runners
@@ -122,10 +143,7 @@ class VMBridgeRequestHandler(BaseHTTPRequestHandler):
             try:
                 driver = _get_cached_driver(driver_name)
                 runners = driver.list_runners()
-                self._send_json(200, {
-                    "driver": driver_name,
-                    "runners": [r.to_dict() for r in runners]
-                })
+                self._send_json(200, {"driver": driver_name, "runners": [r.to_dict() for r in runners]})
             except Exception as e:
                 self._send_json(500, {"error": str(e), "driver": driver_name})
             return
@@ -133,113 +151,134 @@ class VMBridgeRequestHandler(BaseHTTPRequestHandler):
         self._send_json(404, {"error": f"Endpoint not found: {path}"})
 
     def do_POST(self) -> None:
-        """Route POST requests to /api/drivers/{name}/{spawn,prune,destroy,cleanup,ensure-base-stopped,build-base}.
+        """Route POST /api/drivers/{name}/{action} through the ACTIONS dispatch table.
 
-        Dispatches each action to the corresponding method on the (cached) real driver for
-        `{name}`, translating its result/exception into a JSON response.
+        Each action runs against the (cached) real driver for `{name}`; a handler's
+        `_BadRequest` becomes a 400 and any other exception a 500.
         """
-        parsed = urlparse(self.path)
-        path = parsed.path.rstrip("/")
+        if not self._admit(require_token=True):
+            return
+        path = urlparse(self.path).path.rstrip("/")
         parts = [p for p in path.split("/") if p]
+        if len(parts) < 4 or parts[0] != "api" or parts[1] != "drivers":
+            self._send_json(404, {"error": f"Endpoint not found: {path}"})
+            return
 
-        if len(parts) >= 4 and parts[0] == "api" and parts[1] == "drivers":
-            driver_name = parts[2]
-            action = parts[3]
-            body = self._read_json()
+        driver_name, action = parts[2], parts[3]
+        try:
+            body = read_json_body(self)
+        except RequestRejected as rej:
+            self._send_json(rej.status, {"error": rej.message})
+            return
+        try:
+            driver = _get_cached_driver(driver_name)
+        except Exception as e:
+            self._send_json(400, {"error": f"Invalid driver: {driver_name} ({e})"})
+            return
 
-            try:
-                driver = _get_cached_driver(driver_name)
-            except Exception as e:
-                self._send_json(400, {"error": f"Invalid driver: {driver_name} ({e})"})
-                return
+        handler = ACTIONS.get(action)
+        if handler is None:
+            self._send_json(404, {"error": f"Endpoint not found: {path}"})
+            return
+        try:
+            self._send_json(200, {"status": "success", **handler(driver, driver_name, body, parts)})
+        except _BadRequest as bad:
+            self._send_json(400, bad.payload)
+        except Exception as e:
+            self._send_json(500, {"error": str(e), "driver": driver_name})
 
-            if action == "spawn":
-                try:
-                    runner_id = driver.spawn_runner(
-                        repo=body.get("repo"),
-                        org=body.get("org"),
-                        arch=body.get("arch", "arm64"),
-                        labels=body.get("labels"),
-                        access_token=body.get("access_token"),
-                        cache_mounts=body.get("cache_mounts"),
-                        proxies_enabled=body.get("proxies_enabled", True),
-                        extra_env=body.get("extra_env")
-                    )
-                    self._send_json(200, {
-                        "status": "success",
-                        "driver": driver_name,
-                        "runner_id": runner_id
-                    })
-                except Exception as e:
-                    self._send_json(500, {"error": str(e), "driver": driver_name})
-                return
 
-            elif action == "prune":
-                try:
-                    runners_data = body.get("runners", [])
-                    runners = [
-                        RunnerInfo(
-                            id=r.get("id", ""),
-                            name=r.get("name", ""),
-                            status=r.get("status", ""),
-                            state=r.get("state", ""),
-                            target_repo=r.get("target_repo", ""),
-                            target_arch=r.get("target_arch", ""),
-                            backend=r.get("backend", driver_name),
-                            created_at=r.get("created_at")
-                        )
-                        for r in runners_data
-                    ]
-                    driver.prune_exited(runners)
-                    self._send_json(200, {"status": "success", "driver": driver_name})
-                except Exception as e:
-                    self._send_json(500, {"error": str(e), "driver": driver_name})
-                return
+class _BadRequest(Exception):
+    """A bridge action rejected its input; `payload` is the 400 response body."""
 
-            elif action == "destroy":
-                runner_id = body.get("runner_id") or (parts[4] if len(parts) > 4 else None)
-                if not runner_id:
-                    self._send_json(400, {"error": "runner_id is required"})
-                    return
-                try:
-                    success = driver.destroy_runner(runner_id)
-                    self._send_json(200, {"status": "success", "destroyed": success, "runner_id": runner_id})
-                except Exception as e:
-                    self._send_json(500, {"error": str(e), "driver": driver_name})
-                return
+    def __init__(self, payload: dict[str, Any]):
+        """Carry the JSON body for the 400 response."""
+        super().__init__(payload.get("error", "bad request"))
+        self.payload = payload
 
-            elif action == "cleanup":
-                try:
-                    driver.cleanup_all()
-                    self._send_json(200, {"status": "success", "driver": driver_name})
-                except Exception as e:
-                    self._send_json(500, {"error": str(e), "driver": driver_name})
-                return
 
-            elif action == "ensure-base-stopped":
-                try:
-                    ensure_fn = getattr(driver, "ensure_base_images_stopped", None)
-                    if callable(ensure_fn):
-                        ensure_fn()
-                    self._send_json(200, {"status": "success", "driver": driver_name})
-                except Exception as e:
-                    self._send_json(500, {"error": str(e), "driver": driver_name})
-                return
+# Each action handler returns the success payload (merged into {"status": "success"}).
+ActionHandler = Callable[[RunnerDriver, str, dict[str, Any], list[str]], dict[str, Any]]
 
-            elif action == "build-base":
-                arch = body.get("arch", "arm64")
-                try:
-                    build_fn = getattr(driver, "build_base_image", None)
-                    if callable(build_fn):
-                        ok = build_fn(arch)
-                        self._send_json(200, {"status": "success", "driver": driver_name, "arch": arch, "built": ok})
-                    else:
-                        self._send_json(400, {"error": f"Driver {driver_name} does not support build_base_image"})
-                except Exception as e:
-                    self._send_json(500, {"error": str(e), "driver": driver_name})
-                return
 
-        self._send_json(404, {"error": f"Endpoint not found: {path}"})
+def _action_spawn(driver: RunnerDriver, driver_name: str, body: dict[str, Any], parts: list[str]) -> dict[str, Any]:
+    """Execute spawn runner request through host driver."""
+    try:
+        validate_spawn_target(body.get("repo"), body.get("org"), body.get("labels"), body.get("extra_env"))
+    except ValueError as e:
+        raise _BadRequest({"error": str(e), "driver": driver_name}) from e
+    # Only a registration token is accepted over the bridge -- never a PAT.
+    runner_id = driver.spawn_runner(
+        repo=body.get("repo"),
+        org=body.get("org"),
+        arch=body.get("arch", "arm64"),
+        labels=body.get("labels"),
+        runner_token=body.get("runner_token"),
+        cache_mounts=body.get("cache_mounts"),
+        proxies_enabled=body.get("proxies_enabled", True),
+        extra_env=body.get("extra_env"),
+    )
+    return {"driver": driver_name, "runner_id": runner_id}
+
+
+def _action_prune(driver: RunnerDriver, driver_name: str, body: dict[str, Any], parts: list[str]) -> dict[str, Any]:
+    """Execute prune exited runners request through host driver."""
+    runners = [
+        RunnerInfo(
+            id=r.get("id", ""),
+            name=r.get("name", ""),
+            status=r.get("status", ""),
+            state=r.get("state", ""),
+            target_repo=r.get("target_repo", ""),
+            target_arch=r.get("target_arch", ""),
+            backend=r.get("backend", driver_name),
+            created_at=r.get("created_at"),
+        )
+        for r in body.get("runners", [])
+    ]
+    driver.prune_exited(runners)
+    return {"driver": driver_name}
+
+
+def _action_destroy(driver: RunnerDriver, driver_name: str, body: dict[str, Any], parts: list[str]) -> dict[str, Any]:
+    """Execute destroy runner instance request through host driver."""
+    runner_id = body.get("runner_id") or (parts[4] if len(parts) > 4 else None)
+    if not runner_id:
+        raise _BadRequest({"error": "runner_id is required"})
+    return {"destroyed": driver.destroy_runner(runner_id), "runner_id": runner_id}
+
+
+def _action_cleanup(driver: RunnerDriver, driver_name: str, body: dict[str, Any], parts: list[str]) -> dict[str, Any]:
+    """Execute cleanup all runners request through host driver."""
+    driver.cleanup_all()
+    return {"driver": driver_name}
+
+
+def _action_ensure_base_stopped(driver: RunnerDriver, driver_name: str, body: dict[str, Any], parts: list[str]) -> dict[str, Any]:
+    """Ensure base images are stopped through host driver if supported."""
+    ensure_fn = getattr(driver, "ensure_base_images_stopped", None)
+    if callable(ensure_fn):
+        ensure_fn()
+    return {"driver": driver_name}
+
+
+def _action_build_base(driver: RunnerDriver, driver_name: str, body: dict[str, Any], parts: list[str]) -> dict[str, Any]:
+    """Trigger base image build through host driver."""
+    arch = body.get("arch", "arm64")
+    build_fn = getattr(driver, "build_base_image", None)
+    if not callable(build_fn):
+        raise _BadRequest({"error": f"Driver {driver_name} does not support build_base_image"})
+    return {"driver": driver_name, "arch": arch, "built": build_fn(arch)}
+
+
+ACTIONS: dict[str, ActionHandler] = {
+    "spawn": _action_spawn,
+    "prune": _action_prune,
+    "destroy": _action_destroy,
+    "cleanup": _action_cleanup,
+    "ensure-base-stopped": _action_ensure_base_stopped,
+    "build-base": _action_build_base,
+}
 
 
 class VMBridgeServer:
@@ -249,15 +288,25 @@ class VMBridgeServer:
         """Store the bind address/port; the server isn't started until `start()` is called."""
         self.host = host
         self.port = port
-        self.httpd: Optional[ThreadingHTTPServer] = None
-        self.thread: Optional[threading.Thread] = None
+        self.httpd: ControlPlaneHTTPServer | None = None
+        self.thread: threading.Thread | None = None
         self._is_running = False
 
     def start(self, blocking: bool = False) -> None:
         """Start the ThreadingHTTPServer; either block the caller (`blocking=True`) or run it on a daemon thread.
 
-        See the comment below for why this must be ThreadingHTTPServer, not plain HTTPServer.
+        Refuses (ValueError) to bind a non-loopback address without RUNZERO_BRIDGE_TOKEN set,
+        since every driver route would then be open to the network. See the comment below for
+        why this must be ThreadingHTTPServer, not plain HTTPServer.
         """
+        token = os.getenv(BRIDGE_TOKEN_ENV, "")
+        if not token and not is_loopback_host(self.host):
+            raise ValueError(f"Refusing to bind the VM bridge to {self.host} without {BRIDGE_TOKEN_ENV} set")
+        if not token:
+            print(
+                f"[VMBridge] ⚠️  {BRIDGE_TOKEN_ENV} is not set: any local process or container can drive the bridge. Run `make env` to generate one.",
+                file=sys.stderr,
+            )
         # Plain HTTPServer serves one request at a time. The "build-base"
         # action calls driver.build_base_image() synchronously in the
         # handler -- a real golden-image build takes 15-25 minutes, during
@@ -268,18 +317,34 @@ class VMBridgeServer:
         # runs). ThreadingHTTPServer (stdlib since 3.7, no new dependency)
         # gives each connection its own thread so one long call can't starve
         # the rest of the bridge.
-        self.httpd = ThreadingHTTPServer((self.host, self.port), VMBridgeRequestHandler)
+        self.httpd = ControlPlaneHTTPServer((self.host, self.port), VMBridgeRequestHandler)
         self._is_running = True
         print(f"[VMBridge] 🚀 Host VM Bridge listening on http://{self.host}:{self.port}")
 
+        # serve_forever() always runs on its own thread now, blocking=True
+        # included. It used to run inline on the caller's thread when
+        # blocking, which deadlocked in main()'s real usage: main() installs
+        # a SIGTERM/SIGINT handler that calls stop() -> httpd.shutdown().
+        # socketserver's shutdown() docs are explicit that it "must be
+        # called while serve_forever() is running in a different thread, or
+        # it will deadlock" -- a signal handler runs nested on the SAME
+        # thread that's blocked inside serve_forever(), so shutdown() waited
+        # forever for serve_forever()'s loop to notice a flag it could never
+        # get scheduled to check. Confirmed live: `kill -TERM <bridge-pid>`
+        # printed "Shutting down..." and then hung indefinitely, still
+        # holding the port, until manually SIGKILLed -- meaning `make
+        # bridge-stop`/a launchd-managed restart could never actually stop
+        # the process cleanly. Running serve_forever() on its own thread
+        # unconditionally means shutdown() is always called from a
+        # different thread than the one running it, exactly as documented.
+        self.thread = threading.Thread(target=self.httpd.serve_forever, daemon=True)
+        self.thread.start()
+
         if blocking:
             try:
-                self.httpd.serve_forever()
+                self.thread.join()
             except KeyboardInterrupt:
                 self.stop()
-        else:
-            self.thread = threading.Thread(target=self.httpd.serve_forever, daemon=True)
-            self.thread.start()
 
     def stop(self) -> None:
         """Shut down the HTTP server and join its serving thread (up to 2s), if running."""
@@ -293,15 +358,16 @@ class VMBridgeServer:
             print("[VMBridge] Bridge stopped cleanly.")
 
 
-def main():
+def main() -> None:
     """Entrypoint: start the bridge server and block until a SIGINT/SIGTERM stops it."""
     host = os.getenv("HOST_VM_BRIDGE_HOST", DEFAULT_BRIDGE_HOST)
     port = int(os.getenv("HOST_VM_BRIDGE_PORT", str(DEFAULT_BRIDGE_PORT)))
 
     server = VMBridgeServer(host, port)
 
-    def signal_handler(signum, frame):
+    def signal_handler(signum: int, frame: object) -> None:
         """Stop the bridge server cleanly and exit the process."""
+        print(f"[VMBridge] Received signal {signum} ({signal.Signals(signum).name}), stopping.")
         server.stop()
         sys.exit(0)
 
@@ -309,7 +375,7 @@ def main():
     signal.signal(signal.SIGTERM, signal_handler)
 
     print("=" * 65)
-    print(" 🌉 RunZero Host VM Bridge v0.1.0")
+    print(f" 🌉 RunZero Host VM Bridge v{__version__}")
     print(f" Listening: http://{host}:{port}")
     print(f" Platform:  {sys.platform}")
     print("=" * 65)
