@@ -119,7 +119,7 @@ sudo apt-get update -y && sudo apt-get install -y curl jq git git-lfs ca-certifi
         self,
         repo: str | None = None,
         org: str | None = None,
-        arch: str = "arm64",
+        arch: str | None = None,
         labels: str | None = None,
         access_token: str | None = None,
         cache_mounts: dict[str, str] | None = None,
@@ -134,17 +134,17 @@ sudo apt-get update -y && sudo apt-get install -y curl jq git git-lfs ca-certifi
         host's (Multipass has no emulation), the inputs are invalid, no registration token can
         be obtained, or the launch fails. Not yet verified on a real Multipass host (see #54).
         """
-        arch = normalize_arch(arch)
-        if arch != host_arch():
-            print(f"[Autoscaler:Multipass] Refusing {arch} runner: Multipass only runs {host_arch()} guests on this host.", file=sys.stderr)
+        resolved_arch = normalize_arch(arch) if arch else host_arch()
+        if resolved_arch != host_arch():
+            print(f"[Autoscaler:Multipass] Refusing {resolved_arch} runner: Multipass only runs {host_arch()} guests on this host.", file=sys.stderr)
             return None
         registration_token = self._prepare_spawn(repo, org, labels, access_token, runner_token, extra_env)
         if not registration_token:
             return None
 
         target = repo or org or ""
-        vm_name = instance_name(NAME_PREFIX, arch, target)
-        runner_labels = merge_labels(f"self-hosted,local,multipass,vm,{arch}", labels)
+        vm_name = instance_name(NAME_PREFIX, resolved_arch, target)
+        runner_labels = merge_labels(f"self-hosted,local,multipass,vm,{resolved_arch}", labels)
         print(f"[Autoscaler:Multipass] 🚀 Launching ephemeral VM '{vm_name}' for {target}...")
         try:
             subprocess.run(
@@ -154,11 +154,11 @@ sudo apt-get update -y && sudo apt-get install -y curl jq git git-lfs ca-certifi
             stderr = e.stderr.decode(errors="replace") if e.stderr else str(e)
             print(f"[Autoscaler:Multipass] Error launching VM: {stderr}", file=sys.stderr)
             return None
-        self.store.put(vm_name, target=target, arch=arch, created_at=time.time())
+        self.store.put(vm_name, target=target, arch=resolved_arch, created_at=time.time())
 
         if cache_mounts:
             self._mount_caches(vm_name, cache_mounts)
-        script = self.bootstrap_script(vm_name, arch, f"https://github.com/{target}", registration_token, runner_labels, proxies_enabled)
+        script = self.bootstrap_script(vm_name, resolved_arch, f"https://github.com/{target}", registration_token, runner_labels, proxies_enabled)
         subprocess.Popen(["multipass", "exec", vm_name, "--", "bash", "-c", script], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
         return vm_name
 

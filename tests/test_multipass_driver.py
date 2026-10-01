@@ -9,6 +9,7 @@ from unittest.mock import MagicMock, patch
 
 from drivers import RunnerInfo
 from drivers.multipass_driver import MultipassDriver
+from drivers.runner_bootstrap import host_arch
 
 
 class TestMultipassDriver(unittest.TestCase):
@@ -72,15 +73,16 @@ class TestMultipassDriver(unittest.TestCase):
     @patch("subprocess.run")
     def test_spawn_runner(self, mock_run, mock_popen):
         mock_run.return_value = MagicMock(returncode=0)
-        name = self.driver.spawn_runner(repo="el-j/run-zero", arch="arm64", access_token="token", proxies_enabled=True)
+        cur_arch = host_arch()
+        name = self.driver.spawn_runner(repo="el-j/run-zero", access_token="token", proxies_enabled=True)
         assert name is not None
-        self.assertIn("runzero-mp-arm64-el-j-run-zero-", name)
+        self.assertIn(f"runzero-mp-{cur_arch}-el-j-run-zero-", name)
 
     @patch("subprocess.Popen")
     @patch("subprocess.run")
     def test_spawn_runner_wires_proxy_stack_when_enabled(self, mock_run, mock_popen):
         mock_run.return_value = MagicMock(returncode=0)
-        self.driver.spawn_runner(repo="el-j/run-zero", arch="arm64", access_token="token", proxies_enabled=True)
+        self.driver.spawn_runner(repo="el-j/run-zero", access_token="token", proxies_enabled=True)
         setup_script = mock_popen.call_args[0][0][-1]
         self.assertIn('export YARN_REGISTRY="http://${HOST_IP}:49501/"', setup_script)
         self.assertIn('export PIP_INDEX_URL="http://${HOST_IP}:49507/root/pypi/+simple/"', setup_script)
@@ -93,20 +95,20 @@ class TestMultipassDriver(unittest.TestCase):
     @patch("subprocess.run")
     def test_spawn_runner_mounts_cache_dirs_when_provided(self, mock_run, mock_popen):
         mock_run.return_value = MagicMock(returncode=0)
+        cur_arch = host_arch()
         self.driver.spawn_runner(
             repo="el-j/run-zero",
-            arch="arm64",
             access_token="token",
             cache_mounts={
                 "/host/npm": "/home/runner/.npm",
-                "/host/toolcache/arm64": "/opt/hostedtoolcache",
+                f"/host/toolcache/{cur_arch}": "/opt/hostedtoolcache",
             },
         )
         run_cmds = [c[0][0] for c in mock_run.call_args_list]
         mount_cmds = [cmd for cmd in run_cmds if len(cmd) >= 2 and cmd[0] == "multipass" and cmd[1] == "mount"]
         self.assertEqual(len(mount_cmds), 2)
         self.assertTrue(any(cmd[2] == "/host/npm" and cmd[3].endswith(":/home/ubuntu/.npm") for cmd in mount_cmds))
-        self.assertTrue(any(cmd[2] == "/host/toolcache/arm64" and cmd[3].endswith(":/opt/hostedtoolcache") for cmd in mount_cmds))
+        self.assertTrue(any(cmd[2] == f"/host/toolcache/{cur_arch}" and cmd[3].endswith(":/opt/hostedtoolcache") for cmd in mount_cmds))
 
         prep_exec_cmds = [
             cmd for cmd in run_cmds if len(cmd) >= 7 and cmd[0] == "multipass" and cmd[1] == "exec" and cmd[3] == "--" and cmd[4] == "bash" and cmd[5] == "-lc"
@@ -123,16 +125,16 @@ class TestMultipassDriver(unittest.TestCase):
             return MagicMock(returncode=0)
 
         mock_run.side_effect = _side_effect
+        cur_arch = host_arch()
         with patch("sys.stderr"):
             name = self.driver.spawn_runner(
                 repo="el-j/run-zero",
-                arch="arm64",
                 access_token="token",
                 cache_mounts={"/host/npm": "/home/runner/.npm"},
             )
             assert name is not None
         # A failed cache mount is a warning, not a fatal error -- spawn still succeeds.
-        self.assertIn("runzero-mp-arm64-el-j-run-zero-", name)
+        self.assertIn(f"runzero-mp-{cur_arch}-el-j-run-zero-", name)
 
     def test_vm_cache_path_translation(self):
         self.assertEqual(self.driver._vm_cache_path("/home/runner/.npm"), "/home/ubuntu/.npm")
@@ -143,11 +145,16 @@ class TestMultipassDriver(unittest.TestCase):
     @patch("subprocess.run")
     def test_spawn_runner_omits_proxy_stack_when_disabled(self, mock_run, mock_popen):
         mock_run.return_value = MagicMock(returncode=0)
-        self.driver.spawn_runner(repo="el-j/run-zero", arch="arm64", access_token="token", proxies_enabled=False)
+        self.driver.spawn_runner(repo="el-j/run-zero", access_token="token", proxies_enabled=False)
         setup_script = mock_popen.call_args[0][0][-1]
         self.assertNotIn("PIP_INDEX_URL", setup_script)
         self.assertNotIn("kellnr-proxy", setup_script)
         self.assertNotIn("01runzero-proxy", setup_script)
+
+    def test_spawn_runner_refuses_non_host_arch(self):
+        other_arch = "amd64" if host_arch() == "arm64" else "arm64"
+        with patch("sys.stderr"):
+            self.assertIsNone(self.driver.spawn_runner(repo="el-j/run-zero", arch=other_arch, access_token="token"))
 
     @patch("subprocess.run")
     def test_spawn_runner_failure(self, mock_run):

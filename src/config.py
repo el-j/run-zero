@@ -16,7 +16,15 @@ _FALSE = ("false", "0", "no", "off")
 
 # Every alias drivers.get_driver() accepts.
 BACKENDS = ("auto", "hybrid", "docker", "container", "orb", "orbstack", "orbstack-vm", "vm-orb", "wsl", "wsl2", "windows", "multipass", "canonical-multipass")
-ARCHES = ("both", "arm64", "amd64")
+ARCHES = ("both", "arm64", "amd64", "x64", "x86_64", "aarch64")
+ARCH_ALIASES = {
+    "both": "both",
+    "arm64": "arm64",
+    "aarch64": "arm64",
+    "amd64": "amd64",
+    "x64": "amd64",
+    "x86_64": "amd64",
+}
 
 
 class ConfigError(ValueError):
@@ -107,7 +115,7 @@ def load_config(env: Mapping[str, str] | None = None) -> Config:
         discovery_interval=_int(env, "DISCOVERY_INTERVAL", 900, 60),
         runner_backend=_choice(env, "RUNNER_BACKEND", "auto", BACKENDS),
         auto_route_vm=_bool(env, "AUTO_ROUTE_VM", True),
-        runner_arch=_choice(env, "RUNNER_ARCH", "both", ARCHES),
+        runner_arch=ARCH_ALIASES[_choice(env, "RUNNER_ARCH", "both", ARCHES)],
         proxies_enabled=_bool(env, "PROXIES_ENABLED", True),
         cache_enabled=_bool(env, "CACHE_ENABLED", True),
         host_cache_dir=_raw(env, "HOST_CACHE_DIR") or "",
