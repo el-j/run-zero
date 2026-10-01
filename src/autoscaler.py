@@ -98,6 +98,7 @@ def ensure_driver_runtime_assets(driver: Any, arch: str) -> bool:
 
 
 def _new_runner(spawned_id: str, target: str, arch: str, driver: RunnerDriver) -> RunnerInfo:
+    """Create a new RunnerInfo model instance in running state for a spawned runner."""
     return RunnerInfo(id=spawned_id, name=spawned_id, status="running", state="running", target_repo=target, target_arch=arch, backend=driver.name())
 
 
@@ -170,6 +171,7 @@ class Scaler:
             reconcile_zombie_runners(self.tracked_repos, access_token=cfg.access_token, org=self.org)
 
     def _log_tracked_repos(self) -> None:
+        """Log currently monitored repositories and current GitHub API quota."""
         log_print(f"[Autoscaler] Monitoring {len(self.tracked_repos)} active repository(ies):")
         for repo_name in self.tracked_repos:
             log_print(f"  • {repo_name}")
@@ -389,6 +391,7 @@ def validate_startup(config: Config) -> None:
 
 
 def _init_dashboard(scaler: Scaler) -> DashboardServer | None:
+    """Initialize the Web Dashboard state and start its HTTP/SSE server if enabled in config."""
     cfg = scaler.config
     dashboard_state.version = __version__
     dashboard_state.default_engine = scaler.default_driver.name()
@@ -411,6 +414,7 @@ def _init_dashboard(scaler: Scaler) -> DashboardServer | None:
 
 
 def _print_banner(scaler: Scaler) -> None:
+    """Print the RunZero startup banner displaying current configuration and engines."""
     cfg = scaler.config
     log_print("=" * 65)
     log_print(f" ⚡ RunZero v{__version__} — Dual-Engine Local GitHub Runner Autoscaler")

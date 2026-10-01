@@ -53,6 +53,7 @@ _driver_cache_lock = threading.Lock()
 
 
 def _get_cached_driver(name: str) -> RunnerDriver:
+    """Retrieve or instantiate a cached driver singleton by name."""
     key = name.lower().strip()
     with _driver_cache_lock:
         driver = _driver_cache.get(key)
@@ -73,6 +74,7 @@ class VMBridgeRequestHandler(BaseHTTPRequestHandler):
             sys.stderr.write(f"[VMBridge:HTTP] {format % args}\n")
 
     def _send_json(self, status_code: int, data: dict[str, Any]) -> None:
+        """Send JSON response payload with HTTP status code and headers."""
         try:
             payload = json.dumps(data).encode("utf-8")
             self.send_response(status_code)
@@ -200,6 +202,7 @@ ActionHandler = Callable[[RunnerDriver, str, dict[str, Any], list[str]], dict[st
 
 
 def _action_spawn(driver: RunnerDriver, driver_name: str, body: dict[str, Any], parts: list[str]) -> dict[str, Any]:
+    """Execute spawn runner request through host driver."""
     try:
         validate_spawn_target(body.get("repo"), body.get("org"), body.get("labels"), body.get("extra_env"))
     except ValueError as e:
@@ -219,6 +222,7 @@ def _action_spawn(driver: RunnerDriver, driver_name: str, body: dict[str, Any], 
 
 
 def _action_prune(driver: RunnerDriver, driver_name: str, body: dict[str, Any], parts: list[str]) -> dict[str, Any]:
+    """Execute prune exited runners request through host driver."""
     runners = [
         RunnerInfo(
             id=r.get("id", ""),
@@ -237,6 +241,7 @@ def _action_prune(driver: RunnerDriver, driver_name: str, body: dict[str, Any], 
 
 
 def _action_destroy(driver: RunnerDriver, driver_name: str, body: dict[str, Any], parts: list[str]) -> dict[str, Any]:
+    """Execute destroy runner instance request through host driver."""
     runner_id = body.get("runner_id") or (parts[4] if len(parts) > 4 else None)
     if not runner_id:
         raise _BadRequest({"error": "runner_id is required"})
@@ -244,11 +249,13 @@ def _action_destroy(driver: RunnerDriver, driver_name: str, body: dict[str, Any]
 
 
 def _action_cleanup(driver: RunnerDriver, driver_name: str, body: dict[str, Any], parts: list[str]) -> dict[str, Any]:
+    """Execute cleanup all runners request through host driver."""
     driver.cleanup_all()
     return {"driver": driver_name}
 
 
 def _action_ensure_base_stopped(driver: RunnerDriver, driver_name: str, body: dict[str, Any], parts: list[str]) -> dict[str, Any]:
+    """Ensure base images are stopped through host driver if supported."""
     ensure_fn = getattr(driver, "ensure_base_images_stopped", None)
     if callable(ensure_fn):
         ensure_fn()
@@ -256,6 +263,7 @@ def _action_ensure_base_stopped(driver: RunnerDriver, driver_name: str, body: di
 
 
 def _action_build_base(driver: RunnerDriver, driver_name: str, body: dict[str, Any], parts: list[str]) -> dict[str, Any]:
+    """Trigger base image build through host driver."""
     arch = body.get("arch", "arm64")
     build_fn = getattr(driver, "build_base_image", None)
     if not callable(build_fn):
@@ -350,14 +358,14 @@ class VMBridgeServer:
             print("[VMBridge] Bridge stopped cleanly.")
 
 
-def main():
+def main() -> None:
     """Entrypoint: start the bridge server and block until a SIGINT/SIGTERM stops it."""
     host = os.getenv("HOST_VM_BRIDGE_HOST", DEFAULT_BRIDGE_HOST)
     port = int(os.getenv("HOST_VM_BRIDGE_PORT", str(DEFAULT_BRIDGE_PORT)))
 
     server = VMBridgeServer(host, port)
 
-    def signal_handler(signum, frame):
+    def signal_handler(signum: int, frame: object) -> None:
         """Stop the bridge server cleanly and exit the process."""
         print(f"[VMBridge] Received signal {signum} ({signal.Signals(signum).name}), stopping.")
         server.stop()

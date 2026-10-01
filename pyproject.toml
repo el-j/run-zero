@@ -27,7 +27,7 @@ known-first-party = ["autoscaler", "cache_manager", "dashboard", "discovery", "d
 [tool.interrogate]
 ignore-init-module = true
 # Ratchet floor = current baseline; #58 raises this to 100.
-fail-under = 83
+fail-under = 100
 verbose = 0
 
 [tool.pytest.ini_options]
@@ -66,7 +66,7 @@ check_untyped_defs = true
 # completed a real run -- the previous single-string config could never have
 # worked. `paths_to_mutate` (mutmut 2.x's key) still works via mutmut 3.x's
 # back-compat shim but is deprecated in favor of `source_paths`.
-source_paths = ["src/dashboard/state.py"]
+source_paths = ["src/autoscaler.py", "src/config.py", "src/dashboard/server.py", "src/dashboard/state.py", "src/drivers/backoff.py", "src/drivers/bridge_driver.py", "src/drivers/docker_driver.py", "src/drivers/instance_store.py", "src/drivers/orbstack_image.py", "src/drivers/orbstack_vm_driver.py", "src/drivers/wsl_driver.py", "src/github_api.py", "src/http_security.py", "src/reconciler.py", "src/vm_bridge.py", "src/workflow_inspector.py"]
 # Equivalent-mutant policy: skip low-signal modules that are mostly templates
 # or version metadata rather than runtime decision logic.
 do_not_mutate = [

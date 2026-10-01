@@ -35,10 +35,12 @@ from collections.abc import Iterator
 
 
 def _indent(line: str) -> int:
+    """Return the number of leading spaces on a line."""
     return len(line) - len(line.lstrip(" "))
 
 
 def _unquote(value: str) -> str:
+    """Strip matching single or double quotes surrounding a string value."""
     value = value.strip()
     if value.startswith(("'", '"')) and value.endswith(value[0]) and len(value) >= 2:
         return value[1:-1]
@@ -51,6 +53,7 @@ def _matrix_base(name: str) -> str:
 
 
 def _looks_like_job_key(line: str, expected_indent: int) -> str | None:
+    """Return the job key identifier if line matches expected indentation and format, else None."""
     stripped = line.strip()
     if not stripped or stripped.startswith("#"):
         return None
@@ -123,6 +126,7 @@ def _iter_jobs(workflow_text: str) -> Iterator[dict[str, object]]:
 
 
 def _job_matches_target(target: str, job_id: str, job_name: str | None) -> bool:
+    """Check if target string matches the workflow job_id or display name, ignoring matrix suffixes."""
     candidates: list[str] = [job_id]
     if job_name:
         candidates.append(job_name)

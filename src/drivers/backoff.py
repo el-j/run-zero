@@ -18,7 +18,7 @@ MAX_COOLDOWN_SECONDS = 900
 
 def cooldown_for(failures: int) -> int:
     """Cooldown after `failures` consecutive failed builds: 30s doubling per failure, capped at 900s."""
-    return min(BASE_COOLDOWN_SECONDS * (2 ** (failures - 1)), MAX_COOLDOWN_SECONDS)
+    return int(min(BASE_COOLDOWN_SECONDS * (2 ** (failures - 1)), MAX_COOLDOWN_SECONDS))
 
 
 class BuildBackoff:
@@ -69,6 +69,7 @@ class BuildBackoff:
             return False
 
         def _run() -> None:
+            """Execute build in background thread and report failure or backoff upon completion."""
             ok = False
             try:
                 ok = build()

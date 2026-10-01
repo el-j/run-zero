@@ -87,14 +87,17 @@ class DockerDriver(RunnerDriver):
 
     @staticmethod
     def _normalize_arch(arch: str) -> str:
+        """Map architecture aliases (x64, x86_64, amd64) to canonical Docker architectures."""
         if arch in ("amd64", "x64", "x86_64"):
             return "amd64"
         return "arm64"
 
     def _image_tag_for_arch(self, arch: str) -> str:
+        """Return the formatted Docker image tag for the specified architecture."""
         return f"{self.runner_image_prefix}:{self._normalize_arch(arch)}"
 
     def _image_exists(self, arch: str) -> bool:
+        """Check whether the runner Docker image exists locally for the specified architecture."""
         image_tag = self._image_tag_for_arch(arch)
         try:
             res = subprocess.run(["docker", "image", "inspect", image_tag], capture_output=True)
@@ -103,6 +106,7 @@ class DockerDriver(RunnerDriver):
             return False
 
     def _resolve_build_context_dir(self) -> str | None:
+        """Locate the directory containing Dockerfile and runner bootstrap scripts."""
         candidates = []
 
         env_dir = os.getenv("RUNNER_IMAGE_DOCKER_DIR", "").strip()
@@ -123,6 +127,7 @@ class DockerDriver(RunnerDriver):
         return None
 
     def _build_runner_image(self, arch: str) -> bool:
+        """Build the runner container image for the specified architecture."""
         normalized_arch = self._normalize_arch(arch)
         image_tag = self._image_tag_for_arch(normalized_arch)
 
@@ -197,6 +202,7 @@ class DockerDriver(RunnerDriver):
         normalized_arch = self._normalize_arch(arch)
 
         def on_failure(failures: int, cooldown: int) -> None:
+            """Record runner image build failure event and log backoff duration."""
             detail = f"Failed {failures} time(s). Backing off {cooldown}s before retry."
             print(f"[Autoscaler:Docker] Golden runner image build for '{normalized_arch}' {detail}", file=sys.stderr)
             self._report_image_event("cooldown", normalized_arch, detail)
@@ -210,6 +216,7 @@ class DockerDriver(RunnerDriver):
         )
 
     def ensure_runtime_assets(self, arch: str = "arm64") -> bool:
+        """Ensure the runner container image for arch exists, triggering async build if missing."""
         normalized_arch = self._normalize_arch(arch)
         image_tag = self._image_tag_for_arch(normalized_arch)
         if self._image_exists(normalized_arch):
@@ -517,6 +524,7 @@ class DockerDriver(RunnerDriver):
 
     @staticmethod
     def _parse_created_at(raw: str) -> float | None:
+        """Parse Docker CreatedAt timestamp string into POSIX epoch timestamp."""
         # Docker's `--format {{.CreatedAt}}` is e.g. "2026-08-25 14:38:53 +0200
         # CEST" -- the trailing zone abbreviation isn't reliably parseable by
         # strptime's %Z across platforms/locales, but the numeric UTC offset

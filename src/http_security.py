@@ -80,6 +80,7 @@ def allowed_hosts_from_env(env_var: str = "RUNZERO_ALLOWED_HOSTS") -> frozenset[
 
 
 def _hostname_from_header(host_header: str) -> str:
+    """Extract normalized hostname or IP from an HTTP Host header, stripping port and IPv6 brackets."""
     host = host_header.strip().lower()
     if host.startswith("["):  # [::1]:8080
         return host[1 : host.find("]")] if "]" in host else host

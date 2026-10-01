@@ -39,6 +39,7 @@ class DashboardRequestHandler(BaseHTTPRequestHandler):
             sys.stderr.write(f"[Dashboard:HTTP] {format % args}\n")
 
     def _send_json(self, status_code: int, data: dict[str, Any]) -> None:
+        """Serialize payload to JSON and send response with cache-control headers."""
         payload = json.dumps(data, default=str).encode("utf-8")
         self.send_response(status_code)
         self.send_header("Content-Type", "application/json; charset=utf-8")
@@ -57,6 +58,7 @@ class DashboardRequestHandler(BaseHTTPRequestHandler):
         return True
 
     def _serve_file(self, root: str, relative: str, content_type: str) -> None:
+        """Safely resolve and serve a static asset within root directory."""
         file_path = resolve_static_path(root, relative)
         if file_path is None:
             self.send_response(404)
@@ -261,14 +263,14 @@ class DashboardServer:
             print("[Dashboard] Dashboard stopped cleanly.")
 
 
-def main():
+def main() -> None:
     """Entrypoint: start the dashboard server standalone and block until a SIGINT/SIGTERM stops it."""
     host = os.getenv("DASHBOARD_HOST", DEFAULT_DASHBOARD_HOST)
     port = int(os.getenv("DASHBOARD_PORT", str(DEFAULT_DASHBOARD_PORT)))
 
     server = DashboardServer(host, port)
 
-    def signal_handler(signum, frame):
+    def signal_handler(signum: int, frame: object) -> None:
         """Stop the dashboard server cleanly and exit the process."""
         server.stop()
         sys.exit(0)

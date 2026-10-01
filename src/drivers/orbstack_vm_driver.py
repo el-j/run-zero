@@ -149,6 +149,7 @@ class OrbStackVMDriver(RunnerDriver):
     base_image_name = staticmethod(OrbStackImageBuilder.base_image_name)
 
     def _list_vm_names(self) -> list[str]:
+        """Query and return active OrbStack VM names, retrying on transient command failures."""
         # Retried because a single transient "orbctl list" failure (CLI busy while
         # another orbctl/orb command is mid-flight, momentary daemon hiccup, etc.)
         # used to be indistinguishable from "no VMs exist at all". That false
@@ -265,6 +266,7 @@ class OrbStackVMDriver(RunnerDriver):
         """
 
         def on_failure(failures: int, cooldown: int) -> None:
+            """Handle base image build failure by recording telemetry and logging diagnostic advice."""
             hint = (
                 " This many consecutive failures usually isn't transient -- if "
                 "'orbctl create' is failing with a 'missing IP address' timeout, a "

@@ -31,6 +31,7 @@ class InstanceStore:
         self._lock = threading.Lock()
 
     def _read(self) -> dict[str, dict[str, Any]]:
+        """Read and parse persisted JSON metadata dictionary from disk."""
         try:
             with open(self.path, encoding="utf-8") as fh:
                 data = json.load(fh)
@@ -39,6 +40,7 @@ class InstanceStore:
         return {k: v for k, v in data.items() if isinstance(v, dict)} if isinstance(data, dict) else {}
 
     def _write(self, data: dict[str, dict[str, Any]]) -> None:
+        """Atomically persist metadata dictionary to disk via temporary file rename."""
         os.makedirs(os.path.dirname(self.path) or ".", exist_ok=True)
         fd, tmp = tempfile.mkstemp(dir=os.path.dirname(self.path) or ".", suffix=".tmp")
         try:

@@ -38,6 +38,7 @@ class BridgeVMDriver(RunnerDriver):
         return self.target_backend
 
     def _request(self, method: str, path: str, data: dict[str, Any] | None = None, timeout: float = 30.0) -> dict[str, Any]:
+        """Send HTTP request to the host VM bridge server and return parsed JSON response."""
         url = f"{self.bridge_url}{path}"
         body_bytes = json.dumps(data).encode("utf-8") if data is not None else None
         headers = {"Content-Type": "application/json"} if body_bytes else {}

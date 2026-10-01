@@ -141,6 +141,7 @@ class OrbStackImageBuilder:
         return False
 
     def _read_provision_script(self) -> str | None:
+        """Read provision script from disk or return None if file does not exist."""
         if not os.path.isfile(self._provision_script_path):
             print(f"[Autoscaler:OrbStack-VM] Error: shared provisioning script not found at {self._provision_script_path}", file=sys.stderr)
             return None

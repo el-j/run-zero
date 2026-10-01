@@ -248,11 +248,13 @@ class _OrphanExecutor:
         self._active: dict[str, set[str] | None] = {}
 
     def _destroy(self, runner: RunnerInfo) -> None:
+        """Tear down runner instance using its associated driver."""
         driver = self.drivers.get(runner.backend)
         if driver:
             driver.destroy_runner(runner.id)
 
     def _active_names(self, scope: str) -> set[str] | None:
+        """Fetch and cache names of runners currently executing in-progress jobs for this scope."""
         if scope not in self._active:
             active = _active_jobs_by_runner(_repos_for_scope(scope, self.repos), self.access_token)
             self._active[scope] = None if active is None else set(active)
@@ -279,6 +281,7 @@ class _OrphanExecutor:
             self._reap_if_stale_busy(runner, registration, age_minutes)
 
     def _reap_if_stale_busy(self, runner: RunnerInfo, registration: Registration, age_minutes: int) -> None:
+        """Tear down a busy runner whose in-progress job has concluded if unregistration succeeds."""
         active = self._active_names(registration.scope)
         # A failed lookup, or any in-progress job still naming this runner, means hands off.
         if active is None or any(_runner_name_matches(runner.name, name) for name in active):

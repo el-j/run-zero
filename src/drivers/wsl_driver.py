@@ -66,6 +66,7 @@ class WSL2Driver(RunnerDriver):
 
     @staticmethod
     def _proxy_env_block() -> str:
+        """Generate shell script block configuring package manager proxies inside the WSL2 guest."""
         return """
 HOST_IP=$(ip route show default 2>/dev/null | awk '{print $3}' || echo "localhost")
 export NPM_CONFIG_REGISTRY="http://${HOST_IP}:49501/"

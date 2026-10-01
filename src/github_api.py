@@ -127,6 +127,7 @@ def _normalize_actions_billing(payload: Any, scope_type: str, scope_name: str) -
     included_minutes = payload.get("included_minutes")
 
     def _to_int(v: Any) -> int | None:
+        """Convert a value to integer, returning None if absent or invalid."""
         try:
             return int(v) if v is not None else None
         except Exception:

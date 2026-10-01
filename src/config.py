@@ -32,11 +32,13 @@ class ConfigError(ValueError):
 
 
 def _raw(env: Mapping[str, str], name: str) -> str | None:
+    """Retrieve stripped environment variable value, or None if absent or blank."""
     value = env.get(name)
     return value.strip() if value is not None and value.strip() != "" else None
 
 
 def _int(env: Mapping[str, str], name: str, default: int, minimum: int, maximum: int | None = None) -> int:
+    """Parse an integer environment variable within an optional range constraint."""
     raw = _raw(env, name)
     if raw is None:
         return default
@@ -51,6 +53,7 @@ def _int(env: Mapping[str, str], name: str, default: int, minimum: int, maximum:
 
 
 def _bool(env: Mapping[str, str], name: str, default: bool) -> bool:
+    """Parse a boolean environment variable from common truthy/falsy strings."""
     raw = _raw(env, name)
     if raw is None:
         return default
@@ -62,6 +65,7 @@ def _bool(env: Mapping[str, str], name: str, default: bool) -> bool:
 
 
 def _choice(env: Mapping[str, str], name: str, default: str, choices: tuple[str, ...]) -> str:
+    """Parse an environment variable matching one of the permitted choice strings."""
     raw = _raw(env, name)
     if raw is None:
         return default

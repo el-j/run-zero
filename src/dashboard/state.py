@@ -28,8 +28,8 @@ class DashboardState:
         """Initialize state to its startup defaults; the real values arrive via `update_fleet()` on the first poll."""
         self._lock = threading.Lock()
         self.max_log_lines = max_log_lines
-        self.log_buffer: collections.deque = collections.deque(maxlen=max_log_lines)
-        self.subscribers: list[queue.Queue] = []
+        self.log_buffer: collections.deque[dict[str, str]] = collections.deque(maxlen=max_log_lines)
+        self.subscribers: list[queue.Queue[dict[str, Any]]] = []
 
         # Telemetry & Fleet State
         self.version = __version__
@@ -108,14 +108,14 @@ class DashboardState:
                 if ds in self.subscribers:
                     self.subscribers.remove(ds)
 
-    def subscribe(self) -> queue.Queue:
+    def subscribe(self) -> queue.Queue[dict[str, Any]]:
         """Register a new SSE client queue."""
-        q: queue.Queue = queue.Queue(maxsize=100)
+        q: queue.Queue[dict[str, Any]] = queue.Queue(maxsize=100)
         with self._lock:
             self.subscribers.append(q)
         return q
 
-    def unsubscribe(self, q: queue.Queue) -> None:
+    def unsubscribe(self, q: queue.Queue[dict[str, Any]]) -> None:
         """Unregister an SSE client queue."""
         with self._lock:
             if q in self.subscribers:
@@ -258,6 +258,7 @@ class DashboardState:
         self.broadcast_state()
 
     def _format_bytes(self, size_bytes: int) -> str:
+        """Format byte count into human-readable unit string (B, KB, MB, GB)."""
         if size_bytes < 1024:
             return f"{size_bytes} B"
         elif size_bytes < 1024**2:
@@ -268,6 +269,7 @@ class DashboardState:
             return f"{size_bytes / (1024**3):.2f} GB"
 
     def _get_dir_size(self, path: str) -> int:
+        """Calculate total non-symlink file sizes in bytes under directory tree."""
         if not path or not os.path.isdir(path):
             return 0
         total = 0
@@ -308,6 +310,7 @@ class DashboardState:
         return dirs
 
     def _refresh_cache_metrics(self) -> None:
+        """Scan cache subdirectories and recalculate categorized disk space usage metrics."""
         cache_root = self.cache_dir or os.path.expanduser("~/.local-github-runner/cache")
         if os.path.isdir(cache_root):
             # Keys match the display names already used by the webui/API; paths match the
@@ -357,6 +360,7 @@ class DashboardState:
         }
 
         def _clear_go_build() -> None:
+            """Clear all flat and scoped go-build cache directories."""
             go_build_paths = self._go_build_dirs(cache_root)
             for path in go_build_paths:
                 shutil.rmtree(path, ignore_errors=True)
