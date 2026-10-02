@@ -56,6 +56,18 @@
   const szGo = document.getElementById('sz-go');
   const szCargo = document.getElementById('sz-cargo');
   const szToolcache = document.getElementById('sz-toolcache');
+
+  const barCacheNpm = document.getElementById('bar-cache-npm');
+  const barCachePip = document.getElementById('bar-cache-pip');
+  const barCacheGo = document.getElementById('bar-cache-go');
+  const barCacheCargo = document.getElementById('bar-cache-cargo');
+  const barCacheToolcache = document.getElementById('bar-cache-toolcache');
+
+  const kpiRunnersBar = document.getElementById('kpi-runners-bar');
+  const kpiQueueBar = document.getElementById('kpi-queue-bar');
+  const kpiRoutingBar = document.getElementById('kpi-routing-bar');
+  const repoSearchInput = document.getElementById('repo-search-input');
+
   const driversStatusList = document.getElementById('drivers-status-list');
   const actionsScope = document.getElementById('actions-scope');
   const actionsIncluded = document.getElementById('actions-included');
@@ -69,6 +81,8 @@
   let retryTimeout = null;
   let reconnectAttempt = 0;
   let statusProbeTimer = null;
+  let currentRepos = [];
+  let currentQueuedJobs = [];
 
   function backoffMs(attempt) {
     const base = Math.min(30000, 1000 * Math.pow(2, Math.max(0, attempt - 1)));
@@ -224,6 +238,25 @@
     return new Date(n * 1000).toLocaleString();
   }
 
+  function parseByteString(str) {
+    if (!str || typeof str !== 'string') return 0;
+    const match = str.trim().match(/^([0-9.]+)\s*([A-Za-z]+)?$/);
+    if (!match) return 0;
+    const val = parseFloat(match[1]);
+    const unit = (match[2] || 'B').toUpperCase();
+    const multipliers = {
+      'B': 1,
+      'KB': 1024,
+      'KIB': 1024,
+      'MB': 1024 * 1024,
+      'MIB': 1024 * 1024,
+      'GB': 1024 * 1024 * 1024,
+      'GIB': 1024 * 1024 * 1024,
+      'TB': 1024 * 1024 * 1024 * 1024,
+    };
+    return val * (multipliers[unit] || 1);
+  }
+
   function renderActionsBilling(actionsBilling) {
     if (!actionsScope) return;
 
@@ -282,21 +315,32 @@
     if (rateLimitRem === null || rateLimitTot === null) {
       statRateLimitBar.style.backgroundColor = 'var(--text-dim)';
     } else if (pct < 20) {
-      statRateLimitBar.style.backgroundColor = 'var(--accent-red)';
+      statRateLimitBar.style.backgroundColor = 'var(--crimson)';
     } else if (pct < 50) {
-      statRateLimitBar.style.backgroundColor = 'var(--accent-amber)';
+      statRateLimitBar.style.backgroundColor = 'var(--solar)';
     } else {
-      statRateLimitBar.style.backgroundColor = 'var(--accent-emerald)';
+      statRateLimitBar.style.backgroundColor = 'var(--emerald)';
     }
 
     const concurrency = state.concurrency || {};
-    kpiActiveRunners.textContent = concurrency.active || 0;
-    kpiMaxRunners.textContent = `/ ${concurrency.max || 4} max`;
-    kpiMinRunnersText.textContent = `${concurrency.min || 0} standby min`;
+    const activeRunners = concurrency.active || 0;
+    const maxRunners = concurrency.max || 4;
+    kpiActiveRunners.textContent = activeRunners;
+    kpiMaxRunners.textContent = `/ ${maxRunners} max`;
+    kpiMinRunnersText.textContent = `// ${concurrency.min || 0} standby min`;
+    if (kpiRunnersBar) {
+      const runnersPct = Math.min(100, Math.round((activeRunners / Math.max(1, maxRunners)) * 100));
+      kpiRunnersBar.style.width = `${runnersPct}%`;
+    }
 
-    kpiQueuedJobs.textContent = github.queued_jobs_count || 0;
+    const queuedCount = github.queued_jobs_count || 0;
+    kpiQueuedJobs.textContent = queuedCount;
     const repos = github.monitored_repos || [];
-    kpiReposMonitored.textContent = `Across ${repos.length} tracked repo(s)`;
+    kpiReposMonitored.textContent = `// Across ${repos.length} tracked repo(s)`;
+    if (kpiQueueBar) {
+      const queuePct = Math.min(100, queuedCount * 25);
+      kpiQueueBar.style.width = `${queuePct}%`;
+    }
 
     // Routing ratio
     const rstats = state.routing_stats || {};
@@ -305,6 +349,9 @@
     const totalJobs = dJobs + vJobs;
     const vmRatio = totalJobs > 0 ? Math.round((vJobs / totalJobs) * 100) : 0;
     kpiVmRatio.textContent = `${vmRatio}%`;
+    if (kpiRoutingBar) {
+      kpiRoutingBar.style.width = `${vmRatio}%`;
+    }
 
     // Routing breakdown
     cntDockerJobs.textContent = dJobs;
@@ -321,7 +368,7 @@
     trigSystemd.textContent = triggers.systemd || 0;
     trigCustom.textContent = triggers.custom_label || 0;
 
-    // Cache metrics
+    // Cache metrics & bars
     const cache = state.cache || {};
     const sizes = cache.sizes || {};
     kpiCacheSize.textContent = sizes.total_host || '0 B';
@@ -331,11 +378,27 @@
     szCargo.textContent = sizes.cargo || '0 B';
     szToolcache.textContent = sizes.toolcache || '0 B';
 
+    // Calculate relative fill bars for caches
+    const bNpm = parseByteString(sizes.npm);
+    const bPip = parseByteString(sizes.pip);
+    const bGo = parseByteString(sizes['go-mod']);
+    const bCargo = parseByteString(sizes.cargo);
+    const bTool = parseByteString(sizes.toolcache);
+    const maxCacheCat = Math.max(1, bNpm, bPip, bGo, bCargo, bTool);
+
+    if (barCacheNpm) barCacheNpm.style.width = `${Math.max(5, Math.min(100, Math.round((bNpm / maxCacheCat) * 100)))}%`;
+    if (barCachePip) barCachePip.style.width = `${Math.max(5, Math.min(100, Math.round((bPip / maxCacheCat) * 100)))}%`;
+    if (barCacheGo) barCacheGo.style.width = `${Math.max(5, Math.min(100, Math.round((bGo / maxCacheCat) * 100)))}%`;
+    if (barCacheCargo) barCacheCargo.style.width = `${Math.max(5, Math.min(100, Math.round((bCargo / maxCacheCat) * 100)))}%`;
+    if (barCacheToolcache) barCacheToolcache.style.width = `${Math.max(5, Math.min(100, Math.round((bTool / maxCacheCat) * 100)))}%`;
+
     // Active Runners Grid
     renderRunners(state.runners || []);
 
     // Repositories List
-    renderRepos(repos, github.queued_jobs || []);
+    currentRepos = repos;
+    currentQueuedJobs = github.queued_jobs || [];
+    renderRepos(currentRepos, currentQueuedJobs);
 
     // Golden image build status
     renderImageBuilds(state.image_builds || []);
@@ -400,12 +463,14 @@
             </div>
           </div>
           <div class="runner-repo">
-            <span>📦</span>
+            <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"></path>
+            </svg>
             <span>${escapeHtml(r.target_repo || 'Standby Pool')}</span>
           </div>
           ${runnerLinks}
-          <div class="runner-card-top">
-            <span class="stat-label">STATUS: <b>${escapeHtml((r.state || 'running').toUpperCase())}</b></span>
+          <div class="runner-card-bottom">
+            <span class="stat-label">STATUS: <b class="runner-status-val">${escapeHtml((r.state || 'running').toUpperCase())}</b></span>
             <span class="runner-duration font-mono">⏱️ ${escapeHtml(r.duration || 'active')}</span>
           </div>
         </div>
@@ -414,9 +479,20 @@
   }
 
   function renderRepos(repos, queuedJobs) {
+    const query = repoSearchInput ? repoSearchInput.value.trim().toLowerCase() : '';
+    const filteredRepos = query
+      ? repos.filter(r => r.toLowerCase().includes(query))
+      : repos;
+
     reposCountBadge.textContent = `${repos.length} REPOSITORIES`;
+
     if (repos.length === 0) {
       reposList.innerHTML = '<div class="empty-substate">No active repositories detected.</div>';
+      return;
+    }
+
+    if (filteredRepos.length === 0) {
+      reposList.innerHTML = `<div class="empty-substate">No repositories matching "${escapeHtml(query)}"</div>`;
       return;
     }
 
@@ -429,7 +505,7 @@
       queuedByRepo[repo].count += 1;
     });
 
-    reposList.innerHTML = repos.map(repo => {
+    reposList.innerHTML = filteredRepos.map(repo => {
       const queuedInfo = queuedByRepo[repo] || { count: 0, sample: null };
       const qCount = queuedInfo.count;
       const qClass = qCount > 0 ? 'queue-active' : 'queue-idle';
@@ -462,6 +538,13 @@
         </div>
       `;
     }).join('');
+  }
+
+  // Filter input event listener
+  if (repoSearchInput) {
+    repoSearchInput.addEventListener('input', function () {
+      renderRepos(currentRepos, currentQueuedJobs);
+    });
   }
 
   function renderImageBuilds(imageBuilds) {
@@ -515,14 +598,13 @@
 
     driversStatusList.innerHTML = knownDrivers.map(d => {
       const isOnline = availableDrivers.includes(d.id);
-      const statusClass = isOnline ? 'online' : '';
       const statusText = isOnline ? 'Available' : 'Inactive';
 
       return `
         <div class="cache-row">
           <div class="cache-info">
             <span class="cache-name">${d.icon} ${d.name}</span>
-            <span class="stat-label">${d.id}</span>
+            <span class="stat-label font-mono">${d.id}</span>
           </div>
           <span class="badge ${isOnline ? 'badge-pulse' : 'badge-neutral'}">${statusText}</span>
         </div>
@@ -530,7 +612,25 @@
     }).join('');
   }
 
-  // Live Terminal Log Streamer
+  // Live Terminal Log Streamer with Syntax Highlighting
+  function formatLogMessage(msg) {
+    let safe = escapeHtml(msg);
+
+    // Format tags like [Autoscaler], [Spawn], [Reconciler], [Prune], [Error]
+    safe = safe.replace(/\[(Autoscaler|Reconciler|DockerDriver|OrbStackDriver|WSL2Driver|MultipassDriver)\]/g,
+      '<span class="log-tag tag-cyan">[$1]</span>');
+    safe = safe.replace(/\[(Spawn|ScaleUp|Ready|Started)\]/gi,
+      '<span class="log-tag tag-emerald">[$1]</span>');
+    safe = safe.replace(/\[(ScaleDown|Prune|Terminated|Stopped)\]/gi,
+      '<span class="log-tag tag-amber">[$1]</span>');
+    safe = safe.replace(/\[(Error|Failed|Exception|Timeout)\]/gi,
+      '<span class="log-tag tag-crimson">[$1]</span>');
+    safe = safe.replace(/\[(Bridge|VM|Routing)\]/gi,
+      '<span class="log-tag tag-purple">[$1]</span>');
+
+    return safe;
+  }
+
   function appendLog(entry) {
     if (!logTerminal || !entry) return;
     const ts = entry.timestamp || new Date().toLocaleTimeString();
@@ -538,7 +638,7 @@
 
     const lineEl = document.createElement('div');
     lineEl.className = 'log-line';
-    lineEl.innerHTML = `<span class="log-ts">[${escapeHtml(ts)}]</span>${escapeHtml(msg)}`;
+    lineEl.innerHTML = `<span class="log-ts font-mono">[${escapeHtml(ts)}]</span> <span class="log-content">${formatLogMessage(msg)}</span>`;
 
     logTerminal.appendChild(lineEl);
 
@@ -570,7 +670,7 @@
     const toast = document.createElement('div');
     toast.className = 'toast';
     if (isError) {
-      toast.style.borderColor = 'var(--accent-red)';
+      toast.style.borderColor = 'var(--crimson)';
     }
     toast.textContent = message;
     container.appendChild(toast);
@@ -646,3 +746,4 @@
     stopStatusProbe();
   });
 })();
+
