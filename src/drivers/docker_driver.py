@@ -306,6 +306,64 @@ class DockerDriver(RunnerDriver):
         except Exception:
             return False
 
+    def _build_proxy_env_args(self) -> list[str]:
+        """Build environment variable arguments for network proxy caches."""
+        verdaccio_url = "http://localhost:49501/" if self.network == "host" else "http://verdaccio:4873/"
+        athens_url = (
+            "http://localhost:49500,https://proxy.golang.org,direct" if self.network == "host" else "http://athens:3000,https://proxy.golang.org,direct"
+        )
+        pip_host = "localhost:49507" if self.network == "host" else "devpi:3141"
+        pip_index_url = f"http://{pip_host}/root/pypi/+simple/"
+        args = [
+            "-e",
+            f"NPM_CONFIG_REGISTRY={verdaccio_url}",
+            "-e",
+            f"YARN_REGISTRY={verdaccio_url}",
+            "-e",
+            f"GOPROXY={athens_url}",
+            "-e",
+            f"PIP_INDEX_URL={pip_index_url}",
+            "-e",
+            f"UV_INDEX_URL={pip_index_url}",
+        ]
+        if self.network != "host":
+            args.extend(["-e", "PIP_TRUSTED_HOST=devpi"])
+        return args
+
+    def _build_cache_mount_args(self, cache_mounts: dict[str, str] | None) -> list[str]:
+        """Build volume and destination environment arguments for cache mounts."""
+        if not cache_mounts:
+            return []
+        args: list[str] = []
+        for host_p, cont_p in cache_mounts.items():
+            args.extend(["-v", f"{host_p}:{cont_p}"])
+        args.extend(["-e", f"CACHE_MOUNT_DESTS={':'.join(cache_mounts.values())}"])
+        return args
+
+    def _build_target_and_extra_env_args(self, repo: str | None, org: str | None, extra_env: dict[str, str] | None) -> list[str]:
+        """Build target repo/org and extra environment arguments."""
+        args: list[str] = []
+        if repo:
+            args.extend(["-e", f"REPO={repo}"])
+        elif org:
+            args.extend(["-e", f"ORG={org}"])
+        if extra_env:
+            for k, v in extra_env.items():
+                args.extend(["-e", f"{k}={v}"])
+        return args
+
+    def _handle_spawn_failure(self, error: subprocess.CalledProcessError, image_tag: str, normalized_arch: str) -> None:
+        """Handle docker run failure, triggering background image build if missing."""
+        stderr_text = error.stderr.decode(errors="replace") if error.stderr else str(error)
+        if "Unable to find image" in stderr_text or "pull access denied" in stderr_text:
+            print(
+                f"[Autoscaler:Docker] Launch failed because image '{image_tag}' is unavailable. "
+                "Triggering automatic background build and retrying on next poll.",
+                file=sys.stderr,
+            )
+            self._build_runner_image_async(normalized_arch)
+        print(f"[Autoscaler:Docker] Error launching container: {stderr_text}", file=sys.stderr)
+
     def spawn_runner(
         self,
         repo: str | None = None,
@@ -358,14 +416,6 @@ class DockerDriver(RunnerDriver):
             platform_flag,
             "--network",
             self.network,
-            # Headless Chrome (Lighthouse CI, Playwright) needs to create its own
-            # user/PID namespace for its internal sandbox, which Docker blocks by
-            # default. GitHub-hosted runners never hit this because they're full
-            # VMs, not containers. Jobs only skip this container path when a VM
-            # driver is available AND the job needs one -- its workflow declares
-            # `services:`/`container:`, or a VM_TRIGGER_LABELS entry appears in its
-            # labels or job-name tokens (see router.select_driver_for_job). Every
-            # other job, including browser-driven ones, lands here.
             "--cap-add",
             "SYS_ADMIN",
             "--label",
@@ -398,64 +448,10 @@ class DockerDriver(RunnerDriver):
             cmd.extend(["--memory", self.runner_memory])
 
         if proxies_enabled:
-            # When on host network, access proxies on published localhost ports
-            verdaccio_url = "http://localhost:49501/" if self.network == "host" else "http://verdaccio:4873/"
-            athens_url = (
-                "http://localhost:49500,https://proxy.golang.org,direct" if self.network == "host" else "http://athens:3000,https://proxy.golang.org,direct"
-            )
-            # devpi's default "root/pypi" index is a real pull-through PyPI mirror out of the
-            # box; pip and uv both honor PIP_INDEX_URL, and uv additionally reads UV_INDEX_URL.
-            pip_host = "localhost:49507" if self.network == "host" else "devpi:3141"
-            pip_index_url = f"http://{pip_host}/root/pypi/+simple/"
-            cmd.extend(
-                [
-                    "-e",
-                    f"NPM_CONFIG_REGISTRY={verdaccio_url}",
-                    "-e",
-                    f"YARN_REGISTRY={verdaccio_url}",
-                    "-e",
-                    f"GOPROXY={athens_url}",
-                    "-e",
-                    f"PIP_INDEX_URL={pip_index_url}",
-                    "-e",
-                    f"UV_INDEX_URL={pip_index_url}",
-                ]
-            )
-            if self.network != "host":
-                # pip implicitly trusts "localhost"/"127.0.0.1" for plain-HTTP indexes but
-                # refuses anything else -- verified live (2026-08-26): pointing pip at a
-                # plain-HTTP non-localhost host without this produced "is not a trusted or
-                # secure host" and pip silently found zero packages, exit 0, no error. uv
-                # does not have this restriction (verified: identical install succeeds with
-                # no equivalent flag), so this is pip/PIP_TRUSTED_HOST-only.
-                cmd.extend(["-e", "PIP_TRUSTED_HOST=devpi"])
-            # kellnr's crates.io proxy is a real sparse-index mirror, but unlike pip/Go it
-            # has no single "point at this URL" env var: verified live (2026-08-26) that
-            # cargo silently ignores CARGO_SOURCE_<name>_* env vars for a dynamic/custom
-            # [source.*] table (a real cargo limitation, not a typo) -- only a real
-            # ~/.cargo/config.toml source-replacement block works. `docker/start.sh`
-            # (this image's own entrypoint) writes that file at container start when it
-            # detects kellnr is reachable, so no extra `-e`/`-v` is threaded through here.
+            cmd.extend(self._build_proxy_env_args())
 
-        if cache_mounts:
-            for host_p, cont_p in cache_mounts.items():
-                cmd.extend(["-v", f"{host_p}:{cont_p}"])
-            # start.sh needs the exact set of container-side mount destinations to
-            # fix their ancestor-directory ownership (Docker/OrbStack create bind
-            # mount ancestors as root). Passing it from here — the same dict that
-            # drives the -v flags above — means start.sh can never drift out of
-            # sync with the actual mounts the way a second hardcoded list did.
-            cmd.extend(["-e", f"CACHE_MOUNT_DESTS={':'.join(cache_mounts.values())}"])
-
-        if repo:
-            cmd.extend(["-e", f"REPO={repo}"])
-        elif org:
-            cmd.extend(["-e", f"ORG={org}"])
-
-        if extra_env:
-            for k, v in extra_env.items():
-                cmd.extend(["-e", f"{k}={v}"])
-
+        cmd.extend(self._build_cache_mount_args(cache_mounts))
+        cmd.extend(self._build_target_and_extra_env_args(repo, org, extra_env))
         cmd.append(image_tag)
 
         network_desc = f"{self.network} network"
@@ -465,15 +461,7 @@ class DockerDriver(RunnerDriver):
             subprocess.run(cmd, check=True, capture_output=True)
             return container_name
         except subprocess.CalledProcessError as e:
-            stderr_text = e.stderr.decode(errors="replace") if e.stderr else str(e)
-            if "Unable to find image" in stderr_text or "pull access denied" in stderr_text:
-                print(
-                    f"[Autoscaler:Docker] Launch failed because image '{image_tag}' is unavailable. "
-                    "Triggering automatic background build and retrying on next poll.",
-                    file=sys.stderr,
-                )
-                self._build_runner_image_async(normalized_arch)
-            print(f"[Autoscaler:Docker] Error launching container: {stderr_text}", file=sys.stderr)
+            self._handle_spawn_failure(e, image_tag, normalized_arch)
             return None
 
     def list_runners(self) -> list[RunnerInfo]:

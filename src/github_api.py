@@ -68,6 +68,26 @@ def _update_rate_limit_from_headers(headers: Any) -> None:
         return
 
 
+def _resolve_rate_limit_resource(payload: dict[str, Any]) -> tuple[dict[str, Any] | None, str]:
+    """Find the most relevant rate limit resource dictionary and its name in a /rate_limit response."""
+    resources_obj = payload.get("resources")
+    resources = resources_obj if isinstance(resources_obj, dict) else {}
+    resource_key = rate_limit_resource if isinstance(rate_limit_resource, str) and rate_limit_resource else "core"
+    resource_obj = resources.get(resource_key)
+    if isinstance(resource_obj, dict):
+        return resource_obj, resource_key
+
+    core_obj = resources.get("core")
+    if isinstance(core_obj, dict):
+        return core_obj, "core"
+
+    rate_obj = payload.get("rate")
+    if isinstance(rate_obj, dict):
+        return rate_obj, resource_key
+
+    return None, resource_key
+
+
 def _update_rate_limit_from_payload(payload: Any) -> None:
     """Best-effort parse from /rate_limit JSON payload (authoritative per token/account)."""
     global rate_limit_remaining, rate_limit_total, rate_limit_used, rate_limit_resource, rate_limit_reset
@@ -75,21 +95,7 @@ def _update_rate_limit_from_payload(payload: Any) -> None:
     if not isinstance(payload, dict):
         return
 
-    resources_obj = payload.get("resources")
-    resources = resources_obj if isinstance(resources_obj, dict) else {}
-    resource_key = rate_limit_resource if isinstance(rate_limit_resource, str) and rate_limit_resource else "core"
-    resource_obj = resources.get(resource_key)
-    resource_data = resource_obj if isinstance(resource_obj, dict) else None
-
-    core_obj = resources.get("core")
-    if resource_data is None and isinstance(core_obj, dict):
-        resource_key = "core"
-        resource_data = core_obj
-
-    rate_obj = payload.get("rate")
-    if resource_data is None and isinstance(rate_obj, dict):
-        resource_data = rate_obj
-
+    resource_data, resource_key = _resolve_rate_limit_resource(payload)
     if not isinstance(resource_data, dict):
         return
 

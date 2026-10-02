@@ -90,6 +90,56 @@ class DashboardRequestHandler(BaseHTTPRequestHandler):
         self.send_response(204)
         self.end_headers()
 
+    def _serve_static_route(self, path: str) -> bool:
+        """Serve static files or fonts if matching, returning True if handled."""
+        if path in ("", "/index.html"):
+            self._serve_file(STATIC_DIR, "index.html", "text/html; charset=utf-8")
+            return True
+        if path == "/dashboard.css":
+            self._serve_file(STATIC_DIR, "dashboard.css", "text/css; charset=utf-8")
+            return True
+        if path == "/dashboard.js":
+            self._serve_file(STATIC_DIR, "dashboard.js", "application/javascript; charset=utf-8")
+            return True
+        if path.startswith("/fonts/"):
+            font_name = path[len("/fonts/") :]
+            if "/" in font_name or "\\" in font_name or not font_name.endswith(".woff2"):
+                font_name = ""
+            self._serve_file(FONTS_DIR, font_name, "font/woff2")
+            return True
+        return False
+
+    def _stream_sse_events(self) -> None:
+        """Stream real-time Server-Sent Events updates and periodic heartbeat pings."""
+        self.send_response(200)
+        self.send_header("Content-Type", "text/event-stream")
+        self.send_header("Cache-Control", "no-cache")
+        self.send_header("Connection", "keep-alive")
+        self.end_headers()
+
+        client_queue = dashboard_state.subscribe()
+        try:
+            initial_msg = f"event: state\ndata: {json.dumps(dashboard_state.get_snapshot())}\n\n"
+            self.wfile.write(initial_msg.encode("utf-8"))
+            self.wfile.flush()
+
+            heartbeat_interval = float(getattr(self.server, "sse_heartbeat_interval", getattr(self, "sse_heartbeat_interval", 5.0)))
+            while True:
+                try:
+                    item = client_queue.get(timeout=heartbeat_interval)
+                    event_type = item.get("type", "message")
+                    data_json = json.dumps(item.get("data", {}))
+                    event_msg = f"event: {event_type}\ndata: {data_json}\n\n"
+                    self.wfile.write(event_msg.encode("utf-8"))
+                    self.wfile.flush()
+                except queue.Empty:
+                    self.wfile.write(b": ping\n\n")
+                    self.wfile.flush()
+        except (BrokenPipeError, ConnectionResetError, TimeoutError):
+            pass
+        finally:
+            dashboard_state.unsubscribe(client_queue)
+
     def do_GET(self) -> None:
         """Route GET requests: static UI assets, REST snapshot/log endpoints, and the /api/events SSE stream."""
         if not self._admit():
@@ -97,69 +147,46 @@ class DashboardRequestHandler(BaseHTTPRequestHandler):
         parsed = urlparse(self.path)
         path = parsed.path.rstrip("/")
 
-        # Static assets
-        if path in ("", "/index.html"):
-            self._serve_file(STATIC_DIR, "index.html", "text/html; charset=utf-8")
-            return
-        elif path == "/dashboard.css":
-            self._serve_file(STATIC_DIR, "dashboard.css", "text/css; charset=utf-8")
-            return
-        elif path == "/dashboard.js":
-            self._serve_file(STATIC_DIR, "dashboard.js", "application/javascript; charset=utf-8")
-            return
-        elif path.startswith("/fonts/"):
-            # Only flat *.woff2 names inside static/fonts/ -- never a nested or parent path.
-            font_name = path[len("/fonts/") :]
-            if "/" in font_name or "\\" in font_name or not font_name.endswith(".woff2"):
-                font_name = ""
-            self._serve_file(FONTS_DIR, font_name, "font/woff2")
+        if self._serve_static_route(path):
             return
 
-        # REST Endpoints
         if path in ("/api/status", "/api/fleet"):
             self._send_json(200, dashboard_state.get_snapshot())
             return
-
         if path == "/api/logs":
             self._send_json(200, {"logs": list(dashboard_state.log_buffer)})
             return
-
-        # Server-Sent Events (SSE) Stream
         if path == "/api/events":
-            self.send_response(200)
-            self.send_header("Content-Type", "text/event-stream")
-            self.send_header("Cache-Control", "no-cache")
-            self.send_header("Connection", "keep-alive")
-            self.end_headers()
-
-            client_queue = dashboard_state.subscribe()
-            try:
-                # Send initial snapshot immediately
-                initial_msg = f"event: state\ndata: {json.dumps(dashboard_state.get_snapshot())}\n\n"
-                self.wfile.write(initial_msg.encode("utf-8"))
-                self.wfile.flush()
-
-                # Stream continuous events & keep-alive
-                heartbeat_interval = float(getattr(self.server, "sse_heartbeat_interval", getattr(self, "sse_heartbeat_interval", 5.0)))
-                while True:
-                    try:
-                        item = client_queue.get(timeout=heartbeat_interval)
-                        event_type = item.get("type", "message")
-                        data_json = json.dumps(item.get("data", {}))
-                        event_msg = f"event: {event_type}\ndata: {data_json}\n\n"
-                        self.wfile.write(event_msg.encode("utf-8"))
-                        self.wfile.flush()
-                    except queue.Empty:
-                        # Heartbeat ping
-                        self.wfile.write(b": ping\n\n")
-                        self.wfile.flush()
-            except (BrokenPipeError, ConnectionResetError, TimeoutError):
-                pass
-            finally:
-                dashboard_state.unsubscribe(client_queue)
+            self._stream_sse_events()
             return
 
         self._send_json(404, {"error": f"Endpoint not found: {path}"})
+
+    def _handle_clean_cache_action(self, body: dict[str, Any]) -> None:
+        """Handle /api/actions/clean-cache POST requests."""
+        category = body.get("category", "all")
+        if not isinstance(category, str):
+            self._send_json(400, {"error": "category must be a string"})
+            return
+        res = dashboard_state.clean_cache(category)
+        dashboard_state.append_log(f"[Dashboard] 🧹 Purged cache: {category}")
+        self._send_json(200, res)
+
+    def _handle_prune_action(self) -> None:
+        """Handle /api/actions/prune POST requests across active runner drivers."""
+        try:
+            drivers = getattr(self.server, "runner_drivers", None)
+            if drivers is None:
+                from drivers import get_available_drivers
+
+                drivers = get_available_drivers()
+            for d in drivers.values():
+                runners = d.list_runners()
+                d.prune_exited(runners)
+            dashboard_state.append_log("[Dashboard] ✂️  Triggered fleet runner prune across all active drivers.")
+            self._send_json(200, {"status": "success", "message": "Prune executed"})
+        except Exception as e:
+            self._send_json(500, {"error": str(e)})
 
     def do_POST(self) -> None:
         """Route POST requests: /api/actions/clean-cache and /api/actions/prune.
@@ -180,31 +207,9 @@ class DashboardRequestHandler(BaseHTTPRequestHandler):
             return
 
         if path == "/api/actions/clean-cache":
-            category = body.get("category", "all")
-            if not isinstance(category, str):
-                self._send_json(400, {"error": "category must be a string"})
-                return
-            res = dashboard_state.clean_cache(category)
-            dashboard_state.append_log(f"[Dashboard] 🧹 Purged cache: {category}")
-            self._send_json(200, res)
-            return
-
-        # Only /api/actions/prune remains. Use the autoscaler's own driver registry when one
-        # was injected (so pruning shares its build/cooldown state); a standalone dashboard
-        # has none and discovers drivers itself.
-        try:
-            drivers = getattr(self.server, "runner_drivers", None)
-            if drivers is None:
-                from drivers import get_available_drivers
-
-                drivers = get_available_drivers()
-            for d in drivers.values():
-                runners = d.list_runners()
-                d.prune_exited(runners)
-            dashboard_state.append_log("[Dashboard] ✂️  Triggered fleet runner prune across all active drivers.")
-            self._send_json(200, {"status": "success", "message": "Prune executed"})
-        except Exception as e:
-            self._send_json(500, {"error": str(e)})
+            self._handle_clean_cache_action(body)
+        else:
+            self._handle_prune_action()
 
 
 class DashboardServer:

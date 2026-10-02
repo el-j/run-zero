@@ -3,6 +3,7 @@ Repository auto-discovery with activity date cutoffs and owner filtering.
 """
 
 from datetime import UTC, datetime, timedelta
+from typing import Any
 
 from github_api import github_request
 
@@ -32,11 +33,55 @@ def _repo_listing_endpoint(owner: str, access_token: str | None) -> str:
     return USER_REPOS_ENDPOINT
 
 
+def _filter_repo_item(item: Any, owner: str, cutoff_date: datetime) -> tuple[str | None, bool]:
+    """Inspect a repository record, returning (repo_name_or_none, stop_pagination)."""
+    if not isinstance(item, dict) or item.get("archived", False):
+        return None, False
+
+    full_name = item.get("full_name", "")
+    if owner and not full_name.startswith(f"{owner}/"):
+        return None, False
+
+    pushed_at_str = item.get("pushed_at")
+    if pushed_at_str:
+        pushed_at = _parse_timestamp(pushed_at_str)
+        # An unparseable timestamp keeps the repo (fail open): dropping a repo
+        # silently would stop its queued jobs from ever being scaled for.
+        if pushed_at is not None and pushed_at < cutoff_date:
+            return None, True
+
+    return full_name, False
+
+
+def _paginate_repositories(endpoint: str, owner: str, cutoff_date: datetime, access_token: str | None) -> set[str]:
+    """Iterate through paginated GitHub repos endpoint until cutoff or end."""
+    repos: set[str] = set()
+    page = 1
+    while True:
+        data = github_request(f"{endpoint}&per_page=100&page={page}", access_token=access_token)
+        if not isinstance(data, list) or not data:
+            break
+
+        stop_pagination = False
+        for item in data:
+            name, stop = _filter_repo_item(item, owner, cutoff_date)
+            if stop:
+                stop_pagination = True
+                break
+            if name:
+                repos.add(name)
+
+        if stop_pagination or len(data) < 100:
+            break
+        page += 1
+    return repos
+
+
 def discover_repositories(
     owner: str = "", active_days: int = 60, auto_discover: bool = True, repos_config: str = "", access_token: str | None = None
 ) -> list[str]:
     """Discover list of active repositories to monitor."""
-    repos = set()
+    repos: set[str] = set()
 
     if repos_config:
         for r in repos_config.split(","):
@@ -48,34 +93,6 @@ def discover_repositories(
     if auto_discover and access_token:
         cutoff_date = datetime.now(UTC) - timedelta(days=active_days)
         endpoint = _repo_listing_endpoint(owner, access_token)
-        page = 1
-        while True:
-            data = github_request(f"{endpoint}&per_page=100&page={page}", access_token=access_token)
-            if not isinstance(data, list) or not data:
-                break
-
-            stop_pagination = False
-            for item in data:
-                if not isinstance(item, dict) or item.get("archived", False):
-                    continue
-
-                full_name = item.get("full_name", "")
-                if owner and not full_name.startswith(f"{owner}/"):
-                    continue
-
-                pushed_at_str = item.get("pushed_at")
-                if pushed_at_str:
-                    pushed_at = _parse_timestamp(pushed_at_str)
-                    # An unparseable timestamp keeps the repo (fail open): dropping a repo
-                    # silently would stop its queued jobs from ever being scaled for.
-                    if pushed_at is not None and pushed_at < cutoff_date:
-                        stop_pagination = True
-                        break
-
-                repos.add(full_name)
-
-            if stop_pagination or len(data) < 100:
-                break
-            page += 1
+        repos = _paginate_repositories(endpoint, owner, cutoff_date, access_token)
 
     return sorted(repos)

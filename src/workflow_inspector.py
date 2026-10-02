@@ -69,27 +69,46 @@ def _looks_like_job_key(line: str, expected_indent: int) -> str | None:
     return key
 
 
+def _find_jobs_section(lines: list[str]) -> tuple[int, int] | None:
+    """Find the line index and indentation of the top-level jobs: key."""
+    for i, line in enumerate(lines):
+        if line.strip().startswith("jobs:"):
+            return i, _indent(line)
+    return None
+
+
+def _parse_job_properties(lines: list[str], start: int, job_indent: int) -> tuple[str | None, bool, int]:
+    """Parse name and services flags for a job block, returning next line index."""
+    j = start
+    name_value: str | None = None
+    has_services = False
+    while j < len(lines):
+        current = lines[j]
+        current_stripped = current.strip()
+        if current_stripped and _indent(current) <= job_indent:
+            break
+        if _indent(current) == job_indent + 2:
+            if current_stripped.startswith("name:"):
+                name_value = _unquote(current_stripped[len("name:") :])
+            elif current_stripped.startswith(("services:", "container:")):
+                has_services = True
+        j += 1
+    return name_value, has_services, j
+
+
 def _iter_jobs(workflow_text: str) -> Iterator[dict[str, object]]:
     """Yield parsed job blocks from a workflow file's `jobs:` mapping."""
     lines = workflow_text.splitlines()
-    jobs_idx: int | None = None
-    jobs_indent = 0
-    for i, line in enumerate(lines):
-        stripped = line.strip()
-        if stripped.startswith("jobs:"):
-            jobs_idx = i
-            jobs_indent = _indent(line)
-            break
-
-    if jobs_idx is None:
+    section = _find_jobs_section(lines)
+    if section is None:
         return
 
+    jobs_idx, jobs_indent = section
     child_indent = jobs_indent + 2
     i = jobs_idx + 1
     while i < len(lines):
         line = lines[i]
-        stripped = line.strip()
-        if stripped and _indent(line) <= jobs_indent:
+        if line.strip() and _indent(line) <= jobs_indent:
             break
 
         key = _looks_like_job_key(line, child_indent)
@@ -97,32 +116,12 @@ def _iter_jobs(workflow_text: str) -> Iterator[dict[str, object]]:
             i += 1
             continue
 
-        job_indent = _indent(line)
-        j = i + 1
-        name_value: str | None = None
-        has_services = False
-        while j < len(lines):
-            current = lines[j]
-            current_stripped = current.strip()
-            if current_stripped and _indent(current) <= job_indent:
-                break
-
-            current_indent = _indent(current)
-            if current_indent == job_indent + 2:
-                if current_stripped.startswith("name:"):
-                    raw = current_stripped[len("name:") :]
-                    name_value = _unquote(raw)
-                elif current_stripped.startswith(("services:", "container:")):
-                    has_services = True
-
-            j += 1
-
+        name_value, has_services, i = _parse_job_properties(lines, i + 1, _indent(line))
         yield {
             "job_id": key,
             "job_name": name_value,
             "has_services": has_services,
         }
-        i = j
 
 
 def _job_matches_target(target: str, job_id: str, job_name: str | None) -> bool:

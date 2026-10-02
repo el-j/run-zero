@@ -40,13 +40,8 @@ def merge_labels(default_labels: str, job_labels: str | None) -> str:
     return ",".join(merged)
 
 
-def validate_spawn_target(repo: str | None, org: str | None, labels: str | None, extra_env: dict[str, str] | None = None) -> None:
-    """Raise ValueError unless `repo`/`org`/`labels`/`extra_env` are well-formed.
-
-    Exactly one of `repo` ("owner/name") or `org` is required; `labels` is an optional
-    comma-separated list; `extra_env` keys must be plain identifiers that don't shadow a
-    variable the runner bootstrap sets itself, and values must be strings.
-    """
+def _validate_target_identity(repo: str | None, org: str | None) -> None:
+    """Validate that either a repo or org target is properly formatted."""
     if repo:
         if not isinstance(repo, str) or not _REPO_RE.match(repo):
             raise ValueError(f"invalid repository name: {repo!r}")
@@ -55,16 +50,31 @@ def validate_spawn_target(repo: str | None, org: str | None, labels: str | None,
             raise ValueError(f"invalid organization name: {org!r}")
     else:
         raise ValueError("either repo or org is required")
+
+
+def _validate_extra_env_dict(extra_env: dict[str, str]) -> None:
+    """Validate keys and values in the extra_env mapping."""
+    if not isinstance(extra_env, dict):
+        raise ValueError("extra_env must be an object")
+    for key, value in extra_env.items():
+        if not isinstance(key, str) or not _ENV_KEY_RE.match(key) or key.upper() in _RESERVED_ENV_KEYS:
+            raise ValueError(f"invalid or reserved extra_env key: {key!r}")
+        if not isinstance(value, str) or "\x00" in value:
+            raise ValueError(f"invalid extra_env value for {key!r}")
+
+
+def validate_spawn_target(repo: str | None, org: str | None, labels: str | None, extra_env: dict[str, str] | None = None) -> None:
+    """Raise ValueError unless `repo`/`org`/`labels`/`extra_env` are well-formed.
+
+    Exactly one of `repo` ("owner/name") or `org` is required; `labels` is an optional
+    comma-separated list; `extra_env` keys must be plain identifiers that don't shadow a
+    variable the runner bootstrap sets itself, and values must be strings.
+    """
+    _validate_target_identity(repo, org)
     if labels and (not isinstance(labels, str) or not _LABELS_RE.match(labels)):
         raise ValueError(f"invalid runner labels: {labels!r}")
     if extra_env is not None:
-        if not isinstance(extra_env, dict):
-            raise ValueError("extra_env must be an object")
-        for key, value in extra_env.items():
-            if not isinstance(key, str) or not _ENV_KEY_RE.match(key) or key.upper() in _RESERVED_ENV_KEYS:
-                raise ValueError(f"invalid or reserved extra_env key: {key!r}")
-            if not isinstance(value, str) or "\x00" in value:
-                raise ValueError(f"invalid extra_env value for {key!r}")
+        _validate_extra_env_dict(extra_env)
 
 
 class RunnerInfo:

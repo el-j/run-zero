@@ -148,6 +148,55 @@ class OrbStackImageBuilder:
         with open(self._provision_script_path) as f:
             return f.read()
 
+    def _create_staging_container(self, staging_name: str, orb_arch: str) -> bool:
+        """Create the staging VM using orbctl create, returning True on success."""
+        create_cmd = ["orbctl", "create", "-a", orb_arch, "-u", "runner"]
+        if self.runner_cpus:
+            create_cmd.extend(["--cpus", self.runner_cpus])
+        if self.runner_memory:
+            create_cmd.extend(["--memory", self.runner_memory])
+        create_cmd.extend([self.distro, staging_name])
+
+        try:
+            subprocess.run(["orbctl", "delete", "-f", staging_name], capture_output=True)
+            subprocess.run(create_cmd, check=True, capture_output=True)
+            return True
+        except subprocess.CalledProcessError as e:
+            stderr = e.stderr.decode() if e.stderr else str(e)
+            print(f"[Autoscaler:OrbStack-VM] Error creating base image: {stderr}", file=sys.stderr)
+            self._report_image_event("failed", orb_arch, f"Error creating base image: {stderr}")
+            return False
+        except Exception as e:
+            print(f"[Autoscaler:OrbStack-VM] Error creating base image: {e}", file=sys.stderr)
+            self._report_image_event("failed", orb_arch, f"Error creating base image: {e}")
+            return False
+
+    def _run_provision_script(self, staging_name: str, orb_arch: str, script_content: str) -> bool:
+        """Run the provisioning script inside the staging VM, returning True on success."""
+        full_script = f"""
+exec > /home/runner/provision.log 2>&1
+set -e
+export ARCH="{orb_arch}"
+set -- "{orb_arch}"
+{docker_engine_snippet()}
+{script_content}
+{runner_download_snippet(orb_arch, RUNNER_VERSION)}
+echo "Base image provisioning complete."
+"""
+        try:
+            result = subprocess.run(["orb", "-m", staging_name, "-u", "runner", "bash", "-c", full_script], capture_output=True, timeout=1800)
+            if result.returncode != 0:
+                detail = f"Base image provisioning failed (exit {result.returncode}). Check /home/runner/provision.log inside '{staging_name}' for details."
+                print(f"[Autoscaler:OrbStack-VM] {detail}", file=sys.stderr)
+                self._report_image_event("failed", orb_arch, detail)
+                return False
+            return True
+        except subprocess.TimeoutExpired:
+            detail = "Base image provisioning timed out after 30 minutes."
+            print(f"[Autoscaler:OrbStack-VM] {detail}", file=sys.stderr)
+            self._report_image_event("failed", orb_arch, detail)
+            return False
+
     def build_base_image(self, orb_arch: str) -> bool:
         """Build the golden VM image ephemeral job VMs clone from.
 
@@ -167,7 +216,6 @@ class OrbStackImageBuilder:
             return True
 
         staging_name = f"{base_name}-building"
-        # If staging_name already exists and completed provisioning, promote it immediately
         if staging_name in self._list_vm_names() and self._is_staging_provisioned(staging_name):
             print(f"[Autoscaler:OrbStack-VM] Staging VM '{staging_name}' already completed provisioning -- promoting directly to '{base_name}'.")
             if self._promote_staging_to_base(staging_name, base_name):
@@ -177,47 +225,10 @@ class OrbStackImageBuilder:
         print(f"[Autoscaler:OrbStack-VM] 🏗️  Building golden base image '{base_name}' ({self.distro})...")
         self._report_image_event("building", orb_arch, f"Building '{base_name}' ({self.distro})...")
 
-        create_cmd = ["orbctl", "create", "-a", orb_arch, "-u", "runner"]
-        if self.runner_cpus:
-            create_cmd.extend(["--cpus", self.runner_cpus])
-        if self.runner_memory:
-            create_cmd.extend(["--memory", self.runner_memory])
-        create_cmd.extend([self.distro, staging_name])
-
-        try:
-            subprocess.run(["orbctl", "delete", "-f", staging_name], capture_output=True)
-            subprocess.run(create_cmd, check=True, capture_output=True)
-        except subprocess.CalledProcessError as e:
-            stderr = e.stderr.decode() if e.stderr else str(e)
-            print(f"[Autoscaler:OrbStack-VM] Error creating base image: {stderr}", file=sys.stderr)
-            self._report_image_event("failed", orb_arch, f"Error creating base image: {stderr}")
-            return False
-        except Exception as e:
-            print(f"[Autoscaler:OrbStack-VM] Error creating base image: {e}", file=sys.stderr)
-            self._report_image_event("failed", orb_arch, f"Error creating base image: {e}")
+        if not self._create_staging_container(staging_name, orb_arch):
             return False
 
-        full_script = f"""
-exec > /home/runner/provision.log 2>&1
-set -e
-export ARCH="{orb_arch}"
-set -- "{orb_arch}"
-{docker_engine_snippet()}
-{script_content}
-{runner_download_snippet(orb_arch, RUNNER_VERSION)}
-echo "Base image provisioning complete."
-"""
-        try:
-            result = subprocess.run(["orb", "-m", staging_name, "-u", "runner", "bash", "-c", full_script], capture_output=True, timeout=1800)
-            if result.returncode != 0:
-                detail = f"Base image provisioning failed (exit {result.returncode}). Check /home/runner/provision.log inside '{staging_name}' for details."
-                print(f"[Autoscaler:OrbStack-VM] {detail}", file=sys.stderr)
-                self._report_image_event("failed", orb_arch, detail)
-                return False
-        except subprocess.TimeoutExpired:
-            detail = "Base image provisioning timed out after 30 minutes."
-            print(f"[Autoscaler:OrbStack-VM] {detail}", file=sys.stderr)
-            self._report_image_event("failed", orb_arch, detail)
+        if not self._run_provision_script(staging_name, orb_arch, script_content):
             return False
 
         if not self._promote_staging_to_base(staging_name, base_name):

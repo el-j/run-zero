@@ -150,6 +150,19 @@ class VMBridgeRequestHandler(BaseHTTPRequestHandler):
 
         self._send_json(404, {"error": f"Endpoint not found: {path}"})
 
+    def _dispatch_driver_action(self, driver: RunnerDriver, driver_name: str, action: str, body: dict[str, Any], parts: list[str]) -> None:
+        """Execute a validated driver action handler through the dispatch table."""
+        handler = ACTIONS.get(action)
+        if handler is None:
+            self._send_json(404, {"error": f"Endpoint not found: {self.path.rstrip('/')}"})
+            return
+        try:
+            self._send_json(200, {"status": "success", **handler(driver, driver_name, body, parts)})
+        except _BadRequest as bad:
+            self._send_json(400, bad.payload)
+        except Exception as e:
+            self._send_json(500, {"error": str(e), "driver": driver_name})
+
     def do_POST(self) -> None:
         """Route POST /api/drivers/{name}/{action} through the ACTIONS dispatch table.
 
@@ -176,16 +189,7 @@ class VMBridgeRequestHandler(BaseHTTPRequestHandler):
             self._send_json(400, {"error": f"Invalid driver: {driver_name} ({e})"})
             return
 
-        handler = ACTIONS.get(action)
-        if handler is None:
-            self._send_json(404, {"error": f"Endpoint not found: {path}"})
-            return
-        try:
-            self._send_json(200, {"status": "success", **handler(driver, driver_name, body, parts)})
-        except _BadRequest as bad:
-            self._send_json(400, bad.payload)
-        except Exception as e:
-            self._send_json(500, {"error": str(e), "driver": driver_name})
+        self._dispatch_driver_action(driver, driver_name, action, body, parts)
 
 
 class _BadRequest(Exception):
