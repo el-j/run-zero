@@ -9,9 +9,11 @@
     "preview": "astro preview",
     "astro": "astro",
     "lint": "oxlint .",
-    "lint:fix": "oxlint . --fix"
+    "lint:fix": "oxlint . --fix",
+    "test:e2e": "playwright test"
   },
   "devDependencies": {
+    "@playwright/test": "^1.63.0",
     "oxlint": "^1.85.0",
     "prettier": "^3.9.9",
     "prettier-plugin-astro": "^1.1.0"

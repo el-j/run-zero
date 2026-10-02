@@ -76,8 +76,25 @@ different things mixed together:
   Killing every one of these would mean writing tests whose only purpose is satisfying the
   mutation tool, not verifying real behavior.
 
-Untangling which survivors are which, module by module, is real, non-trivial work -- it is
-deliberately **not** attempted wholesale in the PR that first got this tooling actually running
-(see #17). It's tracked as its own scoped follow-up in **issue #22**, which also has the
-per-module survivor breakdown (worst: `drivers/orbstack_vm_driver.py` at 467, `dashboard/state.py`
-at 338, `vm_bridge.py` at 310).
+Untangling which survivors are which, module by module, was systematically tracked across issues #30 through #36 and resolved as part of Milestone 2 and Milestone 8 (#60).
+
+## Module Triage Outcomes & Equivalent-Mutant Classifications
+
+The table below summarizes the triage classifications and equivalent-mutant justifications across all runtime modules:
+
+| Module | Dominant Survivor Types | Classification & Justification | Validated In |
+|---|---|---|---|
+| `drivers/orbstack_templates.py` | Shell template script text, heredocs, env variable assignments | **Equivalent**: String-literal formatting templates. Changes do not alter Python runtime execution logic; excluded via `do_not_mutate`. | `tests/test_orbstack_driver.py` |
+| `version.py` | Git fallback version strings, semantic version constant | **Equivalent**: Pure metadata constants; excluded via `do_not_mutate`. | `tests/test_version.py` |
+| `drivers/orbstack_vm_driver.py` (#30) | VM boot retries, staging image names, IP discovery loops | **Killed / Equivalent**: Genuine control flow (readiness polling, retries) killed via `test_orbstack_driver.py`. Diagnostic log strings classified as equivalent. | `tests/test_orbstack_driver.py` |
+| `dashboard/state.py` (#31) | Metrics dictionary keys, ring-buffer slice bounds, uptime math | **Killed / Equivalent**: State shape, queue broadcasting, and byte formatting math locked via targeted assertions. | `tests/test_dashboard_server.py` |
+| `vm_bridge.py` (#32) | Route normalization, path segment extraction, action dispatch | **Killed / Equivalent**: Dispatch table mappings, route slash trimming, and destroy fallback assertions added. | `tests/test_vm_bridge.py` |
+| `drivers/docker_driver.py` (#33) | Architecture label defaults, proxy URL branching, container removal flags | **Killed / Equivalent**: Explicit assertions verify `amd64`/`arm64` labels, network URL switching, and return codes. | `tests/test_docker_driver.py` |
+| `autoscaler.py` (#33) | Scaling comparisons (`< MIN_RUNNERS`, `< MAX_RUNNERS`), modulo rotation | **Killed**: Added tests asserting cap enforcement, rotation order, and hybrid routing driver selection. | `tests/test_autoscaler_loop.py` |
+| `bridge_driver.py` (#34) | Target backend passthrough, JSON error parsing, bearer auth headers | **Killed**: Assertions verify authentication forwarding and request timeout handling. | `tests/test_driver_factory.py` |
+| `reconciler.py` (#34) | Active job ID matching, zombie threshold comparisons | **Killed**: Assertions lock runner name prefix matching, active job lookups, and unregistration refusal guards. | `tests/test_reconciler.py` |
+| `github_api.py` (#34) | Pagination URL queries, rate limit quota extraction, HTTP error status | **Killed**: Added list pagination assertions and rate limit header parser tests. | `tests/test_github_api.py` |
+| `config.py` | Integer/boolean parsing bounds, choice validation | **Killed**: String boolean mappings, integer bounds check, and architecture alias normalization locked. | `tests/test_config.py` |
+| `http_security.py` | Host header parsing, IP address validation, request length limits | **Killed**: Rejection status codes (400, 413, 421) and hostname normalizations verified. | `tests/test_http_security.py` |
+| `workflow_inspector.py` | YAML indentation calculation, quotation stripping, matrix suffix base | **Killed**: Conditionals (`or` vs `and`), matrix base name parsing, and service trigger detection verified. | `tests/test_workflow_inspector.py` |
+

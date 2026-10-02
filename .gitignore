@@ -22,3 +22,5 @@ website/dist-live/
 website/dist-archive/
 .astro
 _astro
+website/test-results/
+website/playwright-report/

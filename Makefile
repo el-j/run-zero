@@ -443,6 +443,11 @@ mutation-test-all: ## Run mutation testing across all configured source paths
 test: ## Run local unit tests directly
 	$(PY) -m pytest
 
+.PHONY: e2e
+e2e: ## Run Playwright end-to-end tests for the web dashboard and static documentation site
+	@echo "$(CYAN)Running Playwright E2E tests (Dashboard UI + Website)...$(RESET)"
+	@cd $(WEBSITE_DIR) && npx playwright test
+
 .PHONY: install-hooks
 install-hooks: ## Install RunZero pre-commit and pre-push quality guards into .git/hooks/
 	@echo "$(CYAN)Installing RunZero Git hooks (pre-commit & pre-push)...$(RESET)"
