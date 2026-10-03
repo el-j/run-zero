@@ -62,6 +62,8 @@ class TestWSL2Driver(unittest.TestCase):
         self.driver.spawn_runner(repo="el-j/run-zero", access_token="token", proxies_enabled=True)
         setup_script = mock_popen.call_args[0][0][-1]
         self.assertIn('export YARN_REGISTRY="http://${HOST_IP}:49501/"', setup_script)
+        self.assertIn('export pnpm_config_registry="http://${HOST_IP}:49501/"', setup_script)
+        self.assertIn("export RUNNER_TOOL_CACHE=/opt/hostedtoolcache", setup_script)
         self.assertIn('export PIP_INDEX_URL="http://${HOST_IP}:49507/root/pypi/+simple/"', setup_script)
         self.assertIn('export UV_INDEX_URL="${PIP_INDEX_URL}"', setup_script)
         self.assertIn('export PIP_TRUSTED_HOST="${HOST_IP}"', setup_script)
@@ -127,6 +129,7 @@ class TestWSL2Driver(unittest.TestCase):
         setup_script = mock_popen.call_args[0][0][-1]
         self.assertIn("/mnt/c/Users/admin/.cache/npm", setup_script)
         self.assertIn("mount --bind /mnt/c/Users/admin/.cache/npm /home/runner/.npm", setup_script)
+        self.assertIn("export PLAYWRIGHT_BROWSERS_PATH=/home/runner/.cache/ms-playwright", setup_script)
 
     def test_spawn_runner_refuses_mismatched_arch(self):
         with patch("drivers.wsl_driver.host_arch", return_value="amd64"), patch("sys.stderr"):

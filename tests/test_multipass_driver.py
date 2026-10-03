@@ -85,6 +85,9 @@ class TestMultipassDriver(unittest.TestCase):
         self.driver.spawn_runner(repo="el-j/run-zero", access_token="token", proxies_enabled=True)
         setup_script = mock_popen.call_args[0][0][-1]
         self.assertIn('export YARN_REGISTRY="http://${HOST_IP}:49501/"', setup_script)
+        self.assertIn('export pnpm_config_registry="http://${HOST_IP}:49501/"', setup_script)
+        self.assertIn("export RUNNER_TOOL_CACHE=/opt/hostedtoolcache", setup_script)
+        self.assertNotIn("PLAYWRIGHT_BROWSERS_PATH", setup_script)
         self.assertIn('export PIP_INDEX_URL="http://${HOST_IP}:49507/root/pypi/+simple/"', setup_script)
         self.assertIn('export UV_INDEX_URL="${PIP_INDEX_URL}"', setup_script)
         self.assertIn('export PIP_TRUSTED_HOST="${HOST_IP}"', setup_script)
@@ -115,6 +118,10 @@ class TestMultipassDriver(unittest.TestCase):
         ]
         self.assertTrue(any("/home/ubuntu/.npm" in cmd[6] for cmd in prep_exec_cmds))
         self.assertTrue(any("/opt/hostedtoolcache" in cmd[6] for cmd in prep_exec_cmds))
+
+        setup_script = mock_popen.call_args[0][0][-1]
+        self.assertIn("export pnpm_config_store_dir=/home/ubuntu/.local/share/pnpm/store", setup_script)
+        self.assertIn("export PLAYWRIGHT_BROWSERS_PATH=/home/ubuntu/.cache/ms-playwright", setup_script)
 
     @patch("subprocess.Popen")
     @patch("subprocess.run")

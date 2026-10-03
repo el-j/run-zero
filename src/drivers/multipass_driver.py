@@ -22,6 +22,7 @@ import time
 from . import RunnerDriver, RunnerInfo, merge_labels
 from .instance_store import InstanceStore, default_state_dir
 from .runner_bootstrap import host_arch, instance_name, normalize_arch, register_and_run_snippet, runner_download_snippet
+from .runner_env import cache_env, export_block, registry_env
 
 NAME_PREFIX = "runzero-mp-"
 GUEST_HOME = "/home/ubuntu"
@@ -32,8 +33,7 @@ _POWEROFF_TRAP = "trap 'sudo systemctl poweroff 2>/dev/null || sudo poweroff 2>/
 
 _PROXY_ENV_BLOCK = f"""
 HOST_IP=$(ip route | awk '/default/ {{ print $3 }}' || echo "192.168.64.1")
-export NPM_CONFIG_REGISTRY="http://${{HOST_IP}}:49501/"
-export YARN_REGISTRY="http://${{HOST_IP}}:49501/"
+{export_block(registry_env("http://${HOST_IP}:49501/"), expand=True)}
 export GOPROXY="http://${{HOST_IP}}:49500,https://proxy.golang.org,direct"
 export PIP_INDEX_URL="http://${{HOST_IP}}:49507/root/pypi/+simple/"
 export UV_INDEX_URL="${{PIP_INDEX_URL}}"
@@ -102,7 +102,9 @@ class MultipassDriver(RunnerDriver):
                 stderr = e.stderr.decode(errors="replace") if e.stderr else str(e)
                 print(f"[Autoscaler:Multipass] Warning: cache mount failed for {host_path} -> {vm_path}: {stderr}", file=sys.stderr)
 
-    def bootstrap_script(self, vm_name: str, arch: str, runner_url: str, registration_token: str, runner_labels: str, proxies_enabled: bool) -> str:
+    def bootstrap_script(
+        self, vm_name: str, arch: str, runner_url: str, registration_token: str, runner_labels: str, proxies_enabled: bool, caches_mounted: bool = False
+    ) -> str:
         """The guest script: deps, runner for `arch`, register + run one job, then power off."""
         return f"""
 exec > {GUEST_HOME}/runzero-setup.log 2>&1
@@ -112,7 +114,7 @@ export DEBIAN_FRONTEND=noninteractive
 {_PROXY_ENV_BLOCK if proxies_enabled else ""}
 sudo apt-get update -y && sudo apt-get install -y curl jq git git-lfs ca-certificates build-essential
 {runner_download_snippet(arch, home=GUEST_HOME)}
-{register_and_run_snippet(runner_url, registration_token, vm_name, runner_labels, home=GUEST_HOME)}
+{register_and_run_snippet(runner_url, registration_token, vm_name, runner_labels, home=GUEST_HOME, env=cache_env(caches_mounted, home=GUEST_HOME))}
 """
 
     def spawn_runner(
@@ -158,7 +160,9 @@ sudo apt-get update -y && sudo apt-get install -y curl jq git git-lfs ca-certifi
 
         if cache_mounts:
             self._mount_caches(vm_name, cache_mounts)
-        script = self.bootstrap_script(vm_name, resolved_arch, f"https://github.com/{target}", registration_token, runner_labels, proxies_enabled)
+        script = self.bootstrap_script(
+            vm_name, resolved_arch, f"https://github.com/{target}", registration_token, runner_labels, proxies_enabled, caches_mounted=bool(cache_mounts)
+        )
         subprocess.Popen(["multipass", "exec", vm_name, "--", "bash", "-c", script], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
         return vm_name
 

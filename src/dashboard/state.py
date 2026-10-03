@@ -15,6 +15,25 @@ from typing import Any, ClassVar
 
 from version import __version__
 
+# Display name -> on-disk subdirectory that cache_manager.init_cache_dirs() creates and mounts.
+# go-build is handled separately (it may be scoped per workflow under build-cache/).
+CACHE_CATEGORIES = {
+    "npm": "npm",
+    "yarn": "yarn",
+    "pnpm": "pnpm",
+    "pip": "pip",
+    "uv": "uv",
+    "go-mod": "go-pkg",
+    "cargo": "rust",
+    "toolcache": "hostedtoolcache",
+    "playwright": "ms-playwright",
+}
+
+
+def cache_categories(cache_root: str) -> dict[str, str]:
+    """Display name -> absolute path of every host cache category under `cache_root`."""
+    return {name: os.path.join(cache_root, sub) for name, sub in CACHE_CATEGORIES.items()}
+
 
 class DashboardState:
     """Thread-safe, process-wide singleton holding fleet/telemetry state and broadcasting it to SSE clients.
@@ -76,6 +95,7 @@ class DashboardState:
             "go-build": "0 B",
             "cargo": "0 B",
             "toolcache": "0 B",
+            "playwright": "0 B",
             "total_host": "0 B",
             "verdaccio": "0 B",
             "athens": "0 B",
@@ -313,21 +333,7 @@ class DashboardState:
         """Scan cache subdirectories and recalculate categorized disk space usage metrics."""
         cache_root = self.cache_dir or os.path.expanduser("~/.local-github-runner/cache")
         if os.path.isdir(cache_root):
-            # Keys match the display names already used by the webui/API; paths match the
-            # real subdirectory names cache_manager.init_cache_dirs() actually creates and
-            # mounts (previously "go-mod"/"cargo-registry"/"toolcache" here, none of which
-            # exist on disk -- init_cache_dirs creates "go-pkg"/"rust"/"hostedtoolcache" --
-            # so these three always read back as empty regardless of real usage).
-            categories = {
-                "npm": os.path.join(cache_root, "npm"),
-                "yarn": os.path.join(cache_root, "yarn"),
-                "pnpm": os.path.join(cache_root, "pnpm"),
-                "pip": os.path.join(cache_root, "pip"),
-                "uv": os.path.join(cache_root, "uv"),
-                "go-mod": os.path.join(cache_root, "go-pkg"),
-                "cargo": os.path.join(cache_root, "rust"),
-                "toolcache": os.path.join(cache_root, "hostedtoolcache"),
-            }
+            categories = cache_categories(cache_root)
             total_host = 0
             for name, path in categories.items():
                 sz = self._get_dir_size(path)
@@ -346,18 +352,7 @@ class DashboardState:
         category = category.lower().strip()
         cleared = []
 
-        # See _refresh_cache_metrics() for why these paths (not "go-mod"/"cargo-registry"/
-        # "toolcache") are the real on-disk directory names.
-        mapping = {
-            "npm": os.path.join(cache_root, "npm"),
-            "yarn": os.path.join(cache_root, "yarn"),
-            "pnpm": os.path.join(cache_root, "pnpm"),
-            "pip": os.path.join(cache_root, "pip"),
-            "uv": os.path.join(cache_root, "uv"),
-            "go-mod": os.path.join(cache_root, "go-pkg"),
-            "cargo": os.path.join(cache_root, "rust"),
-            "toolcache": os.path.join(cache_root, "hostedtoolcache"),
-        }
+        mapping = cache_categories(cache_root)
 
         def _clear_go_build() -> None:
             """Clear all flat and scoped go-build cache directories."""

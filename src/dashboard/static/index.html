@@ -341,7 +341,7 @@
               <div class="cache-row">
                 <div class="cache-info">
                   <div class="cache-meta">
-                    <span class="cache-name">npm / Yarn / pnpm</span>
+                    <span class="cache-name">npm</span>
                     <span class="cache-size font-mono" id="sz-npm">0 B</span>
                   </div>
                   <div class="cache-mini-track">
@@ -349,6 +349,19 @@
                   </div>
                 </div>
                 <button class="btn btn-xs btn-outline" onclick="cleanCacheCategory('npm')">Clear</button>
+              </div>
+
+              <div class="cache-row">
+                <div class="cache-info">
+                  <div class="cache-meta">
+                    <span class="cache-name">pnpm store</span>
+                    <span class="cache-size font-mono" id="sz-pnpm">0 B</span>
+                  </div>
+                  <div class="cache-mini-track">
+                    <div id="bar-cache-pnpm" class="cache-mini-fill" style="width: 20%;"></div>
+                  </div>
+                </div>
+                <button class="btn btn-xs btn-outline" onclick="cleanCacheCategory('pnpm')">Clear</button>
               </div>
 
               <div class="cache-row">
@@ -401,6 +414,19 @@
                   </div>
                 </div>
                 <button class="btn btn-xs btn-outline" onclick="cleanCacheCategory('toolcache')">Clear</button>
+              </div>
+
+              <div class="cache-row">
+                <div class="cache-info">
+                  <div class="cache-meta">
+                    <span class="cache-name">Playwright browsers</span>
+                    <span class="cache-size font-mono" id="sz-playwright">0 B</span>
+                  </div>
+                  <div class="cache-mini-track">
+                    <div id="bar-cache-playwright" class="cache-mini-fill" style="width: 20%;"></div>
+                  </div>
+                </div>
+                <button class="btn btn-xs btn-outline" onclick="cleanCacheCategory('playwright')">Clear</button>
               </div>
             </div>
 

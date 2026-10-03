@@ -22,6 +22,7 @@ from .orbstack_templates import (
     cache_mount_snippet,
     registration_and_run_snippet,
 )
+from .runner_env import cache_env, export_block, registry_env
 
 RUNNER_VM_PREFIX = "runzero-vm-"
 
@@ -386,10 +387,8 @@ class OrbStackVMDriver(RunnerDriver):
 
         proxy_env_block = ""
         if proxies_enabled:
-            proxy_env_block = """
-export npm_config_registry="http://host.orb.internal:49501"
-export NPM_CONFIG_REGISTRY="http://host.orb.internal:49501/"
-export YARN_REGISTRY="http://host.orb.internal:49501"
+            proxy_env_block = f"""
+{export_block(registry_env("http://host.orb.internal:49501/"))}
 export GOPROXY="http://host.orb.internal:49500,https://proxy.golang.org,direct"
 export PIP_INDEX_URL="http://host.orb.internal:49507/root/pypi/+simple/"
 export UV_INDEX_URL="http://host.orb.internal:49507/root/pypi/+simple/"
@@ -413,7 +412,7 @@ echo 'Acquire::http::Proxy "http://host.orb.internal:49503";' | sudo tee /etc/ap
             # bridge-network containers need one).
             proxy_env_block += """
 sudo mkdir -p /home/runner/.cargo 2>/dev/null || true
-sudo chown -R runner:runner /home/runner/.cargo 2>/dev/null || true
+sudo chown runner:runner /home/runner/.cargo 2>/dev/null || true
 mkdir -p /home/runner/.cargo
 cat > /home/runner/.cargo/config.toml <<'CARGOCFG'
 [source.crates-io]
@@ -436,7 +435,9 @@ CARGOCFG
         if not registration_token:
             return None
 
-        reg_and_run = registration_and_run_snippet(runner_url, registration_token, vm_name, runner_labels, proxy_env_block, cache_mount_block)
+        reg_and_run = registration_and_run_snippet(
+            runner_url, registration_token, vm_name, runner_labels, proxy_env_block, cache_mount_block, runner_env=cache_env(bool(cache_mounts))
+        )
 
         print(f"[Autoscaler:OrbStack-VM] 🚀 Spawning ephemeral [{arch.upper()}] Linux VM '{vm_name}' (cloned from golden image '{base_name}')...")
         clone_cmd = ["orbctl", "clone", base_name, vm_name]

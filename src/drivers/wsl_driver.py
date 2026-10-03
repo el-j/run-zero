@@ -27,6 +27,7 @@ from .runner_bootstrap import (
     runner_download_snippet,
     windows_to_wsl_path,
 )
+from .runner_env import cache_env, export_block, registry_env
 
 NAME_PREFIX = "runzero-wsl-"
 GUEST_HOME = "/home/runner"
@@ -67,10 +68,12 @@ class WSL2Driver(RunnerDriver):
     @staticmethod
     def _proxy_env_block() -> str:
         """Generate shell script block configuring package manager proxies inside the WSL2 guest."""
-        return """
+        return (
+            """
 HOST_IP=$(ip route show default 2>/dev/null | awk '{print $3}' || echo "localhost")
-export NPM_CONFIG_REGISTRY="http://${HOST_IP}:49501/"
-export YARN_REGISTRY="http://${HOST_IP}:49501/"
+"""
+            + export_block(registry_env("http://${HOST_IP}:49501/"), expand=True)
+            + """
 export GOPROXY="http://${HOST_IP}:49500,https://proxy.golang.org,direct"
 export PIP_INDEX_URL="http://${HOST_IP}:49507/root/pypi/+simple/"
 export UV_INDEX_URL="${PIP_INDEX_URL}"
@@ -86,6 +89,7 @@ replace-with = "kellnr-proxy"
 registry = "sparse+http://${HOST_IP}:49506/api/v1/cratesio/"
 CARGOCFG
 """
+        )
 
     def bootstrap_script(
         self,
@@ -109,7 +113,7 @@ export DEBIAN_FRONTEND=noninteractive
 {cache_block}
 sudo apt-get update -y && sudo apt-get install -y curl jq git git-lfs ca-certificates build-essential
 {runner_download_snippet(arch, home=runner_home)}
-{register_and_run_snippet(runner_url, registration_token, vm_name, runner_labels, home=runner_home, finish=finish)}
+{register_and_run_snippet(runner_url, registration_token, vm_name, runner_labels, home=runner_home, finish=finish, env=cache_env(bool(cache_mounts)))}
 """
 
     def spawn_runner(

@@ -51,17 +51,16 @@
   const trigSystemd = document.getElementById('trig-systemd');
   const trigCustom = document.getElementById('trig-custom');
 
-  const szNpm = document.getElementById('sz-npm');
-  const szPip = document.getElementById('sz-pip');
-  const szGo = document.getElementById('sz-go');
-  const szCargo = document.getElementById('sz-cargo');
-  const szToolcache = document.getElementById('sz-toolcache');
-
-  const barCacheNpm = document.getElementById('bar-cache-npm');
-  const barCachePip = document.getElementById('bar-cache-pip');
-  const barCacheGo = document.getElementById('bar-cache-go');
-  const barCacheCargo = document.getElementById('bar-cache-cargo');
-  const barCacheToolcache = document.getElementById('bar-cache-toolcache');
+  // Host cache rows: element id suffix -> key in state.cache.sizes.
+  const CACHE_ROWS = [
+    ['npm', 'npm'],
+    ['pnpm', 'pnpm'],
+    ['pip', 'pip'],
+    ['go', 'go-mod'],
+    ['cargo', 'cargo'],
+    ['toolcache', 'toolcache'],
+    ['playwright', 'playwright'],
+  ];
 
   const kpiRunnersBar = document.getElementById('kpi-runners-bar');
   const kpiQueueBar = document.getElementById('kpi-queue-bar');
@@ -372,25 +371,15 @@
     const cache = state.cache || {};
     const sizes = cache.sizes || {};
     kpiCacheSize.textContent = sizes.total_host || '0 B';
-    szNpm.textContent = sizes.npm || '0 B';
-    szPip.textContent = sizes.pip || '0 B';
-    szGo.textContent = sizes['go-mod'] || '0 B';
-    szCargo.textContent = sizes.cargo || '0 B';
-    szToolcache.textContent = sizes.toolcache || '0 B';
-
-    // Calculate relative fill bars for caches
-    const bNpm = parseByteString(sizes.npm);
-    const bPip = parseByteString(sizes.pip);
-    const bGo = parseByteString(sizes['go-mod']);
-    const bCargo = parseByteString(sizes.cargo);
-    const bTool = parseByteString(sizes.toolcache);
-    const maxCacheCat = Math.max(1, bNpm, bPip, bGo, bCargo, bTool);
-
-    if (barCacheNpm) barCacheNpm.style.width = `${Math.max(5, Math.min(100, Math.round((bNpm / maxCacheCat) * 100)))}%`;
-    if (barCachePip) barCachePip.style.width = `${Math.max(5, Math.min(100, Math.round((bPip / maxCacheCat) * 100)))}%`;
-    if (barCacheGo) barCacheGo.style.width = `${Math.max(5, Math.min(100, Math.round((bGo / maxCacheCat) * 100)))}%`;
-    if (barCacheCargo) barCacheCargo.style.width = `${Math.max(5, Math.min(100, Math.round((bCargo / maxCacheCat) * 100)))}%`;
-    if (barCacheToolcache) barCacheToolcache.style.width = `${Math.max(5, Math.min(100, Math.round((bTool / maxCacheCat) * 100)))}%`;
+    // Size labels plus fill bars relative to the largest category
+    const cacheBytes = CACHE_ROWS.map(([, key]) => parseByteString(sizes[key]));
+    const maxCacheCat = Math.max(1, ...cacheBytes);
+    CACHE_ROWS.forEach(([id, key], i) => {
+      const label = document.getElementById(`sz-${id}`);
+      const bar = document.getElementById(`bar-cache-${id}`);
+      if (label) label.textContent = sizes[key] || '0 B';
+      if (bar) bar.style.width = `${Math.max(5, Math.min(100, Math.round((cacheBytes[i] / maxCacheCat) * 100)))}%`;
+    });
 
     // Active Runners Grid
     renderRunners(state.runners || []);

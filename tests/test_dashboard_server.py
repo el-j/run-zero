@@ -58,6 +58,7 @@ class TestDashboardState(unittest.TestCase):
             "go-build",
             "cargo",
             "toolcache",
+            "playwright",
             "total_host",
             "verdaccio",
             "athens",
@@ -285,7 +286,8 @@ class TestDashboardStateGaps(unittest.TestCase):
         go_pkg_dir = os.path.join(self.temp_cache, "go-pkg")
         rust_dir = os.path.join(self.temp_cache, "rust")
         toolcache_dir = os.path.join(self.temp_cache, "hostedtoolcache")
-        for d in (go_pkg_dir, rust_dir, toolcache_dir):
+        playwright_dir = os.path.join(self.temp_cache, "ms-playwright")
+        for d in (go_pkg_dir, rust_dir, toolcache_dir, playwright_dir):
             os.makedirs(d, exist_ok=True)
             with open(os.path.join(d, "data.bin"), "wb") as f:
                 f.write(b"x" * 4096)
@@ -295,6 +297,7 @@ class TestDashboardStateGaps(unittest.TestCase):
         self.assertIn("KB", self.state.cache_sizes["go-mod"])
         self.assertIn("KB", self.state.cache_sizes["cargo"])
         self.assertIn("KB", self.state.cache_sizes["toolcache"])
+        self.assertIn("KB", self.state.cache_sizes["playwright"])
 
     def test_go_build_dirs_swallows_listdir_errors(self):
         os.makedirs(os.path.join(self.temp_cache, "build-cache"), exist_ok=True)

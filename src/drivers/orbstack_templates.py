@@ -122,7 +122,13 @@ sudo systemctl enable docker
 
 
 def registration_and_run_snippet(
-    runner_url: str, registration_token: str, vm_name: str, runner_labels: str, proxy_env_block: str, cache_mount_block: str = ""
+    runner_url: str,
+    registration_token: str,
+    vm_name: str,
+    runner_labels: str,
+    proxy_env_block: str,
+    cache_mount_block: str = "",
+    runner_env: dict[str, str] | None = None,
 ) -> str:
     """Generate the shell snippet that registers the runner with config.sh and executes run.sh.
 
@@ -135,6 +141,8 @@ def registration_and_run_snippet(
     directories are in place -- with the right ownership underneath them -- before the job's
     own tooling starts reading/writing to them. Defaults to "" (no-op) so existing callers
     that don't pass it behave exactly as before.
+
+    `runner_env` (see `runner_env.cache_env`) is exported right before `run.sh`.
     """
     return f"""
 # --- 1. Ensure IPv4 network connectivity (self-healing for OrbStack DHCP bug #2688) ---
@@ -190,8 +198,11 @@ sudo mkdir -p /home/runner/go/bin /home/runner/go/pkg /opt/hostedtoolcache /home
 sudo chown -R runner:runner /home/runner /opt/hostedtoolcache 2>/dev/null || true
 sudo chmod -R 777 /home/runner/go /opt/hostedtoolcache /home/runner/.cache 2>/dev/null || true
 {cache_mount_block}
-sudo chown -R runner:runner /home/runner/.cache /home/runner/go /home/runner/.cargo /home/runner/.local /home/runner/.nuget 2>/dev/null || true
-sudo chmod -R 777 /home/runner/.cache /home/runner/go 2>/dev/null || true
+# -xdev: fix local dirs created around the mounts, but never walk the host-backed caches
+# themselves (already runner-owned via virtiofs; ~100k files = seconds per job, #67).
+sudo find /home/runner/.cache /home/runner/go /home/runner/.cargo /home/runner/.local /home/runner/.nuget -xdev \\
+  -exec chown runner:runner {{}} + 2>/dev/null || true
+sudo find /home/runner/.cache /home/runner/go -xdev -exec chmod 777 {{}} + 2>/dev/null || true
 mkdir -p /home/runner/.cache/go-build /home/runner/go/pkg 2>/dev/null || true
 {proxy_env_block}
-{register_and_run_snippet(runner_url, registration_token, vm_name, runner_labels, finish=POWEROFF)}"""
+{register_and_run_snippet(runner_url, registration_token, vm_name, runner_labels, finish=POWEROFF, env=runner_env)}"""

@@ -206,6 +206,14 @@ class TestOrbStackVMDriver(OrbStackDriverTestCase):
             "sudo mount --bind /mnt/mac/Users/dev/.local-github-runner/cache/npm /home/runner/.npm",
             setup_script,
         )
+        # The cache env is exported before run.sh (#66-#68) ...
+        env_at = setup_script.index("export PLAYWRIGHT_BROWSERS_PATH=/home/runner/.cache/ms-playwright")
+        self.assertLess(env_at, setup_script.index("./run.sh"))
+        self.assertIn("export pnpm_config_store_dir=/home/runner/.local/share/pnpm/store", setup_script)
+        # ... and no recursive chown/chmod walks the host-backed caches after mounting (#67).
+        after_mounts = setup_script[setup_script.index("mount --bind") :]
+        self.assertNotIn("chown -R", after_mounts)
+        self.assertNotIn("chmod -R", after_mounts)
 
     @patch("subprocess.Popen")
     @patch("subprocess.run")
@@ -227,7 +235,8 @@ class TestOrbStackVMDriver(OrbStackDriverTestCase):
         ]
         self.driver.spawn_runner(repo="el-j/run-zero", arch="amd64", access_token="token", proxies_enabled=True)
         setup_script = mock_popen.call_args[0][0][-1]
-        self.assertIn('export NPM_CONFIG_REGISTRY="http://host.orb.internal:49501/"', setup_script)
+        self.assertIn("export NPM_CONFIG_REGISTRY=http://host.orb.internal:49501/", setup_script)
+        self.assertIn("export pnpm_config_registry=http://host.orb.internal:49501/", setup_script)
         self.assertIn('export PIP_INDEX_URL="http://host.orb.internal:49507/root/pypi/+simple/"', setup_script)
         self.assertIn('export UV_INDEX_URL="http://host.orb.internal:49507/root/pypi/+simple/"', setup_script)
         # pip refuses a plain-HTTP non-localhost index without this (verified live).
@@ -980,6 +989,7 @@ class TestOrbStackVMDriver(OrbStackDriverTestCase):
             "self-hosted,local,vm,amd64,rosetta",
             "",
             "",
+            runner_env={"RUNZERO": "1", "RUNNER_TOOL_CACHE": "/opt/hostedtoolcache", "AGENT_TOOLSDIRECTORY": "/opt/hostedtoolcache"},
         )
 
     @patch("subprocess.Popen")

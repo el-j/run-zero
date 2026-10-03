@@ -15,6 +15,7 @@ from datetime import datetime
 
 from . import ImageEventCallback, RunnerDriver, RunnerInfo, merge_labels
 from .backoff import BuildBackoff
+from .runner_env import cache_env, docker_env_args, registry_env
 
 # `docker ps` output columns, `|`-separated; parsed positionally by `list_runners()`.
 _PS_FORMAT = "|".join(
@@ -315,10 +316,7 @@ class DockerDriver(RunnerDriver):
         pip_host = "localhost:49507" if self.network == "host" else "devpi:3141"
         pip_index_url = f"http://{pip_host}/root/pypi/+simple/"
         args = [
-            "-e",
-            f"NPM_CONFIG_REGISTRY={verdaccio_url}",
-            "-e",
-            f"YARN_REGISTRY={verdaccio_url}",
+            *docker_env_args(registry_env(verdaccio_url)),
             "-e",
             f"GOPROXY={athens_url}",
             "-e",
@@ -436,8 +434,7 @@ class DockerDriver(RunnerDriver):
             "EPHEMERAL=true",
             "-e",
             "RUNNER_WORKDIR=_work",
-            "-e",
-            "RUNNER_TOOL_CACHE=/opt/hostedtoolcache",
+            *docker_env_args(cache_env(bool(cache_mounts))),
             "-v",
             f"{self.docker_sock}:/var/run/docker.sock",
         ]

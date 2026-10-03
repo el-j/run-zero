@@ -6,9 +6,11 @@ if [ -S /var/run/docker.sock ]; then
   sudo chmod 666 /var/run/docker.sock 2>/dev/null || true
 fi
 
-# Ensure toolcache permissions if mounted
+# Ensure toolcache permissions if mounted. Never recurse into a host-backed cache
+# mount: its contents already appear runner-owned (OrbStack/virtiofs maps ownership to
+# the accessing user), and walking ~100k cached files costs seconds per job (#67).
 if [ -d /opt/hostedtoolcache ]; then
-  sudo chown -R runner:runner /opt/hostedtoolcache 2>/dev/null || true
+  sudo chown runner:runner /opt/hostedtoolcache 2>/dev/null || true
 fi
 
 # Ensure package-manager cache mount permissions if mounted — OrbStack presents
@@ -39,13 +41,17 @@ else
     /home/runner/.cache/go-build
     /home/runner/.nuget/packages
     /home/runner/.cargo/registry
+    /home/runner/.cache/ms-playwright
   )
 fi
 
 # Ensure /home/runner and all tool/language directories (Go, Cargo, NVM, Pip) are owned and writable
 sudo mkdir -p /home/runner/go/bin /home/runner/go/pkg /home/runner/.cache /home/runner/.local/bin /opt/hostedtoolcache
-sudo chown -R runner:runner /home/runner /opt/hostedtoolcache 2>/dev/null || true
-sudo chmod -R 777 /home/runner/go /opt/hostedtoolcache /home/runner/.cache 2>/dev/null || true
+# `find -xdev` fixes the image's own files but never descends into bind-mounted caches.
+sudo find /home/runner -xdev -exec chown runner:runner {} + 2>/dev/null || true
+sudo find /home/runner/go /home/runner/.cache -xdev -exec chmod 777 {} + 2>/dev/null || true
+sudo chown runner:runner /opt/hostedtoolcache 2>/dev/null || true
+sudo chmod 777 /opt/hostedtoolcache 2>/dev/null || true
 
 for cache_dir in "${CACHE_DIRS[@]}"; do
   if [ -d "${cache_dir}" ]; then
@@ -56,20 +62,15 @@ for cache_dir in "${CACHE_DIRS[@]}"; do
       path="${path}/${part}"
       sudo chown runner:runner "${path}" 2>/dev/null || true
     done
-    sudo chown -R runner:runner "${cache_dir}" 2>/dev/null || true
   fi
 done
 
 # Final, verified pass on the plain (never bind-mounted) tool directories that
 # job steps write into directly, e.g. `actions/setup-go`'s own `mkdir
-# $GOPATH/bin`. The blanket `chown -R /home/runner` above already covers
-# these in the common case, but it also recurses into whatever bind-mounted
-# cache dirs (go/pkg, .npm, ...) got attached at container-create time, and a
-# host filesystem backend that silently refuses chown on a shared mount
-# (observed with OrbStack's virtiofs) makes the whole `chown -R` command exit
-# non-zero -- swallowed by `|| true` above, so a real ownership failure on an
-# unrelated sibling directory further down the same recursive walk would
-# previously go unnoticed until a much later, harder-to-diagnose step. Re-
+# $GOPATH/bin`. The `find -xdev` pass above already covers these in the
+# common case, but its failures are swallowed by `|| true`, so a real
+# ownership failure would otherwise go unnoticed until a much later,
+# harder-to-diagnose step. Re-
 # assert ownership on exactly the paths that must be writable, verify it
 # actually took as the runner user, and fall back to a permissive chmod
 # (bypassing ownership entirely) rather than leave a job to fail on it.
@@ -95,26 +96,22 @@ esac
 # 1) --network host via published localhost ports
 # 2) Compose bridge networking via service DNS names
 # 3) OrbStack host DNS alias
+# pnpm 11 reads only pnpm_config_*, pnpm <=10 and npm only npm_config_*, Yarn berry only
+# YARN_NPM_REGISTRY_SERVER -- set every spelling (keep in sync with drivers/runner_env.py).
+use_npm_registry() {
+  export NPM_CONFIG_REGISTRY="$1" npm_config_registry="$1" pnpm_config_registry="$1"
+  export YARN_REGISTRY="$1" YARN_NPM_REGISTRY_SERVER="$1"
+  npm config set registry "$1" --global 2>/dev/null || true
+  echo "⚡ Verdaccio NPM proxy $2: $1"
+}
 if [ -n "${NPM_CONFIG_REGISTRY:-}" ]; then
-  export NPM_CONFIG_REGISTRY="${NPM_CONFIG_REGISTRY}"
-  export npm_config_registry="${NPM_CONFIG_REGISTRY}"
-  npm config set registry "${NPM_CONFIG_REGISTRY}" --global 2>/dev/null || true
-  echo "⚡ Verdaccio NPM proxy configured from env: ${NPM_CONFIG_REGISTRY}"
+  use_npm_registry "${NPM_CONFIG_REGISTRY}" "configured from env"
 elif curl -s --connect-timeout 1 http://localhost:49501/ >/dev/null 2>&1; then
-  export NPM_CONFIG_REGISTRY="http://localhost:49501/"
-  export npm_config_registry="${NPM_CONFIG_REGISTRY}"
-  npm config set registry "${NPM_CONFIG_REGISTRY}" --global 2>/dev/null || true
-  echo "⚡ Verdaccio NPM proxy connected: ${NPM_CONFIG_REGISTRY}"
+  use_npm_registry "http://localhost:49501/" connected
 elif curl -s --connect-timeout 1 http://verdaccio:4873/ >/dev/null 2>&1; then
-  export NPM_CONFIG_REGISTRY="http://verdaccio:4873/"
-  export npm_config_registry="${NPM_CONFIG_REGISTRY}"
-  npm config set registry "${NPM_CONFIG_REGISTRY}" --global 2>/dev/null || true
-  echo "⚡ Verdaccio NPM proxy connected: ${NPM_CONFIG_REGISTRY}"
+  use_npm_registry "http://verdaccio:4873/" connected
 elif curl -s --connect-timeout 1 http://host.orb.internal:49501/ >/dev/null 2>&1; then
-  export NPM_CONFIG_REGISTRY="http://host.orb.internal:49501/"
-  export npm_config_registry="${NPM_CONFIG_REGISTRY}"
-  npm config set registry "${NPM_CONFIG_REGISTRY}" --global 2>/dev/null || true
-  echo "⚡ Verdaccio NPM proxy connected: ${NPM_CONFIG_REGISTRY}"
+  use_npm_registry "http://host.orb.internal:49501/" connected
 fi
 
 if [ -n "${GOPROXY:-}" ]; then
