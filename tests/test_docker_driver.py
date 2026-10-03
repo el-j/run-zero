@@ -180,14 +180,29 @@ class TestDockerDriver(unittest.TestCase):
         self.assertIn("local-runner-amd64-my-org-", name_amd)
 
     @patch("subprocess.run")
-    def test_spawn_runner_omits_resource_flags_when_unset(self, mock_run):
+    def test_spawn_runner_omits_resource_flags_when_sizing_unlimited(self, mock_run):
         mock_run.return_value = MagicMock(returncode=0)
         self.driver.spawn_runner(repo="el-j/run-zero", arch="arm64", access_token="tok")
         cmd = mock_run.call_args[0][0]
         self.assertNotIn("--cpus", cmd)
         self.assertNotIn("--memory", cmd)
 
-    @patch.dict(os.environ, {"RUNNER_CPUS": "2", "RUNNER_MEMORY": "4g"})
+    @patch.dict(os.environ, {"RUNNER_SIZING": "auto", "MAX_RUNNERS": "2"})
+    @patch("drivers.sizing.host_capacity")
+    @patch("subprocess.run")
+    def test_spawn_runner_derives_resource_limits_when_unset(self, mock_run, capacity):
+        from drivers.sizing import HostCapacity
+
+        capacity.return_value = HostCapacity(9, 10240)
+        mock_run.return_value = MagicMock(returncode=0)
+        driver = DockerDriver()
+        self.assertEqual(driver.sizing.source, "derived")
+        driver.spawn_runner(repo="el-j/run-zero", arch="arm64", access_token="tok")
+        cmd = mock_run.call_args[0][0]
+        self.assertEqual(cmd[cmd.index("--cpus") + 1], "4")
+        self.assertEqual(cmd[cmd.index("--memory") + 1], "4096M")
+
+    @patch.dict(os.environ, {"RUNNER_CPUS": "2", "RUNNER_MEMORY": "4g", "RUNNER_SIZING": "auto"})
     @patch("subprocess.run")
     def test_spawn_runner_passes_configured_resource_limits(self, mock_run):
         mock_run.return_value = MagicMock(returncode=0)
@@ -195,7 +210,7 @@ class TestDockerDriver(unittest.TestCase):
         driver.spawn_runner(repo="el-j/run-zero", arch="arm64", access_token="tok")
         cmd = mock_run.call_args[0][0]
         self.assertEqual(cmd[cmd.index("--cpus") + 1], "2")
-        self.assertEqual(cmd[cmd.index("--memory") + 1], "4g")
+        self.assertEqual(cmd[cmd.index("--memory") + 1], "4096M")
 
     @patch("subprocess.run")
     def test_spawn_runner_uses_configured_network_mode(self, mock_run):
@@ -475,6 +490,31 @@ class TestDockerDriver(unittest.TestCase):
         npm_bridge = [v for v in env_bridge if v.startswith("NPM_CONFIG_REGISTRY=")]
         self.assertEqual(len(npm_bridge), 1)
         self.assertIn("verdaccio:4873", npm_bridge[0])
+
+    @patch("subprocess.run")
+    def test_spawn_runner_exports_pnpm_registry_and_cache_env(self, mock_run):
+        # pnpm 11 reads only pnpm_config_* (#67); mounted caches add store/browser paths (#68).
+        mock_run.return_value = MagicMock(returncode=0)
+        mounts = {"/host/pnpm": "/home/runner/.local/share/pnpm/store"}
+        self.driver.spawn_runner(repo="el-j/run-zero", arch="arm64", proxies_enabled=True, access_token="tok", cache_mounts=mounts)
+        cmd = mock_run.call_args[0][0]
+        env = dict(cmd[i + 1].split("=", 1) for i, tok in enumerate(cmd) if tok == "-e")
+        self.assertEqual(env["pnpm_config_registry"], "http://localhost:49501/")
+        self.assertEqual(env["YARN_NPM_REGISTRY_SERVER"], "http://localhost:49501/")
+        self.assertEqual(env["RUNNER_TOOL_CACHE"], "/opt/hostedtoolcache")
+        self.assertEqual(env["RUNZERO"], "1")
+        self.assertEqual(env["pnpm_config_store_dir"], "/home/runner/.local/share/pnpm/store")
+        self.assertEqual(env["PLAYWRIGHT_BROWSERS_PATH"], "/home/runner/.cache/ms-playwright")
+
+    @patch("subprocess.run")
+    def test_spawn_runner_without_cache_mounts_keeps_tool_defaults(self, mock_run):
+        mock_run.return_value = MagicMock(returncode=0)
+        self.driver.spawn_runner(repo="el-j/run-zero", arch="arm64", proxies_enabled=False, access_token="tok")
+        cmd = mock_run.call_args[0][0]
+        env = dict(cmd[i + 1].split("=", 1) for i, tok in enumerate(cmd) if tok == "-e")
+        self.assertEqual(env["RUNNER_TOOL_CACHE"], "/opt/hostedtoolcache")
+        self.assertNotIn("PLAYWRIGHT_BROWSERS_PATH", env)
+        self.assertNotIn("pnpm_config_registry", env)
 
     @patch("builtins.print")
     @patch("subprocess.run")

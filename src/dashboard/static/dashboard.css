@@ -319,6 +319,22 @@ body {
   border: 1px solid var(--border-subtle);
 }
 
+.badge-danger {
+  background: rgba(255, 51, 85, 0.12);
+  color: var(--crimson-light);
+  border: 1px solid var(--crimson);
+  cursor: help;
+}
+
+.header-stat-box[hidden] {
+  display: none;
+}
+
+.kpi-subtext.text-danger {
+  color: var(--crimson-light);
+  cursor: help;
+}
+
 .btn-docs-link {
   display: inline-flex;
   align-items: center;

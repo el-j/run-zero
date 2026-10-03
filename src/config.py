@@ -11,6 +11,8 @@ import os
 from collections.abc import Mapping
 from dataclasses import dataclass
 
+import arch_override
+
 _TRUE = ("true", "1", "yes", "on")
 _FALSE = ("false", "0", "no", "off")
 
@@ -75,6 +77,17 @@ def _choice(env: Mapping[str, str], name: str, default: str, choices: tuple[str,
     return value
 
 
+def _native_arch_override(env: Mapping[str, str]) -> str:
+    """Parse NATIVE_ARCH_OVERRIDE: off (default), all, or comma-separated owner/repo names."""
+    raw = _raw(env, "NATIVE_ARCH_OVERRIDE")
+    if raw is None:
+        return "off"
+    error = arch_override.validate(raw)
+    if error:
+        raise ConfigError(error)
+    return raw.strip().lower()
+
+
 @dataclass(frozen=True)
 class Config:
     """Every setting the autoscaler reads, typed and range-checked."""
@@ -98,6 +111,8 @@ class Config:
     rate_limit_refresh_interval: int = 60
     actions_billing_refresh_interval: int = 300
     busy_timeout_seconds: int = 7200
+    cleanup_on_shutdown: bool = False
+    native_arch_override: str = "off"
     dashboard_enabled: bool = True
     dashboard_port: int = 49505
     dashboard_host: str = "127.0.0.1"
@@ -129,6 +144,8 @@ def load_config(env: Mapping[str, str] | None = None) -> Config:
         rate_limit_refresh_interval=_int(env, "RATE_LIMIT_REFRESH_INTERVAL", 60, 10),
         actions_billing_refresh_interval=_int(env, "ACTIONS_BILLING_REFRESH_INTERVAL", 300, 30),
         busy_timeout_seconds=_int(env, "RUNNER_BUSY_TIMEOUT_SECONDS", 7200, 60),
+        cleanup_on_shutdown=_bool(env, "CLEANUP_RUNNERS_ON_SHUTDOWN", False),
+        native_arch_override=_native_arch_override(env),
         dashboard_enabled=_bool(env, "DASHBOARD_ENABLED", True),
         dashboard_port=_int(env, "DASHBOARD_PORT", 49505, 1, 65535),
         dashboard_host=_raw(env, "DASHBOARD_HOST") or "127.0.0.1",

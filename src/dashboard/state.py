@@ -13,7 +13,26 @@ import threading
 import time
 from typing import Any, ClassVar
 
-from version import __version__
+from version import __git_sha__, __version__
+
+# Display name -> on-disk subdirectory that cache_manager.init_cache_dirs() creates and mounts.
+# go-build is handled separately (it may be scoped per workflow under build-cache/).
+CACHE_CATEGORIES = {
+    "npm": "npm",
+    "yarn": "yarn",
+    "pnpm": "pnpm",
+    "pip": "pip",
+    "uv": "uv",
+    "go-mod": "go-pkg",
+    "cargo": "rust",
+    "toolcache": "hostedtoolcache",
+    "playwright": "ms-playwright",
+}
+
+
+def cache_categories(cache_root: str) -> dict[str, str]:
+    """Display name -> absolute path of every host cache category under `cache_root`."""
+    return {name: os.path.join(cache_root, sub) for name, sub in CACHE_CATEGORIES.items()}
 
 
 class DashboardState:
@@ -43,6 +62,10 @@ class DashboardState:
         self.cache_enabled = True
         self.max_concurrency = 4
         self.min_runners = 0
+        # Per-runner CPU/memory sizing and its oversubscription warnings (#71).
+        self.runner_sizing: dict[str, Any] = {}
+        # Non-empty when the Host VM Bridge runs different code than the autoscaler (#72).
+        self.bridge_drift = ""
         self.github_rate_limit_remaining: int | None = None
         self.github_rate_limit_total: int | None = None
         self.github_rate_limit_used: int | None = None
@@ -57,6 +80,8 @@ class DashboardState:
         # Routing telemetry counters
         self.routing_docker_jobs: int = 0
         self.routing_vm_jobs: int = 0
+        # amd64 jobs served by a native arm64 runner via NATIVE_ARCH_OVERRIDE (#75).
+        self.routing_native_arch_overrides: int = 0
         self.routing_triggers: dict[str, int] = {"services": 0, "dind": 0, "browser": 0, "e2e": 0, "systemd": 0, "custom_label": 0}
 
         # Golden image build status, keyed by "<driver>:<arch>:<profile-or-base>" -- see
@@ -76,6 +101,7 @@ class DashboardState:
             "go-build": "0 B",
             "cargo": "0 B",
             "toolcache": "0 B",
+            "playwright": "0 B",
             "total_host": "0 B",
             "verdaccio": "0 B",
             "athens": "0 B",
@@ -86,7 +112,12 @@ class DashboardState:
     @property
     def routing_stats(self) -> dict[str, Any]:
         """Return the Docker-vs-VM job routing counters and per-trigger breakdown as a plain dict."""
-        return {"docker_jobs": self.routing_docker_jobs, "vm_jobs": self.routing_vm_jobs, "vm_triggers_breakdown": dict(self.routing_triggers)}
+        return {
+            "docker_jobs": self.routing_docker_jobs,
+            "vm_jobs": self.routing_vm_jobs,
+            "vm_triggers_breakdown": dict(self.routing_triggers),
+            "native_arch_overrides": self.routing_native_arch_overrides,
+        }
 
     def append_log(self, line: str) -> None:
         """Add a log line to ring buffer and broadcast to active SSE subscribers."""
@@ -216,7 +247,7 @@ class DashboardState:
         "systemd": "systemd",
     }
 
-    def record_routing_decision(self, is_vm: bool, reason: str = "") -> None:
+    def record_routing_decision(self, is_vm: bool, reason: str = "", native_override: bool = False) -> None:
         """Count one successfully spawned job as Docker or VM, bucketing VM jobs by routing reason.
 
         `is_vm` comes from the driver type (RunnerDriver.is_vm). `reason` is the router's
@@ -224,6 +255,8 @@ class DashboardState:
         via TRIGGER_BUCKETS, and anything else (e.g. an explicit "vm" label) is "custom_label".
         """
         with self._lock:
+            if native_override:
+                self.routing_native_arch_overrides += 1
             if not is_vm:
                 self.routing_docker_jobs += 1
                 return
@@ -313,21 +346,7 @@ class DashboardState:
         """Scan cache subdirectories and recalculate categorized disk space usage metrics."""
         cache_root = self.cache_dir or os.path.expanduser("~/.local-github-runner/cache")
         if os.path.isdir(cache_root):
-            # Keys match the display names already used by the webui/API; paths match the
-            # real subdirectory names cache_manager.init_cache_dirs() actually creates and
-            # mounts (previously "go-mod"/"cargo-registry"/"toolcache" here, none of which
-            # exist on disk -- init_cache_dirs creates "go-pkg"/"rust"/"hostedtoolcache" --
-            # so these three always read back as empty regardless of real usage).
-            categories = {
-                "npm": os.path.join(cache_root, "npm"),
-                "yarn": os.path.join(cache_root, "yarn"),
-                "pnpm": os.path.join(cache_root, "pnpm"),
-                "pip": os.path.join(cache_root, "pip"),
-                "uv": os.path.join(cache_root, "uv"),
-                "go-mod": os.path.join(cache_root, "go-pkg"),
-                "cargo": os.path.join(cache_root, "rust"),
-                "toolcache": os.path.join(cache_root, "hostedtoolcache"),
-            }
+            categories = cache_categories(cache_root)
             total_host = 0
             for name, path in categories.items():
                 sz = self._get_dir_size(path)
@@ -346,18 +365,7 @@ class DashboardState:
         category = category.lower().strip()
         cleared = []
 
-        # See _refresh_cache_metrics() for why these paths (not "go-mod"/"cargo-registry"/
-        # "toolcache") are the real on-disk directory names.
-        mapping = {
-            "npm": os.path.join(cache_root, "npm"),
-            "yarn": os.path.join(cache_root, "yarn"),
-            "pnpm": os.path.join(cache_root, "pnpm"),
-            "pip": os.path.join(cache_root, "pip"),
-            "uv": os.path.join(cache_root, "uv"),
-            "go-mod": os.path.join(cache_root, "go-pkg"),
-            "cargo": os.path.join(cache_root, "rust"),
-            "toolcache": os.path.join(cache_root, "hostedtoolcache"),
-        }
+        mapping = cache_categories(cache_root)
 
         def _clear_go_build() -> None:
             """Clear all flat and scoped go-build cache directories."""
@@ -399,6 +407,7 @@ class DashboardState:
 
             return {
                 "version": self.version,
+                "git_sha": __git_sha__,
                 "uptime": uptime_str,
                 "uptime_seconds": uptime_secs,
                 "status": self.autoscaler_status,
@@ -407,6 +416,8 @@ class DashboardState:
                 "hybrid_routing": self.hybrid_routing_enabled,
                 "architectures": self.target_architectures,
                 "concurrency": {"active": len(self.active_runners), "max": self.max_concurrency, "min": self.min_runners},
+                "runner_sizing": self.runner_sizing,
+                "bridge_drift": self.bridge_drift,
                 "github": {
                     "rate_limit_remaining": self.github_rate_limit_remaining,
                     "rate_limit_total": self.github_rate_limit_total,
@@ -423,6 +434,7 @@ class DashboardState:
                     "docker_jobs": self.routing_docker_jobs,
                     "vm_jobs": self.routing_vm_jobs,
                     "vm_triggers_breakdown": dict(self.routing_triggers),
+                    "native_arch_overrides": self.routing_native_arch_overrides,
                 },
                 "cache": {"enabled": bool(self.cache_enabled), "dir": str(self.cache_dir) if self.cache_dir is not None else "", "sizes": self.cache_sizes},
                 "image_builds": list(self.image_builds.values()),

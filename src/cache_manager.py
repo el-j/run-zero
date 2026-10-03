@@ -5,10 +5,22 @@ Host cache directory initialization and mount mapping manager.
 import contextlib
 import os
 
+from drivers.runner_env import PLAYWRIGHT_BROWSERS, PNPM_STORE, TOOL_CACHE
+
 
 def _sanitize_scope(scope: str) -> str:
     """Sanitize scope string to a safe directory name."""
     return "".join(c if c.isalnum() or c in ("-", "_") else "_" for c in scope).strip("_")
+
+
+def _make_arch_dir(host_cache_dir: str, name: str, arch: str) -> str:
+    """Create the world-writable per-arch cache directory `<host_cache_dir>/<name>/<arch>`."""
+    path = os.path.join(host_cache_dir, name, arch)
+    os.makedirs(path, exist_ok=True)
+    for p in (os.path.dirname(path), path):
+        with contextlib.suppress(OSError):
+            os.chmod(p, 0o777)
+    return path
 
 
 def init_cache_dirs(
@@ -40,10 +52,9 @@ def init_cache_dirs(
         with contextlib.suppress(OSError):
             os.chmod(p, 0o777)
 
-    arch_toolcache = os.path.join(host_cache_dir, "hostedtoolcache", arch)
-    os.makedirs(arch_toolcache, exist_ok=True)
-    with contextlib.suppress(OSError):
-        os.chmod(arch_toolcache, 0o777)
+    # Per-arch: tool cache entries and Playwright browsers are native binaries.
+    arch_toolcache = _make_arch_dir(host_cache_dir, "hostedtoolcache", arch)
+    arch_playwright = _make_arch_dir(host_cache_dir, "ms-playwright", arch)
 
     # Build cache isolation:
     # If scope is provided, place go-build under build-cache/<scope>/go-build so concurrent
@@ -60,7 +71,7 @@ def init_cache_dirs(
 
     mount_mappings = {
         os.path.join(host_cache_dir, "npm"): "/home/runner/.npm",
-        os.path.join(host_cache_dir, "pnpm"): "/home/runner/.local/share/pnpm/store",
+        os.path.join(host_cache_dir, "pnpm"): PNPM_STORE,
         os.path.join(host_cache_dir, "yarn"): "/home/runner/.cache/yarn",
         os.path.join(host_cache_dir, "pip"): "/home/runner/.cache/pip",
         os.path.join(host_cache_dir, "uv"): "/home/runner/.cache/uv",
@@ -68,6 +79,7 @@ def init_cache_dirs(
         go_build_dir: "/home/runner/.cache/go-build",
         os.path.join(host_cache_dir, "dotnet"): "/home/runner/.nuget/packages",
         os.path.join(host_cache_dir, "rust"): "/home/runner/.cargo/registry",
-        arch_toolcache: "/opt/hostedtoolcache",
+        arch_toolcache: TOOL_CACHE,
+        arch_playwright: PLAYWRIGHT_BROWSERS,
     }
     return mount_mappings

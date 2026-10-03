@@ -4,12 +4,17 @@ Tests for shell scripts syntax and entrypoint validation.
 
 import os
 import re
+import shutil
+import socket
 import subprocess
 import sys
+import tempfile
 import unittest
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 from cache_manager import init_cache_dirs
+
+REPO_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 
 
 class TestShellScripts(unittest.TestCase):
@@ -103,6 +108,31 @@ class TestShellScripts(unittest.TestCase):
             expected_dirs,
             "start.sh's CACHE_DIRS fallback has drifted from cache_manager.init_cache_dirs() mount destinations — update start.sh to match.",
         )
+
+
+@unittest.skipUnless(shutil.which("lsof"), "lsof is needed to find the port holder")
+class TestBridgeSupervisorPortConflict(unittest.TestCase):
+    """#72: a foreign process on the bridge port is named, instead of a silent launchd crash-loop."""
+
+    def setUp(self):
+        self.repo = tempfile.mkdtemp(prefix="runzero-supervisor-")
+        self.addCleanup(shutil.rmtree, self.repo, ignore_errors=True)
+        os.makedirs(os.path.join(self.repo, "scripts"))
+        shutil.copy(os.path.join(REPO_ROOT, "scripts", "bridge_supervisor.sh"), os.path.join(self.repo, "scripts"))
+        self.listener = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        self.addCleanup(self.listener.close)
+        self.listener.bind(("127.0.0.1", 0))
+        self.listener.listen(1)
+        with open(os.path.join(self.repo, ".env"), "w", encoding="utf-8") as fh:
+            fh.write(f"HOST_VM_BRIDGE_PORT={self.listener.getsockname()[1]}\n")
+
+    def test_start_names_the_foreign_process_and_refuses(self):
+        env = {**os.environ, "RUNZERO_BRIDGE_NO_LAUNCHD": "1"}
+        res = subprocess.run(["bash", "scripts/bridge_supervisor.sh", "start"], cwd=self.repo, env=env, capture_output=True, text=True, timeout=30)
+        self.assertEqual(res.returncode, 1, res.stdout + res.stderr)
+        self.assertIn(f"already in use by PID {os.getpid()}", res.stdout)
+        self.assertIn(f"kill {os.getpid()}", res.stdout)
+        self.assertFalse(os.path.exists(os.path.join(self.repo, ".bridge.pid")))
 
 
 if __name__ == "__main__":

@@ -23,6 +23,18 @@ class TestMultipassDriver(unittest.TestCase):
     def test_name(self):
         self.assertEqual(self.driver.name(), "multipass")
 
+    def test_unlimited_sizing_keeps_multipass_defaults(self):
+        self.assertEqual((self.driver.cpus, self.driver.memory), ("2", "2G"))
+
+    @patch("drivers.sizing.host_capacity")
+    def test_derived_sizing_from_host_and_max_runners(self, capacity):
+        from drivers.sizing import HostCapacity
+
+        capacity.return_value = HostCapacity(9, 10240)
+        with patch.dict("os.environ", {"RUNNER_SIZING": "auto", "MAX_RUNNERS": "2"}):
+            driver = MultipassDriver()
+        self.assertEqual((driver.cpus, driver.memory), ("4", "4096M"))
+
     @patch("shutil.which", return_value="/usr/local/bin/multipass")
     @patch("subprocess.run")
     def test_is_available(self, mock_run, mock_which):
@@ -85,6 +97,9 @@ class TestMultipassDriver(unittest.TestCase):
         self.driver.spawn_runner(repo="el-j/run-zero", access_token="token", proxies_enabled=True)
         setup_script = mock_popen.call_args[0][0][-1]
         self.assertIn('export YARN_REGISTRY="http://${HOST_IP}:49501/"', setup_script)
+        self.assertIn('export pnpm_config_registry="http://${HOST_IP}:49501/"', setup_script)
+        self.assertIn("export RUNNER_TOOL_CACHE=/opt/hostedtoolcache", setup_script)
+        self.assertNotIn("PLAYWRIGHT_BROWSERS_PATH", setup_script)
         self.assertIn('export PIP_INDEX_URL="http://${HOST_IP}:49507/root/pypi/+simple/"', setup_script)
         self.assertIn('export UV_INDEX_URL="${PIP_INDEX_URL}"', setup_script)
         self.assertIn('export PIP_TRUSTED_HOST="${HOST_IP}"', setup_script)
@@ -115,6 +130,10 @@ class TestMultipassDriver(unittest.TestCase):
         ]
         self.assertTrue(any("/home/ubuntu/.npm" in cmd[6] for cmd in prep_exec_cmds))
         self.assertTrue(any("/opt/hostedtoolcache" in cmd[6] for cmd in prep_exec_cmds))
+
+        setup_script = mock_popen.call_args[0][0][-1]
+        self.assertIn("export pnpm_config_store_dir=/home/ubuntu/.local/share/pnpm/store", setup_script)
+        self.assertIn("export PLAYWRIGHT_BROWSERS_PATH=/home/ubuntu/.cache/ms-playwright", setup_script)
 
     @patch("subprocess.Popen")
     @patch("subprocess.run")

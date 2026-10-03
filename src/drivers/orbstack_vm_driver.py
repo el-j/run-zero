@@ -22,6 +22,7 @@ from .orbstack_templates import (
     cache_mount_snippet,
     registration_and_run_snippet,
 )
+from .runner_env import cache_env, export_block, registry_env
 
 RUNNER_VM_PREFIX = "runzero-vm-"
 
@@ -334,6 +335,45 @@ class OrbStackVMDriver(RunnerDriver):
         """
         return self._backoff.join(timeout)
 
+    def proxy_env_block(self) -> str:
+        """Shell lines pointing npm/pnpm/yarn, Go, pip/uv, apt and cargo in a job VM at the host proxies."""
+        proxy_env_block = f"""
+{export_block(registry_env("http://host.orb.internal:49501/"))}
+export GOPROXY="http://host.orb.internal:49500,https://proxy.golang.org,direct"
+export PIP_INDEX_URL="http://host.orb.internal:49507/root/pypi/+simple/"
+export UV_INDEX_URL="http://host.orb.internal:49507/root/pypi/+simple/"
+export PIP_TRUSTED_HOST="host.orb.internal"
+echo 'Acquire::http::Proxy "http://host.orb.internal:49503";' | sudo tee /etc/apt/apt.conf.d/01runzero-proxy > /dev/null
+"""
+        # pip implicitly trusts "localhost"/"127.0.0.1" for a plain-HTTP index but
+        # refuses any other host -- verified live (2026-08-26) inside a real OrbStack
+        # VM: without PIP_TRUSTED_HOST, pip printed "is not a trusted or secure host",
+        # silently skipped the index, and exited 0 having installed nothing. uv has no
+        # equivalent restriction (verified: identical install succeeds unmodified).
+        # kellnr's crates.io proxy has no single "index URL" env var: verified live
+        # (2026-08-26) that cargo silently ignores CARGO_SOURCE_<name>_* env vars for a
+        # dynamic/custom [source.*] table (a real cargo limitation, not a typo) --
+        # tracing cargo's own network layer showed it still fetching straight from
+        # https://index.crates.io with the env vars set, and only switching to the
+        # proxy once a real ~/.cargo/config.toml source-replacement block existed.
+        # Written directly here (rather than via a curl-based runtime probe like
+        # start.sh's, since host.orb.internal always resolves to the real Mac host from
+        # inside an OrbStack VM -- no "is it up" detection needed the way Mode 2's
+        # bridge-network containers need one).
+        proxy_env_block += """
+sudo mkdir -p /home/runner/.cargo 2>/dev/null || true
+sudo chown runner:runner /home/runner/.cargo 2>/dev/null || true
+mkdir -p /home/runner/.cargo
+cat > /home/runner/.cargo/config.toml <<'CARGOCFG'
+[source.crates-io]
+replace-with = "kellnr-proxy"
+
+[source.kellnr-proxy]
+registry = "sparse+http://host.orb.internal:49506/api/v1/cratesio/"
+CARGOCFG
+"""
+        return proxy_env_block
+
     def spawn_runner(
         self,
         repo: str | None = None,
@@ -384,45 +424,7 @@ class OrbStackVMDriver(RunnerDriver):
             )
             return None
 
-        proxy_env_block = ""
-        if proxies_enabled:
-            proxy_env_block = """
-export npm_config_registry="http://host.orb.internal:49501"
-export NPM_CONFIG_REGISTRY="http://host.orb.internal:49501/"
-export YARN_REGISTRY="http://host.orb.internal:49501"
-export GOPROXY="http://host.orb.internal:49500,https://proxy.golang.org,direct"
-export PIP_INDEX_URL="http://host.orb.internal:49507/root/pypi/+simple/"
-export UV_INDEX_URL="http://host.orb.internal:49507/root/pypi/+simple/"
-export PIP_TRUSTED_HOST="host.orb.internal"
-echo 'Acquire::http::Proxy "http://host.orb.internal:49503";' | sudo tee /etc/apt/apt.conf.d/01runzero-proxy > /dev/null
-"""
-            # pip implicitly trusts "localhost"/"127.0.0.1" for a plain-HTTP index but
-            # refuses any other host -- verified live (2026-08-26) inside a real OrbStack
-            # VM: without PIP_TRUSTED_HOST, pip printed "is not a trusted or secure host",
-            # silently skipped the index, and exited 0 having installed nothing. uv has no
-            # equivalent restriction (verified: identical install succeeds unmodified).
-            # kellnr's crates.io proxy has no single "index URL" env var: verified live
-            # (2026-08-26) that cargo silently ignores CARGO_SOURCE_<name>_* env vars for a
-            # dynamic/custom [source.*] table (a real cargo limitation, not a typo) --
-            # tracing cargo's own network layer showed it still fetching straight from
-            # https://index.crates.io with the env vars set, and only switching to the
-            # proxy once a real ~/.cargo/config.toml source-replacement block existed.
-            # Written directly here (rather than via a curl-based runtime probe like
-            # start.sh's, since host.orb.internal always resolves to the real Mac host from
-            # inside an OrbStack VM -- no "is it up" detection needed the way Mode 2's
-            # bridge-network containers need one).
-            proxy_env_block += """
-sudo mkdir -p /home/runner/.cargo 2>/dev/null || true
-sudo chown -R runner:runner /home/runner/.cargo 2>/dev/null || true
-mkdir -p /home/runner/.cargo
-cat > /home/runner/.cargo/config.toml <<'CARGOCFG'
-[source.crates-io]
-replace-with = "kellnr-proxy"
-
-[source.kellnr-proxy]
-registry = "sparse+http://host.orb.internal:49506/api/v1/cratesio/"
-CARGOCFG
-"""
+        proxy_env_block = self.proxy_env_block() if proxies_enabled else ""
 
         cache_mount_block = cache_mount_snippet(cache_mounts)
 
@@ -436,7 +438,9 @@ CARGOCFG
         if not registration_token:
             return None
 
-        reg_and_run = registration_and_run_snippet(runner_url, registration_token, vm_name, runner_labels, proxy_env_block, cache_mount_block)
+        reg_and_run = registration_and_run_snippet(
+            runner_url, registration_token, vm_name, runner_labels, proxy_env_block, cache_mount_block, runner_env=cache_env(bool(cache_mounts))
+        )
 
         print(f"[Autoscaler:OrbStack-VM] 🚀 Spawning ephemeral [{arch.upper()}] Linux VM '{vm_name}' (cloned from golden image '{base_name}')...")
         clone_cmd = ["orbctl", "clone", base_name, vm_name]
@@ -456,6 +460,7 @@ set -e
 
         try:
             subprocess.run(clone_cmd, check=True, capture_output=True)
+            self.images.apply_limits(vm_name)
             self._runner_created_at[vm_name] = time.time()
             if repo:
                 self._runner_repos[vm_name] = repo

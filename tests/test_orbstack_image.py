@@ -23,6 +23,7 @@ from drivers.orbstack_templates import (
 from drivers.orbstack_vm_driver import (
     OrbStackVMDriver,
 )
+from drivers.sizing import HostCapacity
 
 
 class TestOrbStackImages(OrbStackDriverTestCase):
@@ -1037,9 +1038,10 @@ class TestOrbStackImages(OrbStackDriverTestCase):
             capture_output=True,
         )
 
-    @patch.dict(os.environ, {"RUNNER_CPUS": "2", "RUNNER_MEMORY": "4g"})
+    @patch.dict(os.environ, {"RUNNER_CPUS": "2", "RUNNER_MEMORY": "4g", "RUNNER_SIZING": "auto"})
+    @patch("drivers.orbstack_image.orbstack_capacity", return_value=HostCapacity(11, 16384))
     @patch("subprocess.run")
-    def test_build_base_image_passes_configured_resource_limits_to_create(self, mock_run):
+    def test_build_base_image_passes_configured_resource_limits_to_create(self, mock_run, _capacity):
         def fake_run(cmd, *args, **kwargs):
             if cmd[:2] == ["orbctl", "create"]:
                 raise Exception("stop after create")
@@ -1059,7 +1061,7 @@ class TestOrbStackImages(OrbStackDriverTestCase):
                 "--cpus",
                 "2",
                 "--memory",
-                "4g",
+                "4096M",
                 "ubuntu:24.04",
                 "runzero-vm-base-amd64-building",
             ],

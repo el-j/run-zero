@@ -17,6 +17,7 @@ from urllib.parse import urlparse
 
 from drivers import RunnerDriver, RunnerInfo, get_available_drivers, get_driver, validate_spawn_target
 from drivers.docker_driver import DockerDriver
+from drivers.sizing import RunnerSizing
 from http_security import (
     ControlPlaneHTTPServer,
     RequestRejected,
@@ -26,7 +27,7 @@ from http_security import (
     is_loopback_host,
     read_json_body,
 )
-from version import __version__
+from version import __version__, build_info
 
 DEFAULT_BRIDGE_PORT = 49504
 # Loopback by default. Containers still reach it as host.docker.internal on Docker Desktop
@@ -61,6 +62,12 @@ def _get_cached_driver(name: str) -> RunnerDriver:
             driver = get_driver(key)
             _driver_cache[key] = driver
         return driver
+
+
+def _driver_sizing(drivers: dict[str, RunnerDriver]) -> dict[str, dict[str, Any]]:
+    """Per-runner CPU/memory sizing of each driver that applies one (#71), keyed by backend."""
+    sizings = {name: getattr(driver, "sizing", None) for name, driver in drivers.items()}
+    return {name: sizing.to_dict() for name, sizing in sizings.items() if isinstance(sizing, RunnerSizing)}
 
 
 class VMBridgeRequestHandler(BaseHTTPRequestHandler):
@@ -127,6 +134,8 @@ class VMBridgeRequestHandler(BaseHTTPRequestHandler):
                     "platform": sys.platform,
                     "available_vm_drivers": vm_drivers,
                     "all_drivers": list(drivers.keys()),
+                    **build_info(),
+                    "sizing": _driver_sizing(drivers),
                 },
             )
             return

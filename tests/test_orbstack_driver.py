@@ -206,6 +206,36 @@ class TestOrbStackVMDriver(OrbStackDriverTestCase):
             "sudo mount --bind /mnt/mac/Users/dev/.local-github-runner/cache/npm /home/runner/.npm",
             setup_script,
         )
+        # The cache env is exported before run.sh (#66-#68) ...
+        env_at = setup_script.index("export PLAYWRIGHT_BROWSERS_PATH=/home/runner/.cache/ms-playwright")
+        self.assertLess(env_at, setup_script.index("./run.sh"))
+        self.assertIn("export pnpm_config_store_dir=/home/runner/.local/share/pnpm/store", setup_script)
+        # ... and no recursive chown/chmod walks the host-backed caches after mounting (#67).
+        after_mounts = setup_script[setup_script.index("mount --bind") :]
+        self.assertNotIn("chown -R", after_mounts)
+        self.assertNotIn("chmod -R", after_mounts)
+
+    @patch("subprocess.Popen")
+    @patch("subprocess.run")
+    def test_spawn_runner_applies_cpu_and_memory_limits_to_the_clone(self, mock_run, mock_popen):
+        # #71: clones copy the base image's settings, so a base built without (or with older)
+        # limits would run unlimited; the limits are set on every clone before it boots.
+        from drivers.sizing import HostCapacity, RunnerSizing
+
+        self.driver.images.sizing = RunnerSizing(3, 4096, "configured", HostCapacity(11, 16384), 3)
+        mock_run.side_effect = [
+            MagicMock(stdout=json.dumps([{"name": "runzero-vm-base-arm64", "state": "stopped"}]), returncode=0),
+            MagicMock(returncode=0),  # orbctl clone
+            MagicMock(returncode=0),  # cpu
+            subprocess.CalledProcessError(1, "orbctl"),  # memory: logged, not fatal
+        ]
+        with patch("sys.stderr"):
+            name = self.driver.spawn_runner(repo="el-j/run-zero", arch="arm64", access_token="token")
+        assert name is not None
+        calls = [c.args[0] for c in mock_run.call_args_list]
+        self.assertEqual(calls[2], ["orbctl", "config", "set", f"machine.{name}.cpu", "3"])
+        self.assertEqual(calls[3], ["orbctl", "config", "set", f"machine.{name}.memory_mib", "4096"])
+        mock_popen.assert_called_once()
 
     @patch("subprocess.Popen")
     @patch("subprocess.run")
@@ -227,7 +257,8 @@ class TestOrbStackVMDriver(OrbStackDriverTestCase):
         ]
         self.driver.spawn_runner(repo="el-j/run-zero", arch="amd64", access_token="token", proxies_enabled=True)
         setup_script = mock_popen.call_args[0][0][-1]
-        self.assertIn('export NPM_CONFIG_REGISTRY="http://host.orb.internal:49501/"', setup_script)
+        self.assertIn("export NPM_CONFIG_REGISTRY=http://host.orb.internal:49501/", setup_script)
+        self.assertIn("export pnpm_config_registry=http://host.orb.internal:49501/", setup_script)
         self.assertIn('export PIP_INDEX_URL="http://host.orb.internal:49507/root/pypi/+simple/"', setup_script)
         self.assertIn('export UV_INDEX_URL="http://host.orb.internal:49507/root/pypi/+simple/"', setup_script)
         # pip refuses a plain-HTTP non-localhost index without this (verified live).
@@ -980,6 +1011,7 @@ class TestOrbStackVMDriver(OrbStackDriverTestCase):
             "self-hosted,local,vm,amd64,rosetta",
             "",
             "",
+            runner_env={"RUNZERO": "1", "RUNNER_TOOL_CACHE": "/opt/hostedtoolcache", "AGENT_TOOLSDIRECTORY": "/opt/hostedtoolcache"},
         )
 
     @patch("subprocess.Popen")

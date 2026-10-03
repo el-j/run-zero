@@ -54,6 +54,10 @@ class BridgeVMDriver(RunnerDriver):
         except (urllib.error.URLError, urllib.error.HTTPError, TimeoutError, json.JSONDecodeError, ConnectionError) as e:
             return {"error": str(e)}
 
+    def health(self) -> dict[str, Any]:
+        """The bridge's /health payload (version, git SHA, drivers, sizing), or {"error": ...}."""
+        return self._request("GET", "/health", timeout=2.0)
+
     def is_available(self) -> bool:
         """Check if bridge server is reachable and reports target_backend as available."""
         res = self._request("GET", "/health", timeout=2.0)

@@ -6,6 +6,7 @@
 <pre class="code-block"><code>make start          # Start Autoscaler and Proxy registries (apt-cacher, Verdaccio, Athens)
 make stop           # Stop Autoscaler, Proxies, and cleanup active runners
 make status         # Show status of services and active runner instances
+make doctor         # Verify cache wiring from inside throwaway runners (no GitHub token needed)
 make logs           # Stream live autoscaler logs
 make test           # Run 85 unit tests directly (0.04s)
 make test-suite     # Run Flake8 linter, Mypy type-checker, and Pytest coverage

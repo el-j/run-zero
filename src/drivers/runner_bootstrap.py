@@ -15,6 +15,8 @@ import re
 import shlex
 import uuid
 
+from .runner_env import export_block
+
 RUNNER_VERSION = "2.336.0"
 
 POWEROFF = 'echo "Ephemeral run finished -- powering off so the autoscaler prunes this VM."\n' + (
@@ -70,13 +72,23 @@ sudo ./bin/installdependencies.sh
 """
 
 
-def register_and_run_snippet(runner_url: str, registration_token: str, runner_name: str, labels: str, home: str = "/home/runner", finish: str = "") -> str:
+def register_and_run_snippet(
+    runner_url: str,
+    registration_token: str,
+    runner_name: str,
+    labels: str,
+    home: str = "/home/runner",
+    finish: str = "",
+    env: dict[str, str] | None = None,
+) -> str:
     """Shell snippet: register one ephemeral runner with `config.sh`, run it, then run `finish`.
 
     `registration_token` is the short-lived token from `github_api.create_registration_token`.
+    `env` (see `runner_env.cache_env`) is exported first, so `run.sh` and every job step inherit it.
     `run.sh` failing still reaches `finish`, so the guest is always cleaned up.
     """
     return f"""
+{export_block(env or {})}
 cd {shlex.quote(f"{home}/actions-runner")}
 
 ./config.sh --url {shlex.quote(runner_url)} --token {shlex.quote(registration_token)} --name {shlex.quote(runner_name)} --work "_work" \\

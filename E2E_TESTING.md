@@ -170,6 +170,39 @@ Linux, or Windows (`multipass version` should succeed).
 Automated coverage for `multipass_driver.py` today is entirely mocked
 (`tests/test_multipass_driver.py`) — same reasoning as WSL2 above.
 
+## Cache canary against real GitHub Actions (#74)
+
+`tests/test_e2e_github.py` checks the whole cache chain on a real job. It dispatches
+`tests/e2e/runzero-cache-canary.yml` twice in a disposable repository that RunZero serves.
+The first run warms the caches. On the second run it asserts:
+
+- `actions/setup-node` reports "Found in cache", so the tool cache is mounted and
+  `RUNNER_TOOL_CACHE` is set;
+- pnpm 11 resolves the Verdaccio proxy (`:49501`) and downloads nothing, so the store is
+  reused;
+- `playwright install chromium` takes under 10 s, so the browsers are cached;
+- the whole setup stays under `RUNZERO_E2E_SETUP_BUDGET` seconds (default 120).
+
+Each check in the workflow prints a `RUNZERO_CANARY key=value` line, and the test reads them
+back from the job log. Setup:
+
+1. Copy `tests/e2e/runzero-cache-canary.yml` to `.github/workflows/` in the disposable
+   repository and make sure RunZero tracks that repository.
+2. Create a token with `actions:write` on that repository only.
+3. Run:
+
+```bash
+RUNZERO_E2E_REPO=you/runzero-canary RUNZERO_E2E_TOKEN=... \
+  PYTHONPATH=src python3 -m pytest tests/test_e2e_github.py -v
+```
+
+Optional: `RUNZERO_E2E_RUNS_ON='["self-hosted","local","amd64"]'` targets a specific runner
+type, and `RUNZERO_E2E_REF` picks a branch. Without the two required variables the live
+test skips. The log evaluation is unit-tested and runs in every suite.
+
+For a quicker check that needs no GitHub at all, use `make doctor`. It starts a throwaway
+runner per backend and reports what the tools inside it resolve.
+
 ## Related test layers (for contributors, not duplicated here)
 
 - **White-box unit tests** (most of `tests/`) — fast, deterministic, mock

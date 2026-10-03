@@ -12,6 +12,7 @@ drivers, the dashboard and signal handling around that loop.
 
 from __future__ import annotations
 
+import os
 import signal
 import sys
 import time
@@ -20,15 +21,17 @@ from collections.abc import Callable
 from typing import Any
 
 import github_api
+from arch_override import NativeArchOverride
 from cache_manager import init_cache_dirs
 from config import Config, ConfigError, load_config
 from dashboard import DashboardServer, dashboard_state
 from discovery import discover_repositories
 from drivers import RunnerDriver, RunnerInfo, get_available_drivers, select_default_driver
+from drivers.sizing import resolve_sizing
 from github_api import get_queued_job_details, refresh_actions_billing, refresh_rate_limit
 from reconciler import reconcile_idle_orphans, reconcile_zombie_runners
 from router import select_driver_for_job
-from version import __version__
+from version import __version__, build_info, version_drift
 
 ARM_LABELS = ("arm64", "aarch64", "arm")
 # Job ids remembered for once-per-job routing statistics (oldest forgotten first).
@@ -127,6 +130,8 @@ class Scaler:
         self._last_billing_refresh = 0.0
         self._standby_cursor = 0
         self._recorded_jobs: OrderedDict[Any, None] = OrderedDict()
+        self._last_drift: str | None = None
+        self.native_arch = NativeArchOverride(config.native_arch_override)
 
     # -- quota & discovery --------------------------------------------------------------
 
@@ -164,11 +169,55 @@ class Scaler:
                 access_token=cfg.access_token,
             )
             self._last_discovery = now
+            self.check_bridge_versions()
             if discovered:
                 self.tracked_repos = discovered
                 self._log_tracked_repos()
         if self.tracked_repos:
             reconcile_zombie_runners(self.tracked_repos, access_token=cfg.access_token, org=self.org)
+
+    def _bridge_health(self) -> list[tuple[str, dict[str, Any]]]:
+        """(driver name, /health payload) for every reachable bridge-backed driver."""
+        payloads = []
+        for name, driver in self.drivers.items():
+            health = getattr(driver, "health", None)
+            if callable(health):
+                payload = health()
+                if isinstance(payload, dict) and "error" not in payload:
+                    payloads.append((name, payload))
+        return payloads
+
+    def check_bridge_versions(self) -> str | None:
+        """Warn (log + dashboard badge) when the Host VM Bridge runs different code (#72).
+
+        Logs only when the finding changes, so a stale bridge is reported once per
+        discovery cycle transition rather than on every check.
+        """
+        drift = next((d for _, h in self._bridge_health() if (d := version_drift(build_info(), h))), None)
+        if drift != self._last_drift:
+            if drift:
+                log_print(f"[Autoscaler] Warning: {drift}", file=sys.stderr)
+            elif self._last_drift:
+                log_print("[Autoscaler] Host VM Bridge version now matches this autoscaler.")
+            self._last_drift = drift
+        dashboard_state.bridge_drift = drift or ""
+        return drift
+
+    def runner_sizing(self) -> dict[str, Any]:
+        """The default engine's per-runner CPU/memory sizing (#71), as reported by whoever applies it.
+
+        A local driver knows its own; a bridge-backed one reports it on /health; otherwise
+        the sizing is resolved from this process's environment.
+        """
+        own = getattr(self.default_driver, "sizing", None)
+        if own is not None:
+            return own.to_dict()
+        engine = self.default_driver.name()
+        for _, health in self._bridge_health():
+            remote = (health.get("sizing") or {}).get(engine)
+            if remote:
+                return dict(remote)
+        return resolve_sizing(os.environ).to_dict()
 
     def _log_tracked_repos(self) -> None:
         """Log currently monitored repositories and current GitHub API quota."""
@@ -285,7 +334,8 @@ class Scaler:
         """Route `job` to a driver and spawn, falling back to the default driver on failure."""
         cfg = self.config
         driver, reason = select_driver_for_job(job, self.default_driver, self.drivers, cfg.auto_route_vm)
-        arch = resolve_job_arch(job.get("labels", []), cfg.runner_arch)
+        job_arch = resolve_job_arch(job.get("labels", []), cfg.runner_arch)
+        arch = self.native_arch.arch_for(job_arch, job.get("labels", []), repo)
         if not ensure_driver_runtime_assets(driver, arch):
             return None
 
@@ -301,7 +351,7 @@ class Scaler:
         }
         spawned_id = driver.spawn_runner(**spawn_args)
         if spawned_id:
-            self._record_routing(job, driver, reason)
+            self._record_routing(job, driver, reason, arch != job_arch)
             return spawned_id, driver, arch
         if driver is self.default_driver or driver.name() == self.default_driver.name():
             return None  # already tried the default backend; nothing different to fall back to
@@ -311,14 +361,15 @@ class Scaler:
         spawned_id = self.default_driver.spawn_runner(**spawn_args)
         if not spawned_id:
             return None
-        self._record_routing(job, self.default_driver, "container")
+        self._record_routing(job, self.default_driver, "container", arch != job_arch)
         return spawned_id, self.default_driver, arch
 
-    def _record_routing(self, job: dict[str, Any], driver: RunnerDriver, reason: str) -> None:
+    def _record_routing(self, job: dict[str, Any], driver: RunnerDriver, reason: str, native_override: bool = False) -> None:
         """Count a routing decision once per job, and only after its runner actually spawned.
 
         Counting before the spawn (as this used to) re-counted every queued job on every poll
-        while it waited, e.g. for a golden-image build.
+        while it waited, e.g. for a golden-image build. A native-arch override (#75) is logged
+        here too, so it's reported once per job.
         """
         job_id = job.get("id")
         if job_id is not None:
@@ -327,7 +378,9 @@ class Scaler:
             self._recorded_jobs[job_id] = None
             while len(self._recorded_jobs) > RECORDED_JOBS_LIMIT:
                 self._recorded_jobs.popitem(last=False)
-        dashboard_state.record_routing_decision(driver.is_vm, reason)
+        if native_override:
+            log_print(f"[Autoscaler] Serving amd64 job '{job.get('name')}' natively on arm64 (NATIVE_ARCH_OVERRIDE).")
+        dashboard_state.record_routing_decision(driver.is_vm, reason, native_override)
 
     # -- telemetry ---------------------------------------------------------------------
 
@@ -365,7 +418,16 @@ class Scaler:
         self.publish(all_runners, active_runners, queued_by_repo)
 
     def shutdown(self) -> None:
-        """Destroy every managed runner on every driver."""
+        """Leave runners alone unless CLEANUP_RUNNERS_ON_SHUTDOWN is set (#77).
+
+        Runners are ephemeral and finish (then remove themselves) on their own; destroying
+        them here cancelled every in-flight job whenever the autoscaler was merely restarted
+        or redeployed. A restarted autoscaler lists them again and counts them as active.
+        """
+        if not self.config.cleanup_on_shutdown:
+            log_print("[Autoscaler] Leaving running runners in place; they exit after their job (set CLEANUP_RUNNERS_ON_SHUTDOWN=true to destroy them).")
+            return
+        log_print("[Autoscaler] Stopping managed runners on shutdown...")
         for driver in self.drivers.values():
             driver.cleanup_all()
 
@@ -402,6 +464,8 @@ def _init_dashboard(scaler: Scaler) -> DashboardServer | None:
     dashboard_state.cache_enabled = cfg.cache_enabled
     dashboard_state.max_concurrency = cfg.max_runners
     dashboard_state.min_runners = cfg.min_runners
+    dashboard_state.runner_sizing = scaler.runner_sizing()
+    scaler.check_bridge_versions()
     if not cfg.dashboard_enabled:
         return None
     try:
@@ -424,6 +488,16 @@ def _print_banner(scaler: Scaler) -> None:
     log_print(f" Architectures:    {', '.join(a.upper() for a in scaler.architectures)}")
     log_print(f" Cache Directory:  {cfg.host_cache_dir} ({'Enabled' if cfg.cache_enabled else 'Disabled'})")
     log_print(f" Max Concurrency:  {cfg.max_runners} | Min Runners: {cfg.min_runners}")
+    sizing = dashboard_state.runner_sizing
+    if sizing:
+        cpus = f"{sizing['cpus']} CPU" if sizing.get("cpus") else "unlimited CPU"
+        mem = f"{sizing['memory_mib']} MiB" if sizing.get("memory_mib") else "unlimited memory"
+        log_print(
+            f" Runner Sizing:    {cpus}, {mem} per runner ({sizing.get('source')}; host {sizing.get('host_cpus')} CPU / {sizing.get('host_memory_mib')} MiB)"
+        )
+        for warning in sizing.get("warnings", []):
+            log_print(f" ⚠️  Oversubscribed: {warning}", file=sys.stderr)
+    log_print(f" Native Arch:      {scaler.native_arch.describe()}")
     log_print(f" Active Filter:    Pushed within last {cfg.active_days} days")
     if cfg.dashboard_enabled:
         log_print(f" Web Dashboard:    http://localhost:{cfg.dashboard_port}")
@@ -466,7 +540,6 @@ def main(config: Config | None = None) -> None:
         scaler.run_once()
         github_api.shutdown_event.wait(config.poll_interval)
 
-    log_print("[Autoscaler] Stopping managed runners on shutdown...")
     scaler.shutdown()
     if dashboard_server:
         dashboard_server.stop()

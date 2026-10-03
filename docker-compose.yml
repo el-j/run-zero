@@ -14,6 +14,9 @@ services:
     build:
       context: .
       dockerfile: docker/Dockerfile.autoscaler
+      args:
+        # Lets the autoscaler detect a Host VM Bridge running different code (#72).
+        RUNZERO_GIT_SHA: ${RUNZERO_GIT_SHA:-}
     image: local-runner-autoscaler:latest
     container_name: local-runner-autoscaler
     restart: unless-stopped
@@ -42,6 +45,9 @@ services:
       - MAX_RUNNERS=${MAX_RUNNERS:-4}
       - RUNNER_CPUS=${RUNNER_CPUS:-}
       - RUNNER_MEMORY=${RUNNER_MEMORY:-}
+      - RUNNER_SIZING=${RUNNER_SIZING:-auto}
+      - CLEANUP_RUNNERS_ON_SHUTDOWN=${CLEANUP_RUNNERS_ON_SHUTDOWN:-false}
+      - NATIVE_ARCH_OVERRIDE=${NATIVE_ARCH_OVERRIDE:-off}
       - POLL_INTERVAL=${POLL_INTERVAL:-10}
       - DISCOVERY_INTERVAL=${DISCOVERY_INTERVAL:-900}
       - RATE_LIMIT_REFRESH_INTERVAL=${RATE_LIMIT_REFRESH_INTERVAL:-60}

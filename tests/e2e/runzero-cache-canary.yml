@@ -1,0 +1,51 @@
+# RunZero cache canary (el-j/run-zero#74).
+#
+# Copy this file to .github/workflows/runzero-cache-canary.yml in a disposable repository
+# that RunZero serves, then run tests/test_e2e_github.py with RUNZERO_E2E_REPO/RUNZERO_E2E_TOKEN.
+# The test dispatches it twice; on the second run every cache must hit. Each check prints a
+# `RUNZERO_CANARY key=value` line that the test reads back from the job log.
+name: RunZero cache canary
+
+on:
+  workflow_dispatch:
+    inputs:
+      runs_on:
+        description: JSON list of runner labels
+        default: '["self-hosted", "local"]'
+
+jobs:
+  canary:
+    runs-on: ${{ fromJSON(inputs.runs_on) }}
+    timeout-minutes: 20
+    steps:
+      - name: Start clock
+        run: echo "CANARY_START=$(date +%s)" >> "$GITHUB_ENV"
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11
+
+      - name: Install a small fixture through the registry proxy
+        run: |
+          mkdir -p "$RUNNER_TEMP/fixture" && cd "$RUNNER_TEMP/fixture"
+          cat > package.json <<'JSON'
+          {"name": "runzero-canary", "private": true, "devDependencies": {"is-number": "7.0.0", "playwright": "1.55.0"}}
+          JSON
+          echo "RUNZERO_CANARY registry=$(pnpm config get registry)"
+          echo "RUNZERO_CANARY store=$(pnpm store path)"
+          pnpm install --no-frozen-lockfile --reporter=append-only 2>&1 | tee install.log
+          echo "RUNZERO_CANARY pnpm_downloaded=$(grep -o 'downloaded [0-9]*' install.log | tail -1 | awk '{print $2}')"
+
+      - name: Install Playwright Chromium
+        run: |
+          cd "$RUNNER_TEMP/fixture"
+          start=$(date +%s)
+          pnpm exec playwright install chromium
+          echo "RUNZERO_CANARY playwright_seconds=$(( $(date +%s) - start ))"
+
+      - name: Report setup time
+        run: echo "RUNZERO_CANARY setup_seconds=$(( $(date +%s) - CANARY_START ))"
