@@ -26,6 +26,12 @@ UNFORMATTED = "x = 'a'\n"
 FORMATTED = 'x = "a"\n'
 
 
+def _clean_env(**extra: str) -> dict[str, str]:
+    """os.environ without GIT_* variables, which point git at the OUTER repository when this
+    suite itself runs from a git hook (e.g. pre-push's `make check`)."""
+    return {**{k: v for k, v in os.environ.items() if not k.startswith("GIT_")}, **extra}
+
+
 def _tooling_available() -> bool:
     for module in ("ruff", "flake8"):
         res = subprocess.run([sys.executable, "-m", module, "--version"], capture_output=True, check=False)
@@ -55,7 +61,7 @@ class TestPreCommitRestaging(unittest.TestCase):
         self._git("commit", "-q", "-m", "init", "--no-verify")
 
     def _git(self, *args: str) -> str:
-        res = subprocess.run(["git", *args], cwd=self.repo, capture_output=True, text=True, check=True)
+        res = subprocess.run(["git", *args], cwd=self.repo, env=_clean_env(), capture_output=True, text=True, check=True)
         return res.stdout
 
     def _write(self, name: str, content: str) -> None:
@@ -63,7 +69,7 @@ class TestPreCommitRestaging(unittest.TestCase):
             fh.write(content)
 
     def _run_hook(self) -> subprocess.CompletedProcess:
-        env = {**os.environ, "RUNZERO_PY": sys.executable, "RUNZERO_PRECOMMIT_SKIP_TESTS": "1"}
+        env = _clean_env(RUNZERO_PY=sys.executable, RUNZERO_PRECOMMIT_SKIP_TESTS="1")
         return subprocess.run(["bash", "scripts/pre-commit.sh"], cwd=self.repo, env=env, capture_output=True, text=True, check=False)
 
     def _staged(self, name: str) -> str:
@@ -116,7 +122,7 @@ class TestPreCommitRestaging(unittest.TestCase):
         self.assertEqual(self._staged("lib.py"), UNFORMATTED)
 
     def test_missing_tooling_fails_hard(self):
-        env = {**os.environ, "RUNZERO_PY": "/nonexistent/python", "RUNZERO_PRECOMMIT_SKIP_TESTS": "1"}
+        env = _clean_env(RUNZERO_PY="/nonexistent/python", RUNZERO_PRECOMMIT_SKIP_TESTS="1")
         res = subprocess.run(["bash", "scripts/pre-commit.sh"], cwd=self.repo, env=env, capture_output=True, text=True, check=False)
 
         self.assertNotEqual(res.returncode, 0)
