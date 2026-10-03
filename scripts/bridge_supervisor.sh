@@ -181,7 +181,7 @@ render_plist() {
     local python_bin="$1"
     local env_file="$REPO_DIR/.env"
     PYTHON_BIN="$python_bin" WORK_DIR="$BRIDGE_HOME" LABEL="$LABEL" LOG_FILE="$LAUNCHD_LOG_FILE" \
-    BUILD_VERSION="$(cd "$REPO_DIR" && PYTHONPATH=src "$python_bin" -c 'from version import __version__; print(__version__)' 2>/dev/null || true)" \
+    BUILD_VERSION="$(PYTHONPATH="$REPO_DIR/src" "$python_bin" -c 'from version import __version__; print(__version__)' 2>/dev/null || true)" \
     BUILD_GIT_SHA="$(git -C "$REPO_DIR" rev-parse --short=12 HEAD 2>/dev/null || true)" \
     "$python_bin" - "$env_file" <<'PYEOF'
 import os
