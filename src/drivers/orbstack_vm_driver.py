@@ -23,6 +23,7 @@ from .orbstack_templates import (
     registration_and_run_snippet,
 )
 from .runner_env import cache_env, export_block, registry_env
+from .sizing import RunnerSizing
 
 RUNNER_VM_PREFIX = "runzero-vm-"
 
@@ -115,6 +116,11 @@ class OrbStackVMDriver(RunnerDriver):
         self._spawn_retry_after: dict[str, float] = {}
         self._runner_created_at: dict[str, float] = {}
         self._runner_repos: dict[str, str] = {}
+
+    @property
+    def sizing(self) -> RunnerSizing:
+        """Per-clone CPU/memory limits, reported by the bridge's /health (#71)."""
+        return self.images.sizing
 
     def _report_image_event(self, status: str, arch: str, detail: str, profile: str | None = None) -> None:
         """Emit a structured build-status event alongside the existing stdout/stderr prints.
@@ -337,6 +343,8 @@ class OrbStackVMDriver(RunnerDriver):
 
     def proxy_env_block(self) -> str:
         """Shell lines pointing npm/pnpm/yarn, Go, pip/uv, apt and cargo in a job VM at the host proxies."""
+        # The no-translations apt setting is also baked in by provision-toolchain.sh, but golden
+        # images aren't rebuilt when that script changes, so existing ones would miss it (#70).
         proxy_env_block = f"""
 {export_block(registry_env("http://host.orb.internal:49501/"))}
 export GOPROXY="http://host.orb.internal:49500,https://proxy.golang.org,direct"
@@ -344,6 +352,7 @@ export PIP_INDEX_URL="http://host.orb.internal:49507/root/pypi/+simple/"
 export UV_INDEX_URL="http://host.orb.internal:49507/root/pypi/+simple/"
 export PIP_TRUSTED_HOST="host.orb.internal"
 echo 'Acquire::http::Proxy "http://host.orb.internal:49503";' | sudo tee /etc/apt/apt.conf.d/01runzero-proxy > /dev/null
+echo 'Acquire::Languages "none";' | sudo tee /etc/apt/apt.conf.d/02runzero-no-translations > /dev/null
 """
         # pip implicitly trusts "localhost"/"127.0.0.1" for a plain-HTTP index but
         # refuses any other host -- verified live (2026-08-26) inside a real OrbStack
