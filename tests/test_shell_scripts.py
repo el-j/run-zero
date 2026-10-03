@@ -135,5 +135,38 @@ class TestBridgeSupervisorPortConflict(unittest.TestCase):
         self.assertFalse(os.path.exists(os.path.join(self.repo, ".bridge.pid")))
 
 
+class TestBridgeSupervisorStaging(unittest.TestCase):
+    """#64: launchd runs a copy outside the repo, so a repo under ~/Documents needs no Full Disk Access."""
+
+    def setUp(self):
+        self.repo = tempfile.mkdtemp(prefix="runzero-supervisor-")
+        self.home = tempfile.mkdtemp(prefix="runzero-bridge-home-")
+        for path in (self.repo, self.home):
+            self.addCleanup(shutil.rmtree, path, ignore_errors=True)
+        files = {"scripts/bridge_supervisor.sh": None, "src/vm_bridge.py": "", "src/__pycache__/x.pyc": "", "docker/provision-toolchain.sh": ""}
+        for rel, content in files.items():
+            os.makedirs(os.path.dirname(os.path.join(self.repo, rel)), exist_ok=True)
+            if content is None:
+                shutil.copy(os.path.join(REPO_ROOT, rel), os.path.join(self.repo, rel))
+            else:
+                with open(os.path.join(self.repo, rel), "w", encoding="utf-8") as fh:
+                    fh.write(content)
+
+    def _stage(self) -> subprocess.CompletedProcess[str]:
+        env = {**os.environ, "RUNZERO_BRIDGE_HOME": self.home}
+        return subprocess.run(["bash", "scripts/bridge_supervisor.sh", "stage"], cwd=self.repo, env=env, capture_output=True, text=True, timeout=30)
+
+    def test_stage_copies_runtime_files_and_replaces_stale_ones(self):
+        os.makedirs(os.path.join(self.home, "src"))
+        with open(os.path.join(self.home, "src", "removed_module.py"), "w", encoding="utf-8") as fh:
+            fh.write("")
+        res = self._stage()
+        self.assertEqual(res.returncode, 0, res.stdout + res.stderr)
+        self.assertTrue(os.path.isfile(os.path.join(self.home, "src", "vm_bridge.py")))
+        self.assertTrue(os.path.isfile(os.path.join(self.home, "docker", "provision-toolchain.sh")))
+        self.assertFalse(os.path.exists(os.path.join(self.home, "src", "removed_module.py")))
+        self.assertFalse(os.path.exists(os.path.join(self.home, "src", "__pycache__")))
+
+
 if __name__ == "__main__":
     unittest.main()

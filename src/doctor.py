@@ -28,7 +28,7 @@ from arch_override import normalize_host_arch
 from cache_manager import init_cache_dirs
 from dashboard.state import cache_categories
 from drivers.runner_env import PLAYWRIGHT_BROWSERS, PNPM_STORE, TOOL_CACHE, cache_env, export_block
-from drivers.sizing import orbstack_capacity, resolve_sizing
+from drivers.sizing import RunnerSizing, orbstack_capacity, resolve_sizing
 from version import build_info, version_drift
 
 OK, WARN, FAIL, SKIP = "ok", "warn", "fail", "skip"
@@ -54,9 +54,16 @@ p RUNNER_TOOL_CACHE "${RUNNER_TOOL_CACHE:-}"
 p TOOLCACHE_MOUNTED "$(mounted /opt/hostedtoolcache)"
 p PLAYWRIGHT_BROWSERS_PATH "${PLAYWRIGHT_BROWSERS_PATH:-}"
 p PLAYWRIGHT_MOUNTED "$(mounted "${PLAYWRIGHT_BROWSERS_PATH:-/nonexistent}")"
+p CPU_MAX "$(cat /sys/fs/cgroup/cpu.max 2>/dev/null)"
+p MEMORY_MAX "$(cat /sys/fs/cgroup/memory.max 2>/dev/null)"
+# Runner images ship without Node (jobs get it from setup-node), so ask the tool cache's.
+if ! command -v node >/dev/null 2>&1; then
+  node_bin="$(ls -d "${RUNNER_TOOL_CACHE:-/opt/hostedtoolcache}"/node/*/*/bin 2>/dev/null | sort -V | tail -1)"
+  [ -n "$node_bin" ] && PATH="$node_bin:$PATH"
+fi
 p EXPECTED_REGISTRY "${npm_config_registry:-}"
 p NPM_REGISTRY "$(npm config get registry 2>/dev/null)"
-p YARN_REGISTRY "$(yarn config get registry 2>/dev/null)"
+p YARN_REGISTRY "$( (command -v yarn >/dev/null && yarn config get registry || npx -y yarn@1 config get registry) 2>/dev/null)"
 for v in 10 11; do
   p "PNPM${v}_REGISTRY" "$(npx -y "pnpm@${v}" config get registry 2>/dev/null)"
   p "PNPM${v}_STORE" "$(npx -y "pnpm@${v}" config get store-dir 2>/dev/null)"
@@ -142,9 +149,14 @@ def check_load(loadavg: Callable[[], tuple[float, float, float]] = os.getloadavg
     return Check("host load", status, f"1-min load {load:.1f} on {cpus} CPUs")
 
 
+def backend_sizing(env: dict[str, str], backend: str) -> RunnerSizing:
+    """The sizing `backend`'s driver resolves: OrbStack VMs share OrbStack's pool, not the host."""
+    return resolve_sizing(env, orbstack_capacity if backend == "orbstack-vm" else None)
+
+
 def check_sizing(env: dict[str, str], backend: str) -> list[Check]:
     """Per-runner CPU/memory sizing, flagged when MAX_RUNNERS x size exceeds the host (#71)."""
-    sizing = resolve_sizing(env, orbstack_capacity if backend == "orbstack-vm" else None)
+    sizing = backend_sizing(env, backend)
     checks = [Check("runner sizing", OK, sizing.describe())]
     checks.extend(Check("runner sizing", WARN, w) for w in sizing.warnings)
     return checks
@@ -228,12 +240,43 @@ def _cache_checks(backend: str, values: dict[str, str], caches_mounted: bool) ->
     return checks
 
 
-def evaluate_probe(backend: str, values: dict[str, str], caches_mounted: bool, proxies_enabled: bool) -> list[Check]:
+def _cgroup_cpus(cpu_max: str) -> float | None:
+    """CPUs allowed by a cgroup v2 `cpu.max` ("<quota> <period>"); None for "max" (unlimited)."""
+    quota, _, period = cpu_max.partition(" ")
+    return int(quota) / int(period) if quota.isdigit() and period.isdigit() and int(period) else None
+
+
+def _limit_checks(backend: str, values: dict[str, str], sizing: RunnerSizing | None) -> list[Check]:
+    """The runner's cgroup enforces the configured sizing (#71).
+
+    nproc and /proc/meminfo inside an OrbStack machine show the whole pool; the limit lives
+    in the cgroup, so that is what's compared.
+    """
+    if sizing is None or sizing.cpus is None or sizing.memory_mib is None:
+        return []
+    cpu_max, memory_max = values.get("CPU_MAX", ""), values.get("MEMORY_MAX", "")
+    if not cpu_max or not memory_max:
+        return [Check(f"{backend}: resource limits", WARN, "cgroup v2 limits not readable in the runner")]
+    cpus = _cgroup_cpus(cpu_max)
+    cpu_ok = cpus is not None and round(cpus) == sizing.cpus
+    memory_mib = int(memory_max) // (1024 * 1024) if memory_max.isdigit() else None
+    return [
+        Check(f"{backend}: CPU limit", OK if cpu_ok else FAIL, f"{cpus:g} CPUs (expected {sizing.cpus})" if cpus else f"unlimited (expected {sizing.cpus})"),
+        Check(
+            f"{backend}: memory limit",
+            OK if memory_mib == sizing.memory_mib else FAIL,
+            f"{memory_mib} MiB (expected {sizing.memory_mib})" if memory_mib is not None else f"unlimited (expected {sizing.memory_mib} MiB)",
+        ),
+    ]
+
+
+def evaluate_probe(backend: str, values: dict[str, str], caches_mounted: bool, proxies_enabled: bool, sizing: RunnerSizing | None = None) -> list[Check]:
     """Turn a runner's probe output into checks."""
     if values.get("RUNZERO") != "1":
         return [Check(f"{backend}: runner env", FAIL, "RUNZERO=1 is not exported -- the runner environment is not applied")]
     return [
         Check(f"{backend}: runner env", OK, "RUNZERO=1"),
+        *_limit_checks(backend, values, sizing),
         *_cache_checks(backend, values, caches_mounted),
         *_registry_checks(backend, values, proxies_enabled),
     ]
@@ -251,6 +294,10 @@ def probe_docker(arch: str, cache_mounts: dict[str, str], proxies_enabled: bool,
     if not driver.is_available() or not driver._image_exists(arch):
         return None
     cmd = ["docker", "run", "--rm", "--platform", f"linux/{driver._normalize_arch(arch)}", "--network", driver.network, "--entrypoint", "bash"]
+    if driver.runner_cpus:
+        cmd += ["--cpus", driver.runner_cpus]
+    if driver.runner_memory:
+        cmd += ["--memory", driver.runner_memory]
     cmd += [arg for k, v in cache_env(bool(cache_mounts)).items() for arg in ("-e", f"{k}={v}")]
     if proxies_enabled:
         cmd += driver._build_proxy_env_args()
@@ -292,7 +339,7 @@ def probe_orbstack(arch: str, cache_mounts: dict[str, str], proxies_enabled: boo
 PROBES: dict[str, Callable[[str, dict[str, str], bool], str | None]] = {"docker": probe_docker, "orbstack-vm": probe_orbstack}
 
 
-def check_runner(backend: str, arch: str, cache_dir: str, cache_enabled: bool, proxies_enabled: bool) -> list[Check]:
+def check_runner(backend: str, arch: str, cache_dir: str, cache_enabled: bool, proxies_enabled: bool, sizing: RunnerSizing | None = None) -> list[Check]:
     """Start a throwaway runner on `backend` and check what its tools resolve."""
     probe = PROBES.get(backend)
     if probe is None:
@@ -301,7 +348,7 @@ def check_runner(backend: str, arch: str, cache_dir: str, cache_enabled: bool, p
     output = probe(arch, mounts, proxies_enabled)
     if output is None:
         return [Check(f"{backend}: runner probe", SKIP, f"backend unavailable or no {arch} runner image yet")]
-    return evaluate_probe(backend, parse_probe(output), bool(mounts), proxies_enabled)
+    return evaluate_probe(backend, parse_probe(output), bool(mounts), proxies_enabled, sizing)
 
 
 # -- report -----------------------------------------------------------------------------
@@ -335,7 +382,7 @@ def run_checks(args: argparse.Namespace, env: dict[str, str]) -> list[Check]:
     for backend in args.backend:
         checks.extend(check_sizing(env, backend))
         if not args.no_spawn:
-            checks.extend(check_runner(backend, args.arch, cache_dir, cache_enabled, proxies_enabled))
+            checks.extend(check_runner(backend, args.arch, cache_dir, cache_enabled, proxies_enabled, backend_sizing(env, backend)))
     return checks
 
 

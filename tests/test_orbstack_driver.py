@@ -24,6 +24,14 @@ class TestOrbStackVMDriver(OrbStackDriverTestCase):
     def test_name(self):
         self.assertEqual(self.driver.name(), "orbstack-vm")
 
+    def test_sizing_is_the_image_builders(self):
+        # vm_bridge's /health reads `driver.sizing`; the clone limits live on the image builder.
+        self.assertIs(self.driver.sizing, self.driver.images.sizing)
+
+    def test_job_vms_skip_apt_translations(self):
+        # Golden images built before provision-toolchain.sh gained this lack it (#70).
+        self.assertIn('Acquire::Languages "none"', self.driver.proxy_env_block())
+
     @patch("shutil.which", return_value="/usr/local/bin/orbctl")
     @patch("subprocess.run")
     def test_is_available(self, mock_run, mock_which):

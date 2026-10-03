@@ -11,6 +11,9 @@ from unittest.mock import MagicMock, patch
 
 import doctor
 from doctor import FAIL, OK, SKIP, WARN, Check
+from drivers.sizing import HostCapacity, RunnerSizing
+
+SIZING = RunnerSizing(3, 4096, "configured", HostCapacity(11, 16384), 3)
 
 GOOD_PROBE = """
 npm warn exec The following package was not found and will be installed: pnpm@11
@@ -147,6 +150,30 @@ class TestProbeEvaluation(unittest.TestCase):
         result = statuses(doctor.evaluate_probe("docker", values, caches_mounted=False, proxies_enabled=False))
         self.assertEqual(result, {"docker: runner env": OK, "docker: RUNNER_TOOL_CACHE": FAIL, "docker: registry": SKIP})
 
+    def test_cgroup_limits_match_the_sizing(self):
+        values = {"RUNZERO": "1", "CPU_MAX": "300000 100000", "MEMORY_MAX": "4294967296"}
+        result = statuses(doctor.evaluate_probe("orbstack-vm", values, False, False, SIZING))
+        self.assertEqual((result["orbstack-vm: CPU limit"], result["orbstack-vm: memory limit"]), (OK, OK))
+
+    def test_cgroup_limits_missing_or_wrong(self):
+        values = {"RUNZERO": "1", "CPU_MAX": "max 100000", "MEMORY_MAX": "max"}
+        checks = {c.name: c for c in doctor.evaluate_probe("docker", values, False, False, SIZING)}
+        self.assertEqual(checks["docker: CPU limit"].status, FAIL)
+        self.assertEqual(checks["docker: memory limit"].detail, "unlimited (expected 4096 MiB)")
+        values.update(CPU_MAX="200000 100000", MEMORY_MAX="2147483648")
+        checks = {c.name: c for c in doctor.evaluate_probe("docker", values, False, False, SIZING)}
+        self.assertEqual(checks["docker: CPU limit"].detail, "2 CPUs (expected 3)")
+        self.assertEqual(checks["docker: memory limit"].status, FAIL)
+
+    def test_cgroup_limits_unreadable_or_not_configured(self):
+        result = statuses(doctor.evaluate_probe("docker", {"RUNZERO": "1"}, False, False, SIZING))
+        self.assertEqual(result["docker: resource limits"], WARN)
+        unlimited = RunnerSizing(None, None, "unlimited", HostCapacity(11, 16384), 3)
+        for sizing in (None, unlimited):
+            result = statuses(doctor.evaluate_probe("docker", {"RUNZERO": "1"}, False, False, sizing))
+            self.assertNotIn("docker: resource limits", result)
+            self.assertNotIn("docker: CPU limit", result)
+
     def test_registry_not_exported(self):
         result = statuses(doctor.evaluate_probe("docker", {"RUNZERO": "1"}, False, True))
         self.assertEqual(result["docker: registry"], FAIL)
@@ -165,6 +192,17 @@ class TestProbes(unittest.TestCase):
         self.assertIn("/h/npm:/home/runner/.npm", cmd)
         self.assertTrue(any(a.startswith("pnpm_config_registry=") for a in cmd))
         self.assertEqual(cmd[-2:], ["-lc", doctor.PROBE_SCRIPT])
+
+    @patch("doctor.subprocess.run")
+    @patch("drivers.docker_driver.DockerDriver.is_available", return_value=True)
+    @patch("drivers.docker_driver.DockerDriver._image_exists", return_value=True)
+    def test_docker_probe_applies_the_runner_sizing(self, _exists, _avail, run):
+        run.return_value = MagicMock(stdout=GOOD_PROBE)
+        with patch.dict(os.environ, {"RUNNER_SIZING": "auto", "RUNNER_CPUS": "2", "RUNNER_MEMORY": "2G", "MAX_RUNNERS": "1"}):
+            doctor.probe_docker("arm64", {}, False)
+        cmd = run.call_args.args[0]
+        self.assertEqual(cmd[cmd.index("--cpus") + 1], "2")
+        self.assertEqual(cmd[cmd.index("--memory") + 1], "2048M")
 
     @patch("doctor.subprocess.run", side_effect=subprocess.TimeoutExpired("docker", 1))
     @patch("drivers.docker_driver.DockerDriver.is_available", return_value=True)

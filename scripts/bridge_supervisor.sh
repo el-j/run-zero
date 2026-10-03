@@ -33,6 +33,15 @@
 # success, and falls back to the plain nohup mode (with a one-time
 # actionable message) if it didn't -- a silently-broken "supervised" bridge
 # that never serves a request is worse than the old unsupervised one.
+#
+# To not need that grant at all, the launchd job never touches the repo (#64):
+# `start` stages what the bridge reads at runtime (src/, docker/) into
+# $RUNZERO_BRIDGE_HOME (default ~/Library/Application Support/RunZero/bridge)
+# and runs it with the venv's base interpreter, which lives outside the repo
+# (the bridge only needs the standard library). The version and git SHA are
+# resolved here, in the repo, and baked into the plist, so /health still
+# reports which commit is live (#72). Every `start` re-stages, so
+# `make restart` after a pull deploys the new code.
 # ==============================================================================
 
 set -euo pipefail
@@ -43,6 +52,8 @@ PLIST_PATH="$HOME/Library/LaunchAgents/$LABEL.plist"
 LOG_FILE="$REPO_DIR/.bridge.log"
 PID_FILE="$REPO_DIR/.bridge.pid"
 MODE_FILE="$REPO_DIR/.bridge.mode"
+BRIDGE_HOME="${RUNZERO_BRIDGE_HOME:-$HOME/Library/Application Support/RunZero/bridge}"
+LAUNCHD_LOG_FILE="$BRIDGE_HOME/bridge.log"
 DOMAIN="gui/$(id -u)"
 SERVICE="$DOMAIN/$LABEL"
 
@@ -120,12 +131,29 @@ wait_for_health() {
     return 1
 }
 
-pick_python() {
-    if [ -x "$REPO_DIR/.venv/bin/python3" ]; then
-        echo "$REPO_DIR/.venv/bin/python3"
-    else
-        command -v python3
+# The interpreter launchd runs: the venv's base python (pyvenv.cfg `home`), since the
+# venv itself sits inside the repo; else whatever python3 is on PATH.
+launchd_python() {
+    local cfg="$REPO_DIR/.venv/pyvenv.cfg" home
+    if [ -f "$cfg" ]; then
+        home="$(awk -F' = ' '$1 == "home" {print $2; exit}' "$cfg")"
+        if [ -n "$home" ] && [ -x "$home/python3" ]; then
+            echo "$home/python3"
+            return
+        fi
     fi
+    command -v python3
+}
+
+# Copies the bridge's runtime files (src/, docker/) to $BRIDGE_HOME, replacing the previous copy.
+stage_bridge() {
+    local dir
+    mkdir -p "$BRIDGE_HOME"
+    for dir in src docker; do
+        rm -rf "${BRIDGE_HOME:?}/$dir"
+        cp -R "$REPO_DIR/$dir" "$BRIDGE_HOME/$dir"
+    done
+    find "$BRIDGE_HOME" -name __pycache__ -type d -prune -exec rm -rf {} +
 }
 
 # Renders the launchd plist to stdout, merging in the handful of .env
@@ -152,7 +180,9 @@ pick_python() {
 render_plist() {
     local python_bin="$1"
     local env_file="$REPO_DIR/.env"
-    PYTHON_BIN="$python_bin" REPO_DIR="$REPO_DIR" LABEL="$LABEL" LOG_FILE="$LOG_FILE" \
+    PYTHON_BIN="$python_bin" WORK_DIR="$BRIDGE_HOME" LABEL="$LABEL" LOG_FILE="$LAUNCHD_LOG_FILE" \
+    BUILD_VERSION="$(cd "$REPO_DIR" && PYTHONPATH=src "$python_bin" -c 'from version import __version__; print(__version__)' 2>/dev/null || true)" \
+    BUILD_GIT_SHA="$(git -C "$REPO_DIR" rev-parse --short=12 HEAD 2>/dev/null || true)" \
     "$python_bin" - "$env_file" <<'PYEOF'
 import os
 import sys
@@ -193,6 +223,10 @@ if os.path.isfile(env_file):
             value = value.strip().strip('"').strip("'")
             if key in ALLOWED_ENV_KEYS:
                 env[key] = value
+# The staged copy has no .git to derive these from.
+for key, source in (("RUNZERO_VERSION", "BUILD_VERSION"), ("RUNZERO_GIT_SHA", "BUILD_GIT_SHA")):
+    if os.environ.get(source):
+        env[key] = os.environ[source]
 
 def s(v):
     return f"<string>{escape(str(v))}</string>"
@@ -211,7 +245,7 @@ print(f"""<?xml version="1.0" encoding="UTF-8"?>
 {args_xml}
   </array>
   <key>WorkingDirectory</key>
-  {s(os.environ["REPO_DIR"])}
+  {s(os.environ["WORK_DIR"])}
   <key>EnvironmentVariables</key>
   <dict>
 {env_xml}
@@ -286,7 +320,7 @@ nohup_status() {
 
 launchd_start() {
     mkdir -p "$(dirname "$PLIST_PATH")"
-    local python_bin; python_bin="$(pick_python)"
+    local python_bin; python_bin="$(launchd_python)"
 
     # Clear out any previous nohup-mode process first -- it would otherwise
     # either hold the port launchd's instance needs, or leave bridge-status
@@ -304,6 +338,10 @@ launchd_start() {
     launchctl bootout "$SERVICE" >/dev/null 2>&1 || true
     local port; port="$(bridge_port)"; port="${port:-49504}"
     refuse_foreign_holder "$port"
+    stage_bridge
+    # `make bridge-logs` tails $LOG_FILE; point it at the log launchd writes.
+    : >> "$LAUNCHD_LOG_FILE"
+    ln -sfn "$LAUNCHD_LOG_FILE" "$LOG_FILE"
     launchctl bootstrap "$DOMAIN" "$PLIST_PATH"
     launchctl enable "$SERVICE" >/dev/null 2>&1 || true
 
@@ -311,6 +349,7 @@ launchd_start() {
         echo "launchd" > "$MODE_FILE"
         echo -e "${GREEN}Host VM Bridge installed as a launchd agent (auto-restarts on crash, survives reboot/logout).${RESET}"
         echo -e "${CYAN}  Label: $LABEL   Plist: $PLIST_PATH${RESET}"
+        echo -e "${CYAN}  Runs a copy of src/ and docker/ from $BRIDGE_HOME (re-staged on every start).${RESET}"
         return
     fi
 
@@ -326,20 +365,21 @@ launchd_start() {
     echo -e "${RED}Host VM Bridge did not come up under launchd (last exit: ${exit_info:-unknown}).${RESET}"
     case "$exit_info" in
         *78*)
-            echo -e "${YELLOW}This looks like macOS blocking launchd from reading files under:"
-            echo -e "  $REPO_DIR"
-            echo -e "because it's inside a TCC-protected folder (Documents/Desktop/Downloads)."
-            echo -e "To get real crash supervision, grant Full Disk Access to this exact interpreter:"
+            echo -e "${YELLOW}This looks like macOS blocking launchd from reading the staged bridge or its interpreter:"
+            echo -e "  $BRIDGE_HOME"
             echo -e "  $python_bin"
+            echo -e "Keep both out of TCC-protected folders (Documents/Desktop/Downloads; see RUNZERO_BRIDGE_HOME),"
+            echo -e "or grant that interpreter Full Disk Access."
             echo -e "(System Settings > Privacy & Security > Full Disk Access, then \`make bridge-start\` again)."
             echo -e "Falling back to a plain background process for now -- it works, it just won't"
             echo -e "auto-restart if it crashes.${RESET}"
             ;;
         *)
-            echo -e "${YELLOW}See $LOG_FILE and \`launchctl print $SERVICE\` for details."
+            echo -e "${YELLOW}See $LAUNCHD_LOG_FILE and \`launchctl print $SERVICE\` for details."
             echo -e "Falling back to a plain background process for now.${RESET}"
             ;;
     esac
+    rm -f "$LOG_FILE"  # the symlink to launchd's log; the fallback writes its own
     nohup_start "launchd install failed"
 }
 
@@ -377,8 +417,12 @@ case "${1:-status}" in
             *) echo "Not running" ;;
         esac
         ;;
+    stage)
+        stage_bridge
+        echo "Staged src/ and docker/ into $BRIDGE_HOME"
+        ;;
     *)
-        echo "Usage: $0 {start|stop|status}" >&2
+        echo "Usage: $0 {start|stop|status|stage}" >&2
         exit 1
         ;;
 esac
