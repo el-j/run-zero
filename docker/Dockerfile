@@ -62,7 +62,10 @@ USER runner
 RUN chmod +x /tmp/provision-toolchain.sh && \
     /tmp/provision-toolchain.sh "${TARGETARCH:-amd64}"
 USER root
-RUN rm -f /tmp/provision-toolchain.sh && rm -rf /var/lib/apt/lists/*
+# Keep /var/lib/apt/lists (#70): without it, every job's `apt-get update` (e.g. from
+# `playwright install --with-deps`) re-downloads every index from scratch; with it, apt
+# only fetches what changed since the image was built. Costs ~100 MB of image size.
+RUN rm -f /tmp/provision-toolchain.sh
 
 # Ensure NVM is auto-loaded for all shells
 RUN echo 'export NVM_DIR="/home/runner/.nvm"' >> /etc/profile.d/nvm.sh && \

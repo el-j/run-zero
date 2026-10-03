@@ -180,14 +180,29 @@ class TestDockerDriver(unittest.TestCase):
         self.assertIn("local-runner-amd64-my-org-", name_amd)
 
     @patch("subprocess.run")
-    def test_spawn_runner_omits_resource_flags_when_unset(self, mock_run):
+    def test_spawn_runner_omits_resource_flags_when_sizing_unlimited(self, mock_run):
         mock_run.return_value = MagicMock(returncode=0)
         self.driver.spawn_runner(repo="el-j/run-zero", arch="arm64", access_token="tok")
         cmd = mock_run.call_args[0][0]
         self.assertNotIn("--cpus", cmd)
         self.assertNotIn("--memory", cmd)
 
-    @patch.dict(os.environ, {"RUNNER_CPUS": "2", "RUNNER_MEMORY": "4g"})
+    @patch.dict(os.environ, {"RUNNER_SIZING": "auto", "MAX_RUNNERS": "2"})
+    @patch("drivers.sizing.host_capacity")
+    @patch("subprocess.run")
+    def test_spawn_runner_derives_resource_limits_when_unset(self, mock_run, capacity):
+        from drivers.sizing import HostCapacity
+
+        capacity.return_value = HostCapacity(9, 10240)
+        mock_run.return_value = MagicMock(returncode=0)
+        driver = DockerDriver()
+        self.assertEqual(driver.sizing.source, "derived")
+        driver.spawn_runner(repo="el-j/run-zero", arch="arm64", access_token="tok")
+        cmd = mock_run.call_args[0][0]
+        self.assertEqual(cmd[cmd.index("--cpus") + 1], "4")
+        self.assertEqual(cmd[cmd.index("--memory") + 1], "4096M")
+
+    @patch.dict(os.environ, {"RUNNER_CPUS": "2", "RUNNER_MEMORY": "4g", "RUNNER_SIZING": "auto"})
     @patch("subprocess.run")
     def test_spawn_runner_passes_configured_resource_limits(self, mock_run):
         mock_run.return_value = MagicMock(returncode=0)
@@ -195,7 +210,7 @@ class TestDockerDriver(unittest.TestCase):
         driver.spawn_runner(repo="el-j/run-zero", arch="arm64", access_token="tok")
         cmd = mock_run.call_args[0][0]
         self.assertEqual(cmd[cmd.index("--cpus") + 1], "2")
-        self.assertEqual(cmd[cmd.index("--memory") + 1], "4g")
+        self.assertEqual(cmd[cmd.index("--memory") + 1], "4096M")
 
     @patch("subprocess.run")
     def test_spawn_runner_uses_configured_network_mode(self, mock_run):

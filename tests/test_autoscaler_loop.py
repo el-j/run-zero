@@ -16,6 +16,7 @@ from typing import Any
 from unittest.mock import MagicMock, patch
 
 import autoscaler
+from arch_override import NativeArchOverride
 from autoscaler import Scaler
 from config import Config
 from drivers import RunnerInfo
@@ -25,6 +26,8 @@ def mock_driver(name: str = "docker", runners: list[RunnerInfo] | None = None, s
     driver = MagicMock()
     driver.name.return_value = name
     driver.list_runners.return_value = runners or []
+    driver.sizing = None  # a local driver without its own sizing (see Scaler.runner_sizing)
+    driver.health = None  # not bridge-backed
     if callable(spawn):
         driver.spawn_runner.side_effect = spawn
     else:
@@ -245,6 +248,57 @@ class TestRepoMode(ScalerTestCase):
         self.stubs["reconcile_zombie_runners"].assert_called_once()
 
 
+class TestNativeArchOverride(ScalerTestCase):
+    """#75: an amd64 job of an opted-in repo is spawned for the native arch, labels untouched."""
+
+    def setUp(self):
+        super().setUp()
+        p = patch.object(autoscaler.dashboard_state, "record_routing_decision")
+        self.record = p.start()
+        self.addCleanup(p.stop)
+
+    def scaler_with(self, raw: str, driver: Any) -> Scaler:
+        scaler = self.scaler(default=driver)
+        scaler.native_arch = NativeArchOverride(raw, host_arch="arm64")
+        return scaler
+
+    def test_opted_in_repo_spawns_native_with_the_jobs_amd64_label(self):
+        self.queue(job(1, "local", "amd64"))
+        driver = mock_driver()
+        driver.is_vm = True
+        with patch("autoscaler.log_print") as log:
+            self.scaler_with("el-j/run-zero", driver).run_once()
+        kwargs = driver.spawn_runner.call_args.kwargs
+        self.assertEqual(kwargs["arch"], "arm64")
+        self.assertEqual(kwargs["labels"], "self-hosted,local,amd64")
+        driver.ensure_runtime_assets.assert_called_with(arch="arm64")
+        self.record.assert_called_once_with(True, "container", True)
+        self.assertTrue(any("natively on arm64" in str(c.args[0]) for c in log.call_args_list))
+
+    def test_other_repos_keep_amd64(self):
+        self.queue(job(1, "local", "amd64"))
+        driver = mock_driver()
+        driver.is_vm = False
+        self.scaler_with("el-j/other", driver).run_once()
+        self.assertEqual(driver.spawn_runner.call_args.kwargs["arch"], "amd64")
+        self.record.assert_called_once_with(False, "container", False)
+
+    def test_fallback_spawn_keeps_the_override(self):
+        self.queue(job(1, "services"))
+        docker, vm = mock_driver("docker", spawn="d-1"), mock_driver("orbstack-vm", spawn=None)
+        docker.is_vm = False
+        scaler = self.scaler(drivers={"docker": docker, "orbstack-vm": vm}, default=docker)
+        scaler.native_arch = NativeArchOverride("all", host_arch="arm64")
+        with patch("autoscaler.log_print"):
+            scaler.run_once()
+        self.assertEqual(docker.spawn_runner.call_args.kwargs["arch"], "arm64")
+        self.record.assert_called_once_with(False, "container", True)
+
+    def test_config_value_reaches_the_scaler(self):
+        scaler = self.scaler(config=self.config(native_arch_override="all"))
+        self.assertEqual(scaler.native_arch.mode, "all")
+
+
 class TestJobMetadataAndPublishing(ScalerTestCase):
     def test_job_meta_attaches_to_runner_visible_on_a_later_poll(self):
         # Cycle 1 spawns and records job links; cycle 2's list_runners() reports that runner,
@@ -375,21 +429,21 @@ class TestRoutingStatistics(ScalerTestCase):
         driver.list_runners.return_value = []  # runner vanished; job still queued -> respawn
         scaler.run_once()
         self.assertEqual(driver.spawn_runner.call_count, 2)
-        self.record.assert_called_once_with(False, "container")
+        self.record.assert_called_once_with(False, "container", False)
 
     def test_vm_route_records_driver_is_vm_and_reason(self):
         self.queue(job(1, "browser"))
         docker, vm = mock_driver("docker"), mock_driver("wsl2", spawn="wsl-1")
         vm.is_vm = True
         self.scaler(drivers={"docker": docker, "wsl2": vm}, default=docker).run_once()
-        self.record.assert_called_once_with(True, "label:browser")
+        self.record.assert_called_once_with(True, "label:browser", False)
 
     def test_fallback_counts_as_container_job(self):
         self.queue(job(1, "services"))
         docker, vm = mock_driver("docker", spawn="d-1"), mock_driver("orbstack-vm", spawn=None)
         docker.is_vm = False
         self.scaler(drivers={"docker": docker, "orbstack-vm": vm}, default=docker).run_once()
-        self.record.assert_called_once_with(False, "container")
+        self.record.assert_called_once_with(False, "container", False)
 
     def test_memory_of_recorded_jobs_is_bounded(self):
         driver = mock_driver(spawn=unique_ids)
@@ -503,11 +557,82 @@ class TestCollectAndShutdown(ScalerTestCase):
         del driver.ensure_base_images_stopped
         self.assertEqual(self.scaler(default=driver).collect(), [])
 
-    def test_shutdown_cleans_every_driver(self):
+    def test_shutdown_leaves_runners_running_by_default(self):
+        # #77: destroying runners on shutdown cancelled every in-flight job on a mere restart.
         a, b = mock_driver("docker"), mock_driver("orbstack-vm")
-        self.scaler(drivers={"docker": a, "orbstack-vm": b}, default=a).shutdown()
+        with patch("autoscaler.log_print") as log:
+            self.scaler(drivers={"docker": a, "orbstack-vm": b}, default=a).shutdown()
+        a.cleanup_all.assert_not_called()
+        b.cleanup_all.assert_not_called()
+        self.assertIn("CLEANUP_RUNNERS_ON_SHUTDOWN", log.call_args.args[0])
+
+    def test_shutdown_cleans_every_driver_when_opted_in(self):
+        a, b = mock_driver("docker"), mock_driver("orbstack-vm")
+        self.scaler(self.config(cleanup_on_shutdown=True), drivers={"docker": a, "orbstack-vm": b}, default=a).shutdown()
         a.cleanup_all.assert_called_once()
         b.cleanup_all.assert_called_once()
+
+
+def bridge_driver(name: str = "orbstack-vm", health: Any = None) -> MagicMock:
+    driver = mock_driver(name)
+    driver.health = MagicMock(return_value=health if health is not None else {"error": "unreachable"})
+    return driver
+
+
+class TestBridgeVersionAndSizing(ScalerTestCase):
+    def setUp(self):
+        super().setUp()
+        p = patch("autoscaler.build_info", return_value={"version": "0.0.1", "git_sha": "abc123"})
+        p.start()
+        self.addCleanup(p.stop)
+        self.addCleanup(setattr, autoscaler.dashboard_state, "bridge_drift", "")
+
+    def test_no_bridge_means_no_drift(self):
+        self.assertIsNone(self.scaler().check_bridge_versions())
+        self.assertEqual(autoscaler.dashboard_state.bridge_drift, "")
+
+    def test_unreachable_bridge_is_not_reported_as_drift(self):
+        self.assertIsNone(self.scaler(default=bridge_driver()).check_bridge_versions())
+
+    def test_bridge_without_version_is_stale(self):
+        scaler = self.scaler(default=bridge_driver(health={"status": "ok"}))
+        with patch("autoscaler.log_print") as log:
+            drift = scaler.check_bridge_versions()
+            scaler.check_bridge_versions()
+        assert drift is not None
+        self.assertIn("does not report its version", drift)
+        self.assertEqual(autoscaler.dashboard_state.bridge_drift, drift)
+        self.assertEqual(log.call_count, 1)  # logged once, not on every check
+
+    def test_sha_mismatch_then_recovery(self):
+        driver = bridge_driver(health={"status": "ok", "version": "0.0.1-beta.1", "git_sha": "def456"})
+        scaler = self.scaler(default=driver)
+        with patch("autoscaler.log_print") as log:
+            self.assertIn("def456", scaler.check_bridge_versions() or "")
+            driver.health.return_value = {"status": "ok", "version": "0.0.1-beta.1", "git_sha": "abc123"}
+            self.assertIsNone(scaler.check_bridge_versions())
+        self.assertIn("now matches", log.call_args.args[0])
+        self.assertEqual(autoscaler.dashboard_state.bridge_drift, "")
+
+    def test_discovery_checks_bridge_version(self):
+        scaler = self.scaler(default=bridge_driver(health={"status": "ok"}))
+        with patch("autoscaler.log_print"):
+            scaler.discover(now=2_000_000.0)
+        self.assertIn("does not report", autoscaler.dashboard_state.bridge_drift)
+
+    def test_sizing_from_local_driver(self):
+        driver = mock_driver()
+        driver.sizing = MagicMock(to_dict=MagicMock(return_value={"cpus": 3, "source": "configured"}))
+        self.assertEqual(self.scaler(default=driver).runner_sizing(), {"cpus": 3, "source": "configured"})
+
+    def test_sizing_reported_by_bridge(self):
+        health = {"status": "ok", "version": "x", "sizing": {"orbstack-vm": {"cpus": 2, "source": "derived"}}}
+        self.assertEqual(self.scaler(default=bridge_driver(health=health)).runner_sizing(), {"cpus": 2, "source": "derived"})
+
+    def test_sizing_falls_back_to_local_environment(self):
+        sizing = self.scaler(default=bridge_driver(health={"status": "ok", "version": "x", "sizing": {}})).runner_sizing()
+        self.assertEqual(sizing["source"], "unlimited")  # conftest pins RUNNER_SIZING=unlimited
+        self.assertTrue(sizing["warnings"])
 
 
 class TestMain(ScalerTestCase):
@@ -548,8 +673,23 @@ class TestMain(ScalerTestCase):
             driver = self.run_main(self.config(dashboard_enabled=True))
         self.assertEqual(server_cls.call_args.kwargs["drivers"], {"docker": driver})
 
-    def test_runs_until_shutdown_then_cleans_up(self):
-        self.run_main(self.config()).cleanup_all.assert_called_once()
+    def test_runs_until_shutdown_and_leaves_runners(self):
+        self.run_main(self.config()).cleanup_all.assert_not_called()
+
+    def test_banner_logs_sizing_and_oversubscription(self):
+        sizing = {"cpus": 4, "memory_mib": 8192, "source": "configured", "host_cpus": 8, "host_memory_mib": 16384, "warnings": ["too many"]}
+        driver = mock_driver()
+        driver.sizing = MagicMock(to_dict=MagicMock(return_value=sizing))
+        with patch("autoscaler.log_print") as log:
+            self.run_main(self.config(), driver=driver)
+        lines = [str(c.args[0]) for c in log.call_args_list]
+        self.assertIn(" Runner Sizing:    4 CPU, 8192 MiB per runner (configured; host 8 CPU / 16384 MiB)", lines)
+        self.assertIn(" ⚠️  Oversubscribed: too many", lines)
+
+    def test_banner_logs_unlimited_sizing(self):
+        with patch("autoscaler.log_print") as log:
+            self.run_main(self.config())
+        self.assertTrue(any("unlimited CPU, unlimited memory" in str(c.args[0]) for c in log.call_args_list))
 
     def test_loads_config_from_environment_when_none_given(self):
         with patch("autoscaler.load_config", return_value=self.config()) as load:
@@ -583,7 +723,7 @@ class TestMain(ScalerTestCase):
         with patch("autoscaler.DashboardServer", side_effect=OSError("port in use")), patch("autoscaler.log_print") as log:
             driver = self.run_main(self.config(dashboard_enabled=True))
         self.assertTrue(any("Could not start Dashboard server" in str(c.args[0]) for c in log.call_args_list))
-        driver.cleanup_all.assert_called_once()
+        driver.cleanup_all.assert_not_called()
 
     def test_registers_signal_handlers_that_request_shutdown(self):
         captured: dict[int, Any] = {}

@@ -217,6 +217,28 @@ class TestOrbStackVMDriver(OrbStackDriverTestCase):
 
     @patch("subprocess.Popen")
     @patch("subprocess.run")
+    def test_spawn_runner_applies_cpu_and_memory_limits_to_the_clone(self, mock_run, mock_popen):
+        # #71: clones copy the base image's settings, so a base built without (or with older)
+        # limits would run unlimited; the limits are set on every clone before it boots.
+        from drivers.sizing import HostCapacity, RunnerSizing
+
+        self.driver.images.sizing = RunnerSizing(3, 4096, "configured", HostCapacity(11, 16384), 3)
+        mock_run.side_effect = [
+            MagicMock(stdout=json.dumps([{"name": "runzero-vm-base-arm64", "state": "stopped"}]), returncode=0),
+            MagicMock(returncode=0),  # orbctl clone
+            MagicMock(returncode=0),  # cpu
+            subprocess.CalledProcessError(1, "orbctl"),  # memory: logged, not fatal
+        ]
+        with patch("sys.stderr"):
+            name = self.driver.spawn_runner(repo="el-j/run-zero", arch="arm64", access_token="token")
+        assert name is not None
+        calls = [c.args[0] for c in mock_run.call_args_list]
+        self.assertEqual(calls[2], ["orbctl", "config", "set", f"machine.{name}.cpu", "3"])
+        self.assertEqual(calls[3], ["orbctl", "config", "set", f"machine.{name}.memory_mib", "4096"])
+        mock_popen.assert_called_once()
+
+    @patch("subprocess.Popen")
+    @patch("subprocess.run")
     def test_spawn_runner_omits_cache_mount_lines_when_no_mounts(self, mock_run, mock_popen):
         mock_run.side_effect = [
             MagicMock(stdout=json.dumps([{"name": "runzero-vm-base-amd64", "state": "stopped"}]), returncode=0),

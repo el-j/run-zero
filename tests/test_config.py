@@ -31,6 +31,8 @@ class TestLoadConfig(unittest.TestCase):
                 "POLL_INTERVAL": "5",
                 "DASHBOARD_ENABLED": "off",
                 "RUNNER_BUSY_TIMEOUT_SECONDS": "3600",
+                "CLEANUP_RUNNERS_ON_SHUTDOWN": "true",
+                "NATIVE_ARCH_OVERRIDE": " El-J/Herbful ",
             }
         )
         self.assertEqual(cfg.access_token, "gh")
@@ -41,6 +43,8 @@ class TestLoadConfig(unittest.TestCase):
         self.assertEqual((cfg.min_runners, cfg.max_runners, cfg.poll_interval), (1, 8, 5))
         self.assertFalse(cfg.dashboard_enabled)
         self.assertEqual(cfg.busy_timeout_seconds, 3600)
+        self.assertTrue(cfg.cleanup_on_shutdown)
+        self.assertEqual(cfg.native_arch_override, "el-j/herbful")
 
     def test_access_token_prefers_access_token_and_blank_means_unset(self):
         self.assertEqual(load_config({"ACCESS_TOKEN": "a", "GITHUB_TOKEN": "g"}).access_token, "a")
@@ -56,6 +60,7 @@ class TestLoadConfig(unittest.TestCase):
             "CACHE_ENABLED": ("maybe", "CACHE_ENABLED='maybe' is not a boolean"),
             "RUNNER_ARCH": ("x86", "RUNNER_ARCH='x86' must be one of"),
             "RUNNER_BACKEND": ("kubernetes", "RUNNER_BACKEND='kubernetes' must be one of"),
+            "NATIVE_ARCH_OVERRIDE": ("yes", "NATIVE_ARCH_OVERRIDE='yes' must be off, all, or comma-separated owner/repo names"),
         }
         for name, (value, message) in cases.items():
             with self.subTest(name=name), self.assertRaises(ConfigError) as cm:

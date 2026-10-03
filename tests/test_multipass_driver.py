@@ -23,6 +23,18 @@ class TestMultipassDriver(unittest.TestCase):
     def test_name(self):
         self.assertEqual(self.driver.name(), "multipass")
 
+    def test_unlimited_sizing_keeps_multipass_defaults(self):
+        self.assertEqual((self.driver.cpus, self.driver.memory), ("2", "2G"))
+
+    @patch("drivers.sizing.host_capacity")
+    def test_derived_sizing_from_host_and_max_runners(self, capacity):
+        from drivers.sizing import HostCapacity
+
+        capacity.return_value = HostCapacity(9, 10240)
+        with patch.dict("os.environ", {"RUNNER_SIZING": "auto", "MAX_RUNNERS": "2"}):
+            driver = MultipassDriver()
+        self.assertEqual((driver.cpus, driver.memory), ("4", "4096M"))
+
     @patch("shutil.which", return_value="/usr/local/bin/multipass")
     @patch("subprocess.run")
     def test_is_available(self, mock_run, mock_which):

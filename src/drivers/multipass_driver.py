@@ -23,6 +23,7 @@ from . import RunnerDriver, RunnerInfo, merge_labels
 from .instance_store import InstanceStore, default_state_dir
 from .runner_bootstrap import host_arch, instance_name, normalize_arch, register_and_run_snippet, runner_download_snippet
 from .runner_env import cache_env, export_block, registry_env
+from .sizing import resolve_sizing
 
 NAME_PREFIX = "runzero-mp-"
 GUEST_HOME = "/home/ubuntu"
@@ -57,10 +58,15 @@ class MultipassDriver(RunnerDriver):
     is_vm = True
 
     def __init__(self, image: str = "24.04", store: InstanceStore | None = None):
-        """Configure the Ubuntu image (MULTIPASS_IMAGE), VM size (RUNNER_CPUS/RUNNER_MEMORY) and metadata store."""
+        """Configure the Ubuntu image (MULTIPASS_IMAGE), VM size and metadata store.
+
+        VM size is RUNNER_CPUS/RUNNER_MEMORY, else an equal host share per MAX_RUNNERS (#71);
+        Multipass needs explicit values, so `RUNNER_SIZING=unlimited` keeps its 2 CPU / 2G default.
+        """
         self.image = os.getenv("MULTIPASS_IMAGE", image)
-        self.cpus = os.getenv("RUNNER_CPUS") or "2"
-        self.memory = os.getenv("RUNNER_MEMORY") or "2G"
+        self.sizing = resolve_sizing(os.environ)
+        self.cpus = self.sizing.cpus_arg or "2"
+        self.memory = self.sizing.memory_arg or "2G"
         self.store = store or InstanceStore(os.path.join(default_state_dir(), "multipass-instances.json"))
 
     def name(self) -> str:

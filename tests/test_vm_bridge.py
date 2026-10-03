@@ -66,6 +66,21 @@ class TestVMBridge(unittest.TestCase):
             self.assertEqual(data.get("status"), "ok")
             self.assertEqual(data.get("service"), "runzero-vm-bridge")
             self.assertIn("available_vm_drivers", data)
+            # #72: the autoscaler compares these with its own to detect a stale bridge.
+            self.assertIn("version", data)
+            self.assertIn("git_sha", data)
+            self.assertEqual(data["sizing"], {})
+
+    @patch("vm_bridge.get_available_drivers")
+    def test_health_reports_each_drivers_sizing(self, mock_drivers):
+        from drivers.sizing import HostCapacity, RunnerSizing
+
+        sized = MagicMock(sizing=RunnerSizing(3, 4096, "configured", HostCapacity(11, 16384), 3))
+        mock_drivers.return_value = {"orbstack-vm": sized, "multipass": MagicMock()}
+        with urllib.request.urlopen(f"{self.base_url}/health", timeout=5.0) as resp:
+            data = json.loads(resp.read().decode("utf-8"))
+        self.assertEqual(list(data["sizing"]), ["orbstack-vm"])
+        self.assertEqual(data["sizing"]["orbstack-vm"]["cpus"], 3)
 
     @patch("vm_bridge.get_available_drivers")
     def test_status_endpoint(self, mock_drivers):
@@ -535,6 +550,7 @@ class TestBridgeVMDriver(unittest.TestCase):
         mock_avail.name.return_value = "orbstack-vm"
         mock_get_avail.return_value = {"orbstack-vm": mock_avail}
         self.assertTrue(self.driver.is_available())
+        self.assertEqual(self.driver.health()["status"], "ok")
 
     def test_is_available_when_bridge_unreachable(self):
         unreachable = BridgeVMDriver("orbstack-vm", bridge_url="http://127.0.0.1:59999")

@@ -19,9 +19,13 @@
   const kpiActiveRunners = document.getElementById('kpi-active-runners');
   const kpiMaxRunners = document.getElementById('kpi-max-runners');
   const kpiMinRunnersText = document.getElementById('kpi-min-runners-text');
+  const kpiRunnerSizing = document.getElementById('kpi-runner-sizing');
+  const bridgeDriftBox = document.getElementById('bridge-drift-box');
+  const statBridgeDrift = document.getElementById('stat-bridge-drift');
   const kpiQueuedJobs = document.getElementById('kpi-queued-jobs');
   const kpiReposMonitored = document.getElementById('kpi-repos-monitored');
   const kpiVmRatio = document.getElementById('kpi-vm-ratio');
+  const kpiRoutingSub = document.getElementById('kpi-routing-sub');
   const kpiCacheSize = document.getElementById('kpi-cache-size');
 
   const runnersGrid = document.getElementById('runners-grid');
@@ -283,6 +287,21 @@
     }
   }
 
+  // Per-runner CPU/memory limit, flagged when MAX_RUNNERS x limit oversubscribes the host (#71)
+  function renderSizing(sizing) {
+    if (!kpiRunnerSizing) return;
+    if (!sizing.source) {
+      kpiRunnerSizing.textContent = '// sizing unknown';
+      return;
+    }
+    const cpus = sizing.cpus ? `${sizing.cpus} CPU` : 'unlimited CPU';
+    const mem = sizing.memory_mib ? `${(sizing.memory_mib / 1024).toFixed(1)} GiB` : 'unlimited mem';
+    const warnings = sizing.warnings || [];
+    kpiRunnerSizing.textContent = `// ${cpus} · ${mem} each${warnings.length ? ' ⚠ oversubscribed' : ''}`;
+    kpiRunnerSizing.title = warnings.length ? warnings.join('\n') : `${sizing.source} sizing on ${sizing.host_cpus} CPU / ${sizing.host_memory_mib} MiB`;
+    kpiRunnerSizing.classList.toggle('text-danger', warnings.length > 0);
+  }
+
   // Render complete state snapshot
   function renderState(state) {
     if (!state) return;
@@ -327,6 +346,11 @@
     kpiActiveRunners.textContent = activeRunners;
     kpiMaxRunners.textContent = `/ ${maxRunners} max`;
     kpiMinRunnersText.textContent = `// ${concurrency.min || 0} standby min`;
+    renderSizing(state.runner_sizing || {});
+    if (bridgeDriftBox) {
+      bridgeDriftBox.hidden = !state.bridge_drift;
+      statBridgeDrift.title = state.bridge_drift || '';
+    }
     if (kpiRunnersBar) {
       const runnersPct = Math.min(100, Math.round((activeRunners / Math.max(1, maxRunners)) * 100));
       kpiRunnersBar.style.width = `${runnersPct}%`;
@@ -350,6 +374,12 @@
     kpiVmRatio.textContent = `${vmRatio}%`;
     if (kpiRoutingBar) {
       kpiRoutingBar.style.width = `${vmRatio}%`;
+    }
+    if (kpiRoutingSub) {
+      const native = rstats.native_arch_overrides || 0;
+      kpiRoutingSub.textContent = native > 0
+        ? `// ${native} amd64 job(s) run natively`
+        : '// Auto-detect DIND & Services';
     }
 
     // Routing breakdown

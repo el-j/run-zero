@@ -127,6 +127,19 @@ class TestDashboardState(unittest.TestCase):
         self.assertEqual(stats["docker_jobs"], 1)
         self.assertEqual(stats["vm_jobs"], 7)
         self.assertEqual(stats["vm_triggers_breakdown"], {"services": 2, "dind": 1, "browser": 1, "e2e": 1, "systemd": 1, "custom_label": 1})
+        self.assertEqual(stats["native_arch_overrides"], 0)
+
+    def test_native_arch_overrides_are_counted(self):
+        self.state.record_routing_decision(True, "label:e2e", True)
+        self.state.record_routing_decision(False, "container", True)
+        self.assertEqual(self.state.routing_stats["native_arch_overrides"], 2)
+        self.assertEqual(self.state.get_snapshot()["routing_stats"]["native_arch_overrides"], 2)
+
+    def test_snapshot_carries_sizing_and_bridge_drift(self):
+        self.state.runner_sizing = {"cpus": 3}
+        self.state.bridge_drift = "stale"
+        snap = self.state.get_snapshot()
+        self.assertEqual((snap["runner_sizing"], snap["bridge_drift"]), ({"cpus": 3}, "stale"))
 
     def test_routing_vm_ness_comes_from_driver_type_not_name(self):
         # #49: "vm" in engine-name meant wsl2/multipass jobs were counted as Docker jobs.

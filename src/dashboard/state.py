@@ -13,7 +13,7 @@ import threading
 import time
 from typing import Any, ClassVar
 
-from version import __version__
+from version import __git_sha__, __version__
 
 # Display name -> on-disk subdirectory that cache_manager.init_cache_dirs() creates and mounts.
 # go-build is handled separately (it may be scoped per workflow under build-cache/).
@@ -62,6 +62,10 @@ class DashboardState:
         self.cache_enabled = True
         self.max_concurrency = 4
         self.min_runners = 0
+        # Per-runner CPU/memory sizing and its oversubscription warnings (#71).
+        self.runner_sizing: dict[str, Any] = {}
+        # Non-empty when the Host VM Bridge runs different code than the autoscaler (#72).
+        self.bridge_drift = ""
         self.github_rate_limit_remaining: int | None = None
         self.github_rate_limit_total: int | None = None
         self.github_rate_limit_used: int | None = None
@@ -76,6 +80,8 @@ class DashboardState:
         # Routing telemetry counters
         self.routing_docker_jobs: int = 0
         self.routing_vm_jobs: int = 0
+        # amd64 jobs served by a native arm64 runner via NATIVE_ARCH_OVERRIDE (#75).
+        self.routing_native_arch_overrides: int = 0
         self.routing_triggers: dict[str, int] = {"services": 0, "dind": 0, "browser": 0, "e2e": 0, "systemd": 0, "custom_label": 0}
 
         # Golden image build status, keyed by "<driver>:<arch>:<profile-or-base>" -- see
@@ -106,7 +112,12 @@ class DashboardState:
     @property
     def routing_stats(self) -> dict[str, Any]:
         """Return the Docker-vs-VM job routing counters and per-trigger breakdown as a plain dict."""
-        return {"docker_jobs": self.routing_docker_jobs, "vm_jobs": self.routing_vm_jobs, "vm_triggers_breakdown": dict(self.routing_triggers)}
+        return {
+            "docker_jobs": self.routing_docker_jobs,
+            "vm_jobs": self.routing_vm_jobs,
+            "vm_triggers_breakdown": dict(self.routing_triggers),
+            "native_arch_overrides": self.routing_native_arch_overrides,
+        }
 
     def append_log(self, line: str) -> None:
         """Add a log line to ring buffer and broadcast to active SSE subscribers."""
@@ -236,7 +247,7 @@ class DashboardState:
         "systemd": "systemd",
     }
 
-    def record_routing_decision(self, is_vm: bool, reason: str = "") -> None:
+    def record_routing_decision(self, is_vm: bool, reason: str = "", native_override: bool = False) -> None:
         """Count one successfully spawned job as Docker or VM, bucketing VM jobs by routing reason.
 
         `is_vm` comes from the driver type (RunnerDriver.is_vm). `reason` is the router's
@@ -244,6 +255,8 @@ class DashboardState:
         via TRIGGER_BUCKETS, and anything else (e.g. an explicit "vm" label) is "custom_label".
         """
         with self._lock:
+            if native_override:
+                self.routing_native_arch_overrides += 1
             if not is_vm:
                 self.routing_docker_jobs += 1
                 return
@@ -394,6 +407,7 @@ class DashboardState:
 
             return {
                 "version": self.version,
+                "git_sha": __git_sha__,
                 "uptime": uptime_str,
                 "uptime_seconds": uptime_secs,
                 "status": self.autoscaler_status,
@@ -402,6 +416,8 @@ class DashboardState:
                 "hybrid_routing": self.hybrid_routing_enabled,
                 "architectures": self.target_architectures,
                 "concurrency": {"active": len(self.active_runners), "max": self.max_concurrency, "min": self.min_runners},
+                "runner_sizing": self.runner_sizing,
+                "bridge_drift": self.bridge_drift,
                 "github": {
                     "rate_limit_remaining": self.github_rate_limit_remaining,
                     "rate_limit_total": self.github_rate_limit_total,
@@ -418,6 +434,7 @@ class DashboardState:
                     "docker_jobs": self.routing_docker_jobs,
                     "vm_jobs": self.routing_vm_jobs,
                     "vm_triggers_breakdown": dict(self.routing_triggers),
+                    "native_arch_overrides": self.routing_native_arch_overrides,
                 },
                 "cache": {"enabled": bool(self.cache_enabled), "dir": str(self.cache_dir) if self.cache_dir is not None else "", "sizes": self.cache_sizes},
                 "image_builds": list(self.image_builds.values()),

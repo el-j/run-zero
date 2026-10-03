@@ -49,7 +49,7 @@ SERVICE="$DOMAIN/$LABEL"
 CYAN="\033[36m"; GREEN="\033[32m"; YELLOW="\033[33m"; RED="\033[31m"; RESET="\033[0m"
 
 use_launchd() {
-    [ "$(uname -s)" = "Darwin" ] && command -v launchctl >/dev/null 2>&1
+    [ -z "${RUNZERO_BRIDGE_NO_LAUNCHD:-}" ] && [ "$(uname -s)" = "Darwin" ] && command -v launchctl >/dev/null 2>&1
 }
 
 # Which backend is actually serving right now, per the marker `start` wrote
@@ -70,6 +70,42 @@ bridge_port() {
     if [ -f "$REPO_DIR/.env" ]; then
         awk -F= '/^HOST_VM_BRIDGE_PORT=/{print $2; exit}' "$REPO_DIR/.env" | tr -d ' "'"'"''
     fi
+}
+
+# "<pid> <command>" of whatever listens on TCP port $1; empty when free or lsof is missing.
+port_holder() {
+    command -v lsof >/dev/null 2>&1 || return 0
+    local pid
+    pid="$(lsof -nP -iTCP:"$1" -sTCP:LISTEN -t 2>/dev/null | head -1)"
+    if [ -n "$pid" ]; then echo "$pid $(ps -o command= -p "$pid" 2>/dev/null)"; fi
+    return 0
+}
+
+# Waits up to $2 seconds for port $1 to be free (a just-stopped bridge takes a moment).
+wait_port_free() {
+    local deadline=$((SECONDS + $2))
+    while [ -n "$(port_holder "$1")" ]; do
+        [ "$SECONDS" -ge "$deadline" ] && return 1
+        sleep 0.3
+    done
+    return 0
+}
+
+# Refuses to start while a process this script doesn't manage holds the port (#72). Otherwise
+# launchd's bridge crash-loops on "address in use" (silently: exit 78) while the foreign one --
+# e.g. a stale manual start running two-week-old code -- keeps answering /health.
+refuse_foreign_holder() {
+    local port="$1" holder pid
+    wait_port_free "$port" 3 && return 0
+    holder="$(port_holder "$port")"
+    [ -z "$holder" ] && return 0
+    pid="${holder%% *}"
+    echo -e "${RED}Port $port is already in use by PID $pid:${RESET}"
+    echo "  ${holder#* }"
+    echo -e "${YELLOW}This script did not start that process (a stale manual bridge or another service)."
+    echo -e "Stop it with \`kill $pid\` once you've checked it's safe, or set HOST_VM_BRIDGE_PORT in .env,"
+    echo -e "then run \`make bridge-start\` again.${RESET}"
+    exit 1
 }
 
 wait_for_health() {
@@ -135,6 +171,8 @@ ALLOWED_ENV_KEYS = {
     "HOST_VM_BRIDGE_PORT",
     "RUNNER_CPUS",
     "RUNNER_MEMORY",
+    "RUNNER_SIZING",
+    "MAX_RUNNERS",
     "RUNZERO_BRIDGE_TOKEN",
     "RUNZERO_ALLOWED_HOSTS",
 }
@@ -203,6 +241,7 @@ nohup_start() {
         echo "nohup" > "$MODE_FILE"
         return
     fi
+    local port; port="$(bridge_port)"; refuse_foreign_holder "${port:-49504}"
     echo -e "${YELLOW}$reason -- starting Host VM Bridge without crash supervision.${RESET}"
     set -a
     # User-provided .env, not part of the repo.
@@ -263,10 +302,11 @@ launchd_start() {
     # Idempotent: bootout-then-bootstrap picks up plist edits (e.g. a changed
     # .env or interpreter path) instead of leaving a stale job registered.
     launchctl bootout "$SERVICE" >/dev/null 2>&1 || true
+    local port; port="$(bridge_port)"; port="${port:-49504}"
+    refuse_foreign_holder "$port"
     launchctl bootstrap "$DOMAIN" "$PLIST_PATH"
     launchctl enable "$SERVICE" >/dev/null 2>&1 || true
 
-    local port; port="$(bridge_port)"; port="${port:-49504}"
     if wait_for_health "$port" 8; then
         echo "launchd" > "$MODE_FILE"
         echo -e "${GREEN}Host VM Bridge installed as a launchd agent (auto-restarts on crash, survives reboot/logout).${RESET}"

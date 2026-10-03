@@ -75,6 +75,9 @@ def _forbid_real_host_tooling(request: pytest.FixtureRequest, monkeypatch: pytes
             raise urllib.error.URLError(f"unit test attempted real network access to {host!r}")
         return real_urlopen(url, *a, **kw)
 
+    # Derived runner sizing measures the host (and `orb config show` for OrbStack); keep
+    # driver construction host-independent unless a test opts in by setting RUNNER_SIZING.
+    monkeypatch.setenv("RUNNER_SIZING", "unlimited")
     monkeypatch.setattr(urllib.request, "urlopen", guarded_urlopen)
     monkeypatch.setattr(subprocess, "run", guard(subprocess.run))
     monkeypatch.setattr(subprocess, "Popen", guard(subprocess.Popen))

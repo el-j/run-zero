@@ -12,6 +12,8 @@ AUTOSCALER_PID_FILE := .autoscaler.pid
 AUTOSCALER_LOG_FILE := .autoscaler.log
 BRIDGE_PID_FILE := .bridge.pid
 BRIDGE_LOG_FILE := .bridge.log
+# Baked into the autoscaler image so it can tell when the bridge runs other code (#72).
+export RUNZERO_GIT_SHA := $(shell git rev-parse --short=12 HEAD 2>/dev/null)
 
 # Python used for all quality gates. `make dev-setup` creates .venv-dev with the pinned
 # tooling from requirements-dev.txt; CI passes PY=python after installing the same file.
@@ -140,6 +142,11 @@ $$(docker volume ls --filter "label=com.docker.compose.volume=$(1)" -q | head -1
 endef
 
 .PHONY: info
+.PHONY: doctor
+doctor: ## Verify cache wiring from inside throwaway runners (no GitHub token needed); DOCTOR_ARGS="--no-spawn" for host checks only
+	@set -a; [ -f .env ] && . ./.env; set +a; \
+	PYTHONPATH=src $(if $(wildcard .venv/bin/python3),.venv/bin/python3,python3) src/doctor.py $(DOCTOR_ARGS)
+
 info: ## Show total disk usage of everything run-zero manages: host cache dir, proxy volumes, runner images, and OrbStack VMs
 	@echo ""
 	@echo "$(BOLD)$(CYAN)=== Host Package/Tool Cache ($(CACHE_DIR)) ===$(RESET)"
@@ -281,7 +288,7 @@ bridge-logs: ## Stream live logs from the Host VM Bridge
 .PHONY: start up run
 start: check-env init-cache bridge-start ## Start containerized Autoscaler + Host VM Bridge + Proxy services + Web Dashboard
 	@echo "$(CYAN)Starting RunZero containerized stack (Autoscaler, Dashboard, Proxy registries)...$(RESET)"
-	@docker compose up -d
+	@docker compose up -d --build
 	@echo "$(GREEN)RunZero Fleet & Observability Stack is running!$(RESET)"
 	@echo "  • 📊 Web Dashboard:  $(BOLD)http://localhost:49505$(RESET) (Run $(BOLD)make dashboard$(RESET))"
 	@echo "  • 🌉 Host VM Bridge: $(BOLD)http://localhost:49504$(RESET)"

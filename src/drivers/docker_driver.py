@@ -16,6 +16,7 @@ from datetime import datetime
 from . import ImageEventCallback, RunnerDriver, RunnerInfo, merge_labels
 from .backoff import BuildBackoff
 from .runner_env import cache_env, docker_env_args, registry_env
+from .sizing import resolve_sizing
 
 # `docker ps` output columns, `|`-separated; parsed positionally by `list_runners()`.
 _PS_FORMAT = "|".join(
@@ -52,17 +53,14 @@ class DockerDriver(RunnerDriver):
         self.network = os.getenv("DOCKER_NETWORK", network)
         self.runner_image_prefix = runner_image_prefix
         # Per-container CPU/memory ceiling, forwarded to `docker run` (see spawn_runner()).
-        # Left unset by default (unlimited) to preserve existing behavior; without it,
-        # MAX_RUNNERS concurrent containers can each claim the full host core/RAM count.
-        # A test suite's own worker pool (e.g. vitest/jest auto-sizing to the host's
-        # reported CPU count) then oversubscribes actual available CPU by MAX_RUNNERS-x,
-        # which is exactly what starved a real CI run's vitest workers into false 20s
-        # test timeouts and one outright "Failed to start forks worker" crash (observed
-        # 2026-09-22 on el-j/herbful run 35768507392, orbstack-vm engine). Set both once
-        # host capacity is known so MAX_RUNNERS * RUNNER_CPUS stays within the host's
-        # real core count -- see the same env vars on OrbStackVMDriver.
-        self.runner_cpus = os.getenv("RUNNER_CPUS") or None
-        self.runner_memory = os.getenv("RUNNER_MEMORY") or None
+        # Per-container CPU/memory limit (#71): RUNNER_CPUS/RUNNER_MEMORY, else an equal
+        # share of the host per MAX_RUNNERS. Unlimited containers let a test suite's worker
+        # pool (vitest/jest size to the reported CPU count) oversubscribe the host by
+        # MAX_RUNNERS-x -- observed 2026-09-22 on el-j/herbful run 35768507392 as false 20s
+        # test timeouts and a "Failed to start forks worker" crash.
+        self.sizing = resolve_sizing(os.environ)
+        self.runner_cpus = self.sizing.cpus_arg
+        self.runner_memory = self.sizing.memory_arg
         self._on_image_event: ImageEventCallback = on_image_event or (lambda event: None)
         # Background runner-image builds: per-arch dedup + exponential backoff (see BuildBackoff).
         self._backoff = BuildBackoff()

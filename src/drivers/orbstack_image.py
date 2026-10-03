@@ -19,6 +19,7 @@ from collections.abc import Callable
 from .backoff import BuildBackoff
 from .orbstack_templates import docker_engine_snippet
 from .runner_bootstrap import RUNNER_VERSION, runner_download_snippet
+from .sizing import orbstack_capacity, resolve_sizing
 
 BASE_IMAGE_PREFIX = "runzero-vm-base-"
 
@@ -43,18 +44,16 @@ class OrbStackImageBuilder:
         and its async, backoff-gated build trigger).
         """
         self.distro = distro
-        # Per-VM CPU/memory ceiling, forwarded to `orbctl create` (see build_base_image()).
-        # `orbctl clone` has no resource flags of its own -- "the new machine will have all
-        # the data and settings from the old machine" -- so every job VM cloned from the
-        # golden base image inherits whatever was set here at create time. Left unset by
-        # default (unlimited, OrbStack's own default); without it, MAX_RUNNERS concurrent VMs
-        # can each claim the full host core/RAM count, which is exactly what starved a real
-        # CI run's vitest workers into false 20s test timeouts and one outright "Failed to
-        # start forks worker" crash (observed 2026-09-22 on el-j/herbful run 35768507392) --
-        # set these once host capacity is known so MAX_RUNNERS * RUNNER_CPUS stays within
-        # the host's real core count.
-        self.runner_cpus = os.getenv("RUNNER_CPUS") or None
-        self.runner_memory = os.getenv("RUNNER_MEMORY") or None
+        # Per-VM CPU/memory ceiling (#71): RUNNER_CPUS/RUNNER_MEMORY, else an equal share of
+        # OrbStack's VM pool per MAX_RUNNERS. Forwarded to `orbctl create` here, and applied
+        # to every clone by the driver (`apply_limits`), since clones of a base image built
+        # before the limits were set would otherwise stay unlimited. Unlimited VMs each claim
+        # the full pool, which starved a real CI run's vitest workers into false 20s test
+        # timeouts and a "Failed to start forks worker" crash (2026-09-22, el-j/herbful run
+        # 35768507392).
+        self.sizing = resolve_sizing(os.environ, orbstack_capacity)
+        self.runner_cpus = self.sizing.cpus_arg
+        self.runner_memory = self.sizing.memory_arg
         self._provision_script_path = DEFAULT_PROVISION_SCRIPT
         self._backoff = backoff
         self._list_vm_names = list_vm_names
@@ -65,6 +64,21 @@ class OrbStackImageBuilder:
     def base_image_name(orb_arch: str) -> str:
         """Return the golden base image's VM name for a given OrbStack arch (e.g. "arm64" -> "runzero-vm-base-arm64")."""
         return f"{BASE_IMAGE_PREFIX}{orb_arch}"
+
+    def apply_limits(self, vm_name: str) -> None:
+        """Set this sizing's CPU/memory limit on a (stopped) VM; best-effort, failures are logged.
+
+        `orbctl clone` copies the source machine's settings, so a clone of a base image built
+        without limits (or with older ones) would otherwise run unlimited.
+        """
+        settings = {"cpu": self.sizing.cpus, "memory_mib": self.sizing.memory_mib}
+        for key, value in settings.items():
+            if not value:
+                continue
+            try:
+                subprocess.run(["orbctl", "config", "set", f"machine.{vm_name}.{key}", str(value)], check=True, capture_output=True, timeout=15)
+            except (OSError, subprocess.SubprocessError) as e:
+                print(f"[Autoscaler:OrbStack-VM] Warning: could not set {key}={value} on '{vm_name}': {e}", file=sys.stderr)
 
     def base_image_exists(self, orb_arch: str) -> bool:
         """True if the golden base image VM exists for `orb_arch`.

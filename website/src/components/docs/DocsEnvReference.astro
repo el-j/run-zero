@@ -95,6 +95,62 @@
       </tr>
       <tr>
         <td>
+          <code>RUNNER_CPUS / RUNNER_MEMORY</code>
+        </td>
+        <td>
+          <em>derived</em>
+        </td>
+        <td>
+          Per-runner CPU and memory limit for Docker containers, OrbStack job
+          VMs (set on every clone) and Multipass VMs. Unset, each runner gets an
+          equal share of the host (OrbStack: its VM pool) after keeping 1 CPU
+          and 2 GiB back: <code>(cpus - 1) // MAX_RUNNERS</code>. The startup
+          log and the dashboard show the sizing and warn when{" "}
+          <code>MAX_RUNNERS</code> &times; the limit exceeds the host.
+        </td>
+      </tr>
+      <tr>
+        <td>
+          <code>RUNNER_SIZING</code>
+        </td>
+        <td>
+          <code>auto</code>
+        </td>
+        <td>
+          <code>unlimited</code> restores the old behavior: no limits, every
+          runner may claim every host core.
+        </td>
+      </tr>
+      <tr>
+        <td>
+          <code>CLEANUP_RUNNERS_ON_SHUTDOWN</code>
+        </td>
+        <td>
+          <code>false</code>
+        </td>
+        <td>
+          Destroy runners when the autoscaler stops. Off by default, so
+          restarting or redeploying the autoscaler no longer cancels jobs that
+          are running; runners are ephemeral and exit after their job.
+        </td>
+      </tr>
+      <tr>
+        <td>
+          <code>NATIVE_ARCH_OVERRIDE</code>
+        </td>
+        <td>
+          <code>off</code>
+        </td>
+        <td>
+          <code>off</code>, <code>all</code>, or comma-separated{" "}
+          <code>owner/repo</code> names. On Apple Silicon, serves those
+          repositories' <code>amd64</code>-labelled jobs with native arm64
+          runners, without changing the workflow. See{" "}
+          <a href="#native-arch-override">Native-arch override</a>.
+        </td>
+      </tr>
+      <tr>
+        <td>
           <code>PROXIES_ENABLED</code>
         </td>
         <td>

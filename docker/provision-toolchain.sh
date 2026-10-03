@@ -34,6 +34,11 @@ if curl -fsS --connect-timeout 2 "http://host.orb.internal:49503/acng-report.htm
   echo 'Acquire::http::Proxy "http://host.orb.internal:49503";' | sudo tee /etc/apt/apt.conf.d/01runzero-proxy > /dev/null
 fi
 
+# Jobs that run `apt-get update` (e.g. `playwright install --with-deps`) only need the
+# package indices, never the translated descriptions: skipping Translation-* files cuts
+# what every update fetches (#70). Lives in the image, so it applies to every job.
+echo 'Acquire::Languages "none";' | sudo tee /etc/apt/apt.conf.d/02runzero-no-translations > /dev/null
+
 echo "==> Installing base OS packages..."
 sudo apt-get update -y
 sudo apt-get install -y --no-install-recommends \
