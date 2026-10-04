@@ -2,10 +2,14 @@
 Shared fixtures for the OrbStack driver/image test modules (not collected itself).
 """
 
+import os
+import tempfile
 import unittest
 from unittest.mock import patch
 
+from drivers.orbstack_image import OrbStackImageBuilder
 from drivers.orbstack_vm_driver import OrbStackVMDriver
+from drivers.runner_bootstrap import RUNNER_VERSION
 
 
 class OrbStackDriverTestCase(unittest.TestCase):
@@ -25,7 +29,26 @@ class OrbStackDriverTestCase(unittest.TestCase):
         _reg = patch("drivers.create_registration_token", return_value="reg-token")
         self.create_registration_token = _reg.start()
         self.addCleanup(_reg.stop)
+        # Base image version stamps live in a throwaway state dir, current for both arches, so
+        # an existing base image counts as up to date unless a test says otherwise.
+        state_dir = tempfile.TemporaryDirectory()
+        self.addCleanup(state_dir.cleanup)
+        _env = patch.dict(os.environ, {"RUNZERO_STATE_DIR": state_dir.name})
+        _env.start()
+        self.addCleanup(_env.stop)
+        for orb_arch in ("amd64", "arm64"):
+            self.write_stamp(orb_arch, RUNNER_VERSION)
         self.driver = OrbStackVMDriver(distro="ubuntu:24.04")
+
+    @staticmethod
+    def write_stamp(orb_arch: str, version: str | None) -> None:
+        """Record `version` as the base image's runner version, or remove the stamp (None)."""
+        path = OrbStackImageBuilder._stamp_path(orb_arch)
+        if version is None:
+            os.remove(path)
+            return
+        with open(path, "w", encoding="utf-8") as fh:
+            fh.write(version + "\n")
 
     def tearDown(self):
         all_finished = self.driver.join_background_build_threads(timeout=15.0)

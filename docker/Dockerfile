@@ -1,6 +1,6 @@
 FROM ubuntu:24.04
 
-ARG RUNNER_VERSION="2.336.0"
+ARG RUNNER_VERSION="2.337.0"
 ARG TARGETARCH
 
 # Prevents debconf from prompting during installation

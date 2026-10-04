@@ -17,6 +17,7 @@ import time
 from collections.abc import Callable
 
 from .backoff import BuildBackoff
+from .instance_store import default_state_dir
 from .orbstack_templates import docker_engine_snippet
 from .runner_bootstrap import RUNNER_VERSION, runner_download_snippet
 from .sizing import orbstack_capacity, resolve_sizing
@@ -64,6 +65,35 @@ class OrbStackImageBuilder:
     def base_image_name(orb_arch: str) -> str:
         """Return the golden base image's VM name for a given OrbStack arch (e.g. "arm64" -> "runzero-vm-base-arm64")."""
         return f"{BASE_IMAGE_PREFIX}{orb_arch}"
+
+    @classmethod
+    def _stamp_path(cls, orb_arch: str) -> str:
+        """Host-side file recording which runner version a base image was built with."""
+        return os.path.join(default_state_dir(), f"{cls.base_image_name(orb_arch)}.runner-version")
+
+    def _write_stamp(self, orb_arch: str) -> None:
+        """Record that the base image for `orb_arch` now carries RUNNER_VERSION; best-effort."""
+        path = self._stamp_path(orb_arch)
+        try:
+            os.makedirs(os.path.dirname(path), exist_ok=True)
+            with open(path, "w", encoding="utf-8") as fh:
+                fh.write(RUNNER_VERSION + "\n")
+        except OSError as e:
+            print(f"[Autoscaler:OrbStack-VM] Warning: could not record the base image version in {path}: {e}", file=sys.stderr)
+
+    def base_image_stale(self, orb_arch: str) -> bool:
+        """True if the base image was built with a different runner version than RUNNER_VERSION.
+
+        The stamp is a host-side file rather than something read from inside the image, because
+        probing a stopped VM with `orb -m` boots it. An image with no stamp predates this check
+        and counts as stale. A stale image only self-updates the runner inside every job VM it is
+        cloned for (a download before each job), so it keeps serving jobs while it is rebuilt.
+        """
+        try:
+            with open(self._stamp_path(orb_arch), encoding="utf-8") as fh:
+                return fh.read().strip() != RUNNER_VERSION
+        except OSError:
+            return True
 
     def apply_limits(self, vm_name: str) -> None:
         """Set this sizing's CPU/memory limit on a (stopped) VM; best-effort, failures are logged.
@@ -225,14 +255,18 @@ echo "Base image provisioning complete."
 
         base_name = self.base_image_name(orb_arch)
         if self.base_image_exists(orb_arch):
-            print(f"[Autoscaler:OrbStack-VM] Golden base image '{base_name}' already exists -- skipping build to avoid destroying a working image.")
-            self._report_image_event("ready", orb_arch, "Already built -- skipping.")
-            return True
+            if not self.base_image_stale(orb_arch):
+                print(f"[Autoscaler:OrbStack-VM] Golden base image '{base_name}' already exists -- skipping build to avoid destroying a working image.")
+                self._report_image_event("ready", orb_arch, "Already built -- skipping.")
+                return True
+            # The old image keeps serving clones until the new one is promoted over it.
+            print(f"[Autoscaler:OrbStack-VM] Golden base image '{base_name}' predates runner {RUNNER_VERSION} -- rebuilding it.")
 
         staging_name = f"{base_name}-building"
         if staging_name in self._list_vm_names() and self._is_staging_provisioned(staging_name):
             print(f"[Autoscaler:OrbStack-VM] Staging VM '{staging_name}' already completed provisioning -- promoting directly to '{base_name}'.")
             if self._promote_staging_to_base(staging_name, base_name):
+                self._write_stamp(orb_arch)
                 self._report_image_event("ready", orb_arch, "Promoted completed staging VM.")
                 return True
 
@@ -248,6 +282,7 @@ echo "Base image provisioning complete."
         if not self._promote_staging_to_base(staging_name, base_name):
             self._report_image_event("failed", orb_arch, "Failed to promote staging VM to base image.")
             return False
+        self._write_stamp(orb_arch)
 
         print(f"[Autoscaler:OrbStack-VM] ✅ Golden base image '{base_name}' ready. Future spawns will clone it.")
         self._report_image_event("ready", orb_arch, "Build succeeded.")

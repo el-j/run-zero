@@ -22,6 +22,7 @@ from .orbstack_templates import (
     cache_mount_snippet,
     registration_and_run_snippet,
 )
+from .runner_bootstrap import RUNNER_VERSION
 from .runner_env import cache_env, export_block, registry_env
 from .sizing import RunnerSizing
 
@@ -297,6 +298,16 @@ class OrbStackVMDriver(RunnerDriver):
         base_name = self.base_image_name(orb_arch)
 
         if self.base_image_exists(orb_arch):
+            if self.images.base_image_stale(orb_arch):
+                with self._backoff.lock:
+                    idle = orb_arch not in self._backoff.in_progress and self._backoff.remaining(orb_arch) <= 0
+                if idle:
+                    print(
+                        f"[Autoscaler:OrbStack-VM] Golden base image '{base_name}' predates runner {RUNNER_VERSION}, "
+                        f"so every job VM downloads a runner update first. Rebuilding it in the background; "
+                        f"the current image keeps serving jobs meanwhile."
+                    )
+                    self._build_base_image_async(orb_arch)
             return True
 
         with self._backoff.lock:

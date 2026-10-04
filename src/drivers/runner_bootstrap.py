@@ -17,7 +17,7 @@ import uuid
 
 from .runner_env import export_block
 
-RUNNER_VERSION = "2.336.0"
+RUNNER_VERSION = "2.337.0"
 
 POWEROFF = 'echo "Ephemeral run finished -- powering off so the autoscaler prunes this VM."\n' + (
     "sudo systemctl poweroff 2>/dev/null || sudo poweroff 2>/dev/null || sudo shutdown -h now 2>/dev/null || true"
