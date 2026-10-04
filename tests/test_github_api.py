@@ -127,6 +127,7 @@ class TestGitHubApi(unittest.TestCase):
     def test_get_queued_job_details(self, mock_gh, mock_workflow_text):
         mock_gh.side_effect = [
             {"workflow_runs": [{"id": 101, "head_branch": "main", "event": "push", "path": ".github/workflows/ci.yml"}]},
+            {"workflow_runs": []},  # in_progress runs
             {"jobs": [{"id": 201, "name": "e2e-chrome", "status": "queued", "labels": ["self-hosted", "browser"]}]},
         ]
         mock_workflow_text.return_value = None  # workflow lookup unresolved -> declares_services is None
@@ -140,6 +141,28 @@ class TestGitHubApi(unittest.TestCase):
         self.assertIsNone(jobs[0]["declares_services"])
         self.assertEqual(jobs[0]["run_url"], "https://github.com/el-j/run-zero/actions/runs/101")
         self.assertEqual(jobs[0]["job_url"], "https://github.com/el-j/run-zero/actions/runs/101/job/201")
+
+    @patch("github_api.get_workflow_text_for_run", return_value=None)
+    @patch("github_api.github_request")
+    def test_get_queued_job_details_finds_queued_jobs_of_in_progress_runs(self, mock_gh, _workflow_text):
+        # A run whose first job already started (or whose skipped jobs count as started) is
+        # in_progress while later jobs still wait; those must be seen too.
+        mock_gh.side_effect = [
+            {"workflow_runs": [{"id": 101}]},
+            {"workflow_runs": [{"id": 101}, {"id": 102}]},  # 101 shows up in both listings
+            {"jobs": [{"id": 201, "name": "build", "status": "queued", "labels": ["self-hosted"]}]},
+            {
+                "jobs": [
+                    {"id": 301, "name": "detect", "status": "completed", "labels": ["self-hosted"]},
+                    {"id": 302, "name": "e2e", "status": "queued", "labels": ["self-hosted"]},
+                ]
+            },
+        ]
+        jobs = get_queued_job_details("el-j/herbful", access_token="token")
+        self.assertEqual([j["id"] for j in jobs], [201, 302])
+        urls = [c.args[0] for c in mock_gh.call_args_list]
+        self.assertIn("status=in_progress", urls[1])
+        self.assertEqual(sum("/runs/101/jobs" in u for u in urls), 1)
 
     @patch("github_api.github_request")
     def test_get_queued_job_details_empty(self, mock_gh):
@@ -159,6 +182,7 @@ class TestGitHubApi(unittest.TestCase):
         # ubuntu-latest CI jobs.
         mock_gh.side_effect = [
             {"workflow_runs": [{"id": 101, "head_branch": "main", "event": "push"}]},
+            {"workflow_runs": []},  # in_progress runs
             {"jobs": [{"id": 201, "name": "Python Lint", "status": "queued", "labels": ["ubuntu-latest"]}]},
         ]
         jobs = get_queued_job_details("el-j/run-zero", access_token="token")
@@ -169,6 +193,7 @@ class TestGitHubApi(unittest.TestCase):
     def test_get_queued_job_details_mixed_batch_only_returns_self_hosted(self, mock_gh, mock_workflow_text):
         mock_gh.side_effect = [
             {"workflow_runs": [{"id": 101, "head_branch": "main", "event": "push"}]},
+            {"workflow_runs": []},  # in_progress runs
             {
                 "jobs": [
                     {"id": 201, "name": "hosted-job", "status": "queued", "labels": ["ubuntu-latest"]},
@@ -190,6 +215,7 @@ class TestGitHubApi(unittest.TestCase):
         # to actually has a `services:` block for that job.
         mock_gh.side_effect = [
             {"workflow_runs": [{"id": 555, "head_branch": "feat/x", "event": "pull_request"}]},
+            {"workflow_runs": []},  # in_progress runs
             {"jobs": [{"id": 301, "name": "API — Tests", "status": "queued", "labels": ["self-hosted", "amd64"]}]},
         ]
         mock_workflow_text.return_value = "jobs:\n  api-test:\n    name: API — Tests\n    services:\n      postgres:\n        image: postgres:16\n"
@@ -438,14 +464,15 @@ class TestGitHubApi(unittest.TestCase):
         mock_gh.return_value = {"workflow_runs": [{"head_branch": "main", "event": "push"}]}
         jobs = get_queued_job_details("el-j/run-zero", access_token="token")
         self.assertEqual(jobs, [])
-        # Only the initial queued-runs lookup should happen -- no jobs lookup
+        # Only the queued and in_progress run listings happen -- no jobs lookup
         # for a run with no id.
-        self.assertEqual(mock_gh.call_count, 1)
+        self.assertEqual(mock_gh.call_count, 2)
 
     @patch("github_api.github_request")
     def test_get_queued_job_details_missing_jobs_data_is_skipped(self, mock_gh):
         mock_gh.side_effect = [
             {"workflow_runs": [{"id": 101, "head_branch": "main", "event": "push"}]},
+            {"workflow_runs": []},  # in_progress runs
             None,  # jobs lookup fails
         ]
         jobs = get_queued_job_details("el-j/run-zero", access_token="token")

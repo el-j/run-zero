@@ -340,8 +340,21 @@ def get_workflow_text_for_run(repo_full_name: str, run_id: int, access_token: st
 
 
 def get_queued_job_details(repo_full_name: str, access_token: str | None = None) -> list[dict[str, Any]]:
-    """Retrieve detailed metadata for unclaimed queued jobs in a repository."""
-    queued_runs = github_paginate(f"/repos/{repo_full_name}/actions/runs?status=queued", "workflow_runs", access_token=access_token)
+    """Retrieve detailed metadata for unclaimed queued jobs in a repository.
+
+    Queued jobs live in `queued` runs and in `in_progress` ones: as soon as any job of a run
+    starts, or is skipped (a re-run marks its skipped jobs as started at once), the whole run
+    is `in_progress`, while its later jobs still wait. Listing only `queued` runs hid those
+    jobs, so they got a runner only if one spawned for another job happened to take them
+    (an el-j/herbful E2E re-run waited 17 minutes this way, 2026-10-04).
+    """
+    queued_runs: list[dict[str, Any]] = []
+    seen_run_ids = set()
+    for status in ("queued", "in_progress"):
+        for run in github_paginate(f"/repos/{repo_full_name}/actions/runs?status={status}", "workflow_runs", access_token=access_token) or []:
+            if run.get("id") not in seen_run_ids:
+                seen_run_ids.add(run.get("id"))
+                queued_runs.append(run)
     if not queued_runs:
         return []
 
