@@ -530,7 +530,7 @@ def _init_dashboard(scaler: Scaler) -> DashboardServer | None:
     if not cfg.dashboard_enabled:
         return None
     try:
-        server = DashboardServer(host=cfg.dashboard_host, port=cfg.dashboard_port, drivers=scaler.drivers)
+        server = DashboardServer(host=cfg.dashboard_host, port=cfg.dashboard_port, drivers=scaler.drivers, config=cfg, scaler=scaler)
         server.start(blocking=False)
         return server
     except Exception as e:

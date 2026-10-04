@@ -13,10 +13,22 @@ from http.server import BaseHTTPRequestHandler
 from typing import Any
 from urllib.parse import urlparse
 
-from http_security import ControlPlaneHTTPServer, RequestRejected, allowed_hosts_from_env, check_host_header, read_json_body, resolve_static_path
+from config import Config, ConfigError, load_config
+from http_security import (
+    ControlPlaneHTTPServer,
+    RequestRejected,
+    allowed_hosts_from_env,
+    check_host_header,
+    read_json_body,
+    resolve_static_path,
+)
 from version import __version__
 
+from .cache_service import get_cache_stats, purge_cache
+from .runner_service import execute_runner_action
+from .settings_service import get_live_settings, update_live_settings
 from .state import dashboard_state
+from .workflow_service import execute_workflow_action
 
 DEFAULT_DASHBOARD_PORT = 49505
 # Loopback by default: the dashboard can purge caches and prune runners. The container
@@ -26,6 +38,7 @@ DEFAULT_DASHBOARD_HOST = "127.0.0.1"
 
 STATIC_DIR = os.path.join(os.path.dirname(__file__), "static")
 FONTS_DIR = os.path.join(STATIC_DIR, "fonts")
+DIST_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", "web", "dist"))
 
 
 class DashboardRequestHandler(BaseHTTPRequestHandler):
@@ -92,6 +105,16 @@ class DashboardRequestHandler(BaseHTTPRequestHandler):
 
     def _serve_static_route(self, path: str) -> bool:
         """Serve static files or fonts if matching, returning True if handled."""
+        if os.path.isdir(DIST_DIR):
+            if path in ("", "/index.html"):
+                self._serve_file(DIST_DIR, "index.html", "text/html; charset=utf-8")
+                return True
+            if path.startswith("/assets/"):
+                asset_rel = path[len("/assets/") :]
+                mime = "text/css; charset=utf-8" if asset_rel.endswith(".css") else "application/javascript; charset=utf-8"
+                self._serve_file(os.path.join(DIST_DIR, "assets"), asset_rel, mime)
+                return True
+
         if path in ("", "/index.html"):
             self._serve_file(STATIC_DIR, "index.html", "text/html; charset=utf-8")
             return True
@@ -153,10 +176,17 @@ class DashboardRequestHandler(BaseHTTPRequestHandler):
         if path in ("/api/status", "/api/fleet"):
             self._send_json(200, dashboard_state.get_snapshot())
             return
+        if path == "/api/settings":
+            cfg = getattr(self.server, "config", None) or load_config()
+            self._send_json(200, get_live_settings(cfg))
+            return
+        if path == "/api/cache":
+            self._send_json(200, get_cache_stats(dashboard_state.cache_dir))
+            return
         if path == "/api/logs":
             self._send_json(200, {"logs": list(dashboard_state.log_buffer)})
             return
-        if path == "/api/events":
+        if path in ("/api/events", "/api/stream"):
             self._stream_sse_events()
             return
 
@@ -204,16 +234,72 @@ class DashboardRequestHandler(BaseHTTPRequestHandler):
         dashboard_state.append_log(f"[Dashboard] 🔀 Updated repository priority: {prio_str} (paused: {paused_str})")
         self._send_json(200, res)
 
-    def do_POST(self) -> None:
-        """Route POST requests: /api/actions/clean-cache, /api/actions/prune, and /api/actions/repo-priority.
+    def _handle_settings_action(self, body: dict[str, Any]) -> None:
+        """Handle /api/settings POST requests."""
+        cfg = getattr(self.server, "config", None) or load_config()
+        try:
+            new_cfg, live_settings = update_live_settings(body, cfg)
+            if hasattr(self.server, "config"):
+                self.server.config = new_cfg
+            dashboard_state.append_log("[Dashboard] ⚙️  Updated live system settings.")
+            self._send_json(200, {"ok": True, "settings": live_settings})
+        except (ValueError, ConfigError) as err:
+            self._send_json(400, {"error": str(err)})
 
-        Bodies must be ``application/json`` (see http_security.read_json_body).
-        """
+    def _handle_cache_purge_action(self, body: dict[str, Any]) -> None:
+        """Handle /api/cache/purge POST requests."""
+        category = body.get("category")
+        repo = body.get("repo")
+        all_caches = bool(body.get("all", False))
+        res = purge_cache(dashboard_state.cache_dir, category=category, repo=repo, all_caches=all_caches)
+        cat_label = category or ("all" if all_caches else "unspecified")
+        dashboard_state.append_log(f"[Dashboard] 🧹 Purged cache: {cat_label}")
+        self._send_json(200, {"ok": True, "cleared": res.get("cleared", [])})
+
+    def _handle_workflow_action(self, body: dict[str, Any]) -> None:
+        """Handle /api/actions/workflow POST requests."""
+        repo = str(body.get("repo", ""))
+        run_id = int(body.get("run_id", 0))
+        action = str(body.get("action", ""))
+        cfg = getattr(self.server, "config", None) or load_config()
+        try:
+            res = execute_workflow_action(repo, run_id, action, cfg.access_token)
+            dashboard_state.append_log(f"[Dashboard] ⚡ Triggered workflow action '{action}' on {repo} run #{run_id}.")
+            self._send_json(200, res)
+        except (ValueError, RuntimeError) as err:
+            self._send_json(400, {"error": str(err)})
+
+    def _handle_runner_action(self, body: dict[str, Any]) -> None:
+        """Handle /api/actions/runner POST requests."""
+        action = str(body.get("action", ""))
+        runner_id = body.get("runner_id")
+        repo = body.get("repo")
+        arch = body.get("arch")
+        drivers = getattr(self.server, "runner_drivers", None)
+        scaler = getattr(self.server, "scaler", None)
+        try:
+            res = execute_runner_action(action, runner_id=runner_id, repo=repo, arch=arch, drivers=drivers, scaler=scaler)
+            dashboard_state.append_log(f"[Dashboard] 🏃 Runner control action: {action}.")
+            self._send_json(200, res)
+        except (ValueError, RuntimeError) as err:
+            self._send_json(400, {"error": str(err)})
+
+    def do_POST(self) -> None:
+        """Route POST requests for settings, cache, workflow, runner, and fleet actions."""
         if not self._admit():
             return
         parsed = urlparse(self.path)
         path = parsed.path.rstrip("/")
-        if path not in ("/api/actions/clean-cache", "/api/actions/prune", "/api/actions/repo-priority"):
+        valid_post_routes = (
+            "/api/actions/clean-cache",
+            "/api/actions/prune",
+            "/api/actions/repo-priority",
+            "/api/settings",
+            "/api/cache/purge",
+            "/api/actions/workflow",
+            "/api/actions/runner",
+        )
+        if path not in valid_post_routes:
             self._send_json(404, {"error": f"Endpoint not found: {path}"})
             return
         try:
@@ -222,12 +308,18 @@ class DashboardRequestHandler(BaseHTTPRequestHandler):
             self._send_json(rej.status, {"error": rej.message})
             return
 
-        if path == "/api/actions/clean-cache":
-            self._handle_clean_cache_action(body)
-        elif path == "/api/actions/repo-priority":
-            self._handle_repo_priority_action(body)
-        else:
+        handlers = {
+            "/api/actions/clean-cache": self._handle_clean_cache_action,
+            "/api/actions/repo-priority": self._handle_repo_priority_action,
+            "/api/settings": self._handle_settings_action,
+            "/api/cache/purge": self._handle_cache_purge_action,
+            "/api/actions/workflow": self._handle_workflow_action,
+            "/api/actions/runner": self._handle_runner_action,
+        }
+        if path == "/api/actions/prune":
             self._handle_prune_action()
+        else:
+            handlers[path](body)
 
 
 class DashboardServer:
@@ -238,17 +330,23 @@ class DashboardServer:
         host: str = DEFAULT_DASHBOARD_HOST,
         port: int = DEFAULT_DASHBOARD_PORT,
         drivers: dict[str, Any] | None = None,
+        config: Config | None = None,
+        scaler: Any | None = None,
         sse_heartbeat_interval: float = 5.0,
     ):
         """Store the bind address/port, optional driver registry, and heartbeat interval; nothing starts until `start()`.
 
         `drivers` is the autoscaler's registry, used by the prune action instead of building
         fresh driver instances per request.
+        `config` is the autoscaler's live Config instance.
+        `scaler` is the optional autoscaler instance for runner control actions.
         `sse_heartbeat_interval` is the queue timeout in seconds before sending an SSE keepalive ping.
         """
         self.host = host
         self.port = port
         self.drivers = drivers
+        self.config = config
+        self.scaler = scaler
         self.sse_heartbeat_interval = sse_heartbeat_interval
         self.httpd: ControlPlaneHTTPServer | None = None
         self.thread: threading.Thread | None = None
@@ -259,19 +357,10 @@ class DashboardServer:
 
         See the comment below for why this must be ThreadingHTTPServer, not plain HTTPServer.
         """
-        # Plain HTTPServer handles one request at a time. /api/events (SSE)
-        # blocks its handler thread in an infinite loop for the life of the
-        # connection -- with a single-threaded server, the FIRST client to
-        # open that stream (e.g. the dashboard's own frontend, which connects
-        # automatically) permanently wedges the server: every other request,
-        # including the container's own healthcheck against /api/status,
-        # hangs forever after that (confirmed live: container stuck
-        # "unhealthy", curl connects but gets 0 bytes back within the 5s
-        # healthcheck timeout). ThreadingHTTPServer (stdlib since 3.7, no new
-        # dependency) gives each connection its own thread so a long-lived
-        # SSE stream can't starve every other request.
         self.httpd = ControlPlaneHTTPServer((self.host, self.port), DashboardRequestHandler)
         self.httpd.runner_drivers = self.drivers
+        self.httpd.config = self.config
+        self.httpd.scaler = self.scaler
         self.httpd.sse_heartbeat_interval = self.sse_heartbeat_interval
         self._is_running = True
         print(f"[Dashboard] 📊 Real-Time Web UI running at http://localhost:{self.port}")

@@ -627,3 +627,16 @@ mutation-report: ## Export mutation stats and generate weekly trend dashboard ar
 
 mutation-dashboard: mutation-report ## Alias for mutation-report
 	@true
+
+.PHONY: build-spec
+build-spec: ## Compile TypeSpec schema and generate TypeScript types
+	@echo "$(CYAN)Compiling TypeSpec schema and generating TypeScript types...$(RESET)"
+	@cd spec && pnpm run all
+	@echo "$(GREEN)TypeSpec compilation complete.$(RESET)"
+
+.PHONY: build-ui
+build-ui: build-spec ## Build production dashboard TypeScript web application
+	@echo "$(CYAN)Building modular TypeScript dashboard...$(RESET)"
+	@cd web && pnpm run build
+	@echo "$(GREEN)Dashboard UI build complete.$(RESET)"
+

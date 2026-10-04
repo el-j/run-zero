@@ -56,6 +56,8 @@ class ControlPlaneHTTPServer(ThreadingHTTPServer):
     """
 
     runner_drivers: dict[str, Any] | None = None
+    config: Any | None = None
+    scaler: Any | None = None
     sse_heartbeat_interval: float = 5.0
 
     def handle_error(self, request: Any, client_address: Any) -> None:

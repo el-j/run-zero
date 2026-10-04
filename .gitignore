@@ -24,3 +24,5 @@ website/dist-archive/
 _astro
 website/test-results/
 website/playwright-report/
+tsp-output/
+.pnpm-store/
