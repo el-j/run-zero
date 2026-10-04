@@ -180,6 +180,21 @@ class TestDashboardBlackboxContract(unittest.TestCase):
             self.assertEqual(data.get("status"), "success")
             mock_driver.prune_exited.assert_called_once()
 
+    def test_post_actions_repo_priority_route_contract(self):
+        payload = json.dumps({"priority": ["repo-blackbox-a", "repo-blackbox-b"], "paused": ["repo-blackbox-c"]}).encode("utf-8")
+        req = urllib.request.Request(
+            f"{self.base_url}/api/actions/repo-priority",
+            data=payload,
+            headers={"Content-Type": "application/json"},
+            method="POST",
+        )
+        with urllib.request.urlopen(req, timeout=3.0) as resp:
+            self.assertEqual(resp.status, 200)
+            data = json.loads(resp.read().decode("utf-8"))
+            self.assertEqual(data.get("status"), "success")
+            self.assertEqual(data.get("priority"), ["repo-blackbox-a", "repo-blackbox-b"])
+            self.assertEqual(data.get("paused"), ["repo-blackbox-c"])
+
     # -- Cross-cutting contract: CORS preflight + unknown routes -------------
 
     def test_options_preflight_contract(self):

@@ -735,5 +735,97 @@ class TestMain(ScalerTestCase):
         self.assertTrue(autoscaler.github_api.shutdown_event.is_set())
 
 
+class TestRepoPriorityAndQueueTelemetry(ScalerTestCase):
+    """Issue #81 & #82: priority ordering, pause switch, and waiting reason annotations."""
+
+    def test_higher_priority_repo_gets_free_runner_slots_first(self):
+        from repo_priority import RepoPriorityManager
+
+        mgr = RepoPriorityManager(state_file=tempfile.mktemp(), initial_priority=["repo-priority", "repo-regular"])
+        self.stubs["discover_repositories"].return_value = ["repo-regular", "repo-priority"]
+        # get_queued_job_details is called once per repo in discovery order
+        self.stubs["get_queued_job_details"].side_effect = [
+            [job(10, status="queued")],  # repo-regular
+            [job(20, status="queued")],  # repo-priority
+        ]
+        driver = mock_driver(spawn=unique_ids)
+        # Cap max_runners at 1 so only 1 job can be spawned
+        scaler = self.scaler(config=self.config(max_runners=1), default=driver)
+        scaler.repo_priority = mgr
+        scaler.run_once()
+
+        self.assertEqual(driver.spawn_runner.call_count, 1)
+        # Higher priority repo must have been spawned first
+        self.assertEqual(driver.spawn_runner.call_args.kwargs["repo"], "repo-priority")
+
+    def test_paused_repo_gets_no_runners(self):
+        from repo_priority import RepoPriorityManager
+
+        mgr = RepoPriorityManager(state_file=tempfile.mktemp(), initial_priority=["repo-paused", "repo-active"], initial_paused=["repo-paused"])
+        self.stubs["discover_repositories"].return_value = ["repo-paused", "repo-active"]
+        self.stubs["get_queued_job_details"].side_effect = [
+            [job(1, status="queued")],
+            [job(2, status="queued")],
+        ]
+        driver = mock_driver(spawn=unique_ids)
+        scaler = self.scaler(config=self.config(max_runners=10), default=driver)
+        scaler.repo_priority = mgr
+        scaler.run_once()
+
+        self.assertEqual(driver.spawn_runner.call_count, 1)
+        self.assertEqual(driver.spawn_runner.call_args.kwargs["repo"], "repo-active")
+
+    def test_standby_skips_paused_repos(self):
+        from repo_priority import RepoPriorityManager
+
+        mgr = RepoPriorityManager(state_file=tempfile.mktemp(), initial_paused=["repo-1"])
+        self.stubs["discover_repositories"].return_value = ["repo-1", "repo-2"]
+        driver = mock_driver(spawn=unique_ids)
+        scaler = self.scaler(config=self.config(min_runners=1, max_runners=2), default=driver)
+        scaler.repo_priority = mgr
+        scaler.run_once()
+
+        self.assertEqual(driver.spawn_runner.call_count, 1)
+        self.assertEqual(driver.spawn_runner.call_args.kwargs["repo"], "repo-2")
+
+    def test_publish_annotates_queue_positions_and_waiting_reasons(self):
+        from repo_priority import RepoPriorityManager
+
+        mgr = RepoPriorityManager(state_file=tempfile.mktemp(), initial_priority=["repo-a", "repo-b"], initial_paused=["repo-c"])
+        scaler = self.scaler(config=self.config(max_runners=1))
+        scaler.repo_priority = mgr
+
+        queued_by_repo = {
+            "repo-a": [job(1, status="queued", created_at="2026-10-04T10:00:00Z"), job(4, status="in_progress")],
+            "repo-b": [job(2, status="queued", created_at="2026-10-04T10:05:00Z")],
+            "repo-c": [job(3, status="queued")],
+        }
+
+        # Active runner taking the 1 available slot
+        active_runners = [running("runner-1", "repo-a")]
+        with patch.object(autoscaler.dashboard_state, "update_fleet") as mock_update:
+            scaler.publish(active_runners, active_runners, queued_by_repo)
+
+        mock_update.assert_called_once()
+        queued_jobs = mock_update.call_args.kwargs["queued_jobs"]
+        # Find jobs by id
+        job_1 = next(j for j in queued_jobs if j["id"] == 1)
+        job_2 = next(j for j in queued_jobs if j["id"] == 2)
+        job_3 = next(j for j in queued_jobs if j["id"] == 3)
+        job_4 = next(j for j in queued_jobs if j["id"] == 4)
+
+        self.assertEqual(job_1["queue_position"], 1)
+        self.assertIn("waiting for free runner slot", job_1["waiting_reason"])
+
+        self.assertEqual(job_2["queue_position"], 2)
+        self.assertEqual(job_2["waiting_reason"], "waiting behind repo-a")
+
+        self.assertIsNone(job_3["queue_position"])
+        self.assertIn("paused", job_3["waiting_reason"])
+
+        self.assertIsNone(job_4["queue_position"])
+        self.assertEqual(job_4["waiting_reason"], "running")
+
+
 if __name__ == "__main__":
     unittest.main()

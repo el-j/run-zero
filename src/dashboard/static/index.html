@@ -213,12 +213,13 @@
           </div>
         </section>
 
-        <!-- Monitored Repositories & Queue Depth -->
+        <!-- Monitored Repositories & Live Queue Steering -->
         <section class="panel" id="panel-queue">
           <div class="panel-header">
             <div class="panel-title-group">
               <span class="tag-accent">//</span>
-              <h2 class="panel-title">Monitored Repositories &amp; Queue Status</h2>
+              <h2 class="panel-title">Job Queue &amp; Repository Priority</h2>
+              <span id="queue-slots-badge" class="panel-badge font-mono badge-cyan">0/4 SLOTS BUSY</span>
               <span id="repos-count-badge" class="panel-badge font-mono">0 REPOSITORIES</span>
             </div>
             <div class="repo-filter-wrap">
@@ -226,8 +227,47 @@
             </div>
           </div>
           <div class="panel-body">
+            <!-- Capacity and Dispatch Notice -->
+            <div class="queue-steering-header">
+              <div class="queue-capacity-banner">
+                <div class="queue-capacity-item">
+                  <span class="stat-label">Active Runners:</span>
+                  <span id="queue-busy-slots" class="font-mono stat-value-sm">0</span>
+                </div>
+                <div class="queue-capacity-item">
+                  <span class="stat-label">Max Concurrency:</span>
+                  <span id="queue-max-slots" class="font-mono stat-value-sm">4</span>
+                </div>
+                <div class="queue-capacity-item">
+                  <span class="stat-label">Free Slots:</span>
+                  <span id="queue-free-slots" class="font-mono stat-value-sm highlight-emerald">4</span>
+                </div>
+                <div class="queue-capacity-item">
+                  <span class="stat-label">Total Queued:</span>
+                  <span id="queue-total-jobs" class="font-mono stat-value-sm highlight-amber">0</span>
+                </div>
+              </div>
+              <div class="queue-hint-box">
+                <span class="hint-icon">ℹ️</span>
+                <span>Free runner slots are allocated to higher-priority repositories first. Reorder repositories using drag-and-drop or <code class="font-mono">▲</code>/<code class="font-mono">▼</code> buttons. Use <b class="font-mono">Pause</b> to hold a repository's jobs in queue. <em>Note: Job dispatch order within a single repository is determined by GitHub Actions.</em></span>
+              </div>
+            </div>
+
+            <!-- Priority Steering List -->
+            <div class="queue-subheading-wrap">
+              <h4 class="subheading">// REPOSITORY PRIORITY &amp; DISPATCH CONTROLS</h4>
+            </div>
             <div id="repos-list" class="repos-list">
               <div class="empty-substate">Discovering active repositories...</div>
+            </div>
+
+            <!-- Detailed Queued & Running Jobs View Grouped by Repo -->
+            <div class="queue-subheading-wrap mt-18">
+              <h4 class="subheading">// LIVE WORKFLOW JOB QUEUE</h4>
+              <span id="queue-jobs-count-tag" class="tech-chip font-mono">0 JOBS</span>
+            </div>
+            <div id="queue-jobs-view" class="queue-jobs-view">
+              <div class="empty-substate">Queue is clear — no pending workflow jobs.</div>
             </div>
           </div>
         </section>

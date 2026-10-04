@@ -33,6 +33,8 @@ class TestDashboardState(unittest.TestCase):
         self.assertIsNone(self.state.github_rate_limit_total)
         self.assertEqual(self.state.total_queued_jobs, 0)
         self.assertEqual(self.state.active_runners, [])
+        self.assertEqual(self.state.repo_priority, [])
+        self.assertEqual(self.state.paused_repos, [])
         self.assertEqual(self.state.routing_docker_jobs, 0)
         self.assertEqual(self.state.routing_vm_jobs, 0)
         self.assertEqual(
@@ -75,6 +77,22 @@ class TestDashboardState(unittest.TestCase):
         entry = self.state.log_buffer[0]
         self.assertEqual(entry["message"], "Test log line 1")
         self.assertTrue("timestamp" in entry)
+
+    def test_set_repo_priority_updates_state_and_manager(self):
+        mock_mgr = MagicMock()
+        self.state.repo_priority_manager = mock_mgr
+        res = self.state.set_repo_priority(["p1", "p2"], ["p2"])
+        self.assertEqual(res["status"], "success")
+        self.assertEqual(res["priority"], ["p1", "p2"])
+        self.assertEqual(res["paused"], ["p2"])
+        self.assertEqual(self.state.repo_priority, ["p1", "p2"])
+        self.assertEqual(self.state.paused_repos, ["p2"])
+        mock_mgr.update.assert_called_once_with(priority=["p1", "p2"], paused=["p2"])
+        snapshot = self.state.get_snapshot()
+        self.assertEqual(snapshot["repo_priority"], ["p1", "p2"])
+        self.assertEqual(snapshot["paused_repos"], ["p2"])
+        self.assertEqual(snapshot["github"]["repo_priority"], ["p1", "p2"])
+        self.assertEqual(snapshot["github"]["paused_repos"], ["p2"])
 
     def test_report_image_build_records_event_and_appears_in_snapshot(self):
         self.state.report_image_build(
@@ -493,6 +511,34 @@ class TestDashboardServer(unittest.TestCase):
             data = json.loads(resp.read().decode("utf-8"))
             self.assertEqual(resp.status, 200)
             self.assertEqual(data.get("status"), "success")
+
+    def test_action_repo_priority(self):
+        payload = json.dumps({"priority": ["repo-1", "repo-2"], "paused": ["repo-2"]}).encode("utf-8")
+        req = urllib.request.Request(
+            f"{self.base_url}/api/actions/repo-priority",
+            data=payload,
+            headers={"Content-Type": "application/json"},
+            method="POST",
+        )
+        with urllib.request.urlopen(req, timeout=3.0) as resp:
+            data = json.loads(resp.read().decode("utf-8"))
+            self.assertEqual(resp.status, 200)
+            self.assertEqual(data.get("status"), "success")
+            self.assertEqual(data.get("priority"), ["repo-1", "repo-2"])
+            self.assertEqual(data.get("paused"), ["repo-2"])
+
+    def test_action_repo_priority_invalid_body_rejects(self):
+        for bad_payload in ({"priority": "not-a-list"}, {"paused": "not-a-list"}, {"priority": [123]}):
+            payload = json.dumps(bad_payload).encode("utf-8")
+            req = urllib.request.Request(
+                f"{self.base_url}/api/actions/repo-priority",
+                data=payload,
+                headers={"Content-Type": "application/json"},
+                method="POST",
+            )
+            with self.assertRaises(urllib.error.HTTPError) as cm:
+                urllib.request.urlopen(req, timeout=3.0)
+            self.assertEqual(cm.exception.code, 400)
 
     @patch("drivers.get_available_drivers")
     def test_action_prune(self, mock_get_avail):

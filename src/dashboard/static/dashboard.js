@@ -80,12 +80,24 @@
   const actionsUpdated = document.getElementById('actions-updated');
   const actionsStatus = document.getElementById('actions-status');
 
+  const queueSlotsBadge = document.getElementById('queue-slots-badge');
+  const queueBusySlots = document.getElementById('queue-busy-slots');
+  const queueMaxSlots = document.getElementById('queue-max-slots');
+  const queueFreeSlots = document.getElementById('queue-free-slots');
+  const queueTotalJobs = document.getElementById('queue-total-jobs');
+  const queueJobsView = document.getElementById('queue-jobs-view');
+  const queueJobsCountTag = document.getElementById('queue-jobs-count-tag');
+
   let eventSource = null;
   let retryTimeout = null;
   let reconnectAttempt = 0;
   let statusProbeTimer = null;
   let currentRepos = [];
   let currentQueuedJobs = [];
+  let currentRepoPriority = [];
+  let currentPausedRepos = new Set();
+  let currentConcurrency = { active: 0, max: 4, min: 0 };
+  let draggedRepo = null;
 
   function backoffMs(attempt) {
     const base = Math.min(30000, 1000 * Math.pow(2, Math.max(0, attempt - 1)));
@@ -414,10 +426,14 @@
     // Active Runners Grid
     renderRunners(state.runners || []);
 
-    // Repositories List
+    // Repositories List & Live Queue Steering
     currentRepos = repos;
+    currentRepoPriority = state.repo_priority || [];
+    currentPausedRepos = new Set(state.paused_repos || []);
     currentQueuedJobs = github.queued_jobs || [];
-    renderRepos(currentRepos, currentQueuedJobs);
+    currentConcurrency = concurrency;
+    renderRepos(currentRepos, currentQueuedJobs, currentRepoPriority, currentPausedRepos);
+    renderQueue(currentQueuedJobs, currentRepoPriority, currentPausedRepos, currentConcurrency);
 
     // Golden image build status
     renderImageBuilds(state.image_builds || []);
@@ -497,11 +513,160 @@
     }).join('');
   }
 
-  function renderRepos(repos, queuedJobs) {
+  function formatWaitTime(isoCreated, isoStarted, status) {
+    const ts = status === 'in_progress' && isoStarted ? Date.parse(isoStarted) : (isoCreated ? Date.parse(isoCreated) : null);
+    if (!ts || isNaN(ts)) {
+      return status === 'in_progress' ? 'running' : 'waiting';
+    }
+    const elapsedSecs = Math.max(0, Math.floor((Date.now() - ts) / 1000));
+    const mins = Math.floor(elapsedSecs / 60);
+    const secs = elapsedSecs % 60;
+    const hrs = Math.floor(mins / 60);
+    const m = mins % 60;
+    const prefix = status === 'in_progress' ? 'Running' : 'Waited';
+    if (hrs > 0) {
+      return `${prefix} ${hrs}h ${m}m`;
+    }
+    if (mins > 0) {
+      return `${prefix} ${mins}m ${secs}s`;
+    }
+    return `${prefix} ${secs}s`;
+  }
+
+  function getOrderedRepos(repos, priorityList) {
+    const prio = priorityList || [];
+    const set = new Set(repos);
+    const result = [];
+    prio.forEach(r => {
+      if (set.has(r) && !result.includes(r)) {
+        result.push(r);
+      }
+    });
+    repos.forEach(r => {
+      if (!result.includes(r)) {
+        result.push(r);
+      }
+    });
+    return result;
+  }
+
+  function updateRepoPriorityState(newPriority, newPaused) {
+    const payload = {
+      priority: newPriority,
+      paused: Array.from(newPaused),
+    };
+    fetch('/api/actions/repo-priority', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    })
+      .then(res => {
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        return res.json();
+      })
+      .then(data => {
+        currentRepoPriority = data.priority || newPriority;
+        currentPausedRepos = new Set(data.paused || newPaused);
+        renderRepos(currentRepos, currentQueuedJobs, currentRepoPriority, currentPausedRepos);
+        renderQueue(currentQueuedJobs, currentRepoPriority, currentPausedRepos, currentConcurrency);
+        showToast('Repository priority & pause state saved');
+      })
+      .catch(err => {
+        showToast(`Failed to save repository settings: ${err.message}`, true);
+      });
+  }
+
+  function attachRepoControlListeners(repos) {
+    if (!reposList) return;
+
+    reposList.querySelectorAll('button[data-action]').forEach(btn => {
+      btn.onclick = function (e) {
+        e.stopPropagation();
+        const action = this.getAttribute('data-action');
+        const repo = this.getAttribute('data-repo');
+        if (!repo) return;
+
+        let newPriority = getOrderedRepos(currentRepos, currentRepoPriority);
+        const newPaused = new Set(currentPausedRepos);
+
+        if (action === 'toggle-pause') {
+          if (newPaused.has(repo)) {
+            newPaused.delete(repo);
+          } else {
+            newPaused.add(repo);
+          }
+        } else if (action === 'move-up') {
+          const idx = newPriority.indexOf(repo);
+          if (idx > 0) {
+            const temp = newPriority[idx - 1];
+            newPriority[idx - 1] = newPriority[idx];
+            newPriority[idx] = temp;
+          }
+        } else if (action === 'move-down') {
+          const idx = newPriority.indexOf(repo);
+          if (idx >= 0 && idx < newPriority.length - 1) {
+            const temp = newPriority[idx + 1];
+            newPriority[idx + 1] = newPriority[idx];
+            newPriority[idx] = temp;
+          }
+        }
+
+        currentRepoPriority = newPriority;
+        currentPausedRepos = newPaused;
+        renderRepos(currentRepos, currentQueuedJobs, currentRepoPriority, currentPausedRepos);
+        renderQueue(currentQueuedJobs, currentRepoPriority, currentPausedRepos, currentConcurrency);
+        updateRepoPriorityState(newPriority, newPaused);
+      };
+    });
+
+    reposList.querySelectorAll('.repo-row').forEach(row => {
+      row.ondragstart = function (e) {
+        draggedRepo = this.getAttribute('data-repo');
+        e.dataTransfer.effectAllowed = 'move';
+        this.classList.add('repo-row-dragging');
+      };
+      row.ondragend = function () {
+        draggedRepo = null;
+        reposList.querySelectorAll('.repo-row').forEach(r => {
+          r.classList.remove('repo-row-dragging', 'repo-row-drag-over');
+        });
+      };
+      row.ondragover = function (e) {
+        e.preventDefault();
+        e.dataTransfer.dropEffect = 'move';
+        this.classList.add('repo-row-drag-over');
+      };
+      row.ondragleave = function () {
+        this.classList.remove('repo-row-drag-over');
+      };
+      row.ondrop = function (e) {
+        e.preventDefault();
+        this.classList.remove('repo-row-drag-over');
+        const targetRepo = this.getAttribute('data-repo');
+        if (!draggedRepo || draggedRepo === targetRepo) return;
+
+        const newPriority = getOrderedRepos(currentRepos, currentRepoPriority);
+        const fromIdx = newPriority.indexOf(draggedRepo);
+        const toIdx = newPriority.indexOf(targetRepo);
+
+        if (fromIdx >= 0 && toIdx >= 0) {
+          newPriority.splice(fromIdx, 1);
+          newPriority.splice(toIdx, 0, draggedRepo);
+          currentRepoPriority = newPriority;
+          renderRepos(currentRepos, currentQueuedJobs, currentRepoPriority, currentPausedRepos);
+          renderQueue(currentQueuedJobs, currentRepoPriority, currentPausedRepos, currentConcurrency);
+          updateRepoPriorityState(newPriority, currentPausedRepos);
+        }
+      };
+    });
+  }
+
+  function renderRepos(repos, queuedJobs, repoPriority, pausedRepos) {
     const query = repoSearchInput ? repoSearchInput.value.trim().toLowerCase() : '';
+    const ordered = getOrderedRepos(repos, repoPriority);
     const filteredRepos = query
-      ? repos.filter(r => r.toLowerCase().includes(query))
-      : repos;
+      ? ordered.filter(r => r.toLowerCase().includes(query))
+      : ordered;
 
     reposCountBadge.textContent = `${repos.length} REPOSITORIES`;
 
@@ -519,41 +684,211 @@
     queuedJobs.forEach(j => {
       const repo = j.repo || '';
       if (!queuedByRepo[repo]) {
-        queuedByRepo[repo] = { count: 0, sample: j };
+        queuedByRepo[repo] = { queued: 0, running: 0, sample: j };
       }
-      queuedByRepo[repo].count += 1;
+      if (j.status === 'in_progress') {
+        queuedByRepo[repo].running += 1;
+      } else {
+        queuedByRepo[repo].queued += 1;
+      }
     });
 
-    reposList.innerHTML = filteredRepos.map(repo => {
-      const queuedInfo = queuedByRepo[repo] || { count: 0, sample: null };
-      const qCount = queuedInfo.count;
-      const qClass = qCount > 0 ? 'queue-active' : 'queue-idle';
-      const qText = qCount > 0 ? `${qCount} queued job(s)` : 'idle';
+    reposList.innerHTML = filteredRepos.map((repo, idx) => {
+      const info = queuedByRepo[repo] || { queued: 0, running: 0, sample: null };
+      const qCount = info.queued;
+      const rCount = info.running;
+      const isPaused = pausedRepos && pausedRepos.has(repo);
+
+      let qBadge = '';
+      if (isPaused) {
+        qBadge = '<span class="repo-queue-badge queue-paused">PAUSED</span>';
+      } else if (qCount > 0) {
+        qBadge = `<span class="repo-queue-badge queue-active">${qCount} queued</span>`;
+      } else if (rCount > 0) {
+        qBadge = `<span class="repo-queue-badge queue-running">${rCount} running</span>`;
+      } else {
+        qBadge = '<span class="repo-queue-badge queue-idle">idle</span>';
+      }
+
       const repoUrl = toRepoUrl(repo);
-      const sample = queuedInfo.sample || {};
+      const sample = info.sample || {};
       const runUrl = toSafeGithubUrl(sample.run_url);
       const jobUrl = toSafeGithubUrl(sample.job_url);
       const linkChunks = [];
       if (repoUrl) {
-        linkChunks.push(`<a class="quick-link" href="${escapeHtml(repoUrl)}" target="_blank" rel="noopener noreferrer">Repository</a>`);
+        linkChunks.push(`<a class="quick-link" href="${escapeHtml(repoUrl)}" target="_blank" rel="noopener noreferrer">Repo</a>`);
       }
       if (runUrl) {
-        linkChunks.push(`<a class="quick-link" href="${escapeHtml(runUrl)}" target="_blank" rel="noopener noreferrer">Open run</a>`);
+        linkChunks.push(`<a class="quick-link" href="${escapeHtml(runUrl)}" target="_blank" rel="noopener noreferrer">Run</a>`);
       }
       if (jobUrl) {
-        linkChunks.push(`<a class="quick-link" href="${escapeHtml(jobUrl)}" target="_blank" rel="noopener noreferrer">Open queued job</a>`);
+        linkChunks.push(`<a class="quick-link" href="${escapeHtml(jobUrl)}" target="_blank" rel="noopener noreferrer">Job</a>`);
       }
       const quickLinks = linkChunks.length > 0
         ? `<div class="repo-links">${linkChunks.join('<span class="link-sep">•</span>')}</div>`
         : '';
 
+      const pauseBtnClass = isPaused ? 'btn-resume-repo' : 'btn-pause-repo';
+      const pauseBtnText = isPaused ? 'RESUME' : 'PAUSE';
+      const pauseBtnTitle = isPaused ? 'Resume runner allocation for this repository' : 'Pause runner allocation for this repository';
+
       return `
-        <div class="repo-row">
-          <div class="repo-main">
-            <span class="repo-name font-mono">${escapeHtml(repo)}</span>
-            ${quickLinks}
+        <div class="repo-row ${isPaused ? 'repo-row-paused' : ''}" draggable="true" data-repo="${escapeHtml(repo)}" data-index="${idx}">
+          <div class="repo-prio-left">
+            <span class="drag-handle" title="Drag to reorder priority">⠿</span>
+            <span class="priority-rank-badge font-mono" title="Priority #${idx + 1}">#${idx + 1}</span>
+            <div class="repo-main">
+              <span class="repo-name font-mono">${escapeHtml(repo)}</span>
+              ${quickLinks}
+            </div>
           </div>
-          <span class="repo-queue-badge ${qClass}">${qText}</span>
+          <div class="repo-prio-right">
+            ${qBadge}
+            <button class="btn btn-xs ${pauseBtnClass}" data-action="toggle-pause" data-repo="${escapeHtml(repo)}" title="${pauseBtnTitle}">
+              ${pauseBtnText}
+            </button>
+            <div class="prio-move-btns">
+              <button class="btn btn-xs btn-move" data-action="move-up" data-repo="${escapeHtml(repo)}" title="Increase priority" ${idx === 0 ? 'disabled' : ''}>▲</button>
+              <button class="btn btn-xs btn-move" data-action="move-down" data-repo="${escapeHtml(repo)}" title="Decrease priority" ${idx === filteredRepos.length - 1 ? 'disabled' : ''}>▼</button>
+            </div>
+          </div>
+        </div>
+      `;
+    }).join('');
+
+    attachRepoControlListeners(filteredRepos);
+  }
+
+  function renderQueue(queuedJobs, repoPriority, pausedRepos, concurrency) {
+    const activeRunners = (concurrency && concurrency.active) || 0;
+    const maxRunners = (concurrency && concurrency.max) || 4;
+    const queuedOnly = queuedJobs.filter(j => j.status !== 'in_progress');
+    const freeSlots = Math.max(0, maxRunners - activeRunners);
+
+    if (queueBusySlots) queueBusySlots.textContent = activeRunners;
+    if (queueMaxSlots) queueMaxSlots.textContent = maxRunners;
+    if (queueFreeSlots) queueFreeSlots.textContent = freeSlots;
+    if (queueTotalJobs) queueTotalJobs.textContent = queuedOnly.length;
+    if (queueSlotsBadge) {
+      queueSlotsBadge.textContent = `${activeRunners}/${maxRunners} SLOTS BUSY • ${freeSlots} FREE`;
+      if (freeSlots === 0) {
+        queueSlotsBadge.className = 'panel-badge font-mono badge-danger';
+      } else {
+        queueSlotsBadge.className = 'panel-badge font-mono badge-cyan';
+      }
+    }
+    if (queueJobsCountTag) {
+      queueJobsCountTag.textContent = `${queuedJobs.length} JOBS`;
+    }
+
+    if (!queueJobsView) return;
+
+    if (queuedJobs.length === 0) {
+      queueJobsView.innerHTML = `
+        <div class="empty-substate empty-queue-clean">
+          <div class="clean-check-icon">✓</div>
+          <div class="clean-text font-mono">ALL WORKFLOW QUEUES ARE CLEAR</div>
+          <div class="clean-subtext">Waiting jobs will appear here in real-time as GitHub Actions workflows trigger.</div>
+        </div>
+      `;
+      return;
+    }
+
+    const jobsByRepo = {};
+    queuedJobs.forEach(job => {
+      const repo = job.repo || 'unknown';
+      if (!jobsByRepo[repo]) {
+        jobsByRepo[repo] = [];
+      }
+      jobsByRepo[repo].push(job);
+    });
+
+    const orderedRepoNames = getOrderedRepos(Object.keys(jobsByRepo), repoPriority);
+
+    queueJobsView.innerHTML = orderedRepoNames.map((repo, rIdx) => {
+      const jobs = jobsByRepo[repo] || [];
+      const isPaused = pausedRepos && pausedRepos.has(repo);
+      const queuedCount = jobs.filter(j => j.status !== 'in_progress').length;
+      const runningCount = jobs.filter(j => j.status === 'in_progress').length;
+
+      const jobsCards = jobs.map(job => {
+        const isRunning = job.status === 'in_progress';
+        const statusBadge = isRunning
+          ? '<span class="job-status-badge badge-running"><span class="beacon-dot"></span>IN PROGRESS</span>'
+          : '<span class="job-status-badge badge-queued">QUEUED</span>';
+        const posBadge = job.queue_position !== null && job.queue_position !== undefined
+          ? `<span class="job-pos-badge font-mono">#${job.queue_position} IN QUEUE</span>`
+          : (isRunning ? '<span class="job-pos-badge pos-running font-mono">RUNNING</span>' : '');
+
+        const waitText = formatWaitTime(job.created_at, job.started_at, job.status);
+        const labels = Array.isArray(job.labels) ? job.labels : [];
+        const labelChips = labels.map(l => `<span class="tech-chip chip-mini font-mono">${escapeHtml(l)}</span>`).join('');
+
+        let reasonBanner = '';
+        if (job.waiting_reason) {
+          let reasonClass = 'reason-normal';
+          if (job.waiting_reason.includes('waiting behind')) reasonClass = 'reason-priority';
+          else if (job.waiting_reason.includes('paused')) reasonClass = 'reason-paused';
+          else if (job.waiting_reason.includes('free runner slot')) reasonClass = 'reason-busy';
+          else if (job.waiting_reason === 'running') reasonClass = 'reason-active';
+
+          reasonBanner = `
+            <div class="queue-reason-banner ${reasonClass}">
+              <span class="reason-indicator">●</span>
+              <span class="reason-text font-mono">${escapeHtml(job.waiting_reason)}</span>
+            </div>
+          `;
+        }
+
+        const jobUrl = toSafeGithubUrl(job.job_url);
+        const runUrl = toSafeGithubUrl(job.run_url);
+        const links = [];
+        if (jobUrl) links.push(`<a class="quick-link font-mono" href="${escapeHtml(jobUrl)}" target="_blank" rel="noopener noreferrer">View Job ↗</a>`);
+        if (runUrl) links.push(`<a class="quick-link font-mono" href="${escapeHtml(runUrl)}" target="_blank" rel="noopener noreferrer">View Run ↗</a>`);
+        const linksRow = links.length > 0 ? `<div class="job-links">${links.join('<span class="link-sep">•</span>')}</div>` : '';
+
+        return `
+          <div class="queue-job-card ${isRunning ? 'job-running-card' : ''}">
+            <div class="job-card-header">
+              <div class="job-header-left">
+                ${posBadge}
+                ${statusBadge}
+                <span class="job-wf-name font-mono">${escapeHtml(job.workflow_name || job.workflow_path || 'Workflow')}</span>
+              </div>
+              <span class="job-wait-time font-mono">${escapeHtml(waitText)}</span>
+            </div>
+            <div class="job-card-title">
+              <span class="job-title-name">${escapeHtml(job.name || 'Unnamed Job')}</span>
+            </div>
+            <div class="job-card-meta">
+              <span class="meta-tag font-mono">🌿 ${escapeHtml(job.head_branch || 'main')}</span>
+              <span class="meta-tag font-mono">⚡ ${escapeHtml(job.event || 'push')}</span>
+              <span class="meta-tag font-mono">Attempt ${escapeHtml(job.run_attempt || 1)}</span>
+            </div>
+            ${labelChips ? `<div class="job-card-labels">${labelChips}</div>` : ''}
+            ${reasonBanner}
+            ${linksRow}
+          </div>
+        `;
+      }).join('');
+
+      return `
+        <div class="repo-queue-group">
+          <div class="repo-queue-group-header">
+            <div class="group-header-left">
+              <span class="group-prio-tag font-mono">PRIORITY #${rIdx + 1}</span>
+              <span class="group-repo-name font-mono">${escapeHtml(repo)}</span>
+              ${isPaused ? '<span class="panel-badge badge-paused-tag font-mono">PAUSED</span>' : ''}
+            </div>
+            <div class="group-header-right font-mono">
+              ${queuedCount > 0 ? `<span class="group-count-queued">${queuedCount} queued</span>` : ''}
+              ${runningCount > 0 ? `<span class="group-count-running">${runningCount} in-progress</span>` : ''}
+              ${queuedCount === 0 && runningCount === 0 ? '<span class="group-count-idle">idle</span>' : ''}
+            </div>
+          </div>
+          <div class="repo-queue-group-jobs">
+            ${jobsCards}
+          </div>
         </div>
       `;
     }).join('');
@@ -562,7 +897,7 @@
   // Filter input event listener
   if (repoSearchInput) {
     repoSearchInput.addEventListener('input', function () {
-      renderRepos(currentRepos, currentQueuedJobs);
+      renderRepos(currentRepos, currentQueuedJobs, currentRepoPriority, currentPausedRepos);
     });
   }
 

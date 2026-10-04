@@ -30,6 +30,7 @@ from drivers import RunnerDriver, RunnerInfo, get_available_drivers, select_defa
 from drivers.sizing import resolve_sizing
 from github_api import get_queued_job_details, refresh_actions_billing, refresh_rate_limit
 from reconciler import reconcile_idle_orphans, reconcile_zombie_runners
+from repo_priority import RepoPriorityManager, parse_repo_priority_env
 from router import select_driver_for_job
 from version import __version__, build_info, version_drift
 
@@ -115,11 +116,14 @@ class Scaler:
         default_driver: RunnerDriver,
         clock: Callable[[], float] = time.time,
         pause: Callable[[float], None] = time.sleep,
+        repo_priority: RepoPriorityManager | None = None,
     ):
         """Bind configuration and the driver registry; `clock`/`pause` are injectable for tests."""
         self.config = config
         self.drivers = drivers
         self.default_driver = default_driver
+        self.repo_priority = repo_priority or RepoPriorityManager(initial_priority=parse_repo_priority_env(config.repo_priority or os.getenv("REPO_PRIORITY")))
+        dashboard_state.repo_priority_manager = self.repo_priority
         self.architectures = get_target_architectures(config.runner_arch)
         self.tracked_repos: list[str] = []
         self.runner_job_meta: dict[str, dict[str, Any]] = {}
@@ -263,7 +267,7 @@ class Scaler:
         capacity. The reconciler spares up to MIN_RUNNERS idle runners (see collect()).
         """
         cfg = self.config
-        targets = [cfg.org] if cfg.org else self.tracked_repos
+        targets = [cfg.org] if cfg.org else self.repo_priority.get_priority_list([r for r in self.tracked_repos if not self.repo_priority.is_paused(r)])
         active_count = len(active_runners)
         if not targets or active_count >= cfg.min_runners or active_count >= cfg.max_runners:
             return
@@ -289,14 +293,14 @@ class Scaler:
         return {"org": self.config.org} if self.config.org else {"repo": repo}
 
     def gather_queued_jobs(self) -> dict[str, list[dict[str, Any]]]:
-        """Queued self-hosted jobs per tracked repo (repos with none are omitted)."""
+        """Queued and in-progress self-hosted jobs per tracked repo (repos with none are omitted)."""
         queued: dict[str, list[dict[str, Any]]] = {}
         for repo in self.tracked_repos:
-            jobs = get_queued_job_details(repo, access_token=self.config.access_token)
+            jobs = get_queued_job_details(repo, access_token=self.config.access_token, include_in_progress=True)
             if jobs:
                 queued[repo] = jobs
             self._pause(0.1)  # spread per-repo API calls a little
-        total = sum(len(jobs) for jobs in queued.values())
+        total = sum(len([j for j in jobs if j.get("status", "queued") == "queued"]) for jobs in queued.values())
         if total:
             log_print(f"[Autoscaler] Detected {total} queued unclaimed job(s) across repos.")
         return queued
@@ -306,10 +310,18 @@ class Scaler:
 
         Repo mode counts coverage per repository. In ORG mode every org runner can take any
         repo's job, so coverage is counted across the whole org.
+        Allocates slots to higher-priority repositories first, breaking ties by oldest job.
+        Paused repositories do not receive runner allocations.
         """
         uncovered = self._uncovered_jobs(queued_by_repo, active_runners)
-        for repo, jobs in queued_by_repo.items():
-            for job in jobs:
+        ordered_repos = self.repo_priority.get_priority_list(list(queued_by_repo.keys()))
+        for repo in ordered_repos:
+            if self.repo_priority.is_paused(repo):
+                continue
+            jobs = queued_by_repo.get(repo, [])
+            queued_jobs = [j for j in jobs if j.get("status", "queued") == "queued"]
+            queued_jobs.sort(key=lambda j: (j.get("created_at") or "", j.get("id") or 0))
+            for job in queued_jobs:
                 if len(active_runners) >= self.config.max_runners or uncovered.get(repo if not self.org else "*", 0) <= 0:
                     break
                 spawned = self._spawn_for_job(repo, job)
@@ -327,8 +339,17 @@ class Scaler:
     def _uncovered_jobs(self, queued_by_repo: dict[str, list[dict[str, Any]]], active_runners: list[RunnerInfo]) -> dict[str, int]:
         """Queued jobs minus runners already serving them: per repo, or org-wide under "*"."""
         if self.org:
-            return {"*": sum(len(jobs) for jobs in queued_by_repo.values()) - sum(1 for r in active_runners if r.target_repo in (self.org, ""))}
-        return {repo: len(jobs) - sum(1 for r in active_runners if r.target_repo == repo) for repo, jobs in queued_by_repo.items()}
+            total_queued = sum(
+                len([j for j in jobs if j.get("status", "queued") == "queued"])
+                for repo, jobs in queued_by_repo.items()
+                if not self.repo_priority.is_paused(repo)
+            )
+            return {"*": total_queued - sum(1 for r in active_runners if r.target_repo in (self.org, ""))}
+        return {
+            repo: len([j for j in jobs if j.get("status", "queued") == "queued"]) - sum(1 for r in active_runners if r.target_repo == repo)
+            for repo, jobs in queued_by_repo.items()
+            if not self.repo_priority.is_paused(repo)
+        }
 
     def _spawn_for_job(self, repo: str, job: dict[str, Any]) -> tuple[str, RunnerDriver, str] | None:
         """Route `job` to a driver and spawn, falling back to the default driver on failure."""
@@ -389,7 +410,45 @@ class Scaler:
         current = {runner.name for runner in active_runners}
         self.runner_job_meta = {k: v for k, v in self.runner_job_meta.items() if k in current}
         runners_for_dashboard = [{**runner.to_dict(), **self.runner_job_meta.get(runner.name, {})} for runner in all_runners]
-        queued_jobs = [{**job, "repo": repo} for repo, jobs in queued_by_repo.items() for job in jobs]
+
+        ordered_repos = self.repo_priority.get_priority_list(list(queued_by_repo.keys()))
+        annotated_jobs: list[dict[str, Any]] = []
+        queue_pos = 0
+        busy_slots = len(active_runners)
+        max_slots = self.config.max_runners
+        higher_prio_with_queued: list[str] = []
+
+        for repo in ordered_repos:
+            jobs = list(queued_by_repo.get(repo, []))
+            is_paused = self.repo_priority.is_paused(repo)
+            queued_items = [j for j in jobs if j.get("status", "queued") == "queued"]
+            queued_items.sort(key=lambda j: (j.get("created_at") or "", j.get("id") or 0))
+            running_items = [j for j in jobs if j.get("status", "queued") == "in_progress"]
+
+            for job in running_items:
+                annotated_jobs.append({**job, "repo": repo, "queue_position": None, "waiting_reason": "running"})
+
+            for job in queued_items:
+                queue_pos += 1
+                if is_paused:
+                    reason = "paused (runners suspended for repository)"
+                    pos = None
+                elif higher_prio_with_queued:
+                    reason = f"waiting behind {higher_prio_with_queued[0]}"
+                    pos = queue_pos
+                elif busy_slots >= max_slots:
+                    reason = f"waiting for free runner slot ({busy_slots}/{max_slots} busy)"
+                    pos = queue_pos
+                else:
+                    reason = "next in queue"
+                    pos = queue_pos
+
+                annotated_jobs.append({**job, "repo": repo, "queue_position": pos, "waiting_reason": reason})
+
+            if not is_paused and queued_items:
+                higher_prio_with_queued.append(repo)
+
+        priority_state = self.repo_priority.get_state()
         dashboard_state.update_fleet(
             runners=runners_for_dashboard,
             rate_limit=github_api.rate_limit_remaining,
@@ -398,11 +457,13 @@ class Scaler:
             rate_limit_resource=github_api.rate_limit_resource,
             rate_limit_reset=github_api.rate_limit_reset,
             actions_billing=github_api.actions_billing,
-            queued_jobs=queued_jobs,
+            queued_jobs=annotated_jobs,
             monitored_repos=self.tracked_repos,
             available_drivers=list(self.drivers),
             default_engine=self.default_driver.name(),
             version=__version__,
+            repo_priority=priority_state["priority"],
+            paused_repos=priority_state["paused"],
         )
 
     def run_once(self) -> None:
