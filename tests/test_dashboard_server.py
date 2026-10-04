@@ -686,6 +686,202 @@ class TestDashboardServer(unittest.TestCase):
         mock_handler.send_response.assert_called_once_with(500)
         mock_handler.wfile.write.assert_called_once()
 
+    def test_get_settings_default_and_injected(self):
+        req = urllib.request.Request(f"{self.base_url}/api/settings")
+        with urllib.request.urlopen(req, timeout=3.0) as resp:
+            data = json.loads(resp.read().decode("utf-8"))
+            self.assertEqual(resp.status, 200)
+            self.assertIn("max_runners", data)
+
+        # Injected config
+        mock_cfg = MagicMock()
+        mock_cfg.max_runners = 12
+        mock_cfg.max_concurrency = 12
+        mock_cfg.min_runners = 2
+        mock_cfg.idle_timeout_seconds = 300
+        mock_cfg.access_token = "token"
+        mock_cfg.architectures = ["arm64"]
+        mock_cfg.default_backend = "docker"
+        mock_cfg.tracked_repos = ["org/repo"]
+        mock_cfg.poll_interval_seconds = 10
+        mock_cfg.runner_labels = "self-hosted"
+        mock_cfg.dynamic_concurrency = False
+        mock_cfg.metrics_enabled = True
+        mock_cfg.metrics_port = 9090
+        mock_cfg.proxies_enabled = True
+        mock_cfg.cache_mounts = {}
+        assert self.server.httpd is not None
+        self.server.httpd.config = mock_cfg
+        with urllib.request.urlopen(req, timeout=3.0) as resp:
+            data = json.loads(resp.read().decode("utf-8"))
+            self.assertEqual(data["max_runners"], 12)
+
+    def test_post_settings_success_and_error(self):
+        req_bad = urllib.request.Request(
+            f"{self.base_url}/api/settings",
+            data=json.dumps({"max_runners": "not-a-number"}).encode("utf-8"),
+            headers={"Content-Type": "application/json"},
+            method="POST",
+        )
+        with self.assertRaises(urllib.error.HTTPError) as cm:
+            urllib.request.urlopen(req_bad, timeout=3.0)
+        self.assertEqual(cm.exception.code, 400)
+
+        with patch("dashboard.server.update_live_settings") as mock_update:
+            mock_update.return_value = (MagicMock(), {"max_runners": 5})
+            req_ok = urllib.request.Request(
+                f"{self.base_url}/api/settings",
+                data=json.dumps({"max_runners": 5}).encode("utf-8"),
+                headers={"Content-Type": "application/json"},
+                method="POST",
+            )
+            with urllib.request.urlopen(req_ok, timeout=3.0) as resp:
+                data = json.loads(resp.read().decode("utf-8"))
+                self.assertEqual(resp.status, 200)
+                self.assertTrue(data["ok"])
+
+    def test_get_cache(self):
+        req = urllib.request.Request(f"{self.base_url}/api/cache")
+        with urllib.request.urlopen(req, timeout=3.0) as resp:
+            data = json.loads(resp.read().decode("utf-8"))
+            self.assertEqual(resp.status, 200)
+            self.assertIn("categories", data)
+
+    def test_post_cache_purge(self):
+        req = urllib.request.Request(
+            f"{self.base_url}/api/cache/purge",
+            data=json.dumps({"category": "npm"}).encode("utf-8"),
+            headers={"Content-Type": "application/json"},
+            method="POST",
+        )
+        with urllib.request.urlopen(req, timeout=3.0) as resp:
+            data = json.loads(resp.read().decode("utf-8"))
+            self.assertEqual(resp.status, 200)
+            self.assertTrue(data["ok"])
+
+    def test_clean_cache_invalid_category(self):
+        req = urllib.request.Request(
+            f"{self.base_url}/api/actions/clean-cache",
+            data=json.dumps({"category": 12345}).encode("utf-8"),
+            headers={"Content-Type": "application/json"},
+            method="POST",
+        )
+        with self.assertRaises(urllib.error.HTTPError) as cm:
+            urllib.request.urlopen(req, timeout=3.0)
+        self.assertEqual(cm.exception.code, 400)
+
+    def test_post_workflow_action(self):
+        with patch("dashboard.server.execute_workflow_action") as mock_wf:
+            mock_wf.return_value = {"ok": True, "status": 202}
+            req = urllib.request.Request(
+                f"{self.base_url}/api/actions/workflow",
+                data=json.dumps({"repo": "org/repo", "run_id": 99, "action": "rerun"}).encode("utf-8"),
+                headers={"Content-Type": "application/json"},
+                method="POST",
+            )
+            with urllib.request.urlopen(req, timeout=3.0) as resp:
+                data = json.loads(resp.read().decode("utf-8"))
+                self.assertEqual(resp.status, 200)
+                self.assertTrue(data["ok"])
+
+        # Error branch
+        with patch("dashboard.server.execute_workflow_action", side_effect=ValueError("bad action")):
+            req_err = urllib.request.Request(
+                f"{self.base_url}/api/actions/workflow",
+                data=json.dumps({"repo": "org/repo", "run_id": 99, "action": "invalid"}).encode("utf-8"),
+                headers={"Content-Type": "application/json"},
+                method="POST",
+            )
+            with self.assertRaises(urllib.error.HTTPError) as cm:
+                urllib.request.urlopen(req_err, timeout=3.0)
+            self.assertEqual(cm.exception.code, 400)
+
+    def test_post_runner_action(self):
+        with patch("dashboard.server.execute_runner_action") as mock_ra:
+            mock_ra.return_value = {"ok": True, "message": "Paused"}
+            req = urllib.request.Request(
+                f"{self.base_url}/api/actions/runner",
+                data=json.dumps({"action": "pause"}).encode("utf-8"),
+                headers={"Content-Type": "application/json"},
+                method="POST",
+            )
+            with urllib.request.urlopen(req, timeout=3.0) as resp:
+                data = json.loads(resp.read().decode("utf-8"))
+                self.assertEqual(resp.status, 200)
+                self.assertTrue(data["ok"])
+
+        # Error branch
+        with patch("dashboard.server.execute_runner_action", side_effect=ValueError("unknown action")):
+            req_err = urllib.request.Request(
+                f"{self.base_url}/api/actions/runner",
+                data=json.dumps({"action": "bad"}).encode("utf-8"),
+                headers={"Content-Type": "application/json"},
+                method="POST",
+            )
+            with self.assertRaises(urllib.error.HTTPError) as cm:
+                urllib.request.urlopen(req_err, timeout=3.0)
+            self.assertEqual(cm.exception.code, 400)
+
+    def test_api_stream_alias(self):
+        req = urllib.request.Request(f"{self.base_url}/api/stream")
+        resp = urllib.request.urlopen(req, timeout=5.0)
+        self.addCleanup(resp.close)
+        first_line = resp.readline()
+        self.assertTrue(first_line.startswith(b"event:"))
+
+    def test_serve_dist_dir_vite_assets(self):
+        with tempfile.TemporaryDirectory() as temp_dist:
+            os.makedirs(os.path.join(temp_dist, "assets"))
+            with open(os.path.join(temp_dist, "index.html"), "w") as f:
+                f.write("<html>dist</html>")
+            with open(os.path.join(temp_dist, "assets", "app.css"), "w") as f:
+                f.write("body { margin: 0; }")
+            with open(os.path.join(temp_dist, "assets", "app.js"), "w") as f:
+                f.write("console.log('dist');")
+
+            with patch("dashboard.server.DIST_DIR", temp_dist):
+                req_root = urllib.request.Request(f"{self.base_url}/")
+                with urllib.request.urlopen(req_root, timeout=3.0) as resp:
+                    self.assertEqual(resp.read().decode("utf-8"), "<html>dist</html>")
+
+                req_css = urllib.request.Request(f"{self.base_url}/assets/app.css")
+                with urllib.request.urlopen(req_css, timeout=3.0) as resp:
+                    self.assertIn("margin", resp.read().decode("utf-8"))
+
+                req_js = urllib.request.Request(f"{self.base_url}/assets/app.js")
+                with urllib.request.urlopen(req_js, timeout=3.0) as resp:
+                    self.assertIn("dist", resp.read().decode("utf-8"))
+
+    def test_serve_font_traversal_rejected(self):
+        for bad_font in ("/fonts/sub/font.woff2", "/fonts/font.ttf"):
+            req = urllib.request.Request(f"{self.base_url}{bad_font}")
+            with self.assertRaises(urllib.error.HTTPError) as cm:
+                urllib.request.urlopen(req, timeout=3.0)
+            self.assertEqual(cm.exception.code, 404)
+
+    def test_admit_host_rejection_get_and_post(self):
+        req_get = urllib.request.Request(f"{self.base_url}/api/status", headers={"Host": "evil.attacker.com"})
+        with self.assertRaises(urllib.error.HTTPError) as cm:
+            urllib.request.urlopen(req_get, timeout=3.0)
+        self.assertEqual(cm.exception.code, 421)
+
+        req_post = urllib.request.Request(
+            f"{self.base_url}/api/settings",
+            data=b"{}",
+            headers={"Host": "evil.attacker.com", "Content-Type": "application/json"},
+            method="POST",
+        )
+        with self.assertRaises(urllib.error.HTTPError) as cm:
+            urllib.request.urlopen(req_post, timeout=3.0)
+        self.assertEqual(cm.exception.code, 421)
+
+    def test_serve_static_fallback_when_dist_absent(self):
+        with patch("dashboard.server.DIST_DIR", "/nonexistent/dist/dir"):
+            req = urllib.request.Request(f"{self.base_url}/")
+            with urllib.request.urlopen(req, timeout=3.0) as resp:
+                self.assertEqual(resp.status, 200)
+                self.assertIn("RunZero", resp.read().decode("utf-8"))
+
 
 class TestDashboardServerLifecycle(unittest.TestCase):
     @patch("dashboard.server.ControlPlaneHTTPServer")
