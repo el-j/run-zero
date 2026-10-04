@@ -3,6 +3,7 @@ Tests for OrbStack golden base images: build, staging promotion, idle stop, orph
 and the async, backoff-gated build trigger (drivers.orbstack_image + OrbStackVMDriver hooks).
 """
 
+import io
 import json
 import os
 import subprocess
@@ -23,6 +24,7 @@ from drivers.orbstack_templates import (
 from drivers.orbstack_vm_driver import (
     OrbStackVMDriver,
 )
+from drivers.runner_bootstrap import RUNNER_VERSION
 from drivers.sizing import HostCapacity
 
 
@@ -222,6 +224,47 @@ class TestOrbStackImages(OrbStackDriverTestCase):
         self.assertTrue(result)
         mock_run.assert_called_once()
         self.assertEqual(mock_run.call_args[0][0][:2], ["orbctl", "list"])
+
+    def test_base_image_stale_follows_the_stamp(self):
+        self.assertFalse(self.driver.images.base_image_stale("amd64"))
+        self.write_stamp("amd64", "2.336.0")
+        self.assertTrue(self.driver.images.base_image_stale("amd64"))
+        self.write_stamp("amd64", None)  # built before images were stamped
+        self.assertTrue(self.driver.images.base_image_stale("amd64"))
+
+    def test_stamp_write_failure_is_only_a_warning(self):
+        with patch("drivers.orbstack_image.os.makedirs", side_effect=PermissionError("read-only")), patch("sys.stderr", new_callable=io.StringIO) as err:
+            self.driver.images._write_stamp("amd64")
+        self.assertIn("could not record the base image version", err.getvalue())
+
+    @patch("subprocess.run")
+    def test_build_base_image_rebuilds_a_stale_image_and_stamps_it(self, mock_run):
+        self.write_stamp("amd64", "2.336.0")
+
+        def fake_run(cmd, *args, **kwargs):
+            if cmd[:2] == ["orbctl", "list"]:
+                return MagicMock(stdout=json.dumps([{"name": "runzero-vm-base-amd64", "state": "stopped"}]), returncode=0)
+            return MagicMock(returncode=0, stdout="")
+
+        mock_run.side_effect = fake_run
+        with patch.object(self.driver.images, "_stop_vm", return_value=True):
+            self.assertTrue(self.driver.build_base_image("amd64"))
+        commands = [c[0][0][:2] for c in mock_run.call_args_list]
+        self.assertIn(["orbctl", "create"], commands)
+        self.assertIn(["orbctl", "rename"], commands)
+        self.assertFalse(self.driver.images.base_image_stale("amd64"))
+
+    def test_ensure_runtime_assets_rebuilds_a_stale_image_in_the_background(self):
+        with patch.object(self.driver, "base_image_exists", return_value=True), patch.object(self.driver, "_build_base_image_async") as mock_async_build:
+            self.assertTrue(self.driver.ensure_runtime_assets("amd64"))
+            mock_async_build.assert_not_called()
+            self.write_stamp("amd64", "2.336.0")
+            self.assertTrue(self.driver.ensure_runtime_assets("amd64"))  # the old image keeps serving
+            mock_async_build.assert_called_once_with("amd64")
+            with self.driver._backoff.lock:
+                self.driver._backoff.in_progress.add("amd64")
+            self.driver.ensure_runtime_assets("amd64")
+            mock_async_build.assert_called_once()  # not again while it builds
 
     @patch("subprocess.run")
     def test_build_base_image_create_failure(self, mock_run):
@@ -1166,7 +1209,7 @@ class TestOrbStackImages(OrbStackDriverTestCase):
         self.assertIn('set -- "arm64"', full_script)
         self.assertIn("echo hello-provision-marker", full_script)
         self.assertIn(docker_engine_snippet(), full_script)
-        self.assertIn(runner_download_snippet("arm64", "2.336.0"), full_script)
+        self.assertIn(runner_download_snippet("arm64", RUNNER_VERSION), full_script)
         self.assertIn("Base image provisioning complete.", full_script)
         self.assertEqual(captured["kwargs"].get("timeout"), 1800)
         self.assertTrue(captured["kwargs"].get("capture_output"))
