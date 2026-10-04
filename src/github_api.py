@@ -339,8 +339,12 @@ def get_workflow_text_for_run(repo_full_name: str, run_id: int, access_token: st
     return text
 
 
-def get_queued_job_details(repo_full_name: str, access_token: str | None = None) -> list[dict[str, Any]]:
-    """Retrieve detailed metadata for unclaimed queued jobs in a repository.
+def get_queued_job_details(
+    repo_full_name: str,
+    access_token: str | None = None,
+    include_in_progress: bool = False,
+) -> list[dict[str, Any]]:
+    """Retrieve detailed metadata for unclaimed queued (and optionally in-progress) jobs in a repository.
 
     Queued jobs live in `queued` runs and in `in_progress` ones: as soon as any job of a run
     starts, or is skipped (a re-run marks its skipped jobs as started at once), the whole run
@@ -358,6 +362,7 @@ def get_queued_job_details(repo_full_name: str, access_token: str | None = None)
     if not queued_runs:
         return []
 
+    target_statuses = ("queued", "in_progress") if include_in_progress else ("queued",)
     detailed_jobs: list[dict[str, Any]] = []
     for run in queued_runs:
         run_id = run.get("id")
@@ -375,7 +380,7 @@ def get_queued_job_details(repo_full_name: str, access_token: str | None = None)
         # never be assigned to us) still causes a container/VM spawn
         # that then sits registered and idle forever, since GitHub
         # dispatches it to its own hosted fleet instead.
-        qualifying_jobs = [job for job in jobs if job.get("status") == "queued" and "self-hosted" in job.get("labels", [])]
+        qualifying_jobs = [job for job in jobs if job.get("status") in target_statuses and "self-hosted" in job.get("labels", [])]
         if not qualifying_jobs:
             continue
 
@@ -390,18 +395,23 @@ def get_queued_job_details(repo_full_name: str, access_token: str | None = None)
                     "id": job.get("id"),
                     "name": job.get("name", ""),
                     "run_id": run_id,
+                    "status": job.get("status", "queued"),
+                    "run_attempt": job.get("run_attempt") or run.get("run_attempt") or 1,
                     # The workflow FILE path (e.g. ".github/workflows/ci.yml"), stable across every
                     # run of this workflow -- unlike run_id/id, which are unique per execution and
                     # therefore useless as a cache scope key (see build_cache_scope() in
                     # autoscaler.py: it's combined with the job name for a stable, reusable
                     # per-job build-cache directory instead of one that's thrown away every run).
                     "workflow_path": run.get("path", ""),
+                    "workflow_name": run.get("name") or (run.get("path", "").rsplit("/", 1)[-1] if run.get("path") else ""),
                     "job_url": job.get("html_url")
                     or (f"https://github.com/{repo_full_name}/actions/runs/{run_id}/job/{job.get('id')}" if run_id and job.get("id") else ""),
                     "run_url": run.get("html_url") or (f"https://github.com/{repo_full_name}/actions/runs/{run_id}" if run_id else ""),
                     "labels": job.get("labels", []),
                     "head_branch": run.get("head_branch", ""),
                     "event": run.get("event", ""),
+                    "created_at": job.get("created_at") or job.get("started_at") or run.get("run_started_at") or run.get("created_at") or "",
+                    "started_at": job.get("started_at") or "",
                     # True/False when the workflow file could be located and
                     # parsed and the job matched by name; None ("unknown") if
                     # not -- router.py must fall back to its name/label

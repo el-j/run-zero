@@ -116,6 +116,7 @@ class Config:
     dashboard_enabled: bool = True
     dashboard_port: int = 49505
     dashboard_host: str = "127.0.0.1"
+    repo_priority: str = ""
 
 
 def load_config(env: Mapping[str, str] | None = None) -> Config:
@@ -149,6 +150,7 @@ def load_config(env: Mapping[str, str] | None = None) -> Config:
         dashboard_enabled=_bool(env, "DASHBOARD_ENABLED", True),
         dashboard_port=_int(env, "DASHBOARD_PORT", 49505, 1, 65535),
         dashboard_host=_raw(env, "DASHBOARD_HOST") or "127.0.0.1",
+        repo_priority=_raw(env, "REPO_PRIORITY") or "",
     )
     if config.min_runners > config.max_runners:
         raise ConfigError(f"MIN_RUNNERS={config.min_runners} cannot exceed MAX_RUNNERS={config.max_runners}")

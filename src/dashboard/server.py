@@ -188,8 +188,24 @@ class DashboardRequestHandler(BaseHTTPRequestHandler):
         except Exception as e:
             self._send_json(500, {"error": str(e)})
 
+    def _handle_repo_priority_action(self, body: dict[str, Any]) -> None:
+        """Handle /api/actions/repo-priority POST requests."""
+        priority = body.get("priority", [])
+        paused = body.get("paused", [])
+        if not isinstance(priority, list) or not all(isinstance(x, str) for x in priority):
+            self._send_json(400, {"error": "priority must be a list of strings"})
+            return
+        if not isinstance(paused, list) or not all(isinstance(x, str) for x in paused):
+            self._send_json(400, {"error": "paused must be a list of strings"})
+            return
+        res = dashboard_state.set_repo_priority(priority, paused)
+        prio_str = ", ".join(priority) or "default"
+        paused_str = ", ".join(paused) or "none"
+        dashboard_state.append_log(f"[Dashboard] 🔀 Updated repository priority: {prio_str} (paused: {paused_str})")
+        self._send_json(200, res)
+
     def do_POST(self) -> None:
-        """Route POST requests: /api/actions/clean-cache and /api/actions/prune.
+        """Route POST requests: /api/actions/clean-cache, /api/actions/prune, and /api/actions/repo-priority.
 
         Bodies must be ``application/json`` (see http_security.read_json_body).
         """
@@ -197,7 +213,7 @@ class DashboardRequestHandler(BaseHTTPRequestHandler):
             return
         parsed = urlparse(self.path)
         path = parsed.path.rstrip("/")
-        if path not in ("/api/actions/clean-cache", "/api/actions/prune"):
+        if path not in ("/api/actions/clean-cache", "/api/actions/prune", "/api/actions/repo-priority"):
             self._send_json(404, {"error": f"Endpoint not found: {path}"})
             return
         try:
@@ -208,6 +224,8 @@ class DashboardRequestHandler(BaseHTTPRequestHandler):
 
         if path == "/api/actions/clean-cache":
             self._handle_clean_cache_action(body)
+        elif path == "/api/actions/repo-priority":
+            self._handle_repo_priority_action(body)
         else:
             self._handle_prune_action()
 

@@ -164,6 +164,46 @@ class TestGitHubApi(unittest.TestCase):
         self.assertIn("status=in_progress", urls[1])
         self.assertEqual(sum("/runs/101/jobs" in u for u in urls), 1)
 
+    @patch("github_api.get_workflow_text_for_run", return_value=None)
+    @patch("github_api.github_request")
+    def test_get_queued_job_details_include_in_progress(self, mock_gh, _workflow_text):
+        mock_gh.side_effect = [
+            {"workflow_runs": [{"id": 101, "name": "CI", "path": ".github/workflows/ci.yml", "run_attempt": 2, "head_branch": "feat/x"}]},
+            {"workflow_runs": []},
+            {
+                "jobs": [
+                    {
+                        "id": 201,
+                        "name": "unit-test",
+                        "status": "in_progress",
+                        "labels": ["self-hosted"],
+                        "run_attempt": 2,
+                        "created_at": "2026-10-04T20:00:00Z",
+                        "started_at": "2026-10-04T20:01:00Z",
+                    },
+                    {
+                        "id": 202,
+                        "name": "e2e-test",
+                        "status": "queued",
+                        "labels": ["self-hosted"],
+                        "created_at": "2026-10-04T20:02:00Z",
+                    },
+                ]
+            },
+        ]
+        jobs = get_queued_job_details("el-j/run-zero", access_token="token", include_in_progress=True)
+        self.assertEqual(len(jobs), 2)
+        self.assertEqual(jobs[0]["id"], 201)
+        self.assertEqual(jobs[0]["status"], "in_progress")
+        self.assertEqual(jobs[0]["run_attempt"], 2)
+        self.assertEqual(jobs[0]["workflow_name"], "CI")
+        self.assertEqual(jobs[0]["created_at"], "2026-10-04T20:00:00Z")
+        self.assertEqual(jobs[0]["started_at"], "2026-10-04T20:01:00Z")
+
+        self.assertEqual(jobs[1]["id"], 202)
+        self.assertEqual(jobs[1]["status"], "queued")
+        self.assertEqual(jobs[1]["workflow_name"], "CI")
+
     @patch("github_api.github_request")
     def test_get_queued_job_details_empty(self, mock_gh):
         mock_gh.return_value = {"workflow_runs": []}

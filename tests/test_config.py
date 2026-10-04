@@ -33,6 +33,7 @@ class TestLoadConfig(unittest.TestCase):
                 "RUNNER_BUSY_TIMEOUT_SECONDS": "3600",
                 "CLEANUP_RUNNERS_ON_SHUTDOWN": "true",
                 "NATIVE_ARCH_OVERRIDE": " El-J/Herbful ",
+                "REPO_PRIORITY": " el-j/run-zero,el-j/herbful ",
             }
         )
         self.assertEqual(cfg.access_token, "gh")
@@ -45,6 +46,7 @@ class TestLoadConfig(unittest.TestCase):
         self.assertEqual(cfg.busy_timeout_seconds, 3600)
         self.assertTrue(cfg.cleanup_on_shutdown)
         self.assertEqual(cfg.native_arch_override, "el-j/herbful")
+        self.assertEqual(cfg.repo_priority, "el-j/run-zero,el-j/herbful")
 
     def test_access_token_prefers_access_token_and_blank_means_unset(self):
         self.assertEqual(load_config({"ACCESS_TOKEN": "a", "GITHUB_TOKEN": "g"}).access_token, "a")

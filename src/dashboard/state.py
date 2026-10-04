@@ -73,6 +73,9 @@ class DashboardState:
         self.github_rate_limit_reset: int | None = None
         self.github_actions_billing: dict[str, Any] = {}
         self.monitored_repos: list[str] = []
+        self.repo_priority: list[str] = []
+        self.paused_repos: list[str] = []
+        self.repo_priority_manager: Any = None
         self.total_queued_jobs = 0
         self.queued_jobs: list[dict[str, Any]] = []
         self.active_runners: list[dict[str, Any]] = []
@@ -180,6 +183,8 @@ class DashboardState:
         actions_billing: dict[str, Any] | None = None,
         default_engine: str = "docker",
         version: str = __version__,
+        repo_priority: list[str] | None = None,
+        paused_repos: list[str] | None = None,
     ) -> None:
         """Replace the fleet/config snapshot with this poll's data, refresh cache sizes, and broadcast to SSE clients.
 
@@ -198,6 +203,10 @@ class DashboardState:
             self.github_rate_limit_reset = rate_limit_reset
             self.github_actions_billing = dict(actions_billing or {})
             self.monitored_repos = monitored_repos
+            if repo_priority is not None:
+                self.repo_priority = list(repo_priority)
+            if paused_repos is not None:
+                self.paused_repos = list(paused_repos)
             self.queued_jobs = queued_jobs
             self.total_queued_jobs = len(queued_jobs)
 
@@ -396,6 +405,16 @@ class DashboardState:
         self.broadcast_state()
         return {"status": "success", "cleared": cleared}
 
+    def set_repo_priority(self, priority: list[str], paused: list[str]) -> dict[str, Any]:
+        """Update repository priority order and paused status, persisting changes and broadcasting."""
+        with self._lock:
+            self.repo_priority = list(priority)
+            self.paused_repos = list(paused)
+            if self.repo_priority_manager is not None:
+                self.repo_priority_manager.update(priority=self.repo_priority, paused=self.paused_repos)
+        self.broadcast_state()
+        return {"status": "success", "priority": list(self.repo_priority), "paused": list(self.paused_repos)}
+
     def get_snapshot(self) -> dict[str, Any]:
         """Return a complete JSON-serializable state snapshot."""
         with self._lock:
@@ -418,6 +437,8 @@ class DashboardState:
                 "concurrency": {"active": len(self.active_runners), "max": self.max_concurrency, "min": self.min_runners},
                 "runner_sizing": self.runner_sizing,
                 "bridge_drift": self.bridge_drift,
+                "repo_priority": list(self.repo_priority),
+                "paused_repos": list(self.paused_repos),
                 "github": {
                     "rate_limit_remaining": self.github_rate_limit_remaining,
                     "rate_limit_total": self.github_rate_limit_total,
@@ -426,6 +447,8 @@ class DashboardState:
                     "rate_limit_reset": self.github_rate_limit_reset,
                     "actions_billing": self.github_actions_billing,
                     "monitored_repos": self.monitored_repos,
+                    "repo_priority": list(self.repo_priority),
+                    "paused_repos": list(self.paused_repos),
                     "queued_jobs_count": self.total_queued_jobs,
                     "queued_jobs": self.queued_jobs,
                 },
