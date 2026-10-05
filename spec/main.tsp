@@ -147,6 +147,17 @@ model SuccessResponse {
   message?: string;
 }
 
+/** Log line entry */
+model LogEntry {
+  timestamp: string;
+  message: string;
+}
+
+/** Logs response payload */
+model LogsResponse {
+  logs: LogEntry[];
+}
+
 /** Generic error response */
 @error
 model ErrorResponse {
@@ -160,10 +171,25 @@ model ErrorResponse {
 
 @route("/api")
 namespace Api {
+  /** Get current system and autoscaler status (alias of getFleet) */
+  @get
+  @route("/status")
+  op getStatus(): FleetState | ErrorResponse;
+
   /** Get current fleet state, active runners, and queued workflow jobs */
   @get
   @route("/fleet")
   op getFleet(): FleetState | ErrorResponse;
+
+  /** Get in-memory daemon circular log lines */
+  @get
+  @route("/logs")
+  op getLogs(): LogsResponse | ErrorResponse;
+
+  /** Server-Sent Events real-time event stream */
+  @get
+  @route("/stream")
+  op streamEvents(): string;
 
   /** Update repository priority order and pause states */
   @post

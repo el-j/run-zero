@@ -13,14 +13,16 @@ func TestDaemon_Lifecycle(t *testing.T) {
 	cfg, err := config.LoadConfig(config.MapEnv{
 		"DASHBOARD_PORT": "0",
 		"DASHBOARD_HOST": "127.0.0.1",
+		"REPO_PRIORITY":  "org/repo-prio,org/repo2",
+		"REPOS":          "org/repo-prio,org/repo2",
 	})
 	if err != nil {
 		t.Fatalf("LoadConfig error: %v", err)
 	}
 
 	d := NewDaemon(cfg, "v1.0.0", "", "")
-	if d.Config() == nil || d.State() == nil || d.Server() == nil {
-		t.Fatal("expected non-nil config, state, and server")
+	if d.Config() == nil || d.State() == nil || d.Server() == nil || d.PriorityManager() == nil || d.Poller() == nil {
+		t.Fatal("expected non-nil config, state, server, priority manager, and poller")
 	}
 
 	if err := d.Start(); err != nil {

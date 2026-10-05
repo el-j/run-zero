@@ -3,24 +3,52 @@ package daemon
 import (
 	"context"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/el-j/run-zero/pkg/api"
 	"github.com/el-j/run-zero/pkg/config"
+	"github.com/el-j/run-zero/pkg/github"
 	"github.com/el-j/run-zero/pkg/state"
 )
 
 // Daemon coordinates the RunZero background engine, autoscaler loops, and HTTP control plane.
 type Daemon struct {
-	cfg     *config.Config
-	state   *state.State
-	server  *api.Server
-	version string
+	cfg         *config.Config
+	state       *state.State
+	server      *api.Server
+	version     string
+	priorityMgr *github.PriorityManager
+	poller      *github.Poller
 }
 
 // NewDaemon initializes a new daemon instance.
 func NewDaemon(cfg *config.Config, version string, distDir, staticDir string) *Daemon {
 	st := state.NewState(cfg.MaxRunners, version, nil)
+
+	var prioList []string
+	if cfg.RepoPriority != "" {
+		for _, p := range strings.Split(cfg.RepoPriority, ",") {
+			if strings.TrimSpace(p) != "" {
+				prioList = append(prioList, strings.TrimSpace(p))
+			}
+		}
+	}
+	pm, _ := github.NewPriorityManager("repo_priority.json", prioList, nil)
+	prio, paused := pm.GetState()
+	st.SetRepoPriority(prio, paused)
+
+	var repos []string
+	if cfg.ReposConfig != "" {
+		for _, r := range strings.Split(cfg.ReposConfig, ",") {
+			if strings.TrimSpace(r) != "" {
+				repos = append(repos, strings.TrimSpace(r))
+			}
+		}
+	}
+	ghClient := github.NewClient(cfg.AccessToken, "", nil)
+	rec := github.NewReconciler(pm)
+	poller := github.NewPoller(ghClient, rec, st, repos, time.Duration(cfg.PollInterval)*time.Second)
 
 	var srv *api.Server
 	if cfg.DashboardEnabled {
@@ -29,10 +57,12 @@ func NewDaemon(cfg *config.Config, version string, distDir, staticDir string) *D
 	}
 
 	return &Daemon{
-		cfg:     cfg,
-		state:   st,
-		server:  srv,
-		version: version,
+		cfg:         cfg,
+		state:       st,
+		server:      srv,
+		version:     version,
+		priorityMgr: pm,
+		poller:      poller,
 	}
 }
 
@@ -51,6 +81,16 @@ func (d *Daemon) Server() *api.Server {
 	return d.server
 }
 
+// PriorityManager returns the priority manager instance.
+func (d *Daemon) PriorityManager() *github.PriorityManager {
+	return d.priorityMgr
+}
+
+// Poller returns the GitHub actions poller instance.
+func (d *Daemon) Poller() *github.Poller {
+	return d.poller
+}
+
 // Start boots the control plane server and daemon components.
 func (d *Daemon) Start() error {
 	d.state.AppendLog(fmt.Sprintf("[Go Engine] 🚀 RunZero daemon v%s starting...", d.version))
@@ -67,6 +107,10 @@ func (d *Daemon) Start() error {
 func (d *Daemon) Run(ctx context.Context) error {
 	if err := d.Start(); err != nil {
 		return err
+	}
+
+	if d.poller != nil {
+		go d.poller.Start(ctx)
 	}
 
 	<-ctx.Done()
