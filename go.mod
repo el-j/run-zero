@@ -1,3 +1,3 @@
 module github.com/el-j/run-zero
 
-go 1.27.1
+go 1.24
