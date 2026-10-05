@@ -27,3 +27,5 @@ website/playwright-report/
 tsp-output/
 .pnpm-store/
 bin/
+*instances.json
+*repo_priority.json

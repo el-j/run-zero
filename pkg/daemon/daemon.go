@@ -3,52 +3,38 @@ package daemon
 import (
 	"context"
 	"fmt"
-	"strings"
 	"time"
 
 	"github.com/el-j/run-zero/pkg/api"
 	"github.com/el-j/run-zero/pkg/config"
+	"github.com/el-j/run-zero/pkg/driver"
 	"github.com/el-j/run-zero/pkg/github"
 	"github.com/el-j/run-zero/pkg/state"
 )
 
 // Daemon coordinates the RunZero background engine, autoscaler loops, and HTTP control plane.
 type Daemon struct {
-	cfg         *config.Config
-	state       *state.State
-	server      *api.Server
-	version     string
-	priorityMgr *github.PriorityManager
-	poller      *github.Poller
+	cfg           *config.Config
+	state         *state.State
+	server        *api.Server
+	version       string
+	priorityMgr   *github.PriorityManager
+	poller        *github.Poller
+	instanceStore *driver.InstanceStore
+	driver        driver.RunnerDriver
 }
 
 // NewDaemon initializes a new daemon instance.
 func NewDaemon(cfg *config.Config, version string, distDir, staticDir string) *Daemon {
 	st := state.NewState(cfg.MaxRunners, version, nil)
 
-	var prioList []string
-	if cfg.RepoPriority != "" {
-		for _, p := range strings.Split(cfg.RepoPriority, ",") {
-			if strings.TrimSpace(p) != "" {
-				prioList = append(prioList, strings.TrimSpace(p))
-			}
-		}
-	}
-	pm, _ := github.NewPriorityManager("repo_priority.json", prioList, nil)
+	pm := initPriorityManager(cfg)
 	prio, paused := pm.GetState()
 	st.SetRepoPriority(prio, paused)
 
-	var repos []string
-	if cfg.ReposConfig != "" {
-		for _, r := range strings.Split(cfg.ReposConfig, ",") {
-			if strings.TrimSpace(r) != "" {
-				repos = append(repos, strings.TrimSpace(r))
-			}
-		}
-	}
-	ghClient := github.NewClient(cfg.AccessToken, "", nil)
-	rec := github.NewReconciler(pm)
-	poller := github.NewPoller(ghClient, rec, st, repos, time.Duration(cfg.PollInterval)*time.Second)
+	poller := initPoller(cfg, pm, st)
+	instStore := driver.NewInstanceStore("instances.json")
+	runnerDriver := initDriver(cfg, instStore)
 
 	var srv *api.Server
 	if cfg.DashboardEnabled {
@@ -57,39 +43,37 @@ func NewDaemon(cfg *config.Config, version string, distDir, staticDir string) *D
 	}
 
 	return &Daemon{
-		cfg:         cfg,
-		state:       st,
-		server:      srv,
-		version:     version,
-		priorityMgr: pm,
-		poller:      poller,
+		cfg:           cfg,
+		state:         st,
+		server:        srv,
+		version:       version,
+		priorityMgr:   pm,
+		poller:        poller,
+		instanceStore: instStore,
+		driver:        runnerDriver,
 	}
 }
 
 // Config returns the active daemon configuration.
-func (d *Daemon) Config() *config.Config {
-	return d.cfg
-}
+func (d *Daemon) Config() *config.Config { return d.cfg }
 
 // State returns the live daemon runtime state.
-func (d *Daemon) State() *state.State {
-	return d.state
-}
+func (d *Daemon) State() *state.State { return d.state }
 
 // Server returns the control plane HTTP server, if enabled.
-func (d *Daemon) Server() *api.Server {
-	return d.server
-}
+func (d *Daemon) Server() *api.Server { return d.server }
 
 // PriorityManager returns the priority manager instance.
-func (d *Daemon) PriorityManager() *github.PriorityManager {
-	return d.priorityMgr
-}
+func (d *Daemon) PriorityManager() *github.PriorityManager { return d.priorityMgr }
 
 // Poller returns the GitHub actions poller instance.
-func (d *Daemon) Poller() *github.Poller {
-	return d.poller
-}
+func (d *Daemon) Poller() *github.Poller { return d.poller }
+
+// InstanceStore returns the instance metadata store.
+func (d *Daemon) InstanceStore() *driver.InstanceStore { return d.instanceStore }
+
+// Driver returns the runner driver router.
+func (d *Daemon) Driver() driver.RunnerDriver { return d.driver }
 
 // Start boots the control plane server and daemon components.
 func (d *Daemon) Start() error {
@@ -121,6 +105,10 @@ func (d *Daemon) Run(ctx context.Context) error {
 func (d *Daemon) Stop() error {
 	d.state.AppendLog("[Go Engine] 🛑 Stopping RunZero daemon...")
 	d.state.SetAutoscalerStatus("stopped")
+
+	if d.cfg.CleanupOnShutdown && d.driver != nil {
+		_ = d.driver.CleanupAll(context.Background())
+	}
 
 	if d.server != nil {
 		ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
