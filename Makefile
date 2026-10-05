@@ -422,6 +422,14 @@ check-go: ## Go gates: go vet, go test with coverage
 build-go: ## Compile Go cloud-native daemon engine binary into bin/runzero
 	go build -o bin/runzero ./cmd/runzero
 
+build-go-multiarch: ## Compile multi-architecture static Go binaries for darwin/arm64, darwin/amd64, linux/amd64, linux/arm64
+	@mkdir -p bin
+	CGO_ENABLED=0 GOOS=darwin GOARCH=arm64 go build -ldflags="-s -w" -o bin/runzero-darwin-arm64 ./cmd/runzero
+	CGO_ENABLED=0 GOOS=darwin GOARCH=amd64 go build -ldflags="-s -w" -o bin/runzero-darwin-amd64 ./cmd/runzero
+	CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -ldflags="-s -w" -o bin/runzero-linux-amd64 ./cmd/runzero
+	CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build -ldflags="-s -w" -o bin/runzero-linux-arm64 ./cmd/runzero
+	@echo "$(GREEN)Multi-architecture binaries compiled into bin/$(RESET)"
+
 check-python: ## Python gates: ruff lint + format, flake8, mypy, interrogate, pytest with 100% coverage
 	$(PY) -m ruff check src tests
 	$(PY) -m ruff format --check src tests

@@ -105,6 +105,20 @@ jobs:
           echo "---" >> RELEASE_NOTES.md
           echo "Branch: \`${GITHUB_REF_NAME}\` | Tag: \`${NEW}\`" >> RELEASE_NOTES.md
 
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.24'
+
+      - name: Build Multi-Architecture Binaries
+        run: |
+          make build-go-multiarch
+          cd bin
+          tar -czvf runzero-darwin-arm64.tar.gz runzero-darwin-arm64
+          tar -czvf runzero-darwin-amd64.tar.gz runzero-darwin-amd64
+          tar -czvf runzero-linux-amd64.tar.gz runzero-linux-amd64
+          tar -czvf runzero-linux-arm64.tar.gz runzero-linux-arm64
+
       - name: Publish GitHub Release
         uses: softprops/action-gh-release@v2
         with:
@@ -113,5 +127,7 @@ jobs:
           body_path: RELEASE_NOTES.md
           draft: false
           prerelease: ${{ steps.semver.outputs.is_prerelease == 'true' }}
+          files: |
+            bin/*.tar.gz
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
