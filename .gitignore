@@ -26,3 +26,4 @@ website/test-results/
 website/playwright-report/
 tsp-output/
 .pnpm-store/
+bin/

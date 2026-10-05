@@ -411,9 +411,16 @@ dev-setup: ## Create .venv-dev with the pinned dev tooling from requirements-dev
 	@.venv-dev/bin/python -m pip install --quiet -r requirements-dev.txt
 	@echo "$(GREEN).venv-dev ready. Quality gates: make check$(RESET)"
 
-.PHONY: check check-python check-shell
-check: check-python check-shell ## Run every quality gate (the same set CI enforces)
+.PHONY: check check-python check-shell check-go build-go
+check: check-go check-python check-shell ## Run every quality gate (the same set CI enforces)
 	@echo "$(GREEN)All quality gates passed.$(RESET)"
+
+check-go: ## Go gates: go vet, go test with coverage
+	go vet ./...
+	go test -cover ./...
+
+build-go: ## Compile Go cloud-native daemon engine binary into bin/runzero
+	go build -o bin/runzero ./cmd/runzero
 
 check-python: ## Python gates: ruff lint + format, flake8, mypy, interrogate, pytest with 100% coverage
 	$(PY) -m ruff check src tests
