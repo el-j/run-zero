@@ -37,8 +37,8 @@ func NewServer(
 
 	// Settings & Cache
 	mux.HandleFunc("/api/settings", handleSettings(cfg, st))
-	mux.HandleFunc("/api/cache", handleCache(st))
-	mux.HandleFunc("/api/cache/purge", handleCachePurge(st))
+	mux.HandleFunc("/api/cache", handleCache(cfg, st))
+	mux.HandleFunc("/api/cache/purge", handleCachePurge(cfg, st))
 	mux.HandleFunc("/api/actions/clean-cache", handleCleanCacheLegacy(st))
 
 	// Actions

@@ -4,6 +4,8 @@ import (
 	"encoding/json"
 	"net/http"
 
+	"github.com/el-j/run-zero/pkg/cache"
+	"github.com/el-j/run-zero/pkg/config"
 	"github.com/el-j/run-zero/pkg/state"
 )
 
@@ -13,33 +15,23 @@ type CachePurgePayload struct {
 	All      bool   `json:"all,omitempty"`
 }
 
-func handleCache(st *state.State) http.HandlerFunc {
+func handleCache(cfg *config.Config, st *state.State) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodGet {
 			writeError(w, http.StatusMethodNotAllowed, "Method not allowed")
 			return
 		}
 
-		stats := map[string]interface{}{
-			"total_bytes": int64(0),
-			"total_human": "0 B",
-			"categories": []map[string]interface{}{
-				{"category": "npm", "bytes": int64(0), "human_readable": "0 B"},
-				{"category": "yarn", "bytes": int64(0), "human_readable": "0 B"},
-				{"category": "pnpm", "bytes": int64(0), "human_readable": "0 B"},
-				{"category": "pip", "bytes": int64(0), "human_readable": "0 B"},
-				{"category": "uv", "bytes": int64(0), "human_readable": "0 B"},
-				{"category": "go-mod", "bytes": int64(0), "human_readable": "0 B"},
-				{"category": "go-build", "bytes": int64(0), "human_readable": "0 B"},
-				{"category": "cargo", "bytes": int64(0), "human_readable": "0 B"},
-				{"category": "toolcache", "bytes": int64(0), "human_readable": "0 B"},
-			},
+		dir := ""
+		if cfg != nil {
+			dir = cfg.HostCacheDir
 		}
+		stats := cache.CalculateStats(dir)
 		writeJSON(w, http.StatusOK, stats)
 	}
 }
 
-func handleCachePurge(st *state.State) http.HandlerFunc {
+func handleCachePurge(cfg *config.Config, st *state.State) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodPost {
 			writeError(w, http.StatusMethodNotAllowed, "Method not allowed")
@@ -50,6 +42,12 @@ func handleCachePurge(st *state.State) http.HandlerFunc {
 		if r.Body != nil {
 			_ = json.NewDecoder(r.Body).Decode(&payload)
 		}
+
+		dir := ""
+		if cfg != nil {
+			dir = cfg.HostCacheDir
+		}
+		_ = cache.Purge(dir, payload.Category, payload.Repo, payload.All)
 
 		label := payload.Category
 		if payload.All || label == "" {
