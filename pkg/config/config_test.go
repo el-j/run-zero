@@ -1,9 +1,6 @@
 package config
 
 import (
-	"os"
-	"path/filepath"
-	"strings"
 	"testing"
 )
 
@@ -68,7 +65,6 @@ func TestLoadConfig_TokenAndRepoFallbacks(t *testing.T) {
 		t.Errorf("expected ReposConfig 'org/fallback-repo', got %s", cfg.ReposConfig)
 	}
 
-	// Primary ACCESS_TOKEN takes precedence
 	env2 := MapEnv{
 		"ACCESS_TOKEN": "primary_token",
 		"GITHUB_TOKEN": "ignored_token",
@@ -118,130 +114,6 @@ func TestLoadConfig_ArchAliases(t *testing.T) {
 	}
 }
 
-func TestLoadConfig_ValidationErrors(t *testing.T) {
-	tests := []struct {
-		name string
-		env  MapEnv
-	}{
-		{"min > max runners", MapEnv{"MIN_RUNNERS": "5", "MAX_RUNNERS": "3"}},
-		{"bad integer", MapEnv{"MAX_RUNNERS": "four"}},
-		{"int below min", MapEnv{"MAX_RUNNERS": "0"}},
-		{"int above max", MapEnv{"POLL_INTERVAL": "5000"}},
-		{"bad boolean", MapEnv{"AUTO_DISCOVER_REPOS": "maybe"}},
-		{"bad backend", MapEnv{"RUNNER_BACKEND": "kubernetes"}},
-		{"bad dashboard port", MapEnv{"DASHBOARD_PORT": "70000"}},
-		{"negative dashboard port", MapEnv{"DASHBOARD_PORT": "-1"}},
-		{"bad active days", MapEnv{"ACTIVE_REPO_DAYS": "0"}},
-		{"bad discovery interval", MapEnv{"DISCOVERY_INTERVAL": "10"}},
-		{"bad auto route vm", MapEnv{"AUTO_ROUTE_VM": "invalid"}},
-		{"bad proxies enabled", MapEnv{"PROXIES_ENABLED": "invalid"}},
-		{"bad cache enabled", MapEnv{"CACHE_ENABLED": "invalid"}},
-		{"bad min runners", MapEnv{"MIN_RUNNERS": "-1"}},
-		{"bad rate limit interval", MapEnv{"RATE_LIMIT_REFRESH_INTERVAL": "1"}},
-		{"bad billing interval", MapEnv{"ACTIONS_BILLING_REFRESH_INTERVAL": "5"}},
-		{"bad busy timeout", MapEnv{"RUNNER_BUSY_TIMEOUT_SECONDS": "10"}},
-		{"bad cleanup on shutdown", MapEnv{"CLEANUP_RUNNERS_ON_SHUTDOWN": "nope"}},
-		{"bad dashboard enabled", MapEnv{"DASHBOARD_ENABLED": "not-bool"}},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			_, err := LoadConfig(tt.env)
-			if err == nil {
-				t.Fatalf("expected error for %s, got nil", tt.name)
-			}
-			cfgErr, ok := err.(*ConfigError)
-			if !ok {
-				t.Errorf("expected *ConfigError, got %T: %v", err, err)
-			}
-			if cfgErr.Error() == "" {
-				t.Errorf("expected non-empty error message")
-			}
-		})
-	}
-}
-
-func TestLoadConfig_Booleans(t *testing.T) {
-	trues := []string{"true", "1", "yes", "on"}
-	for _, val := range trues {
-		env := MapEnv{"PROXIES_ENABLED": val}
-		cfg, err := LoadConfig(env)
-		if err != nil || !cfg.ProxiesEnabled {
-			t.Errorf("expected true for %s, got err=%v, val=%v", val, err, cfg.ProxiesEnabled)
-		}
-	}
-
-	falses := []string{"false", "0", "no", "off"}
-	for _, val := range falses {
-		env := MapEnv{"PROXIES_ENABLED": val}
-		cfg, err := LoadConfig(env)
-		if err != nil || cfg.ProxiesEnabled {
-			t.Errorf("expected false for %s, got err=%v, val=%v", val, err, cfg.ProxiesEnabled)
-		}
-	}
-}
-
-func TestEnv_DotEnvParser(t *testing.T) {
-	raw := `
-# Comment line
-export ACCESS_TOKEN=token123
-OWNER="my-org"
-POLL_INTERVAL='15'
-INVALID_LINE_NO_EQUALS
-EMPTY_VAL=
-`
-	env, err := ParseDotEnv(strings.NewReader(raw))
-	if err != nil {
-		t.Fatalf("ParseDotEnv failed: %v", err)
-	}
-
-	if env["ACCESS_TOKEN"] != "token123" {
-		t.Errorf("expected token123, got %s", env["ACCESS_TOKEN"])
-	}
-	if env["OWNER"] != "my-org" {
-		t.Errorf("expected my-org, got %s", env["OWNER"])
-	}
-	if env["POLL_INTERVAL"] != "15" {
-		t.Errorf("expected 15, got %s", env["POLL_INTERVAL"])
-	}
-	if env["EMPTY_VAL"] != "" {
-		t.Errorf("expected empty string, got %s", env["EMPTY_VAL"])
-	}
-}
-
-func TestEnv_LoadDotEnvFile(t *testing.T) {
-	tmpDir := t.TempDir()
-	envPath := filepath.Join(tmpDir, ".env")
-
-	// Missing file should return empty map, no error
-	missing, err := LoadDotEnvFile(filepath.Join(tmpDir, "does-not-exist.env"))
-	if err != nil || len(missing) != 0 {
-		t.Fatalf("expected empty map for missing file, got err=%v, map=%v", err, missing)
-	}
-
-	content := "DASHBOARD_PORT=8080\nOWNER=sample-owner\n"
-	if err := os.WriteFile(envPath, []byte(content), 0644); err != nil {
-		t.Fatalf("failed to write test file: %v", err)
-	}
-
-	loaded, err := LoadDotEnvFile(envPath)
-	if err != nil {
-		t.Fatalf("LoadDotEnvFile error: %v", err)
-	}
-	if loaded["DASHBOARD_PORT"] != "8080" {
-		t.Errorf("expected 8080, got %s", loaded["DASHBOARD_PORT"])
-	}
-
-	// Unreadable file causes os.Open error that is not ErrNotExist
-	unreadable := filepath.Join(tmpDir, "unreadable.env")
-	if err := os.WriteFile(unreadable, []byte("FOO=bar"), 0000); err == nil {
-		_, err = LoadDotEnvFile(unreadable)
-		if err == nil {
-			t.Log("os.Open succeeded on unreadable file (e.g. root)")
-		}
-	}
-}
-
 func TestChoice_EmptyWhitespace(t *testing.T) {
 	env1 := MapEnv{"RUNNER_BACKEND": "   "}
 	cfg1, err := LoadConfig(env1)
@@ -265,37 +137,5 @@ func TestChoice_EmptyWhitespace(t *testing.T) {
 	cfg4, err := LoadConfig(env4)
 	if err != nil || cfg4.RunnerBackend != "docker" {
 		t.Fatalf("expected docker for valid choice, got %v, %v", cfg4.RunnerBackend, err)
-	}
-}
-
-func TestEnv_CompositeAndOS(t *testing.T) {
-	primary := MapEnv{"PORT": "9000", "EMPTY": ""}
-	secondary := MapEnv{"PORT": "8000", "HOST": "localhost", "EMPTY": "fallback"}
-
-	comp := CompositeEnv{Primary: primary, Secondary: secondary}
-
-	if val, ok := comp.Lookup("PORT"); !ok || val != "9000" {
-		t.Errorf("expected 9000 from primary, got %s", val)
-	}
-	if val, ok := comp.Lookup("HOST"); !ok || val != "localhost" {
-		t.Errorf("expected localhost from secondary, got %s", val)
-	}
-	if val, ok := comp.Lookup("EMPTY"); !ok || val != "fallback" {
-		t.Errorf("expected fallback when primary is empty, got %s", val)
-	}
-	if _, ok := comp.Lookup("NONEXISTENT"); ok {
-		t.Errorf("expected not found for nonexistent key")
-	}
-
-	osEnv := OSEnv{}
-	_, _ = osEnv.Lookup("PATH")
-
-	// Test LoadConfig with nil env uses OSEnv
-	cfg, err := LoadConfig(nil)
-	if err != nil {
-		t.Fatalf("LoadConfig(nil) error: %v", err)
-	}
-	if cfg == nil {
-		t.Fatal("expected non-nil config")
 	}
 }

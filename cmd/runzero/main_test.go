@@ -68,3 +68,22 @@ func TestCLI_DaemonStartupFailure(t *testing.T) {
 		t.Errorf("expected [Daemon Error] in stderr, got: %s", stderr.String())
 	}
 }
+
+func TestCLI_Doctor(t *testing.T) {
+	var stdout, stderr bytes.Buffer
+	code := run([]string{"doctor", "-timeout", "500ms"}, &stdout, &stderr)
+	if code != 0 && code != 1 {
+		t.Fatalf("unexpected code from doctor: %d", code)
+	}
+	if !strings.Contains(stdout.String(), "runzero Doctor Diagnostics") {
+		t.Errorf("expected doctor diagnostics header, got: %s", stdout.String())
+	}
+}
+
+func TestCLI_DoctorParseError(t *testing.T) {
+	var stdout, stderr bytes.Buffer
+	code := run([]string{"doctor", "-badflag"}, &stdout, &stderr)
+	if code != 1 {
+		t.Fatalf("expected 1, got %d", code)
+	}
+}

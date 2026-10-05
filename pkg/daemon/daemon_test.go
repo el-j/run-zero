@@ -22,8 +22,8 @@ func TestDaemon_Lifecycle(t *testing.T) {
 	}
 
 	d := NewDaemon(cfg, "v1.0.0", "", "")
-	if d.Config() == nil || d.State() == nil || d.Server() == nil || d.PriorityManager() == nil || d.Poller() == nil || d.Driver() == nil || d.InstanceStore() == nil {
-		t.Fatal("expected non-nil config, state, server, priority manager, poller, driver, and instance store")
+	if d.Config() == nil || d.State() == nil || d.Server() == nil || d.PriorityManager() == nil || d.Poller() == nil || d.Driver() == nil || d.InstanceStore() == nil || d.SettingsManager() == nil || d.Reaper() == nil {
+		t.Fatal("expected non-nil daemon components")
 	}
 
 	if err := d.Start(); err != nil {

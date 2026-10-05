@@ -7,6 +7,8 @@ import (
 	"github.com/el-j/run-zero/pkg/config"
 	"github.com/el-j/run-zero/pkg/driver"
 	"github.com/el-j/run-zero/pkg/github"
+	"github.com/el-j/run-zero/pkg/reaper"
+	"github.com/el-j/run-zero/pkg/settings"
 	"github.com/el-j/run-zero/pkg/state"
 )
 
@@ -41,4 +43,12 @@ func initDriver(cfg *config.Config, store *driver.InstanceStore) driver.RunnerDr
 	dockerDriver := driver.NewDockerDriver(nil, store, "", "")
 	orbDriver := driver.NewOrbStackDriver(nil, store, "")
 	return driver.NewRouter(dockerDriver, orbDriver, cfg.RunnerBackend, cfg.AutoRouteVM, store)
+}
+
+func initReaper(d driver.RunnerDriver, gh *github.Client) *reaper.Reaper {
+	return reaper.NewReaper(d, gh, reaper.DefaultTimeouts())
+}
+
+func initSettings(cfg *config.Config) *settings.Manager {
+	return settings.NewManager(cfg, ".env")
 }

@@ -14,6 +14,10 @@ import (
 var Version = "1.0.0-alpha.1"
 
 func run(args []string, stdout, stderr io.Writer) int {
+	if len(args) > 0 && (args[0] == "doctor" || args[0] == "-doctor" || args[0] == "--doctor") {
+		return runDoctor(args[1:], stdout, stderr)
+	}
+
 	fs := flag.NewFlagSet("runzero", flag.ContinueOnError)
 	fs.SetOutput(stderr)
 

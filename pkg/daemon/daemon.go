@@ -9,6 +9,8 @@ import (
 	"github.com/el-j/run-zero/pkg/config"
 	"github.com/el-j/run-zero/pkg/driver"
 	"github.com/el-j/run-zero/pkg/github"
+	"github.com/el-j/run-zero/pkg/reaper"
+	"github.com/el-j/run-zero/pkg/settings"
 	"github.com/el-j/run-zero/pkg/state"
 )
 
@@ -22,12 +24,13 @@ type Daemon struct {
 	poller        *github.Poller
 	instanceStore *driver.InstanceStore
 	driver        driver.RunnerDriver
+	settingsMgr   *settings.Manager
+	reaper        *reaper.Reaper
 }
 
 // NewDaemon initializes a new daemon instance.
 func NewDaemon(cfg *config.Config, version string, distDir, staticDir string) *Daemon {
 	st := state.NewState(cfg.MaxRunners, version, nil)
-
 	pm := initPriorityManager(cfg)
 	prio, paused := pm.GetState()
 	st.SetRepoPriority(prio, paused)
@@ -51,6 +54,8 @@ func NewDaemon(cfg *config.Config, version string, distDir, staticDir string) *D
 		poller:        poller,
 		instanceStore: instStore,
 		driver:        runnerDriver,
+		settingsMgr:   initSettings(cfg),
+		reaper:        initReaper(runnerDriver, github.NewClient(cfg.AccessToken, "", nil)),
 	}
 }
 
@@ -75,6 +80,12 @@ func (d *Daemon) InstanceStore() *driver.InstanceStore { return d.instanceStore 
 // Driver returns the runner driver router.
 func (d *Daemon) Driver() driver.RunnerDriver { return d.driver }
 
+// SettingsManager returns the dynamic settings manager.
+func (d *Daemon) SettingsManager() *settings.Manager { return d.settingsMgr }
+
+// Reaper returns the runner reaper instance.
+func (d *Daemon) Reaper() *reaper.Reaper { return d.reaper }
+
 // Start boots the control plane server and daemon components.
 func (d *Daemon) Start() error {
 	d.state.AppendLog(fmt.Sprintf("[Go Engine] 🚀 RunZero daemon v%s starting...", d.version))
@@ -92,11 +103,9 @@ func (d *Daemon) Run(ctx context.Context) error {
 	if err := d.Start(); err != nil {
 		return err
 	}
-
 	if d.poller != nil {
 		go d.poller.Start(ctx)
 	}
-
 	<-ctx.Done()
 	return d.Stop()
 }
@@ -109,7 +118,6 @@ func (d *Daemon) Stop() error {
 	if d.cfg.CleanupOnShutdown && d.driver != nil {
 		_ = d.driver.CleanupAll(context.Background())
 	}
-
 	if d.server != nil {
 		ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 		defer cancel()
