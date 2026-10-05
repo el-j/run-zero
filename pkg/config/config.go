@@ -103,5 +103,7 @@ func LoadConfig(env EnvLookup) (*Config, error) {
 		DashboardPort:                 dashPort,
 		DashboardHost:                 strings.TrimSpace(dashHost),
 		RepoPriority:                  strings.TrimSpace(repoPriority),
+		RunnerCPUs:                    opts.runnerCPUs,
+		RunnerMemory:                  opts.runnerMemory,
 	}, nil
 }

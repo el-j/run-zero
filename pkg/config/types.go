@@ -27,4 +27,6 @@ type Config struct {
 	DashboardPort                 int
 	DashboardHost                 string
 	RepoPriority                  string
+	RunnerCPUs                    int
+	RunnerMemory                  string
 }

@@ -17,6 +17,8 @@ type runnerOptions struct {
 	nativeArchOverride string
 	cleanup            bool
 	busyTimeout        int
+	runnerCPUs         int
+	runnerMemory       string
 }
 
 func loadRunnerOptions(env EnvLookup) (*runnerOptions, error) {
@@ -64,6 +66,8 @@ func loadRunnerOptions(env EnvLookup) (*runnerOptions, error) {
 	if strings.TrimSpace(nativeArch) == "" {
 		nativeArch = "off"
 	}
+	runnerCPUs, _ := parseInt(env, "RUNNER_CPUS", 0, 0, nil)
+	runnerMemory, _ := env.Lookup("RUNNER_MEMORY")
 
 	return &runnerOptions{
 		backend:            backend,
@@ -77,5 +81,7 @@ func loadRunnerOptions(env EnvLookup) (*runnerOptions, error) {
 		busyTimeout:        busyTimeout,
 		cleanup:            cleanup,
 		nativeArchOverride: strings.ToLower(strings.TrimSpace(nativeArch)),
+		runnerCPUs:         runnerCPUs,
+		runnerMemory:       strings.TrimSpace(runnerMemory),
 	}, nil
 }

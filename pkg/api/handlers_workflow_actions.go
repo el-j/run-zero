@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net/http"
 
+	"github.com/el-j/run-zero/pkg/github"
 	"github.com/el-j/run-zero/pkg/state"
 )
 
@@ -17,13 +18,6 @@ type WorkflowActionPayload struct {
 	Repo   string `json:"repo"`
 	RunID  int64  `json:"run_id"`
 	Action string `json:"action"`
-}
-
-type RunnerActionPayload struct {
-	RunnerID string `json:"runner_id,omitempty"`
-	Action   string `json:"action"`
-	Repo     string `json:"repo,omitempty"`
-	Arch     string `json:"arch,omitempty"`
 }
 
 func handleRepoPriority(st *state.State) http.HandlerFunc {
@@ -56,7 +50,7 @@ func handleRepoPriority(st *state.State) http.HandlerFunc {
 	}
 }
 
-func handleWorkflowAction(st *state.State) http.HandlerFunc {
+func handleWorkflowAction(st *state.State, ghClient ...*github.Client) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodPost {
 			writeError(w, http.StatusMethodNotAllowed, "Method not allowed")
@@ -80,60 +74,18 @@ func handleWorkflowAction(st *state.State) http.HandlerFunc {
 			return
 		}
 
+		if len(ghClient) > 0 && ghClient[0] != nil {
+			if err := ghClient[0].TriggerWorkflowAction(r.Context(), payload.Repo, payload.RunID, act); err != nil {
+				st.AppendLog(fmt.Sprintf("[Go Engine] ❌ Workflow action '%s' failed on %s run #%d: %v", act, payload.Repo, payload.RunID, err))
+				writeError(w, http.StatusBadGateway, fmt.Sprintf("GitHub API error: %v", err))
+				return
+			}
+		}
+
 		st.AppendLog(fmt.Sprintf("[Go Engine] ⚡ Workflow action '%s' triggered on %s run #%d", act, payload.Repo, payload.RunID))
 		writeJSON(w, http.StatusOK, map[string]interface{}{
 			"ok":      true,
 			"message": fmt.Sprintf("Triggered %s on run %d", act, payload.RunID),
-		})
-	}
-}
-
-func handleRunnerAction(st *state.State) http.HandlerFunc {
-	return func(w http.ResponseWriter, r *http.Request) {
-		if r.Method != http.MethodPost {
-			writeError(w, http.StatusMethodNotAllowed, "Method not allowed")
-			return
-		}
-
-		var payload RunnerActionPayload
-		if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
-			writeError(w, http.StatusBadRequest, "Invalid JSON payload")
-			return
-		}
-
-		validActions := map[string]bool{
-			"start": true, "stop": true, "drain": true, "pause": true, "resume": true,
-		}
-		if !validActions[payload.Action] {
-			writeError(w, http.StatusBadRequest, "Invalid runner action. Must be one of: start, stop, drain, pause, resume")
-			return
-		}
-
-		if payload.Action == "pause" {
-			st.SetAutoscalerStatus("paused")
-		} else if payload.Action == "resume" {
-			st.SetAutoscalerStatus("running")
-		}
-
-		st.AppendLog(fmt.Sprintf("[Go Engine] 🏃 Runner control action: %s", payload.Action))
-		writeJSON(w, http.StatusOK, map[string]interface{}{
-			"ok":      true,
-			"message": fmt.Sprintf("Runner action '%s' executed", payload.Action),
-		})
-	}
-}
-
-func handlePrune(st *state.State) http.HandlerFunc {
-	return func(w http.ResponseWriter, r *http.Request) {
-		if r.Method != http.MethodPost {
-			writeError(w, http.StatusMethodNotAllowed, "Method not allowed")
-			return
-		}
-
-		st.AppendLog("[Go Engine] ✂️ Triggered fleet runner prune.")
-		writeJSON(w, http.StatusOK, map[string]interface{}{
-			"status":  "success",
-			"message": "Prune executed",
 		})
 	}
 }

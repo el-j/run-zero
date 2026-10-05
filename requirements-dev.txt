@@ -1,9 +1,0 @@
-# Pinned development / CI tooling. Install with: python3 -m pip install -r requirements-dev.txt
-# Bump deliberately (and in one commit) so local runs, pre-commit and CI always agree.
-flake8==7.4.1
-interrogate==1.7.0
-mutmut==3.8.0
-mypy==2.3.1
-pytest==9.1.1
-pytest-cov==7.1.0
-ruff==0.16.9

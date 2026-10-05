@@ -8,6 +8,8 @@ import (
 	"time"
 
 	"github.com/el-j/run-zero/pkg/config"
+	"github.com/el-j/run-zero/pkg/driver"
+	"github.com/el-j/run-zero/pkg/github"
 	"github.com/el-j/run-zero/pkg/state"
 )
 
@@ -28,6 +30,20 @@ func NewServer(
 	allowedHosts []string,
 	heartbeatInterval time.Duration,
 ) *Server {
+	return NewServerWithDeps(cfg, st, distDir, staticDir, allowedHosts, heartbeatInterval, nil, nil)
+}
+
+// NewServerWithDeps configures the HTTP control plane with active driver and GitHub client.
+func NewServerWithDeps(
+	cfg *config.Config,
+	st *state.State,
+	distDir string,
+	staticDir string,
+	allowedHosts []string,
+	heartbeatInterval time.Duration,
+	ghClient *github.Client,
+	runnerDriver driver.RunnerDriver,
+) *Server {
 	mux := http.NewServeMux()
 
 	// Fleet & logs
@@ -43,8 +59,8 @@ func NewServer(
 
 	// Actions
 	mux.HandleFunc("/api/actions/repo-priority", handleRepoPriority(st))
-	mux.HandleFunc("/api/actions/workflow", handleWorkflowAction(st))
-	mux.HandleFunc("/api/actions/runner", handleRunnerAction(st))
+	mux.HandleFunc("/api/actions/workflow", handleWorkflowAction(st, ghClient))
+	mux.HandleFunc("/api/actions/runner", handleRunnerAction(st, runnerDriver))
 	mux.HandleFunc("/api/actions/prune", handlePrune(st))
 
 	// Real-time SSE
