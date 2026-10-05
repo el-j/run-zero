@@ -22,8 +22,8 @@
       <h3>Dual-Engine Fleet</h3>
       <p>
         Execute jobs in ephemeral Docker containers (~0.3s boot, 20MB idle RAM)
-        or dedicated Linux VMs (OrbStack / WSL2) with full <code>systemd</code> and
-        unconfined Chrome sandboxing.
+        or dedicated Linux VMs (OrbStack / WSL2) with full <code>systemd</code>{" "}
+        and unconfined Chrome sandboxing.
       </p>
       <div class="card-footer-meta">DRIVER: DOCKER + VM</div>
     </div>
@@ -32,10 +32,10 @@
       <div class="card-icon-box">🧠</div>
       <h3>Hybrid Auto-Routing</h3>
       <p>
-        Inspects workflow labels in real time and automatically routes jobs with <code
-          >browser</code
-        >, <code>e2e</code>, <code>lighthouse</code>, or <code>systemd</code> labels
-        to dedicated VMs while keeping unit tests in fast containers.
+        Inspects workflow labels in real time and automatically routes jobs with{" "}
+        <code>browser</code>, <code>e2e</code>, <code>lighthouse</code>, or{" "}
+        <code>systemd</code> labels to dedicated VMs while keeping unit tests in
+        fast containers.
       </p>
       <div class="card-footer-meta">ROUTING: ZERO-CONFIG</div>
     </div>
@@ -55,19 +55,27 @@
       <div class="card-icon-box">📦</div>
       <h3>APT, Verdaccio &amp; Athens Caching</h3>
       <p>
-        Integrated caching proxies for Debian/Ubuntu (<a
+        Integrated caching proxies for Debian/Ubuntu (
+        <a
           href="https://www.unix-ag.uni-kl.de/~bloch/acng/"
           target="_blank"
-          rel="noopener">apt-cacher-ng</a
-        > :49503), npm (<a
-          href="https://verdaccio.org/"
-          target="_blank"
-          rel="noopener">Verdaccio</a
-        > :49501), Go (<a
+          rel="noopener"
+        >
+          apt-cacher-ng
+        </a>{" "}
+        :49503), npm (
+        <a href="https://verdaccio.org/" target="_blank" rel="noopener">
+          Verdaccio
+        </a>{" "}
+        :49501), Go (
+        <a
           href="https://github.com/gomods/athens"
           target="_blank"
-          rel="noopener">Athens</a
-        > :49500), and Docker Hub.
+          rel="noopener"
+        >
+          Athens
+        </a>{" "}
+        :49500), and Docker Hub.
       </p>
       <div class="card-footer-meta">PROXIES: APT + NPM + GO + DOCKER</div>
     </div>
@@ -97,9 +105,9 @@
       <div class="card-icon-box">📊</div>
       <h3>Real-Time Web UI Dashboard</h3>
       <p>
-        Instant browser visibility at <code>:49505</code> with live Server-Sent Events
-        (SSE). Track runner stopwatches, GitHub API quotas, hybrid routing metrics,
-        and stream daemon logs.
+        Instant browser visibility at <code>:49505</code> with live Server-Sent
+        Events (SSE). Track runner stopwatches, GitHub API quotas, hybrid
+        routing metrics, and stream daemon logs.
       </p>
       <div class="card-footer-meta">PORT: :49505 // LIVE SSE</div>
     </div>
@@ -108,8 +116,9 @@
       <div class="card-icon-box">🌉</div>
       <h3>Host VM Bridge</h3>
       <p>
-        Secure control daemon at <code>:49504</code> enabling containerized autoscalers
-        to manage host-native OrbStack, WSL2, and Multipass VM lifecycles seamlessly.
+        Secure control daemon at <code>:49504</code> enabling containerized
+        autoscalers to manage host-native OrbStack, WSL2, and Multipass VM
+        lifecycles seamlessly.
       </p>
       <div class="card-footer-meta">PORT: :49504 // VM CONTROL</div>
     </div>
@@ -129,19 +138,19 @@
       <h3>Unified CI Toolchain</h3>
       <p>
         Single source of truth toolchain script: pre-installed Node.js 20/22/24
-        LTS via <a
-          href="https://github.com/nvm-sh/nvm"
-          target="_blank"
-          rel="noopener">nvm</a
-        >, <a
-          href="https://dotnet.microsoft.com/"
-          target="_blank"
-          rel="noopener">.NET SDK 8.0</a
-        >, Git LFS, PostgreSQL client, and <a
-          href="https://playwright.dev/"
-          target="_blank"
-          rel="noopener">Playwright</a
-        > OS dependencies.
+        LTS via{" "}
+        <a href="https://github.com/nvm-sh/nvm" target="_blank" rel="noopener">
+          nvm
+        </a>
+        ,{" "}
+        <a href="https://dotnet.microsoft.com/" target="_blank" rel="noopener">
+          .NET SDK 8.0
+        </a>
+        , Git LFS, PostgreSQL client, and{" "}
+        <a href="https://playwright.dev/" target="_blank" rel="noopener">
+          Playwright
+        </a>{" "}
+        OS dependencies.
       </p>
       <div class="card-footer-meta">TOOLCHAIN: READY</div>
     </div>

@@ -8,6 +8,10 @@ on:
     paths-ignore:
       - 'website/dist/**'
       - 'docs/**'
+      - '*.md'
+      - 'LICENSE'
+      - '.gitignore'
+      - '.gitattributes'
       - '.github/workflows/deploy-pages.yml'
   workflow_dispatch:
     inputs:
@@ -20,6 +24,10 @@ on:
           - patch
           - minor
           - major
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 
 permissions:
   contents: write

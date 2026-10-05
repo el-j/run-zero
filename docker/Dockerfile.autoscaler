@@ -16,7 +16,13 @@ RUN apt-get update && \
 
 WORKDIR /app
 COPY src /app
+# The checkout's SHA (no .git in the image); compared with the bridge's on /health (#72).
+ARG RUNZERO_GIT_SHA=""
+ENV RUNZERO_GIT_SHA=${RUNZERO_GIT_SHA}
 ENV PYTHONPATH=/app
+# Inside the container the dashboard must listen on all interfaces for the published
+# port to reach it; docker-compose publishes that port on the host's loopback only.
+ENV DASHBOARD_HOST=0.0.0.0
 
 EXPOSE 49505
 

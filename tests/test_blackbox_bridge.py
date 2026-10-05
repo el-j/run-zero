@@ -26,6 +26,11 @@ Docker/VM access), so these run unconditionally as part of default
 """
 
 import json
+import os
+import socket
+import subprocess
+import sys
+import time
 import unittest
 import urllib.error
 import urllib.request
@@ -47,6 +52,7 @@ class TestVMBridgeBlackboxContract(unittest.TestCase):
         vm_bridge._driver_cache.clear()
         self.server = VMBridgeServer(host="127.0.0.1", port=0)
         self.server.start(blocking=False)
+        assert self.server.httpd is not None
         self.port = self.server.httpd.server_port
         self.base_url = f"http://127.0.0.1:{self.port}"
 
@@ -80,8 +86,13 @@ class TestVMBridgeBlackboxContract(unittest.TestCase):
         mock_driver = MagicMock()
         mock_driver.list_runners.return_value = [
             RunnerInfo(
-                id="vm-contract-1", name="vm-contract-1", status="running", state="running",
-                target_repo="owner/repo", target_arch="arm64", backend="orbstack-vm",
+                id="vm-contract-1",
+                name="vm-contract-1",
+                status="running",
+                state="running",
+                target_repo="owner/repo",
+                target_arch="arm64",
+                backend="orbstack-vm",
             )
         ]
         mock_get_driver.return_value = mock_driver
@@ -123,8 +134,13 @@ class TestVMBridgeBlackboxContract(unittest.TestCase):
         mock_get_driver.return_value = mock_driver
 
         runner = {
-            "id": "vm-1", "name": "vm-1", "status": "exited", "state": "exited",
-            "target_repo": "o/r", "target_arch": "arm64", "backend": "orbstack-vm",
+            "id": "vm-1",
+            "name": "vm-1",
+            "status": "exited",
+            "state": "exited",
+            "target_repo": "o/r",
+            "target_arch": "arm64",
+            "backend": "orbstack-vm",
         }
         with self._post("/api/drivers/orbstack-vm/prune", {"runners": [runner]}) as resp:
             self.assertEqual(resp.status, 200)
@@ -184,7 +200,8 @@ class TestVMBridgeBlackboxContract(unittest.TestCase):
         req = urllib.request.Request(f"{self.base_url}/api/drivers/orbstack-vm/spawn", method="OPTIONS")
         with urllib.request.urlopen(req, timeout=3.0) as resp:
             self.assertEqual(resp.status, 204)
-            self.assertEqual(resp.headers.get("Access-Control-Allow-Origin"), "*")
+            # No CORS grant: a foreign origin must not be able to preflight into the API.
+            self.assertIsNone(resp.headers.get("Access-Control-Allow-Origin"))
 
     def test_unknown_get_route_returns_404_contract(self):
         with self.assertRaises(urllib.error.HTTPError) as cm:
@@ -196,6 +213,76 @@ class TestVMBridgeBlackboxContract(unittest.TestCase):
         with self.assertRaises(urllib.error.HTTPError) as cm:
             urllib.request.urlopen(req, timeout=3.0)
         self.assertEqual(cm.exception.code, 404)
+
+
+class TestVMBridgeSignalHandlingRealProcess(unittest.TestCase):
+    """Regression test for a same-thread deadlock in VMBridgeServer.start()/stop().
+
+    Everything else in this file talks to a REAL socket but still runs the
+    server in-process, so it can't exercise this bug: POSIX signal handlers
+    are always invoked on a process's main thread, so reproducing it
+    requires the bridge to actually BE a process's main thread -- hence the
+    only subprocess-spawning test in this file.
+
+    Before the fix (see vm_bridge.py's VMBridgeServer.start() comment):
+    main() ran serve_forever() inline on the main thread for blocking=True,
+    then installed a SIGTERM/SIGINT handler that called stop() ->
+    httpd.shutdown() from that same thread. httpd.shutdown() blocks until
+    serve_forever()'s loop notices a shutdown flag, but that loop can't run
+    again until the (nested) signal handler call returns -- so it deadlocked
+    forever, confirmed live by `kill -TERM <bridge-pid>` printing "Shutting
+    down..." and then hanging indefinitely, still holding the port, until
+    manually SIGKILLed. That silently defeated any process supervisor
+    (launchd, systemd, a plain `make bridge-stop`) trying to restart it.
+    """
+
+    def test_sigterm_exits_promptly_instead_of_hanging_forever(self):
+        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as probe:
+            probe.bind(("127.0.0.1", 0))
+            port = probe.getsockname()[1]
+
+        repo_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        env = {
+            **os.environ,
+            "PYTHONPATH": os.path.join(repo_root, "src"),
+            "HOST_VM_BRIDGE_HOST": "127.0.0.1",
+            "HOST_VM_BRIDGE_PORT": str(port),
+        }
+        proc = subprocess.Popen(
+            [sys.executable, "-u", os.path.join(repo_root, "src", "vm_bridge.py")],
+            cwd=repo_root,
+            env=env,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+        )
+        try:
+            deadline = time.time() + 5.0
+            while time.time() < deadline:
+                try:
+                    with urllib.request.urlopen(f"http://127.0.0.1:{port}/health", timeout=0.5):
+                        break
+                # A read timeout while the process is still starting up (or
+                # a busy, contended test run is just slow to schedule it)
+                # surfaces as a bare TimeoutError, not URLError -- urlopen()
+                # only wraps connect-phase failures (e.g. ECONNREFUSED) in
+                # URLError, not a post-connect read timeout.
+                except (urllib.error.URLError, ConnectionError, TimeoutError):
+                    time.sleep(0.1)
+            else:
+                self.fail("bridge subprocess never became healthy")
+
+            proc.terminate()  # SIGTERM
+            try:
+                returncode = proc.wait(timeout=5.0)
+            except subprocess.TimeoutExpired:
+                proc.kill()
+                proc.wait(timeout=5.0)
+                self.fail("bridge subprocess did not exit within 5s of SIGTERM -- it deadlocked in shutdown (the same-thread stop() bug)")
+            self.assertEqual(returncode, 0)
+        finally:
+            if proc.poll() is None:
+                proc.kill()
+                proc.wait(timeout=5.0)
 
 
 if __name__ == "__main__":

@@ -50,6 +50,7 @@ class TestDashboardBlackboxContract(unittest.TestCase):
     def setUp(self):
         self.server = DashboardServer(host="127.0.0.1", port=0)
         self.server.start(blocking=False)
+        assert self.server.httpd is not None
         self.port = self.server.httpd.server_port
         self.base_url = f"http://127.0.0.1:{self.port}"
 
@@ -138,6 +139,7 @@ class TestDashboardBlackboxContract(unittest.TestCase):
         # touches a real host package cache.
         import shutil
         import tempfile
+
         temp_cache = tempfile.mkdtemp(prefix="runzero-blackbox-cache-")
         self.addCleanup(shutil.rmtree, temp_cache, True)
         original_cache_dir = dashboard_state.cache_dir
@@ -178,13 +180,29 @@ class TestDashboardBlackboxContract(unittest.TestCase):
             self.assertEqual(data.get("status"), "success")
             mock_driver.prune_exited.assert_called_once()
 
+    def test_post_actions_repo_priority_route_contract(self):
+        payload = json.dumps({"priority": ["repo-blackbox-a", "repo-blackbox-b"], "paused": ["repo-blackbox-c"]}).encode("utf-8")
+        req = urllib.request.Request(
+            f"{self.base_url}/api/actions/repo-priority",
+            data=payload,
+            headers={"Content-Type": "application/json"},
+            method="POST",
+        )
+        with urllib.request.urlopen(req, timeout=3.0) as resp:
+            self.assertEqual(resp.status, 200)
+            data = json.loads(resp.read().decode("utf-8"))
+            self.assertEqual(data.get("status"), "success")
+            self.assertEqual(data.get("priority"), ["repo-blackbox-a", "repo-blackbox-b"])
+            self.assertEqual(data.get("paused"), ["repo-blackbox-c"])
+
     # -- Cross-cutting contract: CORS preflight + unknown routes -------------
 
     def test_options_preflight_contract(self):
         req = urllib.request.Request(f"{self.base_url}/api/status", method="OPTIONS")
         with urllib.request.urlopen(req, timeout=3.0) as resp:
             self.assertEqual(resp.status, 204)
-            self.assertEqual(resp.headers.get("Access-Control-Allow-Origin"), "*")
+            # No CORS grant: a foreign origin must not be able to preflight into the API.
+            self.assertIsNone(resp.headers.get("Access-Control-Allow-Origin"))
 
     def test_unknown_get_route_returns_404_contract(self):
         with self.assertRaises(urllib.error.HTTPError) as cm:

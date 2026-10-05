@@ -12,6 +12,13 @@ AUTOSCALER_PID_FILE := .autoscaler.pid
 AUTOSCALER_LOG_FILE := .autoscaler.log
 BRIDGE_PID_FILE := .bridge.pid
 BRIDGE_LOG_FILE := .bridge.log
+# Baked into the autoscaler image so it can tell when the bridge runs other code (#72).
+export RUNZERO_GIT_SHA := $(shell git rev-parse --short=12 HEAD 2>/dev/null)
+
+# Python used for all quality gates. `make dev-setup` creates .venv-dev with the pinned
+# tooling from requirements-dev.txt; CI passes PY=python after installing the same file.
+PY ?= $(if $(wildcard .venv-dev/bin/python),.venv-dev/bin/python,python3)
+SHELL_SCRIPTS := docker/start.sh docker/provision-toolchain.sh scripts/setup_env.sh scripts/pre-commit.sh scripts/bridge_supervisor.sh
 
 # Colors for terminal styling
 CYAN    := \033[36m
@@ -36,6 +43,26 @@ help: ## Display available commands
 .PHONY: env
 env: ## Run interactive .env configuration wizard
 	@bash scripts/setup_env.sh
+
+.PHONY: website-install
+website-install: ## Install website Node dependencies (run from repo root)
+	@if command -v npm >/dev/null 2>&1; then \
+		echo "$(CYAN)Installing website Node dependencies...$(RESET)"; \
+		cd $(WEBSITE_DIR) && npm install; \
+	else \
+		echo "$(YELLOW)npm not found; skipping website dependency install.$(RESET)"; \
+	fi
+
+.PHONY: install
+install: init-cache website-install install-hooks ## Bootstrap local development environment from repo root
+	@echo "$(CYAN)Installing Python package and dev tools (best-effort)...$(RESET)"
+	@if command -v python3 >/dev/null 2>&1; then \
+		python3 -m pip install --quiet -e . || echo "Could not install project package in current Python environment."; \
+		python3 -m pip install --quiet -r requirements-dev.txt || echo "Could not install dev tooling in current Python environment (try: make dev-setup)."; \
+	else \
+		echo "$(YELLOW)python3 not found; skipping Python install.$(RESET)"; \
+	fi
+	@echo "$(GREEN)Install bootstrap complete. Next: run 'make nice'.$(RESET)"
 
 .PHONY: check-env
 check-env:
@@ -70,6 +97,31 @@ cache-size: ## Show disk usage of the host package/tool cache only (subset of `m
 	fi
 	@echo ""
 
+.PHONY: cache-smoke
+cache-smoke: ## Validate proxy caches are reachable from host and from runner-network, and show Docker daemon mirror status
+	@echo "$(BOLD)$(CYAN)=== Cache Proxy Smoke Test ===$(RESET)"
+	@echo "$(CYAN)Checking host-published cache endpoints...$(RESET)"
+	@curl -fsS http://localhost:49501/ >/dev/null && echo "  ✓ Verdaccio (host): http://localhost:49501/" || (echo "  ✗ Verdaccio host endpoint unavailable" && exit 1)
+	@curl -fsS http://localhost:49500/ >/dev/null && echo "  ✓ Athens (host):    http://localhost:49500/" || (echo "  ✗ Athens host endpoint unavailable" && exit 1)
+	@curl -fsS http://localhost:49507/root/pypi/+simple/ >/dev/null && echo "  ✓ devpi (host):     http://localhost:49507/root/pypi/+simple/" || (echo "  ✗ devpi host endpoint unavailable" && exit 1)
+	@curl -fsS http://localhost:49503/acng-report.html >/dev/null && echo "  ✓ apt-cacher(host): http://localhost:49503/acng-report.html" || (echo "  ✗ apt-cacher host endpoint unavailable" && exit 1)
+	@curl -fsS http://localhost:49506/api/v1/cratesio/config.json >/dev/null && echo "  ✓ kellnr (host):    http://localhost:49506/api/v1/cratesio/config.json" || (echo "  ✗ kellnr host endpoint unavailable" && exit 1)
+	@curl -fsS http://localhost:49502/v2/ >/dev/null && echo "  ✓ Docker mirror:    http://localhost:49502/v2/" || (echo "  ✗ Docker mirror host endpoint unavailable" && exit 1)
+	@echo "$(CYAN)Checking cache endpoints from runner-network DNS...$(RESET)"
+	@docker network inspect runner-network >/dev/null 2>&1 || (echo "  ✗ Docker network 'runner-network' not found. Run 'make start' first." && exit 1)
+	@docker run --rm --network runner-network curlimages/curl:8.10.1 -fsS http://verdaccio:4873/ >/dev/null && echo "  ✓ Verdaccio (runner-network): http://verdaccio:4873/" || (echo "  ✗ Verdaccio runner-network endpoint unavailable" && exit 1)
+	@docker run --rm --network runner-network curlimages/curl:8.10.1 -fsS http://athens:3000/ >/dev/null && echo "  ✓ Athens (runner-network):    http://athens:3000/" || (echo "  ✗ Athens runner-network endpoint unavailable" && exit 1)
+	@docker run --rm --network runner-network curlimages/curl:8.10.1 -fsS http://devpi:3141/root/pypi/+simple/ >/dev/null && echo "  ✓ devpi (runner-network):     http://devpi:3141/root/pypi/+simple/" || (echo "  ✗ devpi runner-network endpoint unavailable" && exit 1)
+	@docker run --rm --network runner-network curlimages/curl:8.10.1 -fsS http://apt-cacher:3142/acng-report.html >/dev/null && echo "  ✓ apt-cacher (runner-network): http://apt-cacher:3142/acng-report.html" || (echo "  ✗ apt-cacher runner-network endpoint unavailable" && exit 1)
+	@docker run --rm --network runner-network curlimages/curl:8.10.1 -fsS http://kellnr:8000/api/v1/cratesio/config.json >/dev/null && echo "  ✓ kellnr (runner-network):    http://kellnr:8000/api/v1/cratesio/config.json" || (echo "  ✗ kellnr runner-network endpoint unavailable" && exit 1)
+	@echo "$(CYAN)Inspecting host Docker daemon registry mirrors...$(RESET)"
+	@mirrors=$$(docker info --format '{{json .RegistryConfig.Mirrors}}' 2>/dev/null || echo '[]'); \
+		echo "  Mirrors: $$mirrors"; \
+		echo "$$mirrors" | grep -Eq 'localhost:49502|host\.orb\.internal:49502' && \
+			echo "  ✓ Host Docker daemon mirror includes run-zero docker-mirror" || \
+			echo "  ⚠ Host Docker daemon mirror does not include run-zero docker-mirror (Docker-backend pulls may bypass cache)"
+	@echo "$(GREEN)Cache smoke test complete.$(RESET)"
+
 .PHONY: clean-cache
 clean-cache: ## Clear the persistent package/tool cache dir ($(CACHE_DIR)) only -- see `make clean-caches` to also clear proxy volumes and images
 	@echo "$(YELLOW)Clearing local runner caches at $(CACHE_DIR)...$(RESET)"
@@ -90,6 +142,11 @@ $$(docker volume ls --filter "label=com.docker.compose.volume=$(1)" -q | head -1
 endef
 
 .PHONY: info
+.PHONY: doctor
+doctor: ## Verify cache wiring from inside throwaway runners (no GitHub token needed); DOCTOR_ARGS="--no-spawn" for host checks only
+	@set -a; [ -f .env ] && . ./.env; set +a; \
+	PYTHONPATH=src $(if $(wildcard .venv/bin/python3),.venv/bin/python3,python3) src/doctor.py $(DOCTOR_ARGS)
+
 info: ## Show total disk usage of everything run-zero manages: host cache dir, proxy volumes, runner images, and OrbStack VMs
 	@echo ""
 	@echo "$(BOLD)$(CYAN)=== Host Package/Tool Cache ($(CACHE_DIR)) ===$(RESET)"
@@ -212,33 +269,18 @@ dashboard: ## Open RunZero Real-Time Observability Web Dashboard in browser (htt
 	@open http://localhost:49505 || echo "Navigate to http://localhost:49505 in your browser."
 
 .PHONY: bridge-start bridge-stop bridge-status bridge-logs
-bridge-start: ## Start Host VM Bridge server on host (port 49504)
-	@if [ -f $(BRIDGE_PID_FILE) ] && kill -0 "$$(cat $(BRIDGE_PID_FILE))" 2>/dev/null; then \
-		echo "$(YELLOW)Host VM Bridge already running (PID $$(cat $(BRIDGE_PID_FILE))).$(RESET)"; \
-	else \
-		echo "$(CYAN)Starting Host VM Bridge on http://localhost:49504...$(RESET)"; \
-		set -a; [ -f .env ] && . ./.env; set +a; \
-		PYTHONPATH=src nohup python3 -u src/vm_bridge.py > $(BRIDGE_LOG_FILE) 2>&1 & \
-		echo $$! > $(BRIDGE_PID_FILE); \
-		echo "$(GREEN)Host VM Bridge running in background (PID $$(cat $(BRIDGE_PID_FILE))).$(RESET)"; \
-	fi
+bridge-start: ## Start Host VM Bridge server on host (port 49504, auto-restarts on crash via launchd)
+	@echo "$(CYAN)Starting Host VM Bridge on http://localhost:49504...$(RESET)"
+	@./scripts/bridge_supervisor.sh start
 
 bridge-stop: ## Stop Host VM Bridge server
 	@echo "$(YELLOW)Stopping Host VM Bridge...$(RESET)"
-	@if [ -f $(BRIDGE_PID_FILE) ]; then \
-		pid=$$(cat $(BRIDGE_PID_FILE)); \
-		if kill -0 "$$pid" 2>/dev/null; then kill "$$pid"; fi; \
-		rm -f $(BRIDGE_PID_FILE); \
-	fi
+	@./scripts/bridge_supervisor.sh stop
 	@echo "$(GREEN)Host VM Bridge stopped.$(RESET)"
 
 bridge-status: ## Check Host VM Bridge status
 	@echo "$(BOLD)$(CYAN)=== Host VM Bridge (port 49504) ===$(RESET)"
-	@if [ -f $(BRIDGE_PID_FILE) ] && kill -0 "$$(cat $(BRIDGE_PID_FILE))" 2>/dev/null; then \
-		echo "Running (PID $$(cat $(BRIDGE_PID_FILE)))"; \
-	else \
-		echo "Not running"; \
-	fi
+	@./scripts/bridge_supervisor.sh status
 
 bridge-logs: ## Stream live logs from the Host VM Bridge
 	@touch $(BRIDGE_LOG_FILE) && tail -f $(BRIDGE_LOG_FILE)
@@ -246,7 +288,7 @@ bridge-logs: ## Stream live logs from the Host VM Bridge
 .PHONY: start up run
 start: check-env init-cache bridge-start ## Start containerized Autoscaler + Host VM Bridge + Proxy services + Web Dashboard
 	@echo "$(CYAN)Starting RunZero containerized stack (Autoscaler, Dashboard, Proxy registries)...$(RESET)"
-	@docker compose up -d
+	@docker compose up -d --build
 	@echo "$(GREEN)RunZero Fleet & Observability Stack is running!$(RESET)"
 	@echo "  • 📊 Web Dashboard:  $(BOLD)http://localhost:49505$(RESET) (Run $(BOLD)make dashboard$(RESET))"
 	@echo "  • 🌉 Host VM Bridge: $(BOLD)http://localhost:49504$(RESET)"
@@ -361,50 +403,101 @@ build-vm-base: ## Build the golden OrbStack VM base image (Docker/Node/nvm/.NET/
 .PHONY: vm-rebuild-base
 vm-rebuild-base: build-vm-base ## Alias for build-vm-base -- use after changing docker/provision-toolchain.sh to refresh the golden image
 
+.PHONY: dev-setup
+dev-setup: ## Create .venv-dev with the pinned dev tooling from requirements-dev.txt
+	@echo "$(CYAN)Creating .venv-dev with pinned dev tooling...$(RESET)"
+	@python3 -m venv .venv-dev
+	@.venv-dev/bin/python -m pip install --quiet --upgrade pip
+	@.venv-dev/bin/python -m pip install --quiet -r requirements-dev.txt
+	@echo "$(GREEN).venv-dev ready. Quality gates: make check$(RESET)"
+
+.PHONY: check check-python check-shell check-go build-go
+check: check-go check-python check-shell ## Run every quality gate (the same set CI enforces)
+	@echo "$(GREEN)All quality gates passed.$(RESET)"
+
+check-go: ## Go gates: go vet, go test with coverage
+	go vet ./...
+	go test -cover ./...
+
+build-go: ## Compile Go cloud-native daemon engine binary into bin/runzero
+	go build -o bin/runzero ./cmd/runzero
+
+check-python: ## Python gates: ruff lint + format, flake8, mypy, interrogate, pytest with 100% coverage
+	$(PY) -m ruff check src tests
+	$(PY) -m ruff format --check src tests
+	$(PY) -m flake8 src tests
+	$(PY) -m mypy src tests
+	$(PY) -m interrogate src
+	$(PY) -m pytest
+
+check-shell: ## Shell gates: bash -n + shellcheck on every maintained script
+	@for f in $(SHELL_SCRIPTS); do bash -n "$$f" || exit 1; done
+	shellcheck -x $(SHELL_SCRIPTS)
+
 .PHONY: test-suite
-test-suite: ## Run test suite with pytest, mypy type checking, and flake8 linter
-	@echo "$(CYAN)Running Flake8, Mypy, and Pytest coverage suite...$(RESET)"
+test-suite: ## Run the Python quality gates inside a clean python:3.11-slim container
+	@echo "$(CYAN)Running Python quality gates in python:3.11-slim...$(RESET)"
 	@docker run --rm -v "$$(pwd):/app" -w /app python:3.11-slim bash -c "\
-		apt-get update -qq && apt-get install -y -qq --no-install-recommends make > /dev/null && \
-		pip install --quiet pytest pytest-cov mypy flake8 && \
-		flake8 src/ tests/ --max-line-length=160 --extend-ignore=E501,W503,E402 && \
-		MYPYPATH=src mypy src/ --ignore-missing-imports && \
-		PYTHONPATH=src pytest --cov=src --cov-report=term-missing tests/"
+		apt-get update -qq && apt-get install -y -qq --no-install-recommends make git > /dev/null && \
+		pip install --quiet -r requirements-dev.txt && \
+		make check-python PY=python"
 	@echo "$(GREEN)All tests passed with 0 warnings!$(RESET)"
 
 .PHONY: mutation-test
-mutation-test: ## Run mutation testing suite (mutmut) -- fails the build on surviving mutants
-	@echo "$(CYAN)Running Mutmut Mutation Testing Suite...$(RESET)"
-	@docker run --rm -v "$$(pwd):/app" -w /app python:3.11-slim bash -c "\
-		apt-get update -qq && apt-get install -y -qq --no-install-recommends make > /dev/null && \
-		pip install --quiet pytest pytest-cov mutmut && \
-		PYTHONPATH=src mutmut run; \
-		status=\$$?; \
-		mutmut results; \
-		exit \$$status"
+mutation-test: ## Run differential mutation testing locally on changed files only
+	@echo "$(CYAN)Running differential mutation testing on changed files...$(RESET)"
+	$(PY) scripts/mutation_changed.py
+
+.PHONY: mutation-test-all
+mutation-test-all: ## Run mutation testing across all configured source paths
+	@echo "$(CYAN)Running mutation testing across all configured paths...$(RESET)"
+	$(PY) scripts/mutation_changed.py --all
 
 .PHONY: test
 test: ## Run local unit tests directly
-	@PYTHONPATH=src python3 -m unittest discover -s tests -p "test_*.py" -v
+	$(PY) -m pytest
+
+.PHONY: e2e
+e2e: ## Run Playwright end-to-end tests for the web dashboard and static documentation site
+	@echo "$(CYAN)Running Playwright E2E tests (Dashboard UI + Website)...$(RESET)"
+	@cd $(WEBSITE_DIR) && npx playwright test
 
 .PHONY: install-hooks
-install-hooks: ## Install RunZero pre-commit quality guard into .git/hooks/pre-commit
-	@echo "$(CYAN)Installing RunZero pre-commit hook...$(RESET)"
+install-hooks: ## Install RunZero pre-commit and pre-push quality guards into .git/hooks/
+	@echo "$(CYAN)Installing RunZero Git hooks (pre-commit & pre-push)...$(RESET)"
 	@mkdir -p .git/hooks
 	@printf '%s\n' '#!/usr/bin/env bash' 'set -euo pipefail' '' 'PROJECT_ROOT="$$(git rev-parse --show-toplevel 2>/dev/null || pwd)"' 'exec "$$PROJECT_ROOT/scripts/pre-commit.sh"' > .git/hooks/pre-commit
 	@chmod +x .git/hooks/pre-commit
-	@echo "$(GREEN)Pre-commit hook installed successfully! It now always runs scripts/pre-commit.sh.$(RESET)"
+	@printf '%s\n' '#!/usr/bin/env bash' 'set -euo pipefail' '' 'PROJECT_ROOT="$$(git rev-parse --show-toplevel 2>/dev/null || pwd)"' 'exec "$$PROJECT_ROOT/scripts/pre-push.sh"' > .git/hooks/pre-push
+	@chmod +x .git/hooks/pre-push
+	@echo "$(GREEN)Hooks installed successfully! pre-commit and pre-push guards are active.$(RESET)"
 
 .PHONY: pre-commit
 pre-commit: ## Run the RunZero pre-commit quality guard manually
 	@bash scripts/pre-commit.sh
 
+.PHONY: pre-push
+pre-push: ## Run the RunZero pre-push quality guard manually
+	@bash scripts/pre-push.sh
+
 .PHONY: lint
-lint: ## Run Flake8 linter and Mypy static type checker
-	@echo "$(CYAN)Running Flake8 linter...$(RESET)"
-	@flake8 src/ tests/ --max-line-length=160 --extend-ignore=E501,W503,E402 || echo "Install flake8 for full linting."
+lint: ## Run ruff + Flake8 linters, Mypy type checker, and website Oxlint
+	@echo "$(CYAN)Running ruff + Flake8 linters...$(RESET)"
+	$(PY) -m ruff check src tests
+	$(PY) -m flake8 src tests
 	@echo "$(CYAN)Running Mypy type checker...$(RESET)"
-	@MYPYPATH=src mypy src/ --ignore-missing-imports || echo "Install mypy for full typechecking."
+	$(PY) -m mypy src tests
+	@echo "$(CYAN)Running website lint checks with Oxlint...$(RESET)"
+	@if command -v npm >/dev/null 2>&1; then \
+		(cd $(WEBSITE_DIR) && { npm ls oxlint >/dev/null 2>&1 || npm install; } && npm run lint); \
+	else \
+		echo "npm not found; skipping website lint checks."; \
+	fi
+
+.PHONY: website-lint
+website-lint: ## Run Oxlint on website sources
+	@echo "$(CYAN)Running Oxlint for website sources...$(RESET)"
+	@cd $(WEBSITE_DIR) && { npm ls oxlint >/dev/null 2>&1 || npm install; } && npm run lint
 
 .PHONY: deps-check
 deps-check: ## Check dependency update opportunities (Python env + website Node packages)
@@ -444,17 +537,11 @@ deps-update: ## Apply dependency updates where possible (website package.json vi
 .PHONY: fmt-check
 fmt-check: ## Check formatting for Python and website sources
 	@echo "$(CYAN)Checking Python formatting...$(RESET)"
-	@if command -v ruff >/dev/null 2>&1; then \
-		ruff format --check --line-length=160 src/ tests/; \
-	elif command -v black >/dev/null 2>&1; then \
-		black --check --line-length=160 src/ tests/; \
-	else \
-		echo "Install ruff or black for Python format checks."; \
-	fi
+	$(PY) -m ruff format --check src tests
 	@echo "$(CYAN)Checking website formatting with Prettier...$(RESET)"
 	@if command -v npm >/dev/null 2>&1; then \
 		(cd $(WEBSITE_DIR) && { npm ls prettier-plugin-astro >/dev/null 2>&1 || npm install; } && \
-			npm exec prettier -- --plugin=prettier-plugin-astro --check "src/**/*.{astro,js,ts,css,md,json}" "public/**/*.{css,md,json}"); \
+			npm exec prettier -- --check "src/**/*.{astro,js,ts,css,md,json}" "public/**/*.{css,md,json}"); \
 	else \
 		echo "npm not found; skipping website format checks."; \
 	fi
@@ -462,17 +549,11 @@ fmt-check: ## Check formatting for Python and website sources
 .PHONY: fmt
 fmt: ## Auto-format Python and website sources
 	@echo "$(CYAN)Formatting Python sources...$(RESET)"
-	@if command -v ruff >/dev/null 2>&1; then \
-		ruff format --line-length=160 src/ tests/; \
-	elif command -v black >/dev/null 2>&1; then \
-		black --line-length=160 src/ tests/; \
-	else \
-		echo "Install ruff or black for Python auto-formatting."; \
-	fi
+	$(PY) -m ruff format src tests
 	@echo "$(CYAN)Formatting website sources with Prettier...$(RESET)"
 	@if command -v npm >/dev/null 2>&1; then \
 		(cd $(WEBSITE_DIR) && { npm ls prettier-plugin-astro >/dev/null 2>&1 || npm install; } && \
-			npm exec prettier -- --plugin=prettier-plugin-astro --write "src/**/*.{astro,js,ts,css,md,json}" "public/**/*.{css,md,json}"); \
+			npm exec prettier -- --write "src/**/*.{astro,js,ts,css,md,json}" "public/**/*.{css,md,json}"); \
 	else \
 		echo "npm not found; skipping website auto-formatting."; \
 	fi
@@ -481,20 +562,51 @@ fmt: ## Auto-format Python and website sources
 nice: deps-check lint fmt-check ## Safe quality pass: check dependency updates + lint + format verification
 	@echo "$(GREEN)Nice pass complete.$(RESET)"
 
+.PHONY: super-nice
+super-nice: deps-update lint-fix fmt lint fmt-check ## Aggressive quality pass: update deps, auto-fix lint/format, then re-verify
+	@echo "$(GREEN)Super nice pass complete.$(RESET)"
+
 .PHONY: very-nice
-very-nice: deps-update lint-fix fmt lint fmt-check ## Aggressive quality pass: update deps, auto-fix formatting, then re-verify
-	@echo "$(GREEN)Very nice pass complete.$(RESET)"
+very-nice: super-nice ## Backward-compatible alias for super-nice
+	@echo "$(GREEN)Very nice pass complete (alias of super-nice).$(RESET)"
+
+.PHONY: pre-stage
+pre-stage: ## Format only currently changed (unstaged) files before git add
+	@echo "$(CYAN)Pre-staging: auto-formatting changed files before git add...$(RESET)"
+	@CHANGED=$$(git diff --name-only --diff-filter=ACM 2>/dev/null); \
+	if [ -z "$$CHANGED" ]; then \
+		echo "  $(YELLOW)No unstaged changes found.$(RESET)"; \
+	else \
+		echo "$$CHANGED" | while IFS= read -r file; do \
+			if [ -f "$$file" ]; then \
+				if [[ "$$OSTYPE" == "darwin"* ]]; then \
+					sed -i '' -E 's/[[:space:]]+$$//' "$$file" 2>/dev/null || true; \
+				else \
+					sed -i -E 's/[[:space:]]+$$//' "$$file" 2>/dev/null || true; \
+				fi; \
+			fi; \
+		done; \
+		PY_CHANGED=$$(echo "$$CHANGED" | grep -E '\.py$$' || true); \
+		if [ -n "$$PY_CHANGED" ]; then \
+			echo "  $(CYAN)→ Python files changed — running ruff fix...$(RESET)"; \
+			echo "$$PY_CHANGED" | xargs $(PY) -m ruff check --fix 2>/dev/null || true; \
+			echo "$$PY_CHANGED" | xargs $(PY) -m ruff format 2>/dev/null || true; \
+		fi; \
+		WEB_CHANGED=$$(echo "$$CHANGED" | grep -E '^website/.*\.(astro|js|mjs|ts|css|json|md)$$' || true); \
+		if [ -n "$$WEB_CHANGED" ]; then \
+			echo "  $(CYAN)→ Website files changed — running prettier --write...$(RESET)"; \
+			(cd $(WEBSITE_DIR) && npm exec prettier -- --write \
+				$$(echo "$$WEB_CHANGED" | sed 's|^website/||') 2>/dev/null) || true; \
+		fi; \
+		echo "  $(GREEN)✓ Changed files formatted. Ready for: git add$(RESET)"; \
+	fi
 
 .PHONY: lint-fix
 lint-fix: ## Auto-fix Python formatting and strip trailing whitespace
 	@echo "$(CYAN)Auto-fixing formatting and stripping trailing whitespace...$(RESET)"
 	@find src tests -name "*.py" -exec sed -i '' -E 's/[[:space:]]+$$//' {} + 2>/dev/null || true
-	@if command -v ruff >/dev/null 2>&1; then \
-		ruff check --fix --line-length=160 src/ tests/; \
-		ruff format --line-length=160 src/ tests/; \
-	elif command -v autopep8 >/dev/null 2>&1; then \
-		autopep8 --in-place --recursive --aggressive --max-line-length=160 src/ tests/; \
-	fi
+	$(PY) -m ruff check --fix src tests
+	$(PY) -m ruff format src tests
 	@echo "$(GREEN)Auto-fixes applied successfully.$(RESET)"
 
 .PHONY: run-dev
@@ -505,4 +617,33 @@ run-dev: check-env init-cache ## Run local autoscaler in foreground for interact
 	@set -a; . ./.env; set +a; PYTHONPATH=src python3 -u src/autoscaler.py
 
 
+
+
+.PHONY: mutation-report mutation-dashboard
+mutation-report: ## Export mutation stats and generate weekly trend dashboard artifacts
+	@echo "$(CYAN)Generating mutation trend dashboard artifacts...$(RESET)"
+	@mkdir -p reports/mutation
+	@PYTHONPATH=src $(PY) -m mutmut results > reports/mutation/mutmut-results.txt 2>/dev/null || true
+	@PYTHONPATH=src $(PY) -m mutmut export-cicd-stats >/dev/null 2>&1 || true
+	@$(PY) scripts/generate_mutation_report.py \
+		--stats mutants/mutmut-cicd-stats.json \
+		--results reports/mutation/mutmut-results.txt \
+		--history reports/mutation/history.json \
+		--output reports/mutation/latest.md
+	@echo "$(GREEN)Mutation dashboard generated at reports/mutation/latest.md$(RESET)"
+
+mutation-dashboard: mutation-report ## Alias for mutation-report
+	@true
+
+.PHONY: build-spec
+build-spec: ## Compile TypeSpec schema and generate TypeScript types
+	@echo "$(CYAN)Compiling TypeSpec schema and generating TypeScript types...$(RESET)"
+	@cd spec && pnpm run all
+	@echo "$(GREEN)TypeSpec compilation complete.$(RESET)"
+
+.PHONY: build-ui
+build-ui: build-spec ## Build production dashboard TypeScript web application
+	@echo "$(CYAN)Building modular TypeScript dashboard...$(RESET)"
+	@cd web && pnpm run build
+	@echo "$(GREEN)Dashboard UI build complete.$(RESET)"
 

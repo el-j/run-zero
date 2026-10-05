@@ -8,17 +8,17 @@ repo root) and assert on real stdout/exit code -- the way an operator running
 `make info` at a terminal actually experiences it. Nothing here imports `src/`
 or mocks anything; the process boundary under test is the Makefile itself.
 
-Targets are chosen deliberately for being side-effect-free and fast (no
-docker/orbctl requirement to pass, since `make info`/`make cache-size`/
-`make help` all degrade gracefully via `2>/dev/null || echo ...` fallbacks
-when those tools aren't on the host) so this file runs unconditionally in CI
-and in the container `make test-suite` runs in, without needing real
-Docker/OrbStack/GitHub access.
+Targets are chosen for being side-effect-free, and the process is made hermetic: `docker`
+and `orbctl` resolve to no-op stubs placed first on PATH, and HOME points at a temp dir. So
+`make info` never starts containers against the operator's real volumes or walks their real
+~/.local-github-runner cache (on a host with a few GB of proxy caches that alone took over
+two minutes), and results don't depend on what happens to be installed or running.
 """
 
 import os
 import shutil
 import subprocess
+import tempfile
 import unittest
 
 REPO_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
@@ -27,15 +27,33 @@ REPO_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 class TestMakeCLIBlackboxContract(unittest.TestCase):
     """Shells out to the real `make` binary against the real Makefile at the repo root."""
 
+    _sandbox: str
+    _env: dict[str, str]
+
     @classmethod
     def setUpClass(cls) -> None:
         if shutil.which("make") is None:
             raise unittest.SkipTest("`make` is not available on this test host")
+        cls._sandbox = tempfile.mkdtemp(prefix="runzero-cli-")
+        stub_bin = os.path.join(cls._sandbox, "bin")
+        os.makedirs(stub_bin)
+        # Symlinks to the system `true` (exits 0, prints nothing, ignores args) rather than
+        # freshly written scripts: macOS security-scans a new executable on its first run,
+        # which alone cost ~40s per test run.
+        true_bin = shutil.which("true") or "/usr/bin/true"
+        for tool in ("docker", "orbctl"):
+            os.symlink(true_bin, os.path.join(stub_bin, tool))
+        cls._env = {**os.environ, "PATH": f"{stub_bin}{os.pathsep}{os.environ.get('PATH', '')}", "HOME": cls._sandbox}
+
+    @classmethod
+    def tearDownClass(cls) -> None:
+        shutil.rmtree(cls._sandbox, ignore_errors=True)
 
     def _run_make(self, *targets, timeout=60):
         return subprocess.run(
             ["make", *targets],
             cwd=REPO_ROOT,
+            env=self._env,
             capture_output=True,
             text=True,
             timeout=timeout,

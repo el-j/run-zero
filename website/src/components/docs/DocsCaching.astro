@@ -1,5 +1,14 @@
 ---
 // DocsCaching: Proxy caching table, ports and URLs
+const markerExample = `- uses: actions/cache@v4
+  if: env.RUNZERO != '1'
+  with:
+    path: ~/.cache/ms-playwright
+    key: playwright-\${{ hashFiles('pnpm-lock.yaml') }}
+
+# The runner images already contain Playwright's system packages, so
+# --with-deps only adds an apt-get update on RunZero.
+- run: pnpm exec playwright install \${{ env.RUNZERO == '1' && '' || '--with-deps' }} chromium`;
 ---
 
 <h2 id="proxy-caching">APT &amp; Package Proxy Caching</h2>
@@ -21,132 +30,279 @@
     </thead>
     <tbody>
       <tr>
-        <td
-          ><strong
-            ><a
+        <td>
+          <strong>
+            <a
               href="https://www.unix-ag.uni-kl.de/~bloch/acng/"
               target="_blank"
-              rel="noopener">APT Cacher NG</a
-            ></strong
-          ></td
-        >
-        <td>Ubuntu/Debian <code>.deb</code> packages</td>
-        <td><code>:49503</code></td>
-        <td
-          ><a
+              rel="noopener"
+            >
+              APT Cacher NG
+            </a>
+          </strong>
+        </td>
+        <td>
+          Ubuntu/Debian <code>.deb</code> packages
+        </td>
+        <td>
+          <code>:49503</code>
+        </td>
+        <td>
+          <a
             href="http://localhost:49503/acng-report.html"
             target="_blank"
-            rel="noopener">http://localhost:49503/acng-report.html</a
-          ></td
-        >
+            rel="noopener"
+          >
+            http://localhost:49503/acng-report.html
+          </a>
+        </td>
       </tr>
       <tr>
-        <td
-          ><strong
-            ><a href="https://verdaccio.org/" target="_blank" rel="noopener"
-              >Verdaccio</a
-            ></strong
-          ></td
-        >
+        <td>
+          <strong>
+            <a href="https://verdaccio.org/" target="_blank" rel="noopener">
+              Verdaccio
+            </a>
+          </strong>
+        </td>
         <td>NPM, Yarn, PNPM JavaScript packages</td>
-        <td><code>:49501</code></td>
-        <td
-          ><a href="http://localhost:49501" target="_blank" rel="noopener"
-            >http://localhost:49501</a
-          ></td
-        >
+        <td>
+          <code>:49501</code>
+        </td>
+        <td>
+          <a href="http://localhost:49501" target="_blank" rel="noopener">
+            http://localhost:49501
+          </a>
+        </td>
       </tr>
       <tr>
-        <td
-          ><strong
-            ><a
+        <td>
+          <strong>
+            <a
               href="https://github.com/gomods/athens"
               target="_blank"
-              rel="noopener">Athens</a
-            ></strong
-          ></td
-        >
+              rel="noopener"
+            >
+              Athens
+            </a>
+          </strong>
+        </td>
         <td>Go language modules</td>
-        <td><code>:49500</code></td>
-        <td><code>http://localhost:49500</code></td>
+        <td>
+          <code>:49500</code>
+        </td>
+        <td>
+          <code>http://localhost:49500</code>
+        </td>
       </tr>
       <tr>
-        <td
-          ><strong
-            ><a
+        <td>
+          <strong>
+            <a
               href="https://docs.docker.com/docker-hub/mirror/"
               target="_blank"
-              rel="noopener">Docker Registry Mirror</a
-            ></strong
-          ></td
-        >
+              rel="noopener"
+            >
+              Docker Registry Mirror
+            </a>
+          </strong>
+        </td>
         <td>Docker Hub container layers</td>
-        <td><code>:49502</code></td>
-        <td><code>http://localhost:49502</code></td>
+        <td>
+          <code>:49502</code>
+        </td>
+        <td>
+          <code>http://localhost:49502</code>
+        </td>
       </tr>
       <tr>
-        <td
-          ><strong
-            ><a href="https://devpi.net/" target="_blank" rel="noopener"
-              >devpi</a
-            ></strong
-          ></td
-        >
+        <td>
+          <strong>
+            <a href="https://devpi.net/" target="_blank" rel="noopener">
+              devpi
+            </a>
+          </strong>
+        </td>
         <td>Python pip &amp; uv packages (PyPI)</td>
-        <td><code>:49507</code></td>
-        <td
-          ><a
+        <td>
+          <code>:49507</code>
+        </td>
+        <td>
+          <a
             href="http://localhost:49507/root/pypi/+simple/"
             target="_blank"
-            rel="noopener">http://localhost:49507/root/pypi/+simple/</a
-          ></td
-        >
+            rel="noopener"
+          >
+            http://localhost:49507/root/pypi/+simple/
+          </a>
+        </td>
       </tr>
       <tr>
-        <td
-          ><strong
-            ><a href="https://kellnr.io/" target="_blank" rel="noopener"
-              >kellnr</a
-            ></strong
-          ></td
-        >
+        <td>
+          <strong>
+            <a href="https://kellnr.io/" target="_blank" rel="noopener">
+              kellnr
+            </a>
+          </strong>
+        </td>
         <td>Cargo / Rust crates (crates.io)</td>
-        <td><code>:49506</code></td>
-        <td><code>http://localhost:49506</code></td>
+        <td>
+          <code>:49506</code>
+        </td>
+        <td>
+          <code>http://localhost:49506</code>
+        </td>
       </tr>
     </tbody>
   </table>
 </div>
 
 <p>
-  Cargo has no single "index URL" environment variable the way pip/uv (<code
-    >PIP_INDEX_URL</code
-  >/<code>UV_INDEX_URL</code>) and Go (<code>GOPROXY</code>) do -- pointing it
-  at kellnr requires a real <code>~/.cargo/config.toml</code>
-  source-replacement block, written automatically for both the Docker and OrbStack
-  VM engines. pip also refuses a plain-HTTP index on any host other than <code
-    >localhost</code
-  >/<code>127.0.0.1</code> unless it's explicitly trusted via <code
-    >PIP_TRUSTED_HOST</code
-  >, which both engines set automatically alongside <code>PIP_INDEX_URL</code>
+  Cargo has no single "index URL" environment variable the way pip/uv (
+  <code>PIP_INDEX_URL</code>/<code>UV_INDEX_URL</code>) and Go (
+  <code>GOPROXY</code>) do -- pointing it at kellnr requires a real{" "}
+  <code>~/.cargo/config.toml</code>
+  source-replacement block, written automatically for both the Docker and
+  OrbStack VM engines. pip also refuses a plain-HTTP index on any host other
+  than <code>localhost</code>/<code>127.0.0.1</code> unless it's explicitly
+  trusted via <code>PIP_TRUSTED_HOST</code>, which both engines set
+  automatically alongside <code>PIP_INDEX_URL</code>
   wherever the index isn't reached via <code>localhost</code>.
 </p>
 
 <h2 id="orbstack-vm-disk-caching">OrbStack VM Local Disk Caching</h2>
 <p>
-  The proxies above cache package <em>downloads</em> over the network. Package managers
-  also keep a local, already-extracted disk cache (<code>~/.npm</code>, <code
-    >~/.cache/pip</code
-  >, <code>~/go/pkg</code>,
-  <code>~/.cargo/registry</code>, etc.), which for the Docker engine is a plain <code
-    >-v host:container</code
-  >
-  bind mount. An OrbStack VM is a real, separate guest filesystem with no such flag,
-  but every non-isolated OrbStack VM automatically virtiofs-shares the entire host
-  macOS filesystem into the guest at a fixed path,
+  The proxies above cache package <em>downloads</em> over the network. Package
+  managers also keep a local, already-extracted disk cache (<code>~/.npm</code>,{" "}
+  <code>~/.cache/pip</code>, <code>~/go/pkg</code>,
+  <code>~/.cargo/registry</code>, etc.), which for the Docker engine is a plain{" "}
+  <code>-v host:container</code>
+  bind mount. An OrbStack VM is a real, separate guest filesystem with no such
+  flag, but every non-isolated OrbStack VM automatically virtiofs-shares the
+  entire host macOS filesystem into the guest at a fixed path,
   <code>/mnt/mac&lt;absolute-macOS-path&gt;</code>. RunZero's OrbStack driver
   uses this to bind-mount each host-side cache directory onto its
   container-style destination path inside the VM before the job runs, so cache
   data written by one ephemeral VM is really on host disk and visible to the
   next VM cloned for the same architecture.
+</p>
+
+<h2 id="job-environment">
+  Job Environment &amp; the <code>RUNZERO</code> Marker
+</h2>
+<p>
+  Every runner, on every backend, exports the same variables before
+  <code>run.sh</code>, so every job step inherits them, the way GitHub's own
+  images set theirs. Each one fixes a cache miss that was measured on real jobs:
+</p>
+<div class="table-wrapper">
+  <table class="comparison-table">
+    <thead>
+      <tr>
+        <th>Variable</th>
+        <th>Value</th>
+        <th>Why</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td>
+          <code>RUNNER_TOOL_CACHE</code>, <code>AGENT_TOOLSDIRECTORY</code>
+        </td>
+        <td>
+          <code>/opt/hostedtoolcache</code>
+        </td>
+        <td>
+          Without them <code>actions/setup-node</code> and <code>setup-go</code>
+          download into the throwaway <code>_work/_tool</code> instead of the
+          host-backed tool cache.
+        </td>
+      </tr>
+      <tr>
+        <td>
+          <code>npm_config_registry</code>, <code>pnpm_config_registry</code>,
+          <code>YARN_REGISTRY</code>, <code>YARN_NPM_REGISTRY_SERVER</code>
+        </td>
+        <td>Verdaccio</td>
+        <td>
+          pnpm 11 ignores every <code>npm_config_*</code> variable and pnpm 10
+          reads only those, so both spellings are set.
+        </td>
+      </tr>
+      <tr>
+        <td>
+          <code>pnpm_config_store_dir</code>, <code>npm_config_store_dir</code>
+        </td>
+        <td>
+          <code>~/.local/share/pnpm/store</code>
+        </td>
+        <td>The pnpm store is a host cache mount.</td>
+      </tr>
+      <tr>
+        <td>
+          <code>PLAYWRIGHT_BROWSERS_PATH</code>
+        </td>
+        <td>
+          <code>~/.cache/ms-playwright</code>
+        </td>
+        <td>Browsers are cached on the host, per architecture.</td>
+      </tr>
+      <tr>
+        <td>
+          <code>RUNZERO</code>, <code>RUNZERO_CACHES</code>
+        </td>
+        <td>
+          <code>1</code>, list of mounted caches
+        </td>
+        <td>Lets a workflow tell it is running on RunZero.</td>
+      </tr>
+    </tbody>
+  </table>
+</div>
+<p>
+  On RunZero, <code>actions/cache</code> steps for <code>node_modules</code>,
+  the pnpm store or Playwright browsers only duplicate, slowly and over the
+  network, what the host already caches. Skip them with the marker; the same
+  workflow keeps caching normally on GitHub-hosted runners:
+</p>
+<pre class="code-block"><code>{markerExample}</code></pre>
+<p>
+  If a job still needs <code>apt-get</code>, it goes through apt-cacher-ng. The
+  runner images keep their package indices and skip translation files, so
+  <code>apt-get update</code> fetches only what changed since the image was
+  built. Repositories served over HTTPS (Microsoft, Docker) bypass the proxy.
+</p>
+<p>
+  Run <code>make doctor</code> to check all of this from inside a fresh runner.
+  For each backend it reports the registry and store that npm, yarn and pnpm
+  10/11 resolve, the tool cache and Playwright mounts, proxy latency, cache
+  sizes, host load, runner sizing, and whether the bridge and autoscaler run the
+  code you have checked out.
+</p>
+
+<h2 id="native-arch-override">Native-Arch Override (Apple Silicon)</h2>
+<p>
+  A workflow that targets <code>runs-on: [self-hosted, local, amd64]</code>
+  has to keep working on GitHub-hosted <code>ubuntu-latest</code>. On Apple
+  Silicon, every such job runs under Rosetta emulation, which is several times
+  slower for Node and browsers, even though most jobs (Node, pnpm, Playwright,
+  Go) do not depend on the architecture.
+</p>
+<p>
+  With <code>NATIVE_ARCH_OVERRIDE=all</code> (or a list of
+  <code>owner/repo</code> names) RunZero serves those repositories'
+  <code>amd64</code> jobs with native arm64 runners, with no change to the
+  workflow. The runner still carries the job's <code>amd64</code> label, but
+  <code>RUNNER_ARCH</code> inside it is <code>ARM64</code>, so
+  <code>setup-node</code> and Playwright fetch native binaries. x86-64 binaries
+  and <code>--platform linux/amd64</code> containers still run through Rosetta.
+  The startup log, the job log line and the dashboard's routing card show when
+  an override was applied.
+</p>
+<p>
+  <strong>Trade-off:</strong> a job that checks <code>uname -m</code>, or builds
+  amd64 artifacts without <code>--platform</code>, gets arm64. Leave such
+  repositories off the list. Jobs labelled <code>rosetta</code> or
+  <code>x86_64</code> are never moved, and the setting does nothing on amd64
+  hosts.
 </p>

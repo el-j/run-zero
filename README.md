@@ -63,7 +63,7 @@ RunZero is the **first local runner fleet that gives you the choice between ultr
 | 🪟 **Windows WSL2** (`RUNNER_BACKEND=wsl2`) | [Windows Subsystem for Linux 2](https://learn.microsoft.com/en-us/windows/wsl/) | Native Linux VM execution on Windows 10/11 & Windows Server. | ⚠️ Unit-tested only — **not yet verified against a real Windows/WSL2 host** |
 | 🐧 **Canonical Multipass** (`RUNNER_BACKEND=multipass`) | [Canonical Multipass](https://multipass.run/) | Universal cross-platform VM backend for macOS, Linux, and Windows. | ⚠️ Unit-tested only — **not yet verified against a real Multipass install** |
 
-The WSL2 and Multipass drivers are implemented and covered by unit tests that verify command
+The WSL2 and Multipass drivers register and run ephemeral runners and are covered by unit tests that verify command
 construction (every `subprocess` call to `wsl.exe` / `multipass` is mocked at the call site), but
 neither has been exercised against real hardware — this project has been developed and driven
 entirely from a macOS host with OrbStack. See [`E2E_TESTING.md`](E2E_TESTING.md) and
@@ -252,6 +252,11 @@ job outright.
 
 ## ⚡ Quick Start
 
+> [!WARNING]
+> Self-hosted runners execute workflow code with near-root access to this machine. Only use
+> RunZero for repositories whose contributors you trust, and never for public repositories that
+> run fork pull requests. Read the [threat model](SECURITY.md#threat-model--hardening) first.
+
 ### 1. Initialize environment:
 ```bash
 make env
@@ -310,13 +315,21 @@ Full setup guide: [ACTIONS_BILLING_HOWTO.md](ACTIONS_BILLING_HOWTO.md)
 
 ## 🧪 Testing & Quality Suite
 
-RunZero includes a 100% verified test suite with type checking, linting, and mutation testing:
+`make check` is the single quality gate, run identically by CI and (for staged files) the
+pre-commit hook. It enforces: ruff lint + format, flake8, mypy on `src/` and `tests/`,
+docstring coverage (interrogate, currently ≥ 83%, rising to 100% in #58), pytest with **100%
+line coverage** and every warning treated as an error, plus `bash -n` and shellcheck on every
+maintained shell script. Unit tests are offline and hermetic: `tests/conftest.py` fails any test
+that reaches real `docker`/`orbctl`/`multipass`/`wsl` or the network.
 
 | Command | Description |
 |---|---|
-| `make test` | Run fast local unit tests directly (90 tests in ~1.0s) |
-| `make test-suite` | Run Flake8 linter, Mypy static type checker, and Pytest coverage |
-| `make mutation-test` | Run Mutmut mutation testing suite across all drivers and autoscaler |
+| `make dev-setup` | Create `.venv-dev` with the pinned tooling from `requirements-dev.txt` |
+| `make check` | Every quality gate above (what CI runs) |
+| `make test` | Just the pytest suite (with the coverage gate) |
+| `make test-suite` | The Python gates inside a clean `python:3.11-slim` container |
+| `make mutation-test` | Fast differential mutation testing locally on changed files only (`scripts/mutation_changed.py`) |
+| `make mutation-report` | Export mutmut stats and generate weekly mutation trend dashboard artifacts |
 
 The suite is layered:
 
@@ -330,6 +343,8 @@ The suite is layered:
 - **Mutation testing** (`make mutation-test`) — proves the test suite actually fails when `src/`
   logic breaks, not just that it executes the line. See [`MUTATION_TESTING.md`](MUTATION_TESTING.md)
   for how it's configured and wired into CI.
+- **Mutation reporting** (`make mutation-report`) — exports machine-readable totals and writes a
+  rolling weekly trend dashboard to `reports/mutation/latest.md`.
 
 ---
 
@@ -340,13 +355,17 @@ The suite is layered:
 | `make start` (or `make run`, `make up`) | Launch autoscaler, apt-cacher, Verdaccio, Athens, and Docker mirror |
 | `make stop` (or `make down`) | Gracefully stop the autoscaler, proxies, and active runners |
 | `make status` (or `make ps`) | Display running autoscaler, proxies & active ephemeral runners |
-| `make test` | Run fast local unit tests directly with `unittest` (85 tests in 0.04s) |
-| `make test-suite` | Run Flake8 linter, Mypy type-checker, and Pytest coverage report |
-| `make install-hooks` | Install RunZero pre-commit quality guard into `.git/hooks/pre-commit` |
+| `make check` | Run every quality gate (ruff, flake8, mypy, interrogate, pytest 100% coverage, shellcheck) |
+| `make test` | Run the pytest suite with the coverage gate |
+| `make test-suite` | Run the Python gates inside a clean `python:3.11-slim` container |
+| `make install-hooks` | Install RunZero pre-commit and pre-push quality guards into `.git/hooks/` |
 | `make pre-commit` | Run the pre-commit quality guard manually with auto-fixes |
+| `make pre-push` | Run the pre-push quality guard manually |
 | `make lint` | Run Flake8 linter and Mypy static type checker |
 | `make lint-fix` | Auto-fix Python code formatting and strip trailing whitespace |
-| `make mutation-test` | Run Mutmut mutation testing suite |
+| `make mutation-test` | Run differential mutation testing locally on changed files only |
+| `make mutation-test-all` | Run mutation testing across all configured paths |
+| `make mutation-report` | Generate mutation trend dashboard and export stats artifacts |
 | `make build-vm-base` | Build golden OrbStack VM base image for near-instant VM spins |
 | `make website-dev` | Start Astro documentation website development server |
 | `make website-build` | Build Astro static website and synchronize to `docs/` |
@@ -355,6 +374,7 @@ The suite is layered:
 | `make apt-cacher-ui` | Open apt-cacher-ng statistics report at `http://localhost:49503/acng-report.html` |
 | `make logs` | Stream live autoscaler logs |
 | `make logs-all` | Stream live logs from all services (autoscaler + proxies) |
+| `make cache-smoke` | Validate proxy caches are reachable from host and runner network; prints Docker mirror status |
 | `make cache-size` | Display disk usage of package and tool caches |
 | `make clean-cache` | Clear all shared package/tool caches |
 | `make build` (or `make build-all`) | Build all images (`arm64` + `amd64` + autoscaler) |
@@ -371,7 +391,7 @@ The suite is layered:
 | `ACCESS_TOKEN` | GitHub Personal Access Token (PAT) with `repo` scope | *Required* |
 | `OWNER` | GitHub username to auto-discover all owned repos | *None* |
 | `REPOS` | Comma-separated list of target repos (`owner/repo`) | *None* |
-| `ORG` | Target GitHub Organization name | *None* |
+| `ORG` | Organization mode: runners register at org scope and serve queued jobs from the org's active repos | *None* |
 | `RUNNER_BACKEND` | Execution driver (`auto`, `docker`, `orbstack-vm`, `wsl2`, `multipass`) | `auto` |
 | `AUTO_ROUTE_VM` | Automatically route browser/systemd/e2e jobs to VMs | `true` |
 | `AUTO_DISCOVER_REPOS` | Automatically discover and monitor all user repos | `true` |
@@ -379,9 +399,52 @@ The suite is layered:
 | `RUNNER_ARCH` | Runner architectures to spawn (`arm64`, `amd64`, or `both`) | `both` |
 | `PROXIES_ENABLED` | Enable apt-cacher, Verdaccio & Athens proxy registries for runners | `true` |
 | `CACHE_ENABLED` | Enable persistent package/tool caching across runners | `true` |
-| `MIN_RUNNERS` | Minimum idle runners on standby | `0` |
+| `MIN_RUNNERS` | Warm standby pool topped up after queued jobs are served (org scope in ORG mode, else round-robin across tracked repos; capped by `MAX_RUNNERS`; exempt from idle reaping) | `0` |
 | `MAX_RUNNERS` | Maximum concurrent runner instances | `4` |
 | `POLL_INTERVAL` | Queue check interval in seconds | `10` |
+| `DISCOVERY_INTERVAL` | Auto-discovery refresh interval in seconds | `900` |
+| `RATE_LIMIT_REFRESH_INTERVAL` | GitHub API quota refresh interval in seconds | `60` |
+| `ACTIONS_BILLING_REFRESH_INTERVAL` | Actions minutes refresh interval in seconds | `300` |
+
+---
+
+## ✅ On-Prem Readiness Checklist
+
+Use this checklist before announcing your RunZero host to teammates or external users.
+
+1. Start stack and bridge.
+```bash
+make restart
+```
+2. Verify all cache proxies are reachable from both host and runner network.
+```bash
+make cache-smoke
+```
+3. Confirm runner image startup summary shows private endpoints (not public defaults).
+```bash
+make logs
+```
+Look for lines showing Verdaccio/Athens/devpi/apt-cacher/kellnr connectivity.
+
+4. Ensure host Docker daemon uses the local Docker mirror for Docker-backend jobs.
+
+Create or update `/etc/docker/daemon.json`:
+```json
+{
+   "registry-mirrors": ["http://localhost:49502"],
+   "insecure-registries": ["localhost:49502"]
+}
+```
+Then restart Docker and rerun:
+```bash
+make cache-smoke
+```
+
+5. Validate real cache growth after one representative workflow run.
+```bash
+make cache-size
+```
+You should see non-zero growth in host cache and proxy volumes over repeated runs.
 
 ---
 

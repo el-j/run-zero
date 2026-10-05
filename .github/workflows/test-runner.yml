@@ -12,9 +12,6 @@ on:
           - auto
           - local
           - cloud
-  push:
-    branches: [ main ]
-  pull_request:
 
 # If vars.USE_LOCAL_RUNNER is set to 'true' in repo settings, or if input is 'local',
 # it runs on your local machine; otherwise uses cloud ubuntu-latest.

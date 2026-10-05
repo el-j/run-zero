@@ -1,0 +1,22 @@
+{
+  "name": "spec",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "scripts": {
+    "build": "tsp compile .",
+    "generate-types": "openapi-typescript tsp-output/@typespec/openapi3/openapi.yaml -o ../web/src/types/api.ts",
+    "all": "tsp compile . && pnpm run generate-types"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "packageManager": "pnpm@10.34.5",
+  "devDependencies": {
+    "@typespec/compiler": "^1.16.0",
+    "@typespec/http": "^1.16.0",
+    "@typespec/openapi3": "^1.16.0",
+    "@typespec/rest": "^0.86.0",
+    "openapi-typescript": "^7.13.0"
+  }
+}

@@ -3,9 +3,10 @@ Unit tests for Driver Factory and RunnerInfo model.
 """
 
 import unittest
-from unittest.mock import patch
+from typing import Any
+from unittest.mock import MagicMock, patch
 
-from drivers import RunnerDriver, RunnerInfo, get_available_drivers, get_driver
+from drivers import RunnerDriver, RunnerInfo, canonical_backend, get_available_drivers, get_driver, select_default_driver
 from drivers.bridge_driver import BridgeVMDriver
 from drivers.docker_driver import DockerDriver
 from drivers.multipass_driver import MultipassDriver
@@ -16,13 +17,7 @@ from drivers.wsl_driver import WSL2Driver
 class TestRunnerInfo(unittest.TestCase):
     def test_runner_info_properties_and_dict(self):
         info = RunnerInfo(
-            id="runner-123",
-            name="runner-123",
-            status="running",
-            state="running",
-            target_repo="el-j/run-zero",
-            target_arch="arm64",
-            backend="docker"
+            id="runner-123", name="runner-123", status="running", state="running", target_repo="el-j/run-zero", target_arch="arm64", backend="docker"
         )
         self.assertEqual(info.id, "runner-123")
         self.assertEqual(info.name, "runner-123")
@@ -46,7 +41,18 @@ class _MinimalDriver(RunnerDriver):
     def is_available(self) -> bool:
         return True
 
-    def spawn_runner(self, **kwargs):
+    def spawn_runner(
+        self,
+        repo: str | None = None,
+        org: str | None = None,
+        arch: str = "arm64",
+        labels: str | None = None,
+        access_token: str | None = None,
+        cache_mounts: dict[str, str] | None = None,
+        proxies_enabled: bool = True,
+        extra_env: dict[str, str] | None = None,
+        runner_token: str | None = None,
+    ) -> str | None:
         return None
 
     def list_runners(self):
@@ -215,9 +221,7 @@ class TestDriverFactory(unittest.TestCase):
     @patch.object(OrbStackVMDriver, "is_available", return_value=False)
     @patch.object(WSL2Driver, "is_available", return_value=False)
     @patch.object(MultipassDriver, "is_available", return_value=False)
-    def test_get_driver_auto_falls_through_orbstack_bridge(
-        self, mock_mp, mock_wsl, mock_orb, mock_docker
-    ):
+    def test_get_driver_auto_falls_through_orbstack_bridge(self, mock_mp, mock_wsl, mock_orb, mock_docker):
         # Auto-selection: docker/orb-native/wsl-native/mp-native all
         # unavailable, but the bridge reports orbstack-vm as available --
         # auto must pick the orbstack-vm bridge instance, not fall further
@@ -234,9 +238,7 @@ class TestDriverFactory(unittest.TestCase):
     @patch.object(OrbStackVMDriver, "is_available", return_value=False)
     @patch.object(WSL2Driver, "is_available", return_value=False)
     @patch.object(MultipassDriver, "is_available", return_value=False)
-    def test_get_driver_auto_falls_through_wsl_bridge(
-        self, mock_mp, mock_wsl, mock_orb, mock_docker
-    ):
+    def test_get_driver_auto_falls_through_wsl_bridge(self, mock_mp, mock_wsl, mock_orb, mock_docker):
         # Same idea, one step further down the chain: orbstack-vm bridge is
         # also unavailable, but wsl2's bridge is available.
         def bridge_is_available(self):
@@ -251,9 +253,7 @@ class TestDriverFactory(unittest.TestCase):
     @patch.object(OrbStackVMDriver, "is_available", return_value=False)
     @patch.object(WSL2Driver, "is_available", return_value=False)
     @patch.object(MultipassDriver, "is_available", return_value=False)
-    def test_get_driver_auto_falls_through_multipass_bridge(
-        self, mock_mp, mock_wsl, mock_orb, mock_docker
-    ):
+    def test_get_driver_auto_falls_through_multipass_bridge(self, mock_mp, mock_wsl, mock_orb, mock_docker):
         # Last step of the auto chain: only multipass's bridge is available.
         def bridge_is_available(self):
             return self.target_backend == "multipass"
@@ -264,5 +264,61 @@ class TestDriverFactory(unittest.TestCase):
         self.assertEqual(driver.name(), "multipass")
 
 
+class TestSelectDefaultDriver(unittest.TestCase):
+    """#43: the default driver comes FROM the registry, never a second instance."""
+
+    def test_explicit_backend_alias_returns_registry_instance(self):
+        vm = MagicMock()
+        registry: dict[str, Any] = {"docker": MagicMock(), "orbstack-vm": vm}
+        self.assertIs(select_default_driver(registry, "OrbStack"), vm)
+
+    def test_auto_follows_priority_within_registry(self):
+        wsl = MagicMock()
+        self.assertIs(select_default_driver({"multipass": MagicMock(), "wsl2": wsl}, "auto"), wsl)
+
+    def test_unavailable_backend_is_created_once_and_registered(self):
+        registry: dict[str, Any] = {}
+        with patch.object(DockerDriver, "is_available", return_value=False):
+            first = select_default_driver(registry, "docker")
+        self.assertIsInstance(first, DockerDriver)
+        self.assertIs(registry["docker"], first)
+        self.assertIs(select_default_driver(registry, "docker"), first)
+
+    def test_auto_with_empty_registry_falls_back_to_docker(self):
+        registry: dict[str, Any] = {}
+        self.assertIsInstance(select_default_driver(registry, "hybrid"), DockerDriver)
+
+    def test_unknown_backend_raises(self):
+        with self.assertRaises(ValueError):
+            select_default_driver({}, "kubernetes")
+
+    def test_canonical_backend(self):
+        self.assertEqual(canonical_backend(" WSL "), "wsl2")
+        self.assertEqual(canonical_backend("container"), "docker")
+
+
 if __name__ == "__main__":
     unittest.main()
+
+
+class TestMergeLabels(unittest.TestCase):
+    def test_union_order_and_dedup(self):
+        from drivers import merge_labels
+
+        self.assertEqual(merge_labels("self-hosted,local,x64", "SELF-HOSTED, gpu ,,x64,cuda"), "self-hosted,local,x64,gpu,cuda")
+        self.assertEqual(merge_labels("a,b", None), "a,b")
+        self.assertEqual(merge_labels("a,b", ""), "a,b")
+
+
+class TestIsVm(unittest.TestCase):
+    """#49: VM-ness is a property of the driver type, not a substring of its name."""
+
+    def test_driver_types(self):
+        self.assertFalse(DockerDriver.is_vm)
+        self.assertTrue(OrbStackVMDriver.is_vm)
+        self.assertTrue(WSL2Driver.is_vm)
+        self.assertTrue(MultipassDriver.is_vm)
+
+    def test_bridge_follows_its_target_backend(self):
+        self.assertTrue(BridgeVMDriver("wsl2", bridge_url="http://x").is_vm)
+        self.assertFalse(BridgeVMDriver("docker", bridge_url="http://x").is_vm)

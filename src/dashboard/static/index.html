@@ -3,18 +3,27 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>RunZero — Live Fleet Management & Observability Dashboard</title>
+  <title>RunZero — Fleet Management &amp; Real-Time Observability</title>
   <link rel="stylesheet" href="/dashboard.css">
 </head>
 <body class="theme-dark">
+  <!-- Ambient Atmospheric Light Elements matching Landing Page -->
+  <div class="ambient-glow ambient-crimson" aria-hidden="true"></div>
+  <div class="ambient-glow ambient-solar" aria-hidden="true"></div>
+  <div class="ambient-glow ambient-cyan" aria-hidden="true"></div>
+
   <!-- Top Navigation & Global Header -->
   <header class="app-header">
     <div class="header-left">
       <div class="logo-group">
-        <div class="logo-icon">⚡</div>
+        <div class="logo-icon">
+          <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+            <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"></polygon>
+          </svg>
+        </div>
         <div class="logo-text">
           <span class="brand-title">RunZero</span>
-          <span class="brand-subtitle">FLEET OBSERVABILITY</span>
+          <span class="brand-subtitle">// FLEET_MANAGEMENT_CONSOLE</span>
         </div>
       </div>
       <div id="connection-status-badge" class="badge badge-pulse">
@@ -24,7 +33,7 @@
     </div>
 
     <div class="header-right">
-      <div class="header-stat">
+      <div class="header-stat-box">
         <span class="stat-label">API Quota</span>
         <div class="stat-val-group">
           <span id="stat-rate-limit" class="stat-value font-mono">--/--</span>
@@ -35,20 +44,34 @@
         <span id="stat-rate-meta" class="stat-meta font-mono">used -- • reset --:--:-- • unknown</span>
       </div>
 
-      <div class="header-stat">
+      <div class="header-stat-box">
         <span class="stat-label">Uptime</span>
         <span id="stat-uptime" class="stat-value font-mono">00:00:00</span>
       </div>
 
-      <div class="header-stat">
+      <div class="header-stat-box">
         <span class="stat-label">Engine</span>
         <span id="stat-default-engine" class="stat-badge badge-cyan">DOCKER</span>
       </div>
 
-      <div class="header-stat">
+      <div class="header-stat-box">
         <span class="stat-label">Version</span>
-        <span id="stat-version" class="stat-badge badge-neutral font-mono">v0.1.0</span>
+        <span id="stat-version" class="stat-badge badge-neutral font-mono">v…</span>
       </div>
+
+      <div class="header-stat-box" id="bridge-drift-box" hidden>
+        <span class="stat-label">Bridge</span>
+        <span id="stat-bridge-drift" class="stat-badge badge-danger font-mono">STALE</span>
+      </div>
+
+      <a href="https://el-j.github.io/run-zero/" target="_blank" rel="noopener noreferrer" class="btn-docs-link">
+        <span>DOCS</span>
+        <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"></path>
+          <polyline points="15 3 21 3 21 9"></polyline>
+          <line x1="10" y1="14" x2="21" y2="3"></line>
+        </svg>
+      </a>
     </div>
   </header>
 
@@ -57,48 +80,89 @@
     <!-- Top Level KPI Metrics Bar -->
     <section class="kpi-grid" aria-label="Key Performance Indicators">
       <div class="kpi-card" id="kpi-runners-card">
-        <div class="kpi-icon-wrap icon-cyan">🏃</div>
+        <div class="kpi-icon-wrap icon-cyan">
+          <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <circle cx="12" cy="12" r="10"></circle>
+            <polyline points="12 6 12 12 16 14"></polyline>
+          </svg>
+        </div>
         <div class="kpi-content">
           <span class="kpi-title">Active Fleet</span>
           <div class="kpi-value-row">
             <span id="kpi-active-runners" class="kpi-num">0</span>
             <span class="kpi-subnum" id="kpi-max-runners">/ 4 max</span>
           </div>
-          <span class="kpi-subtext" id="kpi-min-runners-text">0 idle standby</span>
+          <div class="kpi-track">
+            <div id="kpi-runners-bar" class="kpi-progress-bar cyan" style="width: 0%;"></div>
+          </div>
+          <span class="kpi-subtext" id="kpi-min-runners-text">// 0 idle standby</span>
+          <span class="kpi-subtext" id="kpi-runner-sizing" title="Per-runner CPU/memory limit">// sizing …</span>
         </div>
       </div>
 
       <div class="kpi-card" id="kpi-queue-card">
-        <div class="kpi-icon-wrap icon-amber">⏳</div>
+        <div class="kpi-icon-wrap icon-amber">
+          <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M5 22h14"></path>
+            <path d="M5 2h14"></path>
+            <path d="M17 22v-4.172a2 2 0 0 0-.586-1.414L12 12l-4.414 4.414A2 2 0 0 0 7 17.828V22"></path>
+            <path d="M7 2v4.172a2 2 0 0 0 .586 1.414L12 12l4.414-4.414A2 2 0 0 0 17 6.172V2"></path>
+          </svg>
+        </div>
         <div class="kpi-content">
           <span class="kpi-title">Queued Jobs</span>
           <div class="kpi-value-row">
             <span id="kpi-queued-jobs" class="kpi-num">0</span>
+            <span class="kpi-subnum">pending</span>
           </div>
-          <span class="kpi-subtext" id="kpi-repos-monitored">Across 0 tracked repos</span>
+          <div class="kpi-track">
+            <div id="kpi-queue-bar" class="kpi-progress-bar amber" style="width: 0%;"></div>
+          </div>
+          <span class="kpi-subtext" id="kpi-repos-monitored">// Across 0 tracked repos</span>
         </div>
       </div>
 
       <div class="kpi-card" id="kpi-routing-card">
-        <div class="kpi-icon-wrap icon-purple">🔀</div>
+        <div class="kpi-icon-wrap icon-purple">
+          <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <line x1="6" y1="3" x2="6" y2="15"></line>
+            <circle cx="18" cy="6" r="3"></circle>
+            <circle cx="6" cy="18" r="3"></circle>
+            <path d="M18 9a9 9 0 0 1-9 9"></path>
+          </svg>
+        </div>
         <div class="kpi-content">
           <span class="kpi-title">Hybrid Routing</span>
           <div class="kpi-value-row">
             <span id="kpi-vm-ratio" class="kpi-num">0%</span>
             <span class="kpi-subnum">VM routed</span>
           </div>
-          <span class="kpi-subtext" id="kpi-routing-sub">Auto-detect DIND & Services</span>
+          <div class="kpi-track">
+            <div id="kpi-routing-bar" class="kpi-progress-bar purple" style="width: 0%;"></div>
+          </div>
+          <span class="kpi-subtext" id="kpi-routing-sub">// Auto-detect DIND &amp; Services</span>
         </div>
       </div>
 
       <div class="kpi-card" id="kpi-cache-card">
-        <div class="kpi-icon-wrap icon-emerald">⚡</div>
+        <div class="kpi-icon-wrap icon-emerald">
+          <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <rect x="2" y="2" width="20" height="8" rx="2" ry="2"></rect>
+            <rect x="2" y="14" width="20" height="8" rx="2" ry="2"></rect>
+            <line x1="6" y1="6" x2="6.01" y2="6"></line>
+            <line x1="6" y1="18" x2="6.01" y2="18"></line>
+          </svg>
+        </div>
         <div class="kpi-content">
           <span class="kpi-title">Host Cache Storage</span>
           <div class="kpi-value-row">
             <span id="kpi-cache-size" class="kpi-num">0 B</span>
+            <span class="kpi-subnum">saved</span>
           </div>
-          <span class="kpi-subtext">Shared Multi-Language Cache</span>
+          <div class="kpi-track">
+            <div id="kpi-cache-bar" class="kpi-progress-bar emerald" style="width: 100%;"></div>
+          </div>
+          <span class="kpi-subtext">// Shared Multi-Language Cache</span>
         </div>
       </div>
     </section>
@@ -111,36 +175,99 @@
         <section class="panel" id="panel-runners">
           <div class="panel-header">
             <div class="panel-title-group">
+              <span class="tag-accent">//</span>
               <h2 class="panel-title">Active Ephemeral Runners</h2>
-              <span id="runners-count-badge" class="panel-badge">0 RUNNING</span>
+              <span id="runners-count-badge" class="panel-badge font-mono">0 RUNNING</span>
             </div>
             <div class="panel-actions">
               <button id="btn-prune-runners" class="btn btn-sm btn-ghost" title="Prune exited or orphaned runner containers/VMs">
-                ✂️ Prune Fleet
+                <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2">
+                  <polyline points="3 6 5 6 21 6"></polyline>
+                  <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
+                </svg>
+                <span>Prune Fleet</span>
               </button>
             </div>
           </div>
           <div class="panel-body">
             <div id="runners-empty-state" class="empty-state">
-              <div class="empty-icon">💤</div>
+              <div class="radar-container" aria-hidden="true">
+                <div class="radar-ring ring-1"></div>
+                <div class="radar-ring ring-2"></div>
+                <div class="radar-ring ring-3"></div>
+                <div class="radar-sweep"></div>
+                <div class="radar-center-dot"></div>
+              </div>
               <h3 class="empty-title">Fleet is on Standby</h3>
-              <p class="empty-desc">No active runner containers or VMs running right now. As soon as a GitHub Actions workflow queues, an ephemeral runner will automatically spawn here.</p>
+              <p class="empty-desc">
+                Zero active runner containers or VMs right now. As soon as a GitHub Actions workflow queues,
+                the autoscaler will spawn an ephemeral runner instantaneously.
+              </p>
+              <div class="empty-telemetry-tags">
+                <span class="tech-chip">READY: ~0.3s BOOT</span>
+                <span class="tech-chip solar">STANDBY POOL IDLE</span>
+                <span class="tech-chip crimson">AUTO-ROUTER ONLINE</span>
+              </div>
             </div>
             <div id="runners-grid" class="runners-grid hidden"></div>
           </div>
         </section>
 
-        <!-- Monitored Repositories & Queue Depth -->
+        <!-- Monitored Repositories & Live Queue Steering -->
         <section class="panel" id="panel-queue">
           <div class="panel-header">
             <div class="panel-title-group">
-              <h2 class="panel-title">Monitored Repositories & Queue Status</h2>
-              <span id="repos-count-badge" class="panel-badge">0 REPOSITORIES</span>
+              <span class="tag-accent">//</span>
+              <h2 class="panel-title">Job Queue &amp; Repository Priority</h2>
+              <span id="queue-slots-badge" class="panel-badge font-mono badge-cyan">0/4 SLOTS BUSY</span>
+              <span id="repos-count-badge" class="panel-badge font-mono">0 REPOSITORIES</span>
+            </div>
+            <div class="repo-filter-wrap">
+              <input type="text" id="repo-search-input" class="repo-filter-input font-mono" placeholder="Filter repositories..." autocomplete="off">
             </div>
           </div>
           <div class="panel-body">
+            <!-- Capacity and Dispatch Notice -->
+            <div class="queue-steering-header">
+              <div class="queue-capacity-banner">
+                <div class="queue-capacity-item">
+                  <span class="stat-label">Active Runners:</span>
+                  <span id="queue-busy-slots" class="font-mono stat-value-sm">0</span>
+                </div>
+                <div class="queue-capacity-item">
+                  <span class="stat-label">Max Concurrency:</span>
+                  <span id="queue-max-slots" class="font-mono stat-value-sm">4</span>
+                </div>
+                <div class="queue-capacity-item">
+                  <span class="stat-label">Free Slots:</span>
+                  <span id="queue-free-slots" class="font-mono stat-value-sm highlight-emerald">4</span>
+                </div>
+                <div class="queue-capacity-item">
+                  <span class="stat-label">Total Queued:</span>
+                  <span id="queue-total-jobs" class="font-mono stat-value-sm highlight-amber">0</span>
+                </div>
+              </div>
+              <div class="queue-hint-box">
+                <span class="hint-icon">ℹ️</span>
+                <span>Free runner slots are allocated to higher-priority repositories first. Reorder repositories using drag-and-drop or <code class="font-mono">▲</code>/<code class="font-mono">▼</code> buttons. Use <b class="font-mono">Pause</b> to hold a repository's jobs in queue. <em>Note: Job dispatch order within a single repository is determined by GitHub Actions.</em></span>
+              </div>
+            </div>
+
+            <!-- Priority Steering List -->
+            <div class="queue-subheading-wrap">
+              <h4 class="subheading">// REPOSITORY PRIORITY &amp; DISPATCH CONTROLS</h4>
+            </div>
             <div id="repos-list" class="repos-list">
               <div class="empty-substate">Discovering active repositories...</div>
+            </div>
+
+            <!-- Detailed Queued & Running Jobs View Grouped by Repo -->
+            <div class="queue-subheading-wrap mt-18">
+              <h4 class="subheading">// LIVE WORKFLOW JOB QUEUE</h4>
+              <span id="queue-jobs-count-tag" class="tech-chip font-mono">0 JOBS</span>
+            </div>
+            <div id="queue-jobs-view" class="queue-jobs-view">
+              <div class="empty-substate">Queue is clear — no pending workflow jobs.</div>
             </div>
           </div>
         </section>
@@ -149,8 +276,9 @@
         <section class="panel" id="panel-logs">
           <div class="panel-header">
             <div class="panel-title-group">
+              <span class="tag-accent">//</span>
               <h2 class="panel-title">Live Autoscaler Stream</h2>
-              <span class="panel-badge badge-live">LIVE SSE</span>
+              <span class="panel-badge badge-live font-mono">● LIVE SSE</span>
             </div>
             <div class="panel-actions">
               <label class="toggle-wrap">
@@ -171,7 +299,10 @@
         <!-- Hybrid Routing Telemetry Breakdown -->
         <section class="panel" id="panel-routing-telemetry">
           <div class="panel-header">
-            <h2 class="panel-title">Hybrid Routing Telemetry</h2>
+            <div class="panel-title-group">
+              <span class="tag-accent">//</span>
+              <h2 class="panel-title">Hybrid Routing Telemetry</h2>
+            </div>
           </div>
           <div class="panel-body">
             <div class="routing-summary-bar">
@@ -181,41 +312,58 @@
             <div class="routing-legend">
               <div class="legend-item">
                 <span class="legend-dot dot-cyan"></span>
-                <span>Docker Containers: <b id="cnt-docker-jobs">0</b></span>
+                <span>Docker Containers: <b id="cnt-docker-jobs" class="font-mono">0</b></span>
               </div>
               <div class="legend-item">
                 <span class="legend-dot dot-purple"></span>
-                <span>Dedicated VMs: <b id="cnt-vm-jobs">0</b></span>
+                <span>Dedicated VMs: <b id="cnt-vm-jobs" class="font-mono">0</b></span>
               </div>
             </div>
 
             <div class="trigger-breakdown">
-              <h4 class="subheading">VM Trigger Detections</h4>
+              <h4 class="subheading">// VM TRIGGER DETECTIONS</h4>
               <div class="trigger-item">
-                <span>Services & DBs (`postgres`, `redis`)</span>
+                <span class="trig-name">Services &amp; DBs (<code>postgres</code>, <code>redis</code>)</span>
                 <span class="trigger-val font-mono" id="trig-services">0</span>
               </div>
               <div class="trigger-item">
-                <span>Docker-in-Docker (`dind`)</span>
+                <span class="trig-name">Docker-in-Docker (<code>dind</code>)</span>
                 <span class="trigger-val font-mono" id="trig-dind">0</span>
               </div>
               <div class="trigger-item">
-                <span>Browser & Lighthouse Tests</span>
+                <span class="trig-name">Browser &amp; Lighthouse Tests</span>
                 <span class="trigger-val font-mono" id="trig-browser">0</span>
               </div>
               <div class="trigger-item">
-                <span>E2E & Integration</span>
+                <span class="trig-name">E2E &amp; Integration</span>
                 <span class="trigger-val font-mono" id="trig-e2e">0</span>
               </div>
               <div class="trigger-item">
-                <span>Systemd & Daemons</span>
+                <span class="trig-name">Systemd &amp; Daemons</span>
                 <span class="trigger-val font-mono" id="trig-systemd">0</span>
               </div>
               <div class="trigger-item">
-                <span>Custom VM Runs-On Label</span>
+                <span class="trig-name">Custom VM Runs-On Label</span>
                 <span class="trigger-val font-mono" id="trig-custom">0</span>
               </div>
             </div>
+          </div>
+        </section>
+
+        <!-- Golden Image Build Status -->
+        <section class="panel" id="panel-image-builds">
+          <div class="panel-header">
+            <div class="panel-title-group">
+              <span class="tag-accent">//</span>
+              <h2 class="panel-title">Golden Images</h2>
+              <span id="image-builds-count-badge" class="panel-badge font-mono">0 TRACKED</span>
+            </div>
+          </div>
+          <div class="panel-body">
+            <div id="image-builds-empty-state" class="empty-state-mini">
+              <p>No golden image builds observed yet.</p>
+            </div>
+            <div id="image-builds-list" class="image-builds-list hidden"></div>
           </div>
         </section>
 
@@ -223,70 +371,128 @@
         <section class="panel" id="panel-cache-analytics">
           <div class="panel-header">
             <div class="panel-title-group">
-              <h2 class="panel-title">Cache Analytics & Purge</h2>
+              <span class="tag-accent">//</span>
+              <h2 class="panel-title">Cache Analytics &amp; Purge</h2>
             </div>
-            <button id="btn-purge-all-caches" class="btn btn-sm btn-danger-ghost">Purge All</button>
+            <button id="btn-purge-all-caches" class="btn btn-sm btn-crimson">
+              <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2.5">
+                <path d="M3 6h18"></path>
+                <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"></path>
+              </svg>
+              <span>Purge All</span>
+            </button>
           </div>
           <div class="panel-body">
             <div class="cache-list">
               <div class="cache-row">
                 <div class="cache-info">
-                  <span class="cache-name">npm / Yarn / pnpm</span>
-                  <span class="cache-size font-mono" id="sz-npm">0 B</span>
+                  <div class="cache-meta">
+                    <span class="cache-name">npm</span>
+                    <span class="cache-size font-mono" id="sz-npm">0 B</span>
+                  </div>
+                  <div class="cache-mini-track">
+                    <div id="bar-cache-npm" class="cache-mini-fill" style="width: 20%;"></div>
+                  </div>
                 </div>
                 <button class="btn btn-xs btn-outline" onclick="cleanCacheCategory('npm')">Clear</button>
               </div>
 
               <div class="cache-row">
                 <div class="cache-info">
-                  <span class="cache-name">Python pip & uv</span>
-                  <span class="cache-size font-mono" id="sz-pip">0 B</span>
+                  <div class="cache-meta">
+                    <span class="cache-name">pnpm store</span>
+                    <span class="cache-size font-mono" id="sz-pnpm">0 B</span>
+                  </div>
+                  <div class="cache-mini-track">
+                    <div id="bar-cache-pnpm" class="cache-mini-fill" style="width: 20%;"></div>
+                  </div>
+                </div>
+                <button class="btn btn-xs btn-outline" onclick="cleanCacheCategory('pnpm')">Clear</button>
+              </div>
+
+              <div class="cache-row">
+                <div class="cache-info">
+                  <div class="cache-meta">
+                    <span class="cache-name">Python pip &amp; uv</span>
+                    <span class="cache-size font-mono" id="sz-pip">0 B</span>
+                  </div>
+                  <div class="cache-mini-track">
+                    <div id="bar-cache-pip" class="cache-mini-fill" style="width: 20%;"></div>
+                  </div>
                 </div>
                 <button class="btn btn-xs btn-outline" onclick="cleanCacheCategory('pip')">Clear</button>
               </div>
 
               <div class="cache-row">
                 <div class="cache-info">
-                  <span class="cache-name">Go Module & Build</span>
-                  <span class="cache-size font-mono" id="sz-go">0 B</span>
+                  <div class="cache-meta">
+                    <span class="cache-name">Go Module &amp; Build</span>
+                    <span class="cache-size font-mono" id="sz-go">0 B</span>
+                  </div>
+                  <div class="cache-mini-track">
+                    <div id="bar-cache-go" class="cache-mini-fill" style="width: 20%;"></div>
+                  </div>
                 </div>
                 <button class="btn btn-xs btn-outline" onclick="cleanCacheCategory('go-mod')">Clear</button>
               </div>
 
               <div class="cache-row">
                 <div class="cache-info">
-                  <span class="cache-name">Cargo / Rust Registry</span>
-                  <span class="cache-size font-mono" id="sz-cargo">0 B</span>
+                  <div class="cache-meta">
+                    <span class="cache-name">Cargo / Rust Registry</span>
+                    <span class="cache-size font-mono" id="sz-cargo">0 B</span>
+                  </div>
+                  <div class="cache-mini-track">
+                    <div id="bar-cache-cargo" class="cache-mini-fill" style="width: 20%;"></div>
+                  </div>
                 </div>
                 <button class="btn btn-xs btn-outline" onclick="cleanCacheCategory('cargo')">Clear</button>
               </div>
 
               <div class="cache-row">
                 <div class="cache-info">
-                  <span class="cache-name">Hosted Tool Cache (.NET/Node)</span>
-                  <span class="cache-size font-mono" id="sz-toolcache">0 B</span>
+                  <div class="cache-meta">
+                    <span class="cache-name">Hosted Tool Cache (.NET/Node)</span>
+                    <span class="cache-size font-mono" id="sz-toolcache">0 B</span>
+                  </div>
+                  <div class="cache-mini-track">
+                    <div id="bar-cache-toolcache" class="cache-mini-fill" style="width: 20%;"></div>
+                  </div>
                 </div>
                 <button class="btn btn-xs btn-outline" onclick="cleanCacheCategory('toolcache')">Clear</button>
+              </div>
+
+              <div class="cache-row">
+                <div class="cache-info">
+                  <div class="cache-meta">
+                    <span class="cache-name">Playwright browsers</span>
+                    <span class="cache-size font-mono" id="sz-playwright">0 B</span>
+                  </div>
+                  <div class="cache-mini-track">
+                    <div id="bar-cache-playwright" class="cache-mini-fill" style="width: 20%;"></div>
+                  </div>
+                </div>
+                <button class="btn btn-xs btn-outline" onclick="cleanCacheCategory('playwright')">Clear</button>
               </div>
             </div>
 
             <!-- Proxy Services Status -->
             <div class="proxy-services-block">
-              <h4 class="subheading">Active Caching Proxies</h4>
+              <h4 class="subheading">// ACTIVE CACHING PROXIES</h4>
               <div class="proxy-tags">
-                <a href="http://localhost:49501" target="_blank" class="proxy-tag" id="tag-verdaccio">
+                <a href="http://localhost:49501" target="_blank" class="proxy-tag" id="tag-verdaccio" title="Open Verdaccio Web Interface">
                   <span class="tag-status online"></span>
-                  <span>Verdaccio (49501)</span>
+                  <span>Verdaccio (49501) ↗</span>
                 </a>
-                <a href="http://localhost:49503/acng-report.html" target="_blank" class="proxy-tag" id="tag-apt">
+                <a href="http://localhost:49503/acng-report.html" target="_blank" class="proxy-tag" id="tag-apt" title="Open APT Cacher Report">
                   <span class="tag-status online"></span>
-                  <span>APT Cacher (49503)</span>
+                  <span>APT Cacher (49503) ↗</span>
                 </a>
-                <span class="proxy-tag" id="tag-athens">
+                <span class="proxy-tag" id="tag-athens" title="Athens Go Module Proxy Active">
                   <span class="tag-status online"></span>
                   <span>Athens Go (49500)</span>
                 </span>
-                <span class="proxy-tag" id="tag-mirror">
+                <span class="proxy-tag" id="tag-mirror" title="Docker Hub Pull-Through Mirror Active">
                   <span class="tag-status online"></span>
                   <span>Docker Mirror (49502)</span>
                 </span>
@@ -295,10 +501,13 @@
           </div>
         </section>
 
-        <!-- Driver Runtime Status -->
+        <!-- GitHub Actions Minutes -->
         <section class="panel" id="panel-actions-billing">
           <div class="panel-header">
-            <h2 class="panel-title">GitHub Actions Minutes</h2>
+            <div class="panel-title-group">
+              <span class="tag-accent">//</span>
+              <h2 class="panel-title">GitHub Actions Minutes</h2>
+            </div>
           </div>
           <div class="panel-body">
             <div class="billing-grid">
@@ -327,9 +536,9 @@
                 <span id="actions-updated" class="billing-value font-mono">--</span>
               </div>
             </div>
-            <div id="actions-status" class="billing-status">Waiting for billing sync...</div>
+            <div id="actions-status" class="billing-status font-mono">Waiting for billing sync...</div>
             <div class="billing-hint">
-              Setup hint: use <span class="font-mono">ACCESS_TOKEN</span> with repository access plus billing-read permission for your target owner/org. See <a href="/docs/#actions-billing-setup" target="_blank" rel="noopener noreferrer">docs setup guide</a>.
+              Setup hint: use <code class="font-mono">ACCESS_TOKEN</code> with repository access plus billing-read permission for your target owner/org. See <a href="https://el-j.github.io/run-zero/#docs" target="_blank" rel="noopener noreferrer">docs setup guide</a>.
             </div>
           </div>
         </section>
@@ -337,7 +546,10 @@
         <!-- Driver Runtime Status -->
         <section class="panel" id="panel-driver-runtimes">
           <div class="panel-header">
-            <h2 class="panel-title">Runtime Driver Availability</h2>
+            <div class="panel-title-group">
+              <span class="tag-accent">//</span>
+              <h2 class="panel-title">Runtime Driver Availability</h2>
+            </div>
           </div>
           <div class="panel-body">
             <div id="drivers-status-list" class="drivers-list"></div>

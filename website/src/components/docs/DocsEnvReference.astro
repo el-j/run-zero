@@ -2,7 +2,9 @@
 // DocsEnvReference: Complete Environment Variables (.env) reference table
 ---
 
-<h2 id="env-reference">Environment Variables Reference (<code>.env</code>)</h2>
+<h2 id="env-reference">
+  Environment Variables Reference (<code>.env</code>)
+</h2>
 <div class="table-wrapper">
   <table class="comparison-table">
     <thead>
@@ -14,70 +16,171 @@
     </thead>
     <tbody>
       <tr>
-        <td><code>ACCESS_TOKEN</code></td>
-        <td><em>Required</em></td>
-        <td
-          >GitHub Personal Access Token (classic with <code>repo</code> scope). For Actions minutes panel, token must also have billing-read access for target owner/org.</td
-        >
+        <td>
+          <code>ACCESS_TOKEN</code>
+        </td>
+        <td>
+          <em>Required</em>
+        </td>
+        <td>
+          GitHub Personal Access Token (classic with <code>repo</code> scope).
+          For Actions minutes panel, token must also have billing-read access
+          for target owner/org.
+        </td>
       </tr>
       <tr>
-        <td><code>OWNER</code></td>
-        <td><em>Required</em></td>
+        <td>
+          <code>OWNER</code>
+        </td>
+        <td>
+          <em>Required</em>
+        </td>
         <td>GitHub username to monitor for auto-discovery.</td>
       </tr>
       <tr>
-        <td><code>RUNNER_BACKEND</code></td>
-        <td><code>auto</code></td>
-        <td
-          >Execution engine: <code>auto</code>, <code>docker</code>, <code
-            >orbstack-vm</code
-          >, <code>wsl2</code>, <code>multipass</code>.</td
-        >
+        <td>
+          <code>RUNNER_BACKEND</code>
+        </td>
+        <td>
+          <code>auto</code>
+        </td>
+        <td>
+          Execution engine: <code>auto</code>, <code>docker</code>,{" "}
+          <code>orbstack-vm</code>, <code>wsl2</code>, <code>multipass</code>.
+        </td>
       </tr>
       <tr>
-        <td><code>AUTO_ROUTE_VM</code></td>
-        <td><code>true</code></td>
-        <td
-          >Automatically route jobs with <code>browser</code>/<code>e2e</code
-          >/<code>systemd</code> labels to VMs.</td
-        >
+        <td>
+          <code>AUTO_ROUTE_VM</code>
+        </td>
+        <td>
+          <code>true</code>
+        </td>
+        <td>
+          Automatically route jobs with <code>browser</code>/<code>e2e</code>/
+          <code>systemd</code> labels to VMs.
+        </td>
       </tr>
       <tr>
-        <td><code>RUNNER_ARCH</code></td>
-        <td><code>both</code></td>
-        <td
-          >Target architecture: <code>both</code> (ARM64 + AMD64), <code
-            >arm64</code
-          >, <code>amd64</code>.</td
-        >
+        <td>
+          <code>RUNNER_ARCH</code>
+        </td>
+        <td>
+          <code>both</code>
+        </td>
+        <td>
+          Target architecture: <code>both</code> (ARM64 + AMD64),{" "}
+          <code>arm64</code>, <code>amd64</code>.
+        </td>
       </tr>
       <tr>
-        <td><code>ACTIVE_REPO_DAYS</code></td>
-        <td><code>60</code></td>
+        <td>
+          <code>ACTIVE_REPO_DAYS</code>
+        </td>
+        <td>
+          <code>60</code>
+        </td>
         <td>Only monitor repositories with commits in the last N days.</td>
       </tr>
       <tr>
-        <td><code>MAX_RUNNERS</code></td>
-        <td><code>4</code></td>
-        <td>Maximum concurrent runner instances allowed on this workstation.</td
-        >
+        <td>
+          <code>MAX_RUNNERS</code>
+        </td>
+        <td>
+          <code>4</code>
+        </td>
+        <td>
+          Maximum concurrent runner instances allowed on this workstation.
+        </td>
       </tr>
       <tr>
-        <td><code>PROXIES_ENABLED</code></td>
-        <td><code>true</code></td>
-        <td
-          >Start apt-cacher, Verdaccio, Athens, and Docker Hub caching proxies.</td
-        >
+        <td>
+          <code>RUNNER_CPUS / RUNNER_MEMORY</code>
+        </td>
+        <td>
+          <em>derived</em>
+        </td>
+        <td>
+          Per-runner CPU and memory limit for Docker containers, OrbStack job
+          VMs (set on every clone) and Multipass VMs. Unset, each runner gets an
+          equal share of the host (OrbStack: its VM pool) after keeping 1 CPU
+          and 2 GiB back: <code>(cpus - 1) // MAX_RUNNERS</code>. The startup
+          log and the dashboard show the sizing and warn when{" "}
+          <code>MAX_RUNNERS</code> &times; the limit exceeds the host.
+        </td>
       </tr>
       <tr>
-        <td><code>RATE_LIMIT_REFRESH_INTERVAL</code></td>
-        <td><code>60</code></td>
-        <td>Polling interval (seconds) for GitHub API quota telemetry updates.</td>
+        <td>
+          <code>RUNNER_SIZING</code>
+        </td>
+        <td>
+          <code>auto</code>
+        </td>
+        <td>
+          <code>unlimited</code> restores the old behavior: no limits, every
+          runner may claim every host core.
+        </td>
       </tr>
       <tr>
-        <td><code>ACTIONS_BILLING_REFRESH_INTERVAL</code></td>
-        <td><code>300</code></td>
-        <td>Polling interval (seconds) for GitHub Actions minutes billing updates.</td>
+        <td>
+          <code>CLEANUP_RUNNERS_ON_SHUTDOWN</code>
+        </td>
+        <td>
+          <code>false</code>
+        </td>
+        <td>
+          Destroy runners when the autoscaler stops. Off by default, so
+          restarting or redeploying the autoscaler no longer cancels jobs that
+          are running; runners are ephemeral and exit after their job.
+        </td>
+      </tr>
+      <tr>
+        <td>
+          <code>NATIVE_ARCH_OVERRIDE</code>
+        </td>
+        <td>
+          <code>off</code>
+        </td>
+        <td>
+          <code>off</code>, <code>all</code>, or comma-separated{" "}
+          <code>owner/repo</code> names. On Apple Silicon, serves those
+          repositories' <code>amd64</code>-labelled jobs with native arm64
+          runners, without changing the workflow. See{" "}
+          <a href="#native-arch-override">Native-arch override</a>.
+        </td>
+      </tr>
+      <tr>
+        <td>
+          <code>PROXIES_ENABLED</code>
+        </td>
+        <td>
+          <code>true</code>
+        </td>
+        <td>
+          Start apt-cacher, Verdaccio, Athens, and Docker Hub caching proxies.
+        </td>
+      </tr>
+      <tr>
+        <td>
+          <code>RATE_LIMIT_REFRESH_INTERVAL</code>
+        </td>
+        <td>
+          <code>60</code>
+        </td>
+        <td>
+          Polling interval (seconds) for GitHub API quota telemetry updates.
+        </td>
+      </tr>
+      <tr>
+        <td>
+          <code>ACTIONS_BILLING_REFRESH_INTERVAL</code>
+        </td>
+        <td>
+          <code>300</code>
+        </td>
+        <td>
+          Polling interval (seconds) for GitHub Actions minutes billing updates.
+        </td>
       </tr>
     </tbody>
   </table>

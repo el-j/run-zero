@@ -38,7 +38,7 @@ def origin_repo_url() -> str:
 def stable_release_tags() -> list[str]:
     refresh_tags()
     tags = git("tag", "-l").splitlines()
-    parsed_tags: list[tuple[tuple[int, int, int], str]] = []
+    parsed_tags: list[tuple[tuple[int, ...], str]] = []
 
     for tag in tags:
         match = STABLE_TAG_PATTERN.fullmatch(tag.strip())

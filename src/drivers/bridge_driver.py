@@ -9,7 +9,7 @@ import os
 import urllib.error
 import urllib.parse
 import urllib.request
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 from . import RunnerDriver, RunnerInfo
 
@@ -19,7 +19,7 @@ DEFAULT_BRIDGE_URL = "http://host.docker.internal:49504"
 class BridgeVMDriver(RunnerDriver):
     """Proxies runner management requests over HTTP to the Host VM Bridge."""
 
-    def __init__(self, target_backend: str, bridge_url: Optional[str] = None):
+    def __init__(self, target_backend: str, bridge_url: str | None = None):
         """Wrap the given backend name (e.g. "orbstack-vm") behind a bridge at `bridge_url`.
 
         `bridge_url` falls back to the HOST_VM_BRIDGE_URL env var, then DEFAULT_BRIDGE_URL.
@@ -28,14 +28,23 @@ class BridgeVMDriver(RunnerDriver):
         url = bridge_url or os.getenv("HOST_VM_BRIDGE_URL") or DEFAULT_BRIDGE_URL
         self.bridge_url = url.rstrip("/")
 
+    @property
+    def is_vm(self) -> bool:  # type: ignore[override]
+        """A bridge proxy is a VM driver unless it fronts the host's Docker backend."""
+        return self.target_backend != "docker"
+
     def name(self) -> str:
         """Return the wrapped backend's identifier (e.g. "orbstack-vm"), not "bridge" itself."""
         return self.target_backend
 
-    def _request(self, method: str, path: str, data: Optional[Dict[str, Any]] = None, timeout: float = 30.0) -> Dict[str, Any]:
+    def _request(self, method: str, path: str, data: dict[str, Any] | None = None, timeout: float = 30.0) -> dict[str, Any]:
+        """Send HTTP request to the host VM bridge server and return parsed JSON response."""
         url = f"{self.bridge_url}{path}"
         body_bytes = json.dumps(data).encode("utf-8") if data is not None else None
         headers = {"Content-Type": "application/json"} if body_bytes else {}
+        token = os.getenv("RUNZERO_BRIDGE_TOKEN", "")
+        if token:
+            headers["Authorization"] = f"Bearer {token}"
 
         req = urllib.request.Request(url, data=body_bytes, headers=headers, method=method)
         try:
@@ -44,6 +53,10 @@ class BridgeVMDriver(RunnerDriver):
                 return json.loads(content) if content else {}
         except (urllib.error.URLError, urllib.error.HTTPError, TimeoutError, json.JSONDecodeError, ConnectionError) as e:
             return {"error": str(e)}
+
+    def health(self) -> dict[str, Any]:
+        """The bridge's /health payload (version, git SHA, drivers, sizing), or {"error": ...}."""
+        return self._request("GET", "/health", timeout=2.0)
 
     def is_available(self) -> bool:
         """Check if bridge server is reachable and reports target_backend as available."""
@@ -56,57 +69,64 @@ class BridgeVMDriver(RunnerDriver):
 
     def spawn_runner(
         self,
-        repo: Optional[str] = None,
-        org: Optional[str] = None,
+        repo: str | None = None,
+        org: str | None = None,
         arch: str = "arm64",
-        labels: Optional[str] = None,
-        access_token: Optional[str] = None,
-        cache_mounts: Optional[Dict[str, str]] = None,
+        labels: str | None = None,
+        access_token: str | None = None,
+        cache_mounts: dict[str, str] | None = None,
         proxies_enabled: bool = True,
-        extra_env: Optional[Dict[str, str]] = None
-    ) -> Optional[str]:
+        extra_env: dict[str, str] | None = None,
+        runner_token: str | None = None,
+    ) -> str | None:
         """POST a spawn request to the bridge's `/api/drivers/{backend}/spawn` endpoint.
 
-        Returns the runner id the bridge reports, or None if the request failed or errored
-        (network error, timeout, non-success bridge response).
+        The PAT is exchanged for a registration token here, in the autoscaler, so the PAT
+        never crosses the bridge. Returns the runner id the bridge reports, or None if the
+        inputs are invalid, no token could be obtained, or the request failed/errored.
         """
+        registration_token = self._prepare_spawn(repo, org, labels, access_token, runner_token, extra_env)
+        if not registration_token:
+            return None
         payload = {
             "repo": repo,
             "org": org,
             "arch": arch,
             "labels": labels,
-            "access_token": access_token,
+            "runner_token": registration_token,
             "cache_mounts": cache_mounts,
             "proxies_enabled": proxies_enabled,
-            "extra_env": extra_env
+            "extra_env": extra_env,
         }
         res = self._request("POST", f"/api/drivers/{self.target_backend}/spawn", data=payload, timeout=60.0)
         if res.get("status") == "success":
             return res.get("runner_id")
         return None
 
-    def list_runners(self) -> List[RunnerInfo]:
+    def list_runners(self) -> list[RunnerInfo]:
         """GET the bridge's `/api/drivers/{backend}/runners` endpoint and parse the runner list.
 
         Returns an empty list if the request fails or the bridge returns no runners.
         """
         res = self._request("GET", f"/api/drivers/{self.target_backend}/runners", timeout=10.0)
         runners_data = res.get("runners", [])
-        runners: List[RunnerInfo] = []
+        runners: list[RunnerInfo] = []
         for r in runners_data:
-            runners.append(RunnerInfo(
-                id=r.get("id", ""),
-                name=r.get("name", ""),
-                status=r.get("status", ""),
-                state=r.get("state", ""),
-                target_repo=r.get("target_repo", ""),
-                target_arch=r.get("target_arch", ""),
-                backend=r.get("backend", self.target_backend),
-                created_at=r.get("created_at")
-            ))
+            runners.append(
+                RunnerInfo(
+                    id=r.get("id", ""),
+                    name=r.get("name", ""),
+                    status=r.get("status", ""),
+                    state=r.get("state", ""),
+                    target_repo=r.get("target_repo", ""),
+                    target_arch=r.get("target_arch", ""),
+                    backend=r.get("backend", self.target_backend),
+                    created_at=r.get("created_at"),
+                )
+            )
         return runners
 
-    def prune_exited(self, runners: List[RunnerInfo]) -> None:
+    def prune_exited(self, runners: list[RunnerInfo]) -> None:
         """POST `runners` to the bridge's `/prune` endpoint; the bridge's own driver does the filtering.
 
         Fire-and-forget: the bridge's response (success or error) is not surfaced to the caller.

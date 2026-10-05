@@ -14,6 +14,9 @@ services:
     build:
       context: .
       dockerfile: docker/Dockerfile.autoscaler
+      args:
+        # Lets the autoscaler detect a Host VM Bridge running different code (#72).
+        RUNZERO_GIT_SHA: ${RUNZERO_GIT_SHA:-}
     image: local-runner-autoscaler:latest
     container_name: local-runner-autoscaler
     restart: unless-stopped
@@ -22,7 +25,9 @@ services:
     extra_hosts:
       - "host.docker.internal:host-gateway"
     ports:
-      - "49505:49505"
+      # Host loopback only: the dashboard can purge caches and prune runners. Set
+      # DASHBOARD_PUBLISH_ADDR=0.0.0.0 (and RUNZERO_ALLOWED_HOSTS) to expose it on a LAN.
+      - "${DASHBOARD_PUBLISH_ADDR:-127.0.0.1}:49505:49505"
     depends_on:
       - verdaccio
       - athens
@@ -38,18 +43,39 @@ services:
       - RUNNER_ARCH=${RUNNER_ARCH:-both}
       - MIN_RUNNERS=${MIN_RUNNERS:-0}
       - MAX_RUNNERS=${MAX_RUNNERS:-4}
-      - POLL_INTERVAL=${POLL_INTERVAL:-5}
+      - RUNNER_CPUS=${RUNNER_CPUS:-}
+      - RUNNER_MEMORY=${RUNNER_MEMORY:-}
+      - RUNNER_SIZING=${RUNNER_SIZING:-auto}
+      - CLEANUP_RUNNERS_ON_SHUTDOWN=${CLEANUP_RUNNERS_ON_SHUTDOWN:-false}
+      - NATIVE_ARCH_OVERRIDE=${NATIVE_ARCH_OVERRIDE:-off}
+      - POLL_INTERVAL=${POLL_INTERVAL:-10}
+      - DISCOVERY_INTERVAL=${DISCOVERY_INTERVAL:-900}
+      - RATE_LIMIT_REFRESH_INTERVAL=${RATE_LIMIT_REFRESH_INTERVAL:-60}
+      - ACTIONS_BILLING_REFRESH_INTERVAL=${ACTIONS_BILLING_REFRESH_INTERVAL:-300}
       - CACHE_ENABLED=${CACHE_ENABLED:-true}
       - PROXIES_ENABLED=${PROXIES_ENABLED:-true}
-      - DOCKER_NETWORK=runner-network
+      - RUNNER_BACKEND=${RUNNER_BACKEND:-auto}
+      - AUTO_ROUTE_VM=${AUTO_ROUTE_VM:-true}
+      - VM_TRIGGER_LABELS=${VM_TRIGGER_LABELS:-vm,browser,e2e,lighthouse,systemd,gui,unconfined,postgres,mysql,redis,db,database,integration,service,services,dind}
+      - DOCKER_NETWORK=${DOCKER_NETWORK:-host}
       - HOST_CACHE_DIR=${HOST_CACHE_DIR:-}
       - RUNNER_LABELS=${RUNNER_LABELS:-}
       - DASHBOARD_ENABLED=${DASHBOARD_ENABLED:-true}
       - DASHBOARD_PORT=49505
       - HOST_VM_BRIDGE_URL=${HOST_VM_BRIDGE_URL:-http://host.docker.internal:49504}
+      - RUNZERO_BRIDGE_TOKEN=${RUNZERO_BRIDGE_TOKEN:-}
+      - RUNZERO_ALLOWED_HOSTS=${RUNZERO_ALLOWED_HOSTS:-}
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
-      - ./:/workspace:ro
+      # DockerDriver._resolve_build_context_dir() (src/drivers/docker_driver.py) needs the
+      # repo's docker/ folder (Dockerfile, provision-toolchain.sh, start.sh) to exist INSIDE
+      # this container so it can `docker buildx build` the golden runner image on demand --
+      # docker_driver.py's build-context candidates already include /workspace/docker as a
+      # fallback, but nothing mounted it here, so every automatic build failed immediately
+      # with "runner image build context not found" (confirmed live 2026-09-22: 8 failed
+      # attempts in a row, backing off 900s each time), leaving amd64 Docker-routed jobs
+      # stuck queued forever since the image could never be built.
+      - ./docker:/workspace/docker:ro
       # cache_manager.py's init_cache_dirs() runs INSIDE this container and calls
       # os.makedirs()/os.chmod() on HOST_CACHE_DIR to prepare per-language cache
       # subdirectories, then hands their paths straight to `docker run -v host:container`
@@ -66,6 +92,8 @@ services:
       # that also resolve to the same real inode -- no translation needed anywhere else in
       # the codebase. Falls back to a harmless throwaway path when HOST_CACHE_DIR is unset
       # (e.g. CACHE_ENABLED=false), since Compose can't conditionally omit a volume line.
+      # Mount dashboard static web assets for live updates without container rebuilds
+      - ./src/dashboard/static:/app/dashboard/static:ro
       - ${HOST_CACHE_DIR:-/tmp/runzero-cache-disabled}:${HOST_CACHE_DIR:-/tmp/runzero-cache-disabled}
 
 
@@ -208,6 +236,9 @@ services:
     environment:
       - REPO=${REPO:-}
       - ORG=${ORG:-}
+      # Static runners self-register, so they need a credential. start.sh keeps it out of
+      # job steps, but the container's initial env stays readable in-container (/proc/1/environ):
+      # prefer RUNNER_TOKEN (a registration token) over the PAT here. See SECURITY.md.
       - ACCESS_TOKEN=${ACCESS_TOKEN:-}
       - RUNNER_TOKEN=${RUNNER_TOKEN:-}
       - RUNNER_NAME=${RUNNER_NAME:-local-runner-arm64}
@@ -249,6 +280,9 @@ services:
     environment:
       - REPO=${REPO:-}
       - ORG=${ORG:-}
+      # Static runners self-register, so they need a credential. start.sh keeps it out of
+      # job steps, but the container's initial env stays readable in-container (/proc/1/environ):
+      # prefer RUNNER_TOKEN (a registration token) over the PAT here. See SECURITY.md.
       - ACCESS_TOKEN=${ACCESS_TOKEN:-}
       - RUNNER_TOKEN=${RUNNER_TOKEN:-}
       - RUNNER_NAME=${RUNNER_NAME:-local-runner-amd64}
