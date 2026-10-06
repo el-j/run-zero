@@ -258,7 +258,7 @@ dashboard: ## Open RunZero Real-Time Observability Web Dashboard in browser (htt
 	@open http://localhost:49505 || echo "Navigate to http://localhost:49505 in your browser."
 
 .PHONY: bridge-start bridge-stop bridge-status bridge-logs
-bridge-start: ## Start Host VM Bridge server on host (port 49504, auto-restarts on crash via launchd)
+bridge-start: build-go ## Start Host VM Bridge server on host (port 49504, auto-restarts on crash via launchd)
 	@echo "$(CYAN)Starting Host VM Bridge on http://localhost:49504...$(RESET)"
 	@./scripts/bridge_supervisor.sh start
 
@@ -381,11 +381,9 @@ clean-all: stop clean vm-clean-all clean-caches clean-images ## Complete nuclear
 reset-all: clean-all
 
 .PHONY: build-vm-base
-build-vm-base: ## Build the golden OrbStack VM base image (Docker/Node/nvm/.NET/Chrome/Playwright pre-installed) so ephemeral job VMs clone instantly instead of re-provisioning from scratch every run. Takes several minutes; run it once, and again whenever you change docker/provision-toolchain.sh.
-	@echo "$(CYAN)Building golden OrbStack VM base image(s) -- this takes several minutes...$(RESET)"
-	@for a in $$(if [ "$(RUNNER_ARCH)" = "both" ] || [ -z "$(RUNNER_ARCH)" ]; then echo "arm64 amd64"; else echo "$(RUNNER_ARCH)"; fi); do \
-		python3 -c "import sys; sys.path.insert(0, 'src'); from drivers.orbstack_vm_driver import OrbStackVMDriver; sys.exit(0 if OrbStackVMDriver().build_base_image('$$a') else 1)" || exit 1; \
-	done
+build-vm-base: build-go ## Build the golden OrbStack VM base image (Docker/Node/nvm/.NET/Chrome/Playwright pre-installed) so ephemeral job VMs clone instantly instead of re-provisioning from scratch every run. Takes several minutes; run it once, and again whenever you change docker/provision-toolchain.sh.
+	@echo "$(CYAN)Building golden OrbStack VM base image(s)...$(RESET)"
+	@./bin/runzero build-vm-base
 	@echo "$(GREEN)Golden VM base image(s) ready. Ephemeral VM-routed jobs will now clone instantly.$(RESET)"
 
 .PHONY: vm-rebuild-base
@@ -461,39 +459,26 @@ website-lint: ## Run Oxlint on website sources
 	@cd $(WEBSITE_DIR) && { npm ls oxlint >/dev/null 2>&1 || npm install; } && npm run lint
 
 .PHONY: deps-check
-deps-check: ## Check dependency update opportunities (Python env + website Node packages)
-	@echo "$(CYAN)Checking Python environment dependency updates...$(RESET)"
-	@if command -v python3 >/dev/null 2>&1; then \
-		python3 -m pip list --outdated --format=columns 2>/dev/null || echo "Unable to query Python package updates in current environment."; \
-	else \
-		echo "python3 not found; skipping Python dependency check."; \
-	fi
-	@echo "$(CYAN)Checking website Node package updates (npm outdated + ncu)...$(RESET)"
+deps-check: ## Check dependency update opportunities (Go modules + Web & Website Node packages)
+	@echo "$(CYAN)Checking Go module updates...$(RESET)"
+	@go list -u -m all 2>/dev/null || true
+	@echo "$(CYAN)Checking web dashboard dependencies (pnpm outdated)...$(RESET)"
+	@(cd web && pnpm outdated || true)
+	@echo "$(CYAN)Checking website Node package updates (npm outdated)...$(RESET)"
 	@if command -v npm >/dev/null 2>&1; then \
 		(cd $(WEBSITE_DIR) && npm outdated || true); \
-		if command -v ncu >/dev/null 2>&1; then \
-			(cd $(WEBSITE_DIR) && ncu); \
-		else \
-			(cd $(WEBSITE_DIR) && npx -y npm-check-updates); \
-		fi; \
-	else \
-		echo "npm not found; skipping Node dependency check."; \
 	fi
 
 .PHONY: deps-update
-deps-update: ## Apply dependency updates where possible (website package.json via ncu)
+deps-update: ## Apply dependency updates where possible (Go modules, web and website packages)
+	@echo "$(CYAN)Updating Go dependencies...$(RESET)"
+	@go get -u ./... && go mod tidy
+	@echo "$(CYAN)Updating web dashboard dependencies...$(RESET)"
+	@(cd web && pnpm update)
 	@echo "$(CYAN)Updating website Node dependencies...$(RESET)"
 	@if command -v npm >/dev/null 2>&1; then \
-		if command -v ncu >/dev/null 2>&1; then \
-			(cd $(WEBSITE_DIR) && ncu -u); \
-		else \
-			(cd $(WEBSITE_DIR) && npx -y npm-check-updates -u); \
-		fi; \
-		(cd $(WEBSITE_DIR) && npm install); \
-	else \
-		echo "npm not found; cannot update website dependencies automatically."; \
+		(cd $(WEBSITE_DIR) && npx -y npm-check-updates -u && npm install); \
 	fi
-	@echo "$(YELLOW)Python dependency updates are environment-specific; use your venv manager (pip/uv/poetry) to apply upgrades intentionally.$(RESET)"
 
 .PHONY: fmt-check
 fmt-check: ## Check formatting for Go, web, and website sources
@@ -534,21 +519,7 @@ run-dev: check-env init-cache build-go build-ui ## Run local autoscaler in foreg
 
 
 
-.PHONY: mutation-report mutation-dashboard
-mutation-report: ## Export mutation stats and generate weekly trend dashboard artifacts
-	@echo "$(CYAN)Generating mutation trend dashboard artifacts...$(RESET)"
-	@mkdir -p reports/mutation
-	@PYTHONPATH=src $(PY) -m mutmut results > reports/mutation/mutmut-results.txt 2>/dev/null || true
-	@PYTHONPATH=src $(PY) -m mutmut export-cicd-stats >/dev/null 2>&1 || true
-	@$(PY) scripts/generate_mutation_report.py \
-		--stats mutants/mutmut-cicd-stats.json \
-		--results reports/mutation/mutmut-results.txt \
-		--history reports/mutation/history.json \
-		--output reports/mutation/latest.md
-	@echo "$(GREEN)Mutation dashboard generated at reports/mutation/latest.md$(RESET)"
 
-mutation-dashboard: mutation-report ## Alias for mutation-report
-	@true
 
 .PHONY: build-spec
 build-spec: ## Compile TypeSpec schema and generate TypeScript types

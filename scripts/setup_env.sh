@@ -18,7 +18,7 @@ RESET="\033[0m"
 
 # Shared secret between the autoscaler container and the Host VM Bridge (see SECURITY.md).
 generate_token() {
-    python3 -c 'import secrets; print(secrets.token_urlsafe(32))' 2>/dev/null || openssl rand -hex 32
+    openssl rand -hex 32 2>/dev/null || od -vN "32" -An -tx1 /dev/urandom | tr -d " \n"
 }
 
 # Append RUNZERO_BRIDGE_TOKEN to an existing .env that predates it; never rotate one that exists.

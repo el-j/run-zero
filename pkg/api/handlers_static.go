@@ -86,7 +86,6 @@ func serveFont(w http.ResponseWriter, fontName, distDir, staticDir string) {
 		filepath.Join(distDir, "fonts", fontName),
 		filepath.Join(staticDir, "fonts", fontName),
 		filepath.Join("web/public/fonts", fontName),
-		filepath.Join("src/dashboard/static/fonts", fontName),
 	}
 
 	for _, cand := range candidates {

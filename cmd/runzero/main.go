@@ -14,8 +14,15 @@ import (
 var Version = "1.0.0-alpha.1"
 
 func run(args []string, stdout, stderr io.Writer) int {
-	if len(args) > 0 && (args[0] == "doctor" || args[0] == "-doctor" || args[0] == "--doctor") {
-		return runDoctor(args[1:], stdout, stderr)
+	if len(args) > 0 {
+		switch args[0] {
+		case "doctor", "-doctor", "--doctor":
+			return runDoctor(args[1:], stdout, stderr)
+		case "bridge", "-bridge", "--bridge":
+			return runBridge(args[1:], stdout, stderr)
+		case "build-vm-base", "-build-vm-base", "--build-vm-base":
+			return runBuildVMBase(args[1:], stdout, stderr)
+		}
 	}
 
 	fs := flag.NewFlagSet("runzero", flag.ContinueOnError)
@@ -24,7 +31,7 @@ func run(args []string, stdout, stderr io.Writer) int {
 	envFile := fs.String("config", ".env", "Path to .env configuration file")
 	showVersion := fs.Bool("version", false, "Print RunZero Go engine version and exit")
 	distDir := fs.String("dist", "web/dist", "Path to Vite compiled UI distribution directory")
-	staticDir := fs.String("static", "src/dashboard/static", "Path to static asset fallback directory")
+	staticDir := fs.String("static", "web/dist", "Path to static asset fallback directory")
 
 	if err := fs.Parse(args); err != nil {
 		return 1

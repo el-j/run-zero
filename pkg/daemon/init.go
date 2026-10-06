@@ -1,6 +1,7 @@
 package daemon
 
 import (
+	"os"
 	"strings"
 	"time"
 
@@ -41,7 +42,13 @@ func initPoller(cfg *config.Config, pm *github.PriorityManager, st *state.State)
 
 func initDriver(cfg *config.Config, store *driver.InstanceStore) driver.RunnerDriver {
 	dockerDriver := driver.NewDockerDriver(nil, store, "", "")
-	orbDriver := driver.NewOrbStackDriver(nil, store, "")
+	var orbDriver driver.RunnerDriver
+	if bridgeURL := os.Getenv("HOST_VM_BRIDGE_URL"); bridgeURL != "" && bridgeURL != "none" {
+		token := os.Getenv("RUNZERO_BRIDGE_TOKEN")
+		orbDriver = driver.NewBridgeDriver(bridgeURL, "orbstack", token, nil)
+	} else {
+		orbDriver = driver.NewOrbStackDriver(nil, store, "")
+	}
 	return driver.NewRouter(dockerDriver, orbDriver, cfg.RunnerBackend, cfg.AutoRouteVM, store)
 }
 
