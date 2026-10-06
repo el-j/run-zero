@@ -2,46 +2,19 @@
 # ==============================================================================
 # RunZero — Host VM Bridge process supervisor
 #
-# The Host VM Bridge (src/vm_bridge.py) is a native host process the
+# The Host VM Bridge (`bin/runzero bridge`) is a native host process the
 # containerized autoscaler depends on for every OrbStack/Multipass/WSL2 VM
-# operation. Until now `make bridge-start` launched it with a bare
-# `nohup ... &` and a PID file -- no supervision at all. Confirmed live
-# (2026-09-09/10): it crashed silently mid-clone and stayed dead for 16+
-# hours, orphaning 4 VMs with nothing to reap them (see
-# src/drivers/orbstack_vm_driver.py's _vm_created_at_from_ulid() for the
-# related cleanup-side fix). A dead bridge is a silent, total outage for
-# every non-Docker job -- it needs to come back on its own.
+# operation.
 #
 # On macOS this installs the bridge as a launchd agent: KeepAlive restarts it
 # within seconds of a crash, RunAtLoad brings it back after a reboot/logout,
 # and ThrottleInterval stops a crash-loop from spinning the CPU. Everywhere
-# else (or if launchctl is missing) this falls back to the previous
-# nohup+PID-file behavior, which has no crash recovery but at least works.
+# else (or if launchctl is missing) this falls back to nohup+PID-file behavior.
 #
-# launchd itself can also silently refuse to work: on macOS, any repo that
-# lives under a TCC-protected folder (~/Documents, ~/Desktop, ~/Downloads)
-# cannot be touched by a launchd-spawned process at all, unless the exact
-# interpreter binary has been granted Full Disk Access by hand in System
-# Settings -- there is no way to grant this from a script. Confirmed live:
-# `launchctl bootstrap`ing this exact plist made every run of vm_bridge.py
-# exit instantly with zero output (launchd reported "78: EX_CONFIG"), and a
-# minimal repro (a launchd job just `cat`ing a file in this repo) failed
-# with "Operation not permitted" -- the same command run from an interactive
-# terminal works fine, because Terminal.app/the IDE already has that grant
-# and launchd's own spawn context does not inherit it. So `launchd_start`
-# always verifies the bridge actually became healthy before declaring
-# success, and falls back to the plain nohup mode (with a one-time
-# actionable message) if it didn't -- a silently-broken "supervised" bridge
-# that never serves a request is worse than the old unsupervised one.
-#
-# To not need that grant at all, the launchd job never touches the repo (#64):
-# `start` stages what the bridge reads at runtime (src/, docker/) into
+# To avoid macOS TCC restrictions on ~/Documents, the launchd job runs from
 # $RUNZERO_BRIDGE_HOME (default ~/Library/Application Support/RunZero/bridge)
-# and runs it with the venv's base interpreter, which lives outside the repo
-# (the bridge only needs the standard library). The version and git SHA are
-# resolved here, in the repo, and baked into the plist, so /health still
-# reports which commit is live (#72). Every `start` re-stages, so
-# `make restart` after a pull deploys the new code.
+# where `runzero` binary is staged on every start. Every `make restart` or
+# `make bridge-start` re-stages the latest compiled Go binary.
 # ==============================================================================
 
 set -euo pipefail
@@ -131,124 +104,47 @@ wait_for_health() {
     return 1
 }
 
-# The interpreter launchd runs: the venv's base python (pyvenv.cfg `home`), since the
-# venv itself sits inside the repo; else whatever python3 is on PATH.
-launchd_python() {
-    local cfg="$REPO_DIR/.venv/pyvenv.cfg" home
-    if [ -f "$cfg" ]; then
-        home="$(awk -F' = ' '$1 == "home" {print $2; exit}' "$cfg")"
-        if [ -n "$home" ] && [ -x "$home/python3" ]; then
-            echo "$home/python3"
-            return
-        fi
-    fi
-    command -v python3
-}
-
-# Copies the bridge's runtime files (src/, docker/) to $BRIDGE_HOME, replacing the previous copy.
+# Copies the runzero binary to $BRIDGE_HOME, replacing the previous copy.
 stage_bridge() {
-    local dir
     mkdir -p "$BRIDGE_HOME"
-    for dir in src docker; do
-        rm -rf "${BRIDGE_HOME:?}/$dir"
-        cp -R "$REPO_DIR/$dir" "$BRIDGE_HOME/$dir"
-    done
-    find "$BRIDGE_HOME" -name __pycache__ -type d -prune -exec rm -rf {} +
+    if [ ! -f "$REPO_DIR/bin/runzero" ]; then
+        (cd "$REPO_DIR" && go build -o bin/runzero ./cmd/runzero)
+    fi
+    cp "$REPO_DIR/bin/runzero" "$BRIDGE_HOME/runzero"
+    chmod +x "$BRIDGE_HOME/runzero"
 }
 
-# Renders the launchd plist to stdout, merging in the handful of .env
-# settings the bridge's own drivers actually read via os.getenv (see
-# MULTIPASS_IMAGE/DOCKER_SOCK/DOCKER_NETWORK/etc. below) alongside a sane
-# fallback PATH + PYTHONPATH=src. Deliberately an *allowlist*, not a raw copy
-# of .env: .env also carries ACCESS_TOKEN (a GitHub PAT) and other secrets
-# that only the containerized autoscaler needs -- the bridge never touches
-# GitHub's API at all (grep confirms no os.getenv("ACCESS_TOKEN") etc.
-# anywhere under src/drivers or vm_bridge.py). Copying it wholesale would
-# write that PAT in plaintext into a plist file under ~/Library/LaunchAgents,
-# which (unlike a plain process's environment) sits on disk indefinitely --
-# a real, avoidable credential-exposure regression versus the plain-process
-# env the old nohup approach used.
-#
-# Builds the XML by hand with xml.sax.saxutils.escape rather than the stdlib
-# `plistlib` module: plistlib unconditionally imports xml.parsers.expat at
-# import time even for writing, and on this machine's Homebrew python@3.14
-# that import is broken (a stale libexpat left behind by a brew upgrade --
-# confirmed via `python3 -c "import plistlib"` raising ImportError: Symbol
-# not found: _XML_SetAllocTrackerActivationThreshold). saxutils.escape has no
-# such dependency, so this keeps working regardless of that unrelated
-# breakage.
 render_plist() {
-    local python_bin="$1"
     local env_file="$REPO_DIR/.env"
-    PYTHON_BIN="$python_bin" WORK_DIR="$BRIDGE_HOME" LABEL="$LABEL" LOG_FILE="$LAUNCHD_LOG_FILE" \
-    BUILD_VERSION="$(PYTHONPATH="$REPO_DIR/src" "$python_bin" -c 'from version import __version__; print(__version__)' 2>/dev/null || true)" \
-    BUILD_GIT_SHA="$(git -C "$REPO_DIR" rev-parse --short=12 HEAD 2>/dev/null || true)" \
-    "$python_bin" - "$env_file" <<'PYEOF'
-import os
-import sys
-from xml.sax.saxutils import escape
-
-# Every env var any bridge-reachable driver (drivers/*.py) or vm_bridge.py
-# itself reads via os.getenv -- keep in sync if either grows a new one.
-ALLOWED_ENV_KEYS = {
-    "MULTIPASS_IMAGE",
-    "DOCKER_SOCK",
-    "DOCKER_NETWORK",
-    "RUNNER_IMAGE_DOCKER_DIR",
-    "WSL_DISTRO_BASE",
-    "RUNZERO_DEBUG",
-    "HOST_VM_BRIDGE_HOST",
-    "HOST_VM_BRIDGE_PORT",
-    "RUNNER_CPUS",
-    "RUNNER_MEMORY",
-    "RUNNER_SIZING",
-    "MAX_RUNNERS",
-    "RUNZERO_BRIDGE_TOKEN",
-    "RUNZERO_ALLOWED_HOSTS",
-}
-
-env_file = sys.argv[1]
-env = {
-    "PYTHONPATH": "src",
-    "PATH": "/opt/homebrew/bin:/opt/homebrew/sbin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin",
-}
-if os.path.isfile(env_file):
-    with open(env_file) as f:
-        for line in f:
-            line = line.strip()
-            if not line or line.startswith("#") or "=" not in line:
-                continue
-            key, _, value = line.partition("=")
-            key = key.strip()
-            value = value.strip().strip('"').strip("'")
-            if key in ALLOWED_ENV_KEYS:
-                env[key] = value
-# The staged copy has no .git to derive these from.
-for key, source in (("RUNZERO_VERSION", "BUILD_VERSION"), ("RUNZERO_GIT_SHA", "BUILD_GIT_SHA")):
-    if os.environ.get(source):
-        env[key] = os.environ[source]
-
-def s(v):
-    return f"<string>{escape(str(v))}</string>"
-
-env_xml = "\n".join(f"    <key>{escape(k)}</key>\n    {s(v)}" for k, v in env.items())
-args_xml = "\n".join(f"    {s(a)}" for a in (os.environ["PYTHON_BIN"], "-u", "src/vm_bridge.py"))
-
-print(f"""<?xml version="1.0" encoding="UTF-8"?>
+    local port; port="$(bridge_port)"; port="${port:-49504}"
+    local token=""
+    if [ -f "$env_file" ]; then
+        token="$(awk -F= '/^RUNZERO_BRIDGE_TOKEN=/{print $2; exit}' "$env_file" | tr -d ' "'"'"'')"
+    fi
+    cat <<PLIST
+<?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
   <key>Label</key>
-  {s(os.environ["LABEL"])}
+  <string>${LABEL}</string>
   <key>ProgramArguments</key>
   <array>
-{args_xml}
+    <string>${BRIDGE_HOME}/runzero</string>
+    <string>bridge</string>
+    <string>-port</string>
+    <string>${port}</string>
   </array>
   <key>WorkingDirectory</key>
-  {s(os.environ["WORK_DIR"])}
+  <string>${BRIDGE_HOME}</string>
   <key>EnvironmentVariables</key>
   <dict>
-{env_xml}
+    <key>PATH</key>
+    <string>/opt/homebrew/bin:/opt/homebrew/sbin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin</string>
+    <key>HOST_VM_BRIDGE_PORT</key>
+    <string>${port}</string>
+    <key>RUNZERO_BRIDGE_TOKEN</key>
+    <string>${token}</string>
   </dict>
   <key>RunAtLoad</key>
   <true/>
@@ -259,13 +155,12 @@ print(f"""<?xml version="1.0" encoding="UTF-8"?>
   <key>ProcessType</key>
   <string>Background</string>
   <key>StandardOutPath</key>
-  {s(os.environ["LOG_FILE"])}
+  <string>${LAUNCHD_LOG_FILE}</string>
   <key>StandardErrorPath</key>
-  {s(os.environ["LOG_FILE"])}
+  <string>${LAUNCHD_LOG_FILE}</string>
 </dict>
 </plist>
-""")
-PYEOF
+PLIST
 }
 
 nohup_start() {
@@ -277,24 +172,12 @@ nohup_start() {
     fi
     local port; port="$(bridge_port)"; refuse_foreign_holder "${port:-49504}"
     echo -e "${YELLOW}$reason -- starting Host VM Bridge without crash supervision.${RESET}"
-    set -a
-    # User-provided .env, not part of the repo.
-    # shellcheck source=/dev/null
-    [ -f "$REPO_DIR/.env" ] && . "$REPO_DIR/.env"
-    set +a
-    # Must background a plain simple command, not a `cd ... && nohup ...`
-    # compound: backgrounding a `&&`-list forces bash to fork a wrapper
-    # subshell to run it, and `$!` then captures THAT wrapper's PID -- which
-    # exits the moment it has spawned nohup's child, not the actual
-    # long-running server's PID. Confirmed live: the recorded PID_FILE
-    # entry died within a second while the real python process (PID+1) kept
-    # serving fine, making bridge-stop/-status silently useless (killing/
-    # checking a PID that was already gone, while the real server ran on
-    # untouched). `cd` as its own statement first, then background only the
-    # simple `nohup python3 ...` command, keeps `$!` accurate.
+    if [ ! -f "$REPO_DIR/bin/runzero" ]; then
+        (cd "$REPO_DIR" && go build -o bin/runzero ./cmd/runzero)
+    fi
     (
         cd "$REPO_DIR"
-        PYTHONPATH=src nohup python3 -u src/vm_bridge.py > "$LOG_FILE" 2>&1 &
+        nohup ./bin/runzero bridge > "$LOG_FILE" 2>&1 &
         echo $! > "$PID_FILE"
     )
     echo "nohup" > "$MODE_FILE"
@@ -320,26 +203,19 @@ nohup_status() {
 
 launchd_start() {
     mkdir -p "$(dirname "$PLIST_PATH")"
-    local python_bin; python_bin="$(launchd_python)"
 
-    # Clear out any previous nohup-mode process first -- it would otherwise
-    # either hold the port launchd's instance needs, or leave bridge-status
-    # confused about which process is authoritative.
     if [ -f "$PID_FILE" ]; then
         pid="$(cat "$PID_FILE")"
         if kill -0 "$pid" 2>/dev/null; then kill "$pid" 2>/dev/null || true; sleep 0.3; fi
         rm -f "$PID_FILE"
     fi
 
-    (umask 077 && render_plist "$python_bin" > "$PLIST_PATH")
+    stage_bridge
+    (umask 077 && render_plist > "$PLIST_PATH")
     chmod 600 "$PLIST_PATH"
-    # Idempotent: bootout-then-bootstrap picks up plist edits (e.g. a changed
-    # .env or interpreter path) instead of leaving a stale job registered.
     launchctl bootout "$SERVICE" >/dev/null 2>&1 || true
     local port; port="$(bridge_port)"; port="${port:-49504}"
     refuse_foreign_holder "$port"
-    stage_bridge
-    # `make bridge-logs` tails $LOG_FILE; point it at the log launchd writes.
     : >> "$LAUNCHD_LOG_FILE"
     ln -sfn "$LAUNCHD_LOG_FILE" "$LOG_FILE"
     launchctl bootstrap "$DOMAIN" "$PLIST_PATH"
@@ -349,14 +225,10 @@ launchd_start() {
         echo "launchd" > "$MODE_FILE"
         echo -e "${GREEN}Host VM Bridge installed as a launchd agent (auto-restarts on crash, survives reboot/logout).${RESET}"
         echo -e "${CYAN}  Label: $LABEL   Plist: $PLIST_PATH${RESET}"
-        echo -e "${CYAN}  Runs a copy of src/ and docker/ from $BRIDGE_HOME (re-staged on every start).${RESET}"
+        echo -e "${CYAN}  Runs Host VM Bridge binary from $BRIDGE_HOME (re-staged on every start).${RESET}"
         return
     fi
 
-    # It never came up. launchctl print's "last exit code" tells us why --
-    # in particular, code 78 (EX_CONFIG) is what launchd reports when it
-    # can't even spawn the process, which on this machine means the TCC
-    # ~/Documents restriction documented at the top of this file.
     local exit_info
     exit_info="$(launchctl print "$SERVICE" 2>/dev/null | awk -F'= ' '/last exit code/{print $2; exit}')"
     launchctl bootout "$SERVICE" >/dev/null 2>&1 || true
@@ -365,21 +237,17 @@ launchd_start() {
     echo -e "${RED}Host VM Bridge did not come up under launchd (last exit: ${exit_info:-unknown}).${RESET}"
     case "$exit_info" in
         *78*)
-            echo -e "${YELLOW}This looks like macOS blocking launchd from reading the staged bridge or its interpreter:"
-            echo -e "  $BRIDGE_HOME"
-            echo -e "  $python_bin"
-            echo -e "Keep both out of TCC-protected folders (Documents/Desktop/Downloads; see RUNZERO_BRIDGE_HOME),"
-            echo -e "or grant that interpreter Full Disk Access."
-            echo -e "(System Settings > Privacy & Security > Full Disk Access, then \`make bridge-start\` again)."
-            echo -e "Falling back to a plain background process for now -- it works, it just won't"
-            echo -e "auto-restart if it crashes.${RESET}"
+            echo -e "${YELLOW}This looks like macOS blocking launchd from reading the staged bridge binary:"
+            echo -e "  $BRIDGE_HOME/runzero"
+            echo -e "Keep it out of TCC-protected folders (Documents/Desktop/Downloads; see RUNZERO_BRIDGE_HOME),"
+            echo -e "or grant the binary Full Disk Access.${RESET}"
             ;;
         *)
             echo -e "${YELLOW}See $LAUNCHD_LOG_FILE and \`launchctl print $SERVICE\` for details."
             echo -e "Falling back to a plain background process for now.${RESET}"
             ;;
     esac
-    rm -f "$LOG_FILE"  # the symlink to launchd's log; the fallback writes its own
+    rm -f "$LOG_FILE"
     nohup_start "launchd install failed"
 }
 
@@ -419,7 +287,7 @@ case "${1:-status}" in
         ;;
     stage)
         stage_bridge
-        echo "Staged src/ and docker/ into $BRIDGE_HOME"
+        echo "Staged runzero binary into $BRIDGE_HOME"
         ;;
     *)
         echo "Usage: $0 {start|stop|status|stage}" >&2

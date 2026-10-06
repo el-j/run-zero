@@ -1,4 +1,4 @@
-import type { QueuedJob } from "../api/client";
+import { client, type QueuedJob } from "../api/client";
 
 function formatDuration(isoTime?: string): string {
   if (!isoTime) return "";
@@ -16,6 +16,7 @@ export class QueueViewComponent {
   private container: HTMLElement;
   private jobs: QueuedJob[] = [];
   private timer: number | null = null;
+  private statusBanner: string = "";
 
   constructor(container: HTMLElement) {
     this.container = container;
@@ -49,6 +50,27 @@ export class QueueViewComponent {
 
   destroy() {
     if (this.timer) clearInterval(this.timer);
+  }
+
+  private async handleAction(repo: string, runId: number, action: "cancel" | "rerun" | "rerun-failed") {
+    const label = action === "cancel" ? "cancel" : action === "rerun" ? "re-run all jobs for" : "re-run failed jobs for";
+    if (!confirm(`Are you sure you want to ${label} workflow run #${runId} on ${repo}?`)) {
+      return;
+    }
+
+    try {
+      this.statusBanner = `Triggering ${action} on ${repo} run #${runId}...`;
+      this.render();
+      const res = await client.triggerWorkflowAction(repo, runId, action);
+      this.statusBanner = `✓ ${res.message || action + " triggered"}`;
+    } catch (err) {
+      this.statusBanner = `✗ Action failed: ${(err as Error).message}`;
+    }
+    this.render();
+    setTimeout(() => {
+      this.statusBanner = "";
+      this.render();
+    }, 4000);
   }
 
   render() {
@@ -86,6 +108,20 @@ export class QueueViewComponent {
           .map((l) => `<span class="badge badge-arch mono" style="font-size: 0.65rem;">${l}</span>`)
           .join(" ");
 
+        const actionButtons = `
+          <div style="display: flex; gap: 0.4rem; align-items: center; justify-content: flex-end; margin-top: 0.5rem; padding-top: 0.5rem; border-top: 1px solid var(--border-subtle);">
+            <button class="btn btn-secondary queue-action-btn" data-action="cancel" data-repo="${job.repo}" data-run-id="${job.run_id}" style="padding: 0.25rem 0.55rem; font-size: 0.75rem; border-color: rgba(244,63,94,0.4); color: var(--accent-rose);">
+              ✕ Cancel Run
+            </button>
+            <button class="btn btn-secondary queue-action-btn" data-action="rerun" data-repo="${job.repo}" data-run-id="${job.run_id}" style="padding: 0.25rem 0.55rem; font-size: 0.75rem;">
+              ↺ Re-run All
+            </button>
+            <button class="btn btn-secondary queue-action-btn" data-action="rerun-failed" data-repo="${job.repo}" data-run-id="${job.run_id}" style="padding: 0.25rem 0.55rem; font-size: 0.75rem;">
+              ↻ Re-run Failed
+            </button>
+          </div>
+        `;
+
         return `
           <div class="glass-panel" style="padding: 1rem 1.25rem; display: flex; flex-direction: column; gap: 0.6rem; border-left: 3px solid ${isRunning ? "var(--accent-emerald)" : "var(--accent-amber)"};">
             <div style="display: flex; justify-content: space-between; align-items: flex-start; gap: 1rem;">
@@ -115,6 +151,7 @@ export class QueueViewComponent {
               </div>
             </div>
             ${reason}
+            ${actionButtons}
           </div>
         `;
       })
@@ -126,11 +163,21 @@ export class QueueViewComponent {
           <h2 style="font-size: 1rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-muted);">
             Active & Queued Workflow Jobs (${this.jobs.length})
           </h2>
+          ${this.statusBanner ? `<span class="mono" style="font-size: 0.85rem; font-weight: 600; color: var(--accent-cyan);">${this.statusBanner}</span>` : ""}
         </div>
         <div style="display: flex; flex-direction: column; gap: 0.75rem;">
           ${jobCards}
         </div>
       </section>
     `;
+
+    this.container.querySelectorAll<HTMLButtonElement>(".queue-action-btn").forEach((btn) => {
+      btn.onclick = () => {
+        const repo = btn.dataset.repo!;
+        const runId = parseInt(btn.dataset.runId!, 10);
+        const action = btn.dataset.action as "cancel" | "rerun" | "rerun-failed";
+        this.handleAction(repo, runId, action);
+      };
+    });
   }
 }

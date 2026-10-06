@@ -87,3 +87,26 @@ func TestCLI_DoctorParseError(t *testing.T) {
 		t.Fatalf("expected 1, got %d", code)
 	}
 }
+
+func TestCLI_BridgeParseError(t *testing.T) {
+	var stdout, stderr bytes.Buffer
+	code := run([]string{"bridge", "-badflag"}, &stdout, &stderr)
+	if code != 1 {
+		t.Fatalf("expected 1, got %d", code)
+	}
+}
+
+func TestCLI_BuildVMBase(t *testing.T) {
+	var stdout, stderr bytes.Buffer
+	code := run([]string{"build-vm-base", "-badflag"}, &stdout, &stderr)
+	if code != 1 {
+		t.Fatalf("expected 1, got %d", code)
+	}
+
+	stdout.Reset()
+	stderr.Reset()
+	code = run([]string{"build-vm-base", "-arch", "invalid_arch"}, &stdout, &stderr)
+	if code != 1 {
+		t.Fatalf("expected 1 for invalid arch, got %d", code)
+	}
+}

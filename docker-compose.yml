@@ -92,8 +92,8 @@ services:
       # that also resolve to the same real inode -- no translation needed anywhere else in
       # the codebase. Falls back to a harmless throwaway path when HOST_CACHE_DIR is unset
       # (e.g. CACHE_ENABLED=false), since Compose can't conditionally omit a volume line.
-      # Mount dashboard static web assets for live updates without container rebuilds
-      - ./src/dashboard/static:/app/dashboard/static:ro
+      # Mount modular TypeScript dashboard web assets for live updates without container rebuilds
+      - ./web/dist:/app/dist:ro
       - ${HOST_CACHE_DIR:-/tmp/runzero-cache-disabled}:${HOST_CACHE_DIR:-/tmp/runzero-cache-disabled}
 
 

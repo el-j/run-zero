@@ -69,99 +69,149 @@ export class SettingsPanelComponent {
 
     const s = this.settings || {};
 
+    const liveBadge = `<span class="badge mono" style="font-size: 0.65rem; background: rgba(16,185,129,0.15); color: var(--accent-emerald);">Live Mutable</span>`;
+    const restartBadge = `<span class="badge mono" style="font-size: 0.65rem; background: rgba(245,158,11,0.15); color: var(--accent-amber);">Requires Restart</span>`;
+
     this.container.innerHTML = `
       <section class="glass-panel" style="margin-bottom: 2rem;">
-        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.5rem;">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.5rem; flex-wrap: wrap; gap: 0.75rem;">
           <div>
             <h2 style="font-size: 1.15rem; font-weight: 700; margin-bottom: 0.25rem;">Live Runtime Configuration</h2>
-            <p style="color: var(--text-muted); font-size: 0.85rem;">Modify daemon settings dynamically without restarting the autoscaler.</p>
+            <p style="color: var(--text-muted); font-size: 0.85rem;">Inspect and modify daemon settings dynamically without restarting the engine.</p>
           </div>
           ${this.statusMessage ? `<span class="mono" style="font-size: 0.85rem; font-weight: 600; color: ${this.statusMessage.startsWith("✓") ? "var(--accent-emerald)" : "var(--accent-amber)"};">${this.statusMessage}</span>` : ""}
         </div>
 
-        <form id="settings-form" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 1.25rem;">
-          <div style="display: flex; flex-direction: column; gap: 0.4rem;">
-            <label style="font-size: 0.8rem; font-weight: 600; color: var(--text-muted);">MAX RUNNERS</label>
-            <input type="number" name="max_runners" class="glass-panel mono" style="padding: 0.5rem; background: var(--bg-surface-elevated); color: var(--text-main); border: 1px solid var(--border-subtle);" value="${s.max_runners ?? 3}" min="1" max="64" required />
+        <form id="settings-form" style="display: flex; flex-direction: column; gap: 1.5rem;">
+          <div>
+            <h3 style="font-size: 0.9rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; color: var(--accent-emerald); margin-bottom: 0.75rem;">
+              ⚡ Live Mutable Settings (Instant Effect on Subsequent Jobs)
+            </h3>
+            <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 1.25rem;">
+              <div style="display: flex; flex-direction: column; gap: 0.4rem;">
+                <div style="display: flex; justify-content: space-between; align-items: center;">
+                  <label style="font-size: 0.8rem; font-weight: 600; color: var(--text-muted);">MAX RUNNERS</label>
+                  ${liveBadge}
+                </div>
+                <input type="number" name="max_runners" class="glass-panel mono" style="padding: 0.5rem; background: var(--bg-surface-elevated); color: var(--text-main); border: 1px solid var(--border-subtle);" value="${s.max_runners ?? 3}" min="1" max="64" required />
+              </div>
+
+              <div style="display: flex; flex-direction: column; gap: 0.4rem;">
+                <div style="display: flex; justify-content: space-between; align-items: center;">
+                  <label style="font-size: 0.8rem; font-weight: 600; color: var(--text-muted);">STANDBY RUNNERS (MIN)</label>
+                  ${liveBadge}
+                </div>
+                <input type="number" name="min_runners" class="glass-panel mono" style="padding: 0.5rem; background: var(--bg-surface-elevated); color: var(--text-main); border: 1px solid var(--border-subtle);" value="${s.min_runners ?? 0}" min="0" max="16" required />
+              </div>
+
+              <div style="display: flex; flex-direction: column; gap: 0.4rem;">
+                <div style="display: flex; justify-content: space-between; align-items: center;">
+                  <label style="font-size: 0.8rem; font-weight: 600; color: var(--text-muted);">CPUS PER RUNNER</label>
+                  ${liveBadge}
+                </div>
+                <input type="number" name="runner_cpus" class="glass-panel mono" style="padding: 0.5rem; background: var(--bg-surface-elevated); color: var(--text-main); border: 1px solid var(--border-subtle);" value="${s.runner_cpus ?? 3}" min="1" max="32" required />
+              </div>
+
+              <div style="display: flex; flex-direction: column; gap: 0.4rem;">
+                <div style="display: flex; justify-content: space-between; align-items: center;">
+                  <label style="font-size: 0.8rem; font-weight: 600; color: var(--text-muted);">MEMORY PER RUNNER</label>
+                  ${liveBadge}
+                </div>
+                <input type="text" name="runner_memory" class="glass-panel mono" style="padding: 0.5rem; background: var(--bg-surface-elevated); color: var(--text-main); border: 1px solid var(--border-subtle);" value="${s.runner_memory || "4G"}" required />
+              </div>
+
+              <div style="display: flex; flex-direction: column; gap: 0.4rem;">
+                <div style="display: flex; justify-content: space-between; align-items: center;">
+                  <label style="font-size: 0.8rem; font-weight: 600; color: var(--text-muted);">RUNNER BACKEND</label>
+                  ${liveBadge}
+                </div>
+                <select name="runner_backend" class="glass-panel mono" style="padding: 0.5rem; background: var(--bg-surface-elevated); color: var(--text-main); border: 1px solid var(--border-subtle);">
+                  <option value="auto" ${s.runner_backend === "auto" ? "selected" : ""}>auto (Docker + Hybrid VM)</option>
+                  <option value="docker" ${s.runner_backend === "docker" ? "selected" : ""}>docker (Containers only)</option>
+                  <option value="orbstack-vm" ${s.runner_backend === "orbstack-vm" ? "selected" : ""}>orbstack-vm (Native macOS Linux VM)</option>
+                  <option value="wsl2" ${s.runner_backend === "wsl2" ? "selected" : ""}>wsl2 (Windows WSL2 VM)</option>
+                  <option value="multipass" ${s.runner_backend === "multipass" ? "selected" : ""}>multipass (Canonical Multipass VM)</option>
+                </select>
+              </div>
+
+              <div style="display: flex; flex-direction: column; gap: 0.4rem;">
+                <div style="display: flex; justify-content: space-between; align-items: center;">
+                  <label style="font-size: 0.8rem; font-weight: 600; color: var(--text-muted);">TARGET ARCHITECTURE</label>
+                  ${liveBadge}
+                </div>
+                <select name="runner_arch" class="glass-panel mono" style="padding: 0.5rem; background: var(--bg-surface-elevated); color: var(--text-main); border: 1px solid var(--border-subtle);">
+                  <option value="both" ${s.runner_arch === "both" ? "selected" : ""}>both (arm64 & amd64)</option>
+                  <option value="arm64" ${s.runner_arch === "arm64" ? "selected" : ""}>arm64 (Native Apple Silicon)</option>
+                  <option value="amd64" ${s.runner_arch === "amd64" ? "selected" : ""}>amd64 (Intel/AMD)</option>
+                </select>
+              </div>
+
+              <div style="display: flex; flex-direction: column; gap: 0.4rem;">
+                <div style="display: flex; justify-content: space-between; align-items: center;">
+                  <label style="font-size: 0.8rem; font-weight: 600; color: var(--text-muted);">NATIVE ARCH OVERRIDE</label>
+                  ${liveBadge}
+                </div>
+                <input type="text" name="native_arch_override" placeholder="off, all, or owner/repo" class="glass-panel mono" style="padding: 0.5rem; background: var(--bg-surface-elevated); color: var(--text-main); border: 1px solid var(--border-subtle);" value="${s.native_arch_override || "off"}" />
+              </div>
+
+              <div style="display: flex; flex-direction: column; gap: 0.4rem;">
+                <div style="display: flex; justify-content: space-between; align-items: center;">
+                  <label style="font-size: 0.8rem; font-weight: 600; color: var(--text-muted);">POLL INTERVAL (SECONDS)</label>
+                  ${liveBadge}
+                </div>
+                <input type="number" name="poll_interval" class="glass-panel mono" style="padding: 0.5rem; background: var(--bg-surface-elevated); color: var(--text-main); border: 1px solid var(--border-subtle);" value="${s.poll_interval ?? 10}" min="2" max="300" required />
+              </div>
+
+              <div style="display: flex; flex-direction: column; gap: 0.4rem;">
+                <div style="display: flex; justify-content: space-between; align-items: center;">
+                  <label style="font-size: 0.8rem; font-weight: 600; color: var(--text-muted);">DISCOVERY INTERVAL (SECONDS)</label>
+                  ${liveBadge}
+                </div>
+                <input type="number" name="discovery_interval" class="glass-panel mono" style="padding: 0.5rem; background: var(--bg-surface-elevated); color: var(--text-main); border: 1px solid var(--border-subtle);" value="${s.discovery_interval ?? 900}" min="30" max="7200" required />
+              </div>
+            </div>
+
+            <div style="display: flex; align-items: center; gap: 1.5rem; padding-top: 1rem; flex-wrap: wrap;">
+              <label style="display: flex; align-items: center; gap: 0.5rem; font-size: 0.85rem; cursor: pointer;">
+                <input type="checkbox" name="auto_route_vm" ${s.auto_route_vm ? "checked" : ""} />
+                <span>Hybrid Auto-Route VM</span>
+              </label>
+              <label style="display: flex; align-items: center; gap: 0.5rem; font-size: 0.85rem; cursor: pointer;">
+                <input type="checkbox" name="cache_enabled" ${s.cache_enabled ? "checked" : ""} />
+                <span>Persistent Caching</span>
+              </label>
+              <label style="display: flex; align-items: center; gap: 0.5rem; font-size: 0.85rem; cursor: pointer;">
+                <input type="checkbox" name="proxies_enabled" ${s.proxies_enabled ? "checked" : ""} />
+                <span>Local Registry Proxies</span>
+              </label>
+            </div>
           </div>
 
-          <div style="display: flex; flex-direction: column; gap: 0.4rem;">
-            <label style="font-size: 0.8rem; font-weight: 600; color: var(--text-muted);">STANDBY RUNNERS (MIN)</label>
-            <input type="number" name="min_runners" class="glass-panel mono" style="padding: 0.5rem; background: var(--bg-surface-elevated); color: var(--text-main); border: 1px solid var(--border-subtle);" value="${s.min_runners ?? 0}" min="0" max="16" required />
+          <div style="border-top: 1px solid var(--border-subtle); padding-top: 1.25rem;">
+            <h3 style="font-size: 0.9rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; color: var(--accent-amber); margin-bottom: 0.75rem;">
+              🔒 Static Settings (Persisted to .env, Needs 'make restart')
+            </h3>
+            <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 1.25rem;">
+              <div style="display: flex; flex-direction: column; gap: 0.4rem;">
+                <div style="display: flex; justify-content: space-between; align-items: center;">
+                  <label style="font-size: 0.8rem; font-weight: 600; color: var(--text-muted);">HOST CACHE DIR</label>
+                  ${restartBadge}
+                </div>
+                <input type="text" name="host_cache_dir" class="glass-panel mono" style="padding: 0.5rem; background: var(--bg-surface-elevated); color: var(--text-main); border: 1px solid var(--border-subtle);" value="${s.host_cache_dir || ""}" />
+              </div>
+
+              <div style="display: flex; flex-direction: column; gap: 0.4rem;">
+                <div style="display: flex; justify-content: space-between; align-items: center;">
+                  <label style="font-size: 0.8rem; font-weight: 600; color: var(--text-muted);">GITHUB PAT (ROTATE SECRET)</label>
+                  ${restartBadge}
+                </div>
+                <input type="password" name="access_token" placeholder="Leave blank to keep current token" class="glass-panel mono" style="padding: 0.5rem; background: var(--bg-surface-elevated); color: var(--text-main); border: 1px solid var(--border-subtle);" />
+              </div>
+            </div>
           </div>
 
-          <div style="display: flex; flex-direction: column; gap: 0.4rem;">
-            <label style="font-size: 0.8rem; font-weight: 600; color: var(--text-muted);">CPUS PER RUNNER</label>
-            <input type="number" name="runner_cpus" class="glass-panel mono" style="padding: 0.5rem; background: var(--bg-surface-elevated); color: var(--text-main); border: 1px solid var(--border-subtle);" value="${s.runner_cpus ?? 3}" min="1" max="32" required />
-          </div>
-
-          <div style="display: flex; flex-direction: column; gap: 0.4rem;">
-            <label style="font-size: 0.8rem; font-weight: 600; color: var(--text-muted);">MEMORY PER RUNNER</label>
-            <input type="text" name="runner_memory" class="glass-panel mono" style="padding: 0.5rem; background: var(--bg-surface-elevated); color: var(--text-main); border: 1px solid var(--border-subtle);" value="${s.runner_memory || "4G"}" required />
-          </div>
-
-          <div style="display: flex; flex-direction: column; gap: 0.4rem;">
-            <label style="font-size: 0.8rem; font-weight: 600; color: var(--text-muted);">RUNNER BACKEND</label>
-            <select name="runner_backend" class="glass-panel mono" style="padding: 0.5rem; background: var(--bg-surface-elevated); color: var(--text-main); border: 1px solid var(--border-subtle);">
-              <option value="auto" ${s.runner_backend === "auto" ? "selected" : ""}>auto (Docker + Hybrid VM)</option>
-              <option value="docker" ${s.runner_backend === "docker" ? "selected" : ""}>docker (Containers only)</option>
-              <option value="orbstack-vm" ${s.runner_backend === "orbstack-vm" ? "selected" : ""}>orbstack-vm (Native macOS Linux VM)</option>
-              <option value="wsl2" ${s.runner_backend === "wsl2" ? "selected" : ""}>wsl2 (Windows WSL2 VM)</option>
-              <option value="multipass" ${s.runner_backend === "multipass" ? "selected" : ""}>multipass (Canonical Multipass VM)</option>
-            </select>
-          </div>
-
-          <div style="display: flex; flex-direction: column; gap: 0.4rem;">
-            <label style="font-size: 0.8rem; font-weight: 600; color: var(--text-muted);">TARGET ARCHITECTURE</label>
-            <select name="runner_arch" class="glass-panel mono" style="padding: 0.5rem; background: var(--bg-surface-elevated); color: var(--text-main); border: 1px solid var(--border-subtle);">
-              <option value="both" ${s.runner_arch === "both" ? "selected" : ""}>both (arm64 & amd64)</option>
-              <option value="arm64" ${s.runner_arch === "arm64" ? "selected" : ""}>arm64 (Native Apple Silicon)</option>
-              <option value="amd64" ${s.runner_arch === "amd64" ? "selected" : ""}>amd64 (Intel/AMD)</option>
-            </select>
-          </div>
-
-          <div style="display: flex; flex-direction: column; gap: 0.4rem;">
-            <label style="font-size: 0.8rem; font-weight: 600; color: var(--text-muted);">NATIVE ARCH OVERRIDE</label>
-            <input type="text" name="native_arch_override" class="glass-panel mono" style="padding: 0.5rem; background: var(--bg-surface-elevated); color: var(--text-main); border: 1px solid var(--border-subtle);" value="${s.native_arch_override || "off"}" />
-          </div>
-
-          <div style="display: flex; flex-direction: column; gap: 0.4rem;">
-            <label style="font-size: 0.8rem; font-weight: 600; color: var(--text-muted);">POLL INTERVAL (SECONDS)</label>
-            <input type="number" name="poll_interval" class="glass-panel mono" style="padding: 0.5rem; background: var(--bg-surface-elevated); color: var(--text-main); border: 1px solid var(--border-subtle);" value="${s.poll_interval ?? 10}" min="2" max="300" required />
-          </div>
-
-          <div style="display: flex; flex-direction: column; gap: 0.4rem;">
-            <label style="font-size: 0.8rem; font-weight: 600; color: var(--text-muted);">DISCOVERY INTERVAL (SECONDS)</label>
-            <input type="number" name="discovery_interval" class="glass-panel mono" style="padding: 0.5rem; background: var(--bg-surface-elevated); color: var(--text-main); border: 1px solid var(--border-subtle);" value="${s.discovery_interval ?? 900}" min="30" max="7200" required />
-          </div>
-
-          <div style="display: flex; flex-direction: column; gap: 0.4rem;">
-            <label style="font-size: 0.8rem; font-weight: 600; color: var(--text-muted);">HOST CACHE DIR</label>
-            <input type="text" name="host_cache_dir" class="glass-panel mono" style="padding: 0.5rem; background: var(--bg-surface-elevated); color: var(--text-main); border: 1px solid var(--border-subtle);" value="${s.host_cache_dir || ""}" />
-          </div>
-
-          <div style="display: flex; flex-direction: column; gap: 0.4rem;">
-            <label style="font-size: 0.8rem; font-weight: 600; color: var(--text-muted);">GITHUB PAT (ROTATE SECRET)</label>
-            <input type="password" name="access_token" placeholder="Leave blank to keep current token" class="glass-panel mono" style="padding: 0.5rem; background: var(--bg-surface-elevated); color: var(--text-main); border: 1px solid var(--border-subtle);" />
-          </div>
-
-          <div style="display: flex; align-items: center; gap: 1.5rem; padding-top: 1rem;">
-            <label style="display: flex; align-items: center; gap: 0.5rem; font-size: 0.85rem; cursor: pointer;">
-              <input type="checkbox" name="auto_route_vm" ${s.auto_route_vm ? "checked" : ""} />
-              <span>Hybrid Auto-Route VM</span>
-            </label>
-            <label style="display: flex; align-items: center; gap: 0.5rem; font-size: 0.85rem; cursor: pointer;">
-              <input type="checkbox" name="cache_enabled" ${s.cache_enabled ? "checked" : ""} />
-              <span>Persistent Caching</span>
-            </label>
-            <label style="display: flex; align-items: center; gap: 0.5rem; font-size: 0.85rem; cursor: pointer;">
-              <input type="checkbox" name="proxies_enabled" ${s.proxies_enabled ? "checked" : ""} />
-              <span>Local Registry Proxies</span>
-            </label>
-          </div>
-
-          <div style="grid-column: 1 / -1; display: flex; justify-content: flex-end; margin-top: 1rem;">
-            <button type="submit" class="btn btn-primary" style="padding: 0.6rem 1.5rem; font-size: 0.9rem;">Save & Apply Settings Live</button>
+          <div style="display: flex; justify-content: flex-end; margin-top: 0.5rem;">
+            <button type="submit" class="btn btn-primary" style="padding: 0.6rem 1.5rem; font-size: 0.9rem;">Save & Apply Settings</button>
           </div>
         </form>
       </section>

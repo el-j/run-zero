@@ -15,9 +15,6 @@ BRIDGE_LOG_FILE := .bridge.log
 # Baked into the autoscaler image so it can tell when the bridge runs other code (#72).
 export RUNZERO_GIT_SHA := $(shell git rev-parse --short=12 HEAD 2>/dev/null)
 
-# Python used for all quality gates. `make dev-setup` creates .venv-dev with the pinned
-# tooling from requirements-dev.txt; CI passes PY=python after installing the same file.
-PY ?= $(if $(wildcard .venv-dev/bin/python),.venv-dev/bin/python,python3)
 SHELL_SCRIPTS := docker/start.sh docker/provision-toolchain.sh scripts/setup_env.sh scripts/pre-commit.sh scripts/bridge_supervisor.sh
 
 # Colors for terminal styling
@@ -54,14 +51,7 @@ website-install: ## Install website Node dependencies (run from repo root)
 	fi
 
 .PHONY: install
-install: init-cache website-install install-hooks ## Bootstrap local development environment from repo root
-	@echo "$(CYAN)Installing Python package and dev tools (best-effort)...$(RESET)"
-	@if command -v python3 >/dev/null 2>&1; then \
-		python3 -m pip install --quiet -e . || echo "Could not install project package in current Python environment."; \
-		python3 -m pip install --quiet -r requirements-dev.txt || echo "Could not install dev tooling in current Python environment (try: make dev-setup)."; \
-	else \
-		echo "$(YELLOW)python3 not found; skipping Python install.$(RESET)"; \
-	fi
+install: init-cache website-install build-spec build-ui build-go install-hooks ## Bootstrap local development environment from repo root
 	@echo "$(GREEN)Install bootstrap complete. Next: run 'make nice'.$(RESET)"
 
 .PHONY: check-env
@@ -143,9 +133,8 @@ endef
 
 .PHONY: info
 .PHONY: doctor
-doctor: ## Verify cache wiring from inside throwaway runners (no GitHub token needed); DOCTOR_ARGS="--no-spawn" for host checks only
-	@set -a; [ -f .env ] && . ./.env; set +a; \
-	PYTHONPATH=src $(if $(wildcard .venv/bin/python3),.venv/bin/python3,python3) src/doctor.py $(DOCTOR_ARGS)
+doctor: build-go ## Verify cache wiring and engine diagnostics (no GitHub token needed)
+	@./bin/runzero doctor
 
 info: ## Show total disk usage of everything run-zero manages: host cache dir, proxy volumes, runner images, and OrbStack VMs
 	@echo ""
@@ -269,7 +258,7 @@ dashboard: ## Open RunZero Real-Time Observability Web Dashboard in browser (htt
 	@open http://localhost:49505 || echo "Navigate to http://localhost:49505 in your browser."
 
 .PHONY: bridge-start bridge-stop bridge-status bridge-logs
-bridge-start: ## Start Host VM Bridge server on host (port 49504, auto-restarts on crash via launchd)
+bridge-start: build-go ## Start Host VM Bridge server on host (port 49504, auto-restarts on crash via launchd)
 	@echo "$(CYAN)Starting Host VM Bridge on http://localhost:49504...$(RESET)"
 	@./scripts/bridge_supervisor.sh start
 
@@ -341,15 +330,14 @@ status: bridge-status ## Show running Autoscaler, VM Bridge, Proxies, and active
 	@echo ""
 
 .PHONY: start-host stop-host
-start-host: check-env init-cache bridge-start ## Start Autoscaler natively on host Python (without containerizing autoscaler)
+start-host: check-env init-cache build-go build-ui bridge-start ## Start Autoscaler natively on host with Go engine (without containerizing autoscaler)
 	@echo "$(CYAN)Starting caching proxy registries (Verdaccio, Athens, Docker mirror, apt-cacher, devpi, kellnr)...$(RESET)"
 	@docker compose up -d verdaccio athens docker-mirror apt-cacher devpi kellnr
 	@if [ -f $(AUTOSCALER_PID_FILE) ] && kill -0 "$$(cat $(AUTOSCALER_PID_FILE))" 2>/dev/null; then \
 		echo "$(YELLOW)Autoscaler already running on host (PID $$(cat $(AUTOSCALER_PID_FILE))).$(RESET)"; \
 	else \
-		echo "$(CYAN)Starting Autoscaler with Web Dashboard on host...$(RESET)"; \
-		set -a; . ./.env; set +a; \
-		PYTHONPATH=src nohup python3 -u src/autoscaler.py > $(AUTOSCALER_LOG_FILE) 2>&1 & \
+		echo "$(CYAN)Starting RunZero Go Engine with Web Dashboard on host...$(RESET)"; \
+		nohup ./bin/runzero -dist=web/dist > $(AUTOSCALER_LOG_FILE) 2>&1 & \
 		echo $$! > $(AUTOSCALER_PID_FILE); \
 	fi
 	@echo "$(GREEN)Host Autoscaler & Stack is running!$(RESET)"
@@ -393,31 +381,28 @@ clean-all: stop clean vm-clean-all clean-caches clean-images ## Complete nuclear
 reset-all: clean-all
 
 .PHONY: build-vm-base
-build-vm-base: ## Build the golden OrbStack VM base image (Docker/Node/nvm/.NET/Chrome/Playwright pre-installed) so ephemeral job VMs clone instantly instead of re-provisioning from scratch every run. Takes several minutes; run it once, and again whenever you change docker/provision-toolchain.sh.
-	@echo "$(CYAN)Building golden OrbStack VM base image(s) -- this takes several minutes...$(RESET)"
-	@for a in $$(if [ "$(RUNNER_ARCH)" = "both" ] || [ -z "$(RUNNER_ARCH)" ]; then echo "arm64 amd64"; else echo "$(RUNNER_ARCH)"; fi); do \
-		python3 -c "import sys; sys.path.insert(0, 'src'); from drivers.orbstack_vm_driver import OrbStackVMDriver; sys.exit(0 if OrbStackVMDriver().build_base_image('$$a') else 1)" || exit 1; \
-	done
+build-vm-base: build-go ## Build the golden OrbStack VM base image (Docker/Node/nvm/.NET/Chrome/Playwright pre-installed) so ephemeral job VMs clone instantly instead of re-provisioning from scratch every run. Takes several minutes; run it once, and again whenever you change docker/provision-toolchain.sh.
+	@echo "$(CYAN)Building golden OrbStack VM base image(s)...$(RESET)"
+	@./bin/runzero build-vm-base
 	@echo "$(GREEN)Golden VM base image(s) ready. Ephemeral VM-routed jobs will now clone instantly.$(RESET)"
 
 .PHONY: vm-rebuild-base
 vm-rebuild-base: build-vm-base ## Alias for build-vm-base -- use after changing docker/provision-toolchain.sh to refresh the golden image
 
 .PHONY: dev-setup
-dev-setup: ## Create .venv-dev with the pinned dev tooling from requirements-dev.txt
-	@echo "$(CYAN)Creating .venv-dev with pinned dev tooling...$(RESET)"
-	@python3 -m venv .venv-dev
-	@.venv-dev/bin/python -m pip install --quiet --upgrade pip
-	@.venv-dev/bin/python -m pip install --quiet -r requirements-dev.txt
-	@echo "$(GREEN).venv-dev ready. Quality gates: make check$(RESET)"
-
-.PHONY: check check-python check-shell check-go build-go
-check: check-go check-python check-shell ## Run every quality gate (the same set CI enforces)
+.PHONY: check check-go check-spec check-web check-shell build-go
+check: check-go check-spec check-web check-shell ## Run every quality gate (the same set CI enforces)
 	@echo "$(GREEN)All quality gates passed.$(RESET)"
 
-check-go: ## Go gates: go vet, go test with coverage
+check-go: ## Go gates: go vet, go test with race detector and coverage
 	go vet ./...
-	go test -cover ./...
+	go test -race -cover ./...
+
+check-spec: ## TypeSpec gate: compile API spec and check TypeScript types
+	@cd spec && pnpm run all
+
+check-web: ## Web dashboard gate: typecheck and build production dashboard
+	@cd web && pnpm run build
 
 build-go: ## Compile Go cloud-native daemon engine binary into bin/runzero
 	go build -o bin/runzero ./cmd/runzero
@@ -430,40 +415,9 @@ build-go-multiarch: ## Compile multi-architecture static Go binaries for darwin/
 	CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build -ldflags="-s -w" -o bin/runzero-linux-arm64 ./cmd/runzero
 	@echo "$(GREEN)Multi-architecture binaries compiled into bin/$(RESET)"
 
-check-python: ## Python gates: ruff lint + format, flake8, mypy, interrogate, pytest with 100% coverage
-	$(PY) -m ruff check src tests
-	$(PY) -m ruff format --check src tests
-	$(PY) -m flake8 src tests
-	$(PY) -m mypy src tests
-	$(PY) -m interrogate src
-	$(PY) -m pytest
-
 check-shell: ## Shell gates: bash -n + shellcheck on every maintained script
 	@for f in $(SHELL_SCRIPTS); do bash -n "$$f" || exit 1; done
 	shellcheck -x $(SHELL_SCRIPTS)
-
-.PHONY: test-suite
-test-suite: ## Run the Python quality gates inside a clean python:3.11-slim container
-	@echo "$(CYAN)Running Python quality gates in python:3.11-slim...$(RESET)"
-	@docker run --rm -v "$$(pwd):/app" -w /app python:3.11-slim bash -c "\
-		apt-get update -qq && apt-get install -y -qq --no-install-recommends make git > /dev/null && \
-		pip install --quiet -r requirements-dev.txt && \
-		make check-python PY=python"
-	@echo "$(GREEN)All tests passed with 0 warnings!$(RESET)"
-
-.PHONY: mutation-test
-mutation-test: ## Run differential mutation testing locally on changed files only
-	@echo "$(CYAN)Running differential mutation testing on changed files...$(RESET)"
-	$(PY) scripts/mutation_changed.py
-
-.PHONY: mutation-test-all
-mutation-test-all: ## Run mutation testing across all configured source paths
-	@echo "$(CYAN)Running mutation testing across all configured paths...$(RESET)"
-	$(PY) scripts/mutation_changed.py --all
-
-.PHONY: test
-test: ## Run local unit tests directly
-	$(PY) -m pytest
 
 .PHONY: e2e
 e2e: ## Run Playwright end-to-end tests for the web dashboard and static documentation site
@@ -489,12 +443,9 @@ pre-push: ## Run the RunZero pre-push quality guard manually
 	@bash scripts/pre-push.sh
 
 .PHONY: lint
-lint: ## Run ruff + Flake8 linters, Mypy type checker, and website Oxlint
-	@echo "$(CYAN)Running ruff + Flake8 linters...$(RESET)"
-	$(PY) -m ruff check src tests
-	$(PY) -m flake8 src tests
-	@echo "$(CYAN)Running Mypy type checker...$(RESET)"
-	$(PY) -m mypy src tests
+lint: ## Run Go vet, website Oxlint, and Shellcheck
+	@echo "$(CYAN)Running Go vet...$(RESET)"
+	go vet ./...
 	@echo "$(CYAN)Running website lint checks with Oxlint...$(RESET)"
 	@if command -v npm >/dev/null 2>&1; then \
 		(cd $(WEBSITE_DIR) && { npm ls oxlint >/dev/null 2>&1 || npm install; } && npm run lint); \
@@ -508,140 +459,67 @@ website-lint: ## Run Oxlint on website sources
 	@cd $(WEBSITE_DIR) && { npm ls oxlint >/dev/null 2>&1 || npm install; } && npm run lint
 
 .PHONY: deps-check
-deps-check: ## Check dependency update opportunities (Python env + website Node packages)
-	@echo "$(CYAN)Checking Python environment dependency updates...$(RESET)"
-	@if command -v python3 >/dev/null 2>&1; then \
-		python3 -m pip list --outdated --format=columns 2>/dev/null || echo "Unable to query Python package updates in current environment."; \
-	else \
-		echo "python3 not found; skipping Python dependency check."; \
-	fi
-	@echo "$(CYAN)Checking website Node package updates (npm outdated + ncu)...$(RESET)"
+deps-check: ## Check dependency update opportunities (Go modules + Web & Website Node packages)
+	@echo "$(CYAN)Checking Go module updates...$(RESET)"
+	@go list -u -m all 2>/dev/null || true
+	@echo "$(CYAN)Checking web dashboard dependencies (pnpm outdated)...$(RESET)"
+	@(cd web && pnpm outdated || true)
+	@echo "$(CYAN)Checking website Node package updates (npm outdated)...$(RESET)"
 	@if command -v npm >/dev/null 2>&1; then \
 		(cd $(WEBSITE_DIR) && npm outdated || true); \
-		if command -v ncu >/dev/null 2>&1; then \
-			(cd $(WEBSITE_DIR) && ncu); \
-		else \
-			(cd $(WEBSITE_DIR) && npx -y npm-check-updates); \
-		fi; \
-	else \
-		echo "npm not found; skipping Node dependency check."; \
 	fi
 
 .PHONY: deps-update
-deps-update: ## Apply dependency updates where possible (website package.json via ncu)
+deps-update: ## Apply dependency updates where possible (Go modules, web and website packages)
+	@echo "$(CYAN)Updating Go dependencies...$(RESET)"
+	@go get -u ./... && go mod tidy
+	@echo "$(CYAN)Updating web dashboard dependencies...$(RESET)"
+	@(cd web && pnpm update)
 	@echo "$(CYAN)Updating website Node dependencies...$(RESET)"
 	@if command -v npm >/dev/null 2>&1; then \
-		if command -v ncu >/dev/null 2>&1; then \
-			(cd $(WEBSITE_DIR) && ncu -u); \
-		else \
-			(cd $(WEBSITE_DIR) && npx -y npm-check-updates -u); \
-		fi; \
-		(cd $(WEBSITE_DIR) && npm install); \
-	else \
-		echo "npm not found; cannot update website dependencies automatically."; \
+		(cd $(WEBSITE_DIR) && npx -y npm-check-updates -u && npm install); \
 	fi
-	@echo "$(YELLOW)Python dependency updates are environment-specific; use your venv manager (pip/uv/poetry) to apply upgrades intentionally.$(RESET)"
 
 .PHONY: fmt-check
-fmt-check: ## Check formatting for Python and website sources
-	@echo "$(CYAN)Checking Python formatting...$(RESET)"
-	$(PY) -m ruff format --check src tests
+fmt-check: ## Check formatting for Go, web, and website sources
+	@echo "$(CYAN)Checking Go formatting...$(RESET)"
+	@test -z "$$(gofmt -l pkg cmd)" || (echo "Unformatted Go files:" && gofmt -l pkg cmd && exit 1)
 	@echo "$(CYAN)Checking website formatting with Prettier...$(RESET)"
 	@if command -v npm >/dev/null 2>&1; then \
 		(cd $(WEBSITE_DIR) && { npm ls prettier-plugin-astro >/dev/null 2>&1 || npm install; } && \
 			npm exec prettier -- --check "src/**/*.{astro,js,ts,css,md,json}" "public/**/*.{css,md,json}"); \
-	else \
-		echo "npm not found; skipping website format checks."; \
 	fi
 
 .PHONY: fmt
-fmt: ## Auto-format Python and website sources
-	@echo "$(CYAN)Formatting Python sources...$(RESET)"
-	$(PY) -m ruff format src tests
+fmt: ## Auto-format Go and website sources
+	@echo "$(CYAN)Formatting Go sources...$(RESET)"
+	@gofmt -s -w pkg cmd
 	@echo "$(CYAN)Formatting website sources with Prettier...$(RESET)"
 	@if command -v npm >/dev/null 2>&1; then \
 		(cd $(WEBSITE_DIR) && { npm ls prettier-plugin-astro >/dev/null 2>&1 || npm install; } && \
 			npm exec prettier -- --write "src/**/*.{astro,js,ts,css,md,json}" "public/**/*.{css,md,json}"); \
-	else \
-		echo "npm not found; skipping website auto-formatting."; \
 	fi
-
-.PHONY: nice
-nice: deps-check lint fmt-check ## Safe quality pass: check dependency updates + lint + format verification
-	@echo "$(GREEN)Nice pass complete.$(RESET)"
-
-.PHONY: super-nice
-super-nice: deps-update lint-fix fmt lint fmt-check ## Aggressive quality pass: update deps, auto-fix lint/format, then re-verify
-	@echo "$(GREEN)Super nice pass complete.$(RESET)"
-
-.PHONY: very-nice
-very-nice: super-nice ## Backward-compatible alias for super-nice
-	@echo "$(GREEN)Very nice pass complete (alias of super-nice).$(RESET)"
 
 .PHONY: pre-stage
 pre-stage: ## Format only currently changed (unstaged) files before git add
 	@echo "$(CYAN)Pre-staging: auto-formatting changed files before git add...$(RESET)"
-	@CHANGED=$$(git diff --name-only --diff-filter=ACM 2>/dev/null); \
-	if [ -z "$$CHANGED" ]; then \
-		echo "  $(YELLOW)No unstaged changes found.$(RESET)"; \
-	else \
-		echo "$$CHANGED" | while IFS= read -r file; do \
-			if [ -f "$$file" ]; then \
-				if [[ "$$OSTYPE" == "darwin"* ]]; then \
-					sed -i '' -E 's/[[:space:]]+$$//' "$$file" 2>/dev/null || true; \
-				else \
-					sed -i -E 's/[[:space:]]+$$//' "$$file" 2>/dev/null || true; \
-				fi; \
-			fi; \
-		done; \
-		PY_CHANGED=$$(echo "$$CHANGED" | grep -E '\.py$$' || true); \
-		if [ -n "$$PY_CHANGED" ]; then \
-			echo "  $(CYAN)→ Python files changed — running ruff fix...$(RESET)"; \
-			echo "$$PY_CHANGED" | xargs $(PY) -m ruff check --fix 2>/dev/null || true; \
-			echo "$$PY_CHANGED" | xargs $(PY) -m ruff format 2>/dev/null || true; \
-		fi; \
-		WEB_CHANGED=$$(echo "$$CHANGED" | grep -E '^website/.*\.(astro|js|mjs|ts|css|json|md)$$' || true); \
-		if [ -n "$$WEB_CHANGED" ]; then \
-			echo "  $(CYAN)→ Website files changed — running prettier --write...$(RESET)"; \
-			(cd $(WEBSITE_DIR) && npm exec prettier -- --write \
-				$$(echo "$$WEB_CHANGED" | sed 's|^website/||') 2>/dev/null) || true; \
-		fi; \
-		echo "  $(GREEN)✓ Changed files formatted. Ready for: git add$(RESET)"; \
+	@gofmt -s -w pkg cmd 2>/dev/null || true
+	@if command -v npm >/dev/null 2>&1; then \
+		(cd $(WEBSITE_DIR) && npm exec prettier -- --write "src/**/*.{astro,js,ts,css,md,json}" "public/**/*.{css,md,json}" 2>/dev/null) || true; \
 	fi
-
-.PHONY: lint-fix
-lint-fix: ## Auto-fix Python formatting and strip trailing whitespace
-	@echo "$(CYAN)Auto-fixing formatting and stripping trailing whitespace...$(RESET)"
-	@find src tests -name "*.py" -exec sed -i '' -E 's/[[:space:]]+$$//' {} + 2>/dev/null || true
-	$(PY) -m ruff check --fix src tests
-	$(PY) -m ruff format src tests
-	@echo "$(GREEN)Auto-fixes applied successfully.$(RESET)"
+	@echo "  $(GREEN)✓ Changed files formatted. Ready for: git add$(RESET)"
 
 .PHONY: run-dev
-run-dev: check-env init-cache ## Run local autoscaler in foreground for interactive debugging (native, full VM support)
+run-dev: check-env init-cache build-go build-ui ## Run local autoscaler in foreground for interactive debugging (Go engine + Vite UI)
 	@echo "$(CYAN)Starting caching proxy registries (Verdaccio, Athens, Docker mirror)...$(RESET)"
 	docker compose up -d
-	@echo "$(CYAN)Running Autoscaler in interactive foreground mode (native host process)...$(RESET)"
-	@set -a; . ./.env; set +a; PYTHONPATH=src python3 -u src/autoscaler.py
+	@echo "$(CYAN)Running Go engine in interactive foreground mode...$(RESET)"
+	@./bin/runzero -dist=web/dist
 
 
 
 
-.PHONY: mutation-report mutation-dashboard
-mutation-report: ## Export mutation stats and generate weekly trend dashboard artifacts
-	@echo "$(CYAN)Generating mutation trend dashboard artifacts...$(RESET)"
-	@mkdir -p reports/mutation
-	@PYTHONPATH=src $(PY) -m mutmut results > reports/mutation/mutmut-results.txt 2>/dev/null || true
-	@PYTHONPATH=src $(PY) -m mutmut export-cicd-stats >/dev/null 2>&1 || true
-	@$(PY) scripts/generate_mutation_report.py \
-		--stats mutants/mutmut-cicd-stats.json \
-		--results reports/mutation/mutmut-results.txt \
-		--history reports/mutation/history.json \
-		--output reports/mutation/latest.md
-	@echo "$(GREEN)Mutation dashboard generated at reports/mutation/latest.md$(RESET)"
 
-mutation-dashboard: mutation-report ## Alias for mutation-report
-	@true
 
 .PHONY: build-spec
 build-spec: ## Compile TypeSpec schema and generate TypeScript types

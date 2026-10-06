@@ -38,11 +38,12 @@ func NewDaemon(cfg *config.Config, version string, distDir, staticDir string) *D
 	poller := initPoller(cfg, pm, st)
 	instStore := driver.NewInstanceStore("instances.json")
 	runnerDriver := initDriver(cfg, instStore)
+	ghClient := github.NewClient(cfg.AccessToken, "", nil)
 
 	var srv *api.Server
 	if cfg.DashboardEnabled {
 		allowedHosts := []string{cfg.DashboardHost, "localhost", "127.0.0.1"}
-		srv = api.NewServer(cfg, st, distDir, staticDir, allowedHosts, 5*time.Second)
+		srv = api.NewServerWithDeps(cfg, st, distDir, staticDir, allowedHosts, 5*time.Second, ghClient, runnerDriver)
 	}
 
 	return &Daemon{
@@ -55,7 +56,7 @@ func NewDaemon(cfg *config.Config, version string, distDir, staticDir string) *D
 		instanceStore: instStore,
 		driver:        runnerDriver,
 		settingsMgr:   initSettings(cfg),
-		reaper:        initReaper(runnerDriver, github.NewClient(cfg.AccessToken, "", nil)),
+		reaper:        initReaper(runnerDriver, ghClient),
 	}
 }
 
