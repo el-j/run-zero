@@ -137,3 +137,36 @@ func TestOrbStackDriver_Errors(t *testing.T) {
 		t.Fatal("expected error on cleanup failure")
 	}
 }
+
+func TestOrbStackDriver_ParseLocalRunner(t *testing.T) {
+	listOutput := "local-runner-amd64-el-j-herbful-063160 running ubuntu jammy amd64 877.8 MB 192.168.139.219\nomv-dev stopped debian trixie arm64 12.7 GB\n"
+	mock := &mockCmdExecutor{
+		runFunc: func(ctx context.Context, name string, args ...string) ([]byte, error) {
+			if args[0] == "list" {
+				return []byte(listOutput), nil
+			}
+			return []byte("ok"), nil
+		},
+	}
+	o := NewOrbStackDriver(mock, nil, "")
+	runners, err := o.ListRunners(context.Background())
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(runners) != 1 {
+		t.Fatalf("expected 1 runner, got %d", len(runners))
+	}
+	r := runners[0]
+	if r.Name != "local-runner-amd64-el-j-herbful-063160" {
+		t.Errorf("unexpected name: %s", r.Name)
+	}
+	if r.TargetRepo != "el-j/herbful" {
+		t.Errorf("unexpected repo: %s", r.TargetRepo)
+	}
+	if r.TargetArch != "amd64" {
+		t.Errorf("unexpected arch: %s", r.TargetArch)
+	}
+	if r.ID != "063160" {
+		t.Errorf("unexpected id: %s", r.ID)
+	}
+}

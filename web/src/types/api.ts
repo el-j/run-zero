@@ -260,6 +260,14 @@ export interface components {
             /** Format: int32 */
             queue_position?: number | null;
             waiting_reason?: string;
+            run_url?: string;
+            runner_name?: string;
+            stages_done?: number;
+            stages_total?: number;
+            steps_completed?: number;
+            steps_total?: number;
+            current_step?: string;
+            progress_pct?: number;
         };
         /** @description Update payload for repository priority ordering and pause states */
         RepoPriorityAction: {
@@ -290,6 +298,14 @@ export interface components {
             run_id?: number;
             job_url?: string;
             run_url?: string;
+            job_name?: string;
+            workflow_name?: string;
+            stages_done?: number;
+            stages_total?: number;
+            steps_completed?: number;
+            steps_total?: number;
+            current_step?: string;
+            progress_pct?: number;
         };
         /** @description Generic success response */
         SuccessResponse: {

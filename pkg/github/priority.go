@@ -90,3 +90,22 @@ func (pm *PriorityManager) GetState() ([]string, []string) {
 	}
 	return prio, paused
 }
+
+// MergeDiscovered appends discovered repositories to the priority list if not already present.
+func (pm *PriorityManager) MergeDiscovered(discovered []string) {
+	pm.mu.Lock()
+	defer pm.mu.Unlock()
+
+	seen := make(map[string]bool)
+	for _, p := range pm.priority {
+		seen[strings.ToLower(p)] = true
+	}
+
+	for _, d := range discovered {
+		clean := strings.TrimSpace(d)
+		if clean != "" && !seen[strings.ToLower(clean)] {
+			seen[strings.ToLower(clean)] = true
+			pm.priority = append(pm.priority, clean)
+		}
+	}
+}

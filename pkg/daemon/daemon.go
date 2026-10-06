@@ -26,6 +26,7 @@ type Daemon struct {
 	driver        driver.RunnerDriver
 	settingsMgr   *settings.Manager
 	reaper        *reaper.Reaper
+	scaler        *Scaler
 }
 
 // NewDaemon initializes a new daemon instance.
@@ -46,6 +47,10 @@ func NewDaemon(cfg *config.Config, version string, distDir, staticDir string) *D
 		srv = api.NewServerWithDeps(cfg, st, distDir, staticDir, allowedHosts, 5*time.Second, ghClient, runnerDriver)
 	}
 
+	rec := github.NewReconciler(pm)
+	reaperInst := initReaper(runnerDriver, ghClient)
+	scaler := NewScaler(cfg, st, runnerDriver, ghClient, pm, rec, poller, reaperInst)
+
 	return &Daemon{
 		cfg:           cfg,
 		state:         st,
@@ -56,7 +61,8 @@ func NewDaemon(cfg *config.Config, version string, distDir, staticDir string) *D
 		instanceStore: instStore,
 		driver:        runnerDriver,
 		settingsMgr:   initSettings(cfg),
-		reaper:        initReaper(runnerDriver, ghClient),
+		reaper:        reaperInst,
+		scaler:        scaler,
 	}
 }
 
@@ -87,6 +93,9 @@ func (d *Daemon) SettingsManager() *settings.Manager { return d.settingsMgr }
 // Reaper returns the runner reaper instance.
 func (d *Daemon) Reaper() *reaper.Reaper { return d.reaper }
 
+// Scaler returns the background autoscaler engine.
+func (d *Daemon) Scaler() *Scaler { return d.scaler }
+
 // Start boots the control plane server and daemon components.
 func (d *Daemon) Start() error {
 	d.state.AppendLog(fmt.Sprintf("[Go Engine] 🚀 RunZero daemon v%s starting...", d.version))
@@ -104,7 +113,9 @@ func (d *Daemon) Run(ctx context.Context) error {
 	if err := d.Start(); err != nil {
 		return err
 	}
-	if d.poller != nil {
+	if d.scaler != nil {
+		go d.scaler.Start(ctx)
+	} else if d.poller != nil {
 		go d.poller.Start(ctx)
 	}
 	<-ctx.Done()

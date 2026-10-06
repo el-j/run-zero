@@ -4,36 +4,52 @@ import "time"
 
 // RunnerInfo contains metadata about an ephemeral runner instance.
 type RunnerInfo struct {
-	ID         string  `json:"id"`
-	Name       string  `json:"name"`
-	Status     string  `json:"status"`
-	State      string  `json:"state"`
-	TargetRepo string  `json:"target_repo"`
-	TargetArch string  `json:"target_arch"`
-	Backend    string  `json:"backend"`
-	CreatedAt  *string `json:"created_at,omitempty"`
-	JobID      *int64  `json:"job_id,omitempty"`
-	RunID      *int64  `json:"run_id,omitempty"`
-	JobURL     *string `json:"job_url,omitempty"`
-	RunURL     *string `json:"run_url,omitempty"`
+	ID             string  `json:"id"`
+	Name           string  `json:"name"`
+	Status         string  `json:"status"`
+	State          string  `json:"state"`
+	TargetRepo     string  `json:"target_repo"`
+	TargetArch     string  `json:"target_arch"`
+	Backend        string  `json:"backend"`
+	CreatedAt      *string `json:"created_at,omitempty"`
+	JobID          *int64  `json:"job_id,omitempty"`
+	RunID          *int64  `json:"run_id,omitempty"`
+	JobURL         *string `json:"job_url,omitempty"`
+	RunURL         *string `json:"run_url,omitempty"`
+	JobName        *string `json:"job_name,omitempty"`
+	WorkflowName   *string `json:"workflow_name,omitempty"`
+	StagesDone     *int    `json:"stages_done,omitempty"`
+	StagesTotal    *int    `json:"stages_total,omitempty"`
+	StepsCompleted *int    `json:"steps_completed,omitempty"`
+	StepsTotal     *int    `json:"steps_total,omitempty"`
+	CurrentStep    *string `json:"current_step,omitempty"`
+	ProgressPct    *int    `json:"progress_pct,omitempty"`
 }
 
-// QueuedJob describes a queued GitHub Actions workflow job.
+// QueuedJob describes a queued or active GitHub Actions workflow job.
 type QueuedJob struct {
-	ID            int64    `json:"id"`
-	RunID         int64    `json:"run_id"`
-	Name          string   `json:"name"`
-	WorkflowName  *string  `json:"workflow_name,omitempty"`
-	HeadBranch    *string  `json:"head_branch,omitempty"`
-	RunAttempt    *int     `json:"run_attempt,omitempty"`
-	Status        string   `json:"status"`
-	CreatedAt     *string  `json:"created_at,omitempty"`
-	StartedAt     *string  `json:"started_at,omitempty"`
-	Labels        []string `json:"labels"`
-	HTMLURL       string   `json:"html_url"`
-	Repo          string   `json:"repo"`
-	QueuePosition *int     `json:"queue_position,omitempty"`
-	WaitingReason *string  `json:"waiting_reason,omitempty"`
+	ID             int64    `json:"id"`
+	RunID          int64    `json:"run_id"`
+	Name           string   `json:"name"`
+	WorkflowName   *string  `json:"workflow_name,omitempty"`
+	HeadBranch     *string  `json:"head_branch,omitempty"`
+	RunAttempt     *int     `json:"run_attempt,omitempty"`
+	Status         string   `json:"status"`
+	CreatedAt      *string  `json:"created_at,omitempty"`
+	StartedAt      *string  `json:"started_at,omitempty"`
+	Labels         []string `json:"labels"`
+	HTMLURL        string   `json:"html_url"`
+	Repo           string   `json:"repo"`
+	QueuePosition  *int     `json:"queue_position,omitempty"`
+	WaitingReason  *string  `json:"waiting_reason,omitempty"`
+	RunURL         *string  `json:"run_url,omitempty"`
+	RunnerName     *string  `json:"runner_name,omitempty"`
+	StagesDone     *int     `json:"stages_done,omitempty"`
+	StagesTotal    *int     `json:"stages_total,omitempty"`
+	StepsCompleted *int     `json:"steps_completed,omitempty"`
+	StepsTotal     *int     `json:"steps_total,omitempty"`
+	CurrentStep    *string  `json:"current_step,omitempty"`
+	ProgressPct    *int     `json:"progress_pct,omitempty"`
 }
 
 // ActionsBilling contains GitHub Actions runner minutes statistics.

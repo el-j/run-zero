@@ -5,7 +5,23 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"sync"
+	"time"
 )
+
+var (
+	statsMu       sync.Mutex
+	lastCacheDir  string
+	lastStatsTime time.Time
+	cachedStats   CacheStats
+)
+
+// InvalidateStatsCache forces recalculation on next CalculateStats call.
+func InvalidateStatsCache() {
+	statsMu.Lock()
+	defer statsMu.Unlock()
+	lastStatsTime = time.Time{}
+}
 
 // CategoryUsage describes disk storage for a single cache category.
 type CategoryUsage struct {
@@ -52,6 +68,14 @@ func CalculateStats(hostCacheDir string) CacheStats {
 		return CacheStats{TotalBytes: 0, TotalHuman: "0 B", Categories: []CategoryUsage{}}
 	}
 
+	statsMu.Lock()
+	if hostCacheDir == lastCacheDir && time.Since(lastStatsTime) < 30*time.Second && cachedStats.TotalBytes > 0 {
+		res := cachedStats
+		statsMu.Unlock()
+		return res
+	}
+	statsMu.Unlock()
+
 	entries, err := os.ReadDir(hostCacheDir)
 	if err != nil {
 		return CacheStats{TotalBytes: 0, TotalHuman: "0 B", Categories: []CategoryUsage{}}
@@ -74,9 +98,17 @@ func CalculateStats(hostCacheDir string) CacheStats {
 		})
 	}
 
-	return CacheStats{
+	res := CacheStats{
 		TotalBytes: totalBytes,
 		TotalHuman: FormatBytes(totalBytes),
 		Categories: categories,
 	}
+
+	statsMu.Lock()
+	cachedStats = res
+	lastCacheDir = hostCacheDir
+	lastStatsTime = time.Now()
+	statsMu.Unlock()
+
+	return res
 }

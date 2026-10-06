@@ -18,6 +18,7 @@ type RunnerSpec struct {
 	Labels    []string
 	Token     string
 	CacheDir  string
+	Mounts    map[string]string
 	Env       map[string]string
 	Network   string
 	ImageName string

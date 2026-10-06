@@ -11,10 +11,10 @@ import (
 
 // DockerDriver manages ephemeral runners running as Docker containers.
 type DockerDriver struct {
-	executor      CmdExecutor
-	store         *InstanceStore
-	defaultImage  string
-	defaultNet    string
+	executor     CmdExecutor
+	store        *InstanceStore
+	defaultImage string
+	defaultNet   string
 }
 
 // NewDockerDriver creates a Docker runner driver.
@@ -47,12 +47,26 @@ func (d *DockerDriver) SpawnRunner(ctx context.Context, spec RunnerSpec) (*state
 
 	image := spec.ImageName
 	if image == "" {
-		image = d.defaultImage
+		if spec.Arch != "" {
+			image = fmt.Sprintf("local-github-runner:%s", spec.Arch)
+		} else {
+			image = d.defaultImage
+		}
 	}
 
-	args := []string{"run", "-d", "--name", name, "--label", "runzero=true"}
+	args := []string{"run", "-d", "--name", name}
+	if spec.Arch != "" {
+		args = append(args, "--platform", fmt.Sprintf("linux/%s", spec.Arch))
+	}
+	args = append(args, "--cap-add", "SYS_ADMIN")
+	args = append(args, "-v", "/var/run/docker.sock:/var/run/docker.sock")
+	args = append(args, "--label", "runzero=true")
+	args = append(args, "--label", "managed-by=local-autoscaler")
+	args = append(args, "--label", "backend=docker")
 	args = append(args, "--label", fmt.Sprintf("runzero.id=%s", spec.ID))
 	args = append(args, "--label", fmt.Sprintf("runzero.repo=%s", spec.Repo))
+	args = append(args, "--label", fmt.Sprintf("target-repo=%s", spec.Repo))
+	args = append(args, "--label", fmt.Sprintf("target-arch=%s", spec.Arch))
 
 	if spec.CPUs > 0 {
 		args = append(args, fmt.Sprintf("--cpus=%d", spec.CPUs))
@@ -72,8 +86,34 @@ func (d *DockerDriver) SpawnRunner(ctx context.Context, spec RunnerSpec) (*state
 	if spec.CacheDir != "" {
 		args = append(args, "-v", fmt.Sprintf("%s:/cache:rw", spec.CacheDir))
 	}
+	for hostP, contP := range spec.Mounts {
+		args = append(args, "-v", fmt.Sprintf("%s:%s:rw", hostP, contP))
+	}
 
+	envMap := make(map[string]string)
 	for k, v := range spec.Env {
+		envMap[k] = v
+	}
+	if spec.Token != "" && envMap["RUNNER_TOKEN"] == "" {
+		envMap["RUNNER_TOKEN"] = spec.Token
+	}
+	if envMap["RUNNER_NAME"] == "" {
+		envMap["RUNNER_NAME"] = name
+	}
+	if spec.Repo != "" && envMap["REPO"] == "" {
+		envMap["REPO"] = spec.Repo
+	}
+	if len(spec.Labels) > 0 && envMap["RUNNER_LABELS"] == "" {
+		envMap["RUNNER_LABELS"] = strings.Join(spec.Labels, ",")
+	}
+	if envMap["EPHEMERAL"] == "" {
+		envMap["EPHEMERAL"] = "true"
+	}
+	if envMap["RUNNER_WORKDIR"] == "" {
+		envMap["RUNNER_WORKDIR"] = "_work"
+	}
+
+	for k, v := range envMap {
 		args = append(args, "-e", fmt.Sprintf("%s=%s", k, v))
 	}
 

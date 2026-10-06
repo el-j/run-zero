@@ -8,6 +8,7 @@ import (
 
 // Purge removes cached files based on category, repo scope, or entire host cache directory.
 func Purge(hostCacheDir string, category, repo string, all bool) error {
+	defer InvalidateStatsCache()
 	if strings.TrimSpace(hostCacheDir) == "" {
 		return nil
 	}

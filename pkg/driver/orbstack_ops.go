@@ -21,8 +21,15 @@ func (o *OrbStackDriver) ListRunners(ctx context.Context) ([]state.RunnerInfo, e
 // StopRunner stops and deletes an OrbStack runner machine.
 func (o *OrbStackDriver) StopRunner(ctx context.Context, runnerID string) error {
 	name := runnerID
-	if !strings.HasPrefix(name, "runzero-") {
-		name = fmt.Sprintf("runzero-%s", runnerID)
+	if !strings.HasPrefix(name, "runzero-") && !strings.HasPrefix(name, "local-runner-") {
+		if o.store != nil {
+			if r, ok := o.store.Get(runnerID); ok && r.Name != "" {
+				name = r.Name
+			}
+		}
+		if !strings.HasPrefix(name, "runzero-") && !strings.HasPrefix(name, "local-runner-") {
+			name = fmt.Sprintf("runzero-%s", runnerID)
+		}
 	}
 
 	_, _ = o.executor.Run(ctx, "orbctl", "stop", name)
@@ -63,7 +70,7 @@ func parseOrbctlList(output string) []state.RunnerInfo {
 			continue
 		}
 		name := fields[0]
-		if !strings.HasPrefix(name, "runzero-") {
+		if !strings.HasPrefix(name, "runzero-") && !strings.HasPrefix(name, "local-runner-") {
 			continue
 		}
 
@@ -72,13 +79,39 @@ func parseOrbctlList(output string) []state.RunnerInfo {
 			status = fields[1]
 		}
 
-		id := strings.TrimPrefix(name, "runzero-")
+		id := name
+		targetRepo := ""
+		targetArch := ""
+
+		if strings.HasPrefix(name, "runzero-") {
+			id = strings.TrimPrefix(name, "runzero-")
+		} else if strings.HasPrefix(name, "local-runner-") {
+			// Expected format: local-runner-[arch]-[owner]-[repo]-[id]
+			// e.g. local-runner-amd64-el-j-herbful-063160
+			trimmed := strings.TrimPrefix(name, "local-runner-")
+			parts := strings.Split(trimmed, "-")
+			if len(parts) >= 3 {
+				targetArch = parts[0]
+				id = parts[len(parts)-1]
+				repoPart := strings.Join(parts[1:len(parts)-1], "-")
+				if strings.HasPrefix(repoPart, "el-j-") {
+					targetRepo = "el-j/" + strings.TrimPrefix(repoPart, "el-j-")
+				} else if idx := strings.Index(repoPart, "-"); idx != -1 {
+					targetRepo = repoPart[:idx] + "/" + repoPart[idx+1:]
+				} else {
+					targetRepo = repoPart
+				}
+			}
+		}
+
 		runners = append(runners, state.RunnerInfo{
-			ID:      id,
-			Name:    name,
-			Status:  status,
-			State:   status,
-			Backend: "orbstack",
+			ID:         id,
+			Name:       name,
+			Status:     status,
+			State:      status,
+			TargetRepo: targetRepo,
+			TargetArch: targetArch,
+			Backend:    "orbstack",
 		})
 	}
 	return runners

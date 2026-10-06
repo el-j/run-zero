@@ -3,6 +3,7 @@ package github
 import (
 	"context"
 	"fmt"
+	"strings"
 	"sync"
 	"time"
 
@@ -14,6 +15,7 @@ type Poller struct {
 	client       *Client
 	reconciler   *Reconciler
 	state        *state.State
+	repoMu       sync.RWMutex
 	repos        []string
 	pollInterval time.Duration
 	concurrency  int
@@ -46,16 +48,40 @@ func NewPoller(
 	}
 }
 
+// SetRepos dynamically updates the monitored repositories list.
+func (p *Poller) SetRepos(repos []string) {
+	p.repoMu.Lock()
+	defer p.repoMu.Unlock()
+	cleaned := make([]string, 0, len(repos))
+	for _, r := range repos {
+		trimmed := strings.TrimSpace(r)
+		if trimmed != "" {
+			cleaned = append(cleaned, trimmed)
+		}
+	}
+	p.repos = cleaned
+}
+
+// Repos returns the currently monitored repositories list.
+func (p *Poller) Repos() []string {
+	p.repoMu.RLock()
+	defer p.repoMu.RUnlock()
+	out := make([]string, len(p.repos))
+	copy(out, p.repos)
+	return out
+}
+
 // PollOnce executes a single poll cycle across all tracked repositories.
 func (p *Poller) PollOnce(ctx context.Context) error {
 	var mu sync.Mutex
 	var allJobs []state.QueuedJob
 	var pollErrors []error
 
+	targetRepos := p.Repos()
 	sem := make(chan struct{}, p.concurrency)
 	var wg sync.WaitGroup
 
-	for _, repo := range p.repos {
+	for _, repo := range targetRepos {
 		wg.Add(1)
 		go func(r string) {
 			defer wg.Done()

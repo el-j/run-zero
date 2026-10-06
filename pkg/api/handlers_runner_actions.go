@@ -1,13 +1,27 @@
 package api
 
 import (
+	"crypto/rand"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"strings"
+	"time"
 
+	"github.com/el-j/run-zero/pkg/config"
 	"github.com/el-j/run-zero/pkg/driver"
+	"github.com/el-j/run-zero/pkg/github"
 	"github.com/el-j/run-zero/pkg/state"
 )
+
+func randomHex(bytesLen int) string {
+	b := make([]byte, bytesLen)
+	if _, err := rand.Read(b); err != nil {
+		return fmt.Sprintf("%06x", time.Now().UnixNano()%0xFFFFFF)
+	}
+	return hex.EncodeToString(b)
+}
 
 type RunnerActionPayload struct {
 	RunnerID string `json:"runner_id,omitempty"`
@@ -17,6 +31,10 @@ type RunnerActionPayload struct {
 }
 
 func handleRunnerAction(st *state.State, runnerDriver ...driver.RunnerDriver) http.HandlerFunc {
+	return handleRunnerActionWithDeps(st, nil, nil, runnerDriver...)
+}
+
+func handleRunnerActionWithDeps(st *state.State, cfg *config.Config, ghClient *github.Client, runnerDriver ...driver.RunnerDriver) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodPost {
 			writeError(w, http.StatusMethodNotAllowed, "Method not allowed")
@@ -41,6 +59,68 @@ func handleRunnerAction(st *state.State, runnerDriver ...driver.RunnerDriver) ht
 			st.SetAutoscalerStatus("paused")
 		} else if payload.Action == "resume" {
 			st.SetAutoscalerStatus("running")
+		}
+
+		if payload.Action == "start" && len(runnerDriver) > 0 && runnerDriver[0] != nil && ghClient != nil {
+			targetRepo := payload.Repo
+			if targetRepo == "" {
+				snap := st.GetSnapshot()
+				if len(snap.RepoPriority) > 0 {
+					targetRepo = snap.RepoPriority[0]
+				}
+			}
+			if targetRepo == "" {
+				writeError(w, http.StatusBadRequest, "No repository specified for runner start")
+				return
+			}
+
+			targetArch := payload.Arch
+			if targetArch == "" {
+				targetArch = "amd64"
+			}
+
+			token, err := ghClient.CreateRegistrationToken(r.Context(), targetRepo, "")
+			if err != nil {
+				st.AppendLog(fmt.Sprintf("[Go Engine] ❌ Failed to get registration token for %s: %v", targetRepo, err))
+				writeError(w, http.StatusInternalServerError, fmt.Sprintf("Failed to get registration token: %v", err))
+				return
+			}
+
+			id := randomHex(3)
+			name := fmt.Sprintf("local-runner-%s-%s-%s", targetArch, strings.ReplaceAll(targetRepo, "/", "-"), id)
+			spec := driver.RunnerSpec{
+				ID:       id,
+				Name:     name,
+				Repo:     targetRepo,
+				Arch:     targetArch,
+				Backend:  "docker",
+				Labels:   []string{"self-hosted", "local", targetArch},
+				Token:    token,
+				CPUs:     3,
+				MemoryMB: 4096,
+				Network:  "host",
+			}
+			if cfg != nil {
+				if cfg.RunnerCPUs > 0 {
+					spec.CPUs = cfg.RunnerCPUs
+				}
+				spec.CacheDir = cfg.HostCacheDir
+			}
+
+			info, err := runnerDriver[0].SpawnRunner(r.Context(), spec)
+			if err != nil {
+				st.AppendLog(fmt.Sprintf("[Go Engine] ❌ Failed to manually spawn runner: %v", err))
+				writeError(w, http.StatusInternalServerError, fmt.Sprintf("Failed to spawn runner: %v", err))
+				return
+			}
+			st.AppendLog(fmt.Sprintf("[Go Engine] 🚀 Manually spawned runner %s for %s (%s)", name, targetRepo, targetArch))
+			writeJSON(w, http.StatusOK, map[string]interface{}{
+				"ok":        true,
+				"runner_id": info.ID,
+				"name":      info.Name,
+				"message":   fmt.Sprintf("Runner '%s' spawned for %s", name, targetRepo),
+			})
+			return
 		}
 
 		if payload.Action == "stop" && len(runnerDriver) > 0 && runnerDriver[0] != nil && payload.RunnerID != "" {

@@ -60,7 +60,7 @@ func NewServerWithDeps(
 	// Actions
 	mux.HandleFunc("/api/actions/repo-priority", handleRepoPriority(st))
 	mux.HandleFunc("/api/actions/workflow", handleWorkflowAction(st, ghClient))
-	mux.HandleFunc("/api/actions/runner", handleRunnerAction(st, runnerDriver))
+	mux.HandleFunc("/api/actions/runner", handleRunnerActionWithDeps(st, cfg, ghClient, runnerDriver))
 	mux.HandleFunc("/api/actions/prune", handlePrune(st))
 
 	// Real-time SSE

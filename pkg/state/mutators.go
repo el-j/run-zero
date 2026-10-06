@@ -77,3 +77,12 @@ func (s *State) SetRateLimit(remaining *int, limit *int) {
 
 	s.broker.Broadcast(Event{Type: "state", Data: s.GetSnapshot()})
 }
+
+// SetActionsBilling updates the GitHub Actions billing usage statistics.
+func (s *State) SetActionsBilling(billing *ActionsBilling) {
+	s.mu.Lock()
+	s.actionsBilling = billing
+	s.mu.Unlock()
+
+	s.broker.Broadcast(Event{Type: "state", Data: s.GetSnapshot()})
+}

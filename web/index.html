@@ -1,33 +1,814 @@
 <!DOCTYPE html>
 <html lang="en">
-  <head>
-    <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>RunZero · Cloud-Native CI Control Plane</title>
-    <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>⚡</text></svg>" />
-    <meta name="description" content="RunZero Autoscaler and Control Plane for GitHub Actions" />
-  </head>
-  <body>
-    <div class="app-container">
-      <div id="header-root"></div>
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>RunZero — Fleet Management &amp; Real-Time Observability</title>
+  <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>⚡</text></svg>" />
+  <link rel="stylesheet" href="/src/styles/theme.css">
+</head>
+<body class="theme-dark">
+  <!-- Ambient Atmospheric Light Elements matching Landing Page -->
+  <div class="ambient-glow ambient-crimson" aria-hidden="true"></div>
+  <div class="ambient-glow ambient-solar" aria-hidden="true"></div>
+  <div class="ambient-glow ambient-cyan" aria-hidden="true"></div>
 
-      <main id="content-root">
-        <!-- Fleet & Queue View -->
-        <div id="tab-fleet-section">
-          <div id="capacity-root"></div>
-          <div id="queue-root"></div>
-          <div id="priority-root"></div>
-          <div id="fleet-root"></div>
+  <!-- Top Navigation & Global Header -->
+  <header class="app-header">
+    <div class="header-left">
+      <div class="logo-group">
+        <div class="logo-icon">
+          <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+            <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"></polygon>
+          </svg>
         </div>
-
-        <!-- Live Settings View -->
-        <div id="settings-root" style="display: none;"></div>
-
-        <!-- Cache Control Plane View -->
-        <div id="cache-root" style="display: none;"></div>
-      </main>
+        <div class="logo-text">
+          <span class="brand-title">RunZero</span>
+          <span class="brand-subtitle">// FLEET_MANAGEMENT_CONSOLE</span>
+        </div>
+      </div>
+      <div id="connection-status-badge" class="badge badge-pulse">
+        <span class="beacon-dot"></span>
+        <span id="connection-status-text">CONNECTING</span>
+      </div>
     </div>
 
-    <script type="module" src="/src/main.ts"></script>
-  </body>
+    <div class="header-right">
+      <div class="header-stat-box">
+        <span class="stat-label">API Quota</span>
+        <div class="stat-val-group">
+          <span id="stat-rate-limit" class="stat-value font-mono">--/--</span>
+          <div class="quota-bar-wrapper">
+            <div id="stat-rate-limit-bar" class="quota-bar" style="width: 0%;"></div>
+          </div>
+        </div>
+        <span id="stat-rate-meta" class="stat-meta font-mono">used -- • reset --:--:-- • unknown</span>
+      </div>
+
+      <div class="header-stat-box">
+        <span class="stat-label">Uptime</span>
+        <span id="stat-uptime" class="stat-value font-mono">00:00:00</span>
+      </div>
+
+      <div class="header-stat-box">
+        <span class="stat-label">Engine</span>
+        <span id="stat-default-engine" class="stat-badge badge-cyan">DOCKER</span>
+      </div>
+
+      <div class="header-stat-box">
+        <span class="stat-label">Version</span>
+        <span id="stat-version" class="stat-badge badge-neutral font-mono">v…</span>
+      </div>
+
+      <div class="header-stat-box" id="bridge-drift-box" hidden>
+        <span class="stat-label">Bridge</span>
+        <span id="stat-bridge-drift" class="stat-badge badge-danger font-mono">STALE</span>
+      </div>
+
+      <button id="btn-open-settings" class="btn btn-sm btn-outline font-mono" title="Open live daemon configuration plane" style="display: flex; align-items: center; gap: 6px;">
+        <span>⚙️</span>
+        <span>SETTINGS</span>
+      </button>
+
+      <a href="https://el-j.github.io/run-zero/" target="_blank" rel="noopener noreferrer" class="btn-docs-link">
+        <span>DOCS</span>
+        <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"></path>
+          <polyline points="15 3 21 3 21 9"></polyline>
+          <line x1="10" y1="14" x2="21" y2="3"></line>
+        </svg>
+      </a>
+    </div>
+  </header>
+
+  <!-- Main Observability Layout -->
+  <main class="dashboard-container">
+    <!-- Top Level KPI Metrics Bar -->
+    <section class="kpi-grid" aria-label="Key Performance Indicators">
+      <div class="kpi-card" id="kpi-runners-card">
+        <div class="kpi-icon-wrap icon-cyan">
+          <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <circle cx="12" cy="12" r="10"></circle>
+            <polyline points="12 6 12 12 16 14"></polyline>
+          </svg>
+        </div>
+        <div class="kpi-content">
+          <span class="kpi-title">Active Fleet</span>
+          <div class="kpi-value-row">
+            <span id="kpi-active-runners" class="kpi-num">0</span>
+            <span class="kpi-subnum" id="kpi-max-runners">/ 3 max</span>
+          </div>
+          <div class="kpi-track">
+            <div id="kpi-runners-bar" class="kpi-progress-bar cyan" style="width: 0%;"></div>
+          </div>
+          <span class="kpi-subtext" id="kpi-min-runners-text">// 0 idle standby</span>
+          <span class="kpi-subtext" id="kpi-runner-sizing" title="Per-runner CPU/memory limit">// sizing …</span>
+        </div>
+      </div>
+
+      <div class="kpi-card" id="kpi-queue-card">
+        <div class="kpi-icon-wrap icon-amber">
+          <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M5 22h14"></path>
+            <path d="M5 2h14"></path>
+            <path d="M17 22v-4.172a2 2 0 0 0-.586-1.414L12 12l-4.414 4.414A2 2 0 0 0 7 17.828V22"></path>
+            <path d="M7 2v4.172a2 2 0 0 0 .586 1.414L12 12l4.414-4.414A2 2 0 0 0 17 6.172V2"></path>
+          </svg>
+        </div>
+        <div class="kpi-content">
+          <span class="kpi-title">Queued Jobs</span>
+          <div class="kpi-value-row">
+            <span id="kpi-queued-jobs" class="kpi-num">0</span>
+            <span class="kpi-subnum">pending</span>
+          </div>
+          <div class="kpi-track">
+            <div id="kpi-queue-bar" class="kpi-progress-bar amber" style="width: 0%;"></div>
+          </div>
+          <span class="kpi-subtext" id="kpi-repos-monitored">// Across 0 tracked repos</span>
+        </div>
+      </div>
+
+      <div class="kpi-card" id="kpi-routing-card">
+        <div class="kpi-icon-wrap icon-purple">
+          <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <line x1="6" y1="3" x2="6" y2="15"></line>
+            <circle cx="18" cy="6" r="3"></circle>
+            <circle cx="6" cy="18" r="3"></circle>
+            <path d="M18 9a9 9 0 0 1-9 9"></path>
+          </svg>
+        </div>
+        <div class="kpi-content">
+          <span class="kpi-title">Hybrid Routing</span>
+          <div class="kpi-value-row">
+            <span id="kpi-vm-ratio" class="kpi-num">0%</span>
+            <span class="kpi-subnum">VM routed</span>
+          </div>
+          <div class="kpi-track">
+            <div id="kpi-routing-bar" class="kpi-progress-bar purple" style="width: 0%;"></div>
+          </div>
+          <span class="kpi-subtext" id="kpi-routing-sub">// Auto-detect DIND &amp; Services</span>
+        </div>
+      </div>
+
+      <div class="kpi-card" id="kpi-cache-card">
+        <div class="kpi-icon-wrap icon-emerald">
+          <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <rect x="2" y="2" width="20" height="8" rx="2" ry="2"></rect>
+            <rect x="2" y="14" width="20" height="8" rx="2" ry="2"></rect>
+            <line x1="6" y1="6" x2="6.01" y2="6"></line>
+            <line x1="6" y1="18" x2="6.01" y2="18"></line>
+          </svg>
+        </div>
+        <div class="kpi-content">
+          <span class="kpi-title">Host Cache Storage</span>
+          <div class="kpi-value-row">
+            <span id="kpi-cache-size" class="kpi-num">0 B</span>
+            <span class="kpi-subnum">saved</span>
+          </div>
+          <div class="kpi-track">
+            <div id="kpi-cache-bar" class="kpi-progress-bar emerald" style="width: 100%;"></div>
+          </div>
+          <span class="kpi-subtext">// Shared Multi-Language Cache</span>
+        </div>
+      </div>
+    </section>
+
+    <!-- Main Grid: Fleet & Telemetry -->
+    <div class="content-grid">
+      <!-- Left Column: Unified Master Fleet & Queue Panel -->
+      <div class="grid-col main-col">
+        <section class="panel" id="panel-fleet-control">
+          <div class="master-tabs-header">
+            <div class="tabs-group" role="tablist">
+              <button id="tab-btn-runners" class="tab-btn active" role="tab" data-tab="runners">
+                <span>🚀 RUNNERS</span>
+                <span class="badge font-mono" id="tab-runners-count">0</span>
+              </button>
+              <button id="tab-btn-queue" class="tab-btn" role="tab" data-tab="queue">
+                <span>⏱️ JOB QUEUE</span>
+                <span class="badge font-mono" id="tab-queue-count">0</span>
+              </button>
+              <button id="tab-btn-repos" class="tab-btn" role="tab" data-tab="repos">
+                <span>🔀 REPO PRIORITY</span>
+                <span class="badge font-mono" id="tab-repos-count">0</span>
+              </button>
+            </div>
+
+            <div class="panel-header-controls">
+              <!-- View Mode Toggle -->
+              <div class="view-mode-toggle" title="Switch between Card Grid and Compact Styled Table">
+                <button id="view-mode-cards" class="btn-toggle active" data-mode="cards" title="Visual Cards">⊞ Cards</button>
+                <button id="view-mode-table" class="btn-toggle" data-mode="table" title="Compact Table">☰ Table</button>
+              </div>
+
+              <!-- Context Actions based on Tab -->
+              <div id="tab-actions-runners" class="tab-action-group">
+                <button id="btn-prune-runners" class="btn btn-xs btn-outline font-mono">Prune Dead</button>
+                <button id="btn-start-runner" class="btn btn-xs btn-crimson font-mono">+ Start Runner</button>
+              </div>
+              <div id="tab-actions-queue" class="tab-action-group hidden">
+                <div class="queue-status-tag font-mono">
+                  <span id="queue-slots-badge">0/3 SLOTS</span>
+                </div>
+              </div>
+              <div id="tab-actions-repos" class="tab-action-group hidden">
+                <input type="text" id="repo-search-input" class="form-input font-mono" placeholder="Filter repos..." style="padding: 4px 8px; font-size: 11px; width: 140px;" />
+              </div>
+            </div>
+          </div>
+
+          <div class="master-panel-body">
+            <!-- TAB 1: RUNNERS -->
+            <div id="tab-content-runners" class="tab-content-pane">
+              <!-- Cards View -->
+              <div id="runners-cards-view" class="cards-view">
+                <div id="runners-empty-state" class="empty-state">
+                  <div class="radar-container" aria-hidden="true">
+                    <div class="radar-ring ring-1"></div>
+                    <div class="radar-ring ring-2"></div>
+                    <div class="radar-ring ring-3"></div>
+                    <div class="radar-sweep"></div>
+                    <div class="radar-center-dot"></div>
+                  </div>
+                  <h3 class="empty-title">Fleet is on Standby</h3>
+                  <p class="empty-desc">
+                    Zero active runner containers or VMs right now. As soon as a GitHub Actions workflow queues,
+                    the autoscaler will spawn an ephemeral runner instantaneously.
+                  </p>
+                  <div class="empty-telemetry-tags">
+                    <span class="tech-chip">READY: ~0.3s BOOT</span>
+                    <span class="tech-chip solar">STANDBY POOL IDLE</span>
+                    <span class="tech-chip crimson">AUTO-ROUTER ONLINE</span>
+                  </div>
+                </div>
+                <div id="runners-grid" class="runners-grid hidden"></div>
+              </div>
+
+              <!-- Table View -->
+              <div id="runners-table-view" class="table-view hidden">
+                <table class="data-table">
+                  <thead>
+                    <tr>
+                      <th>RUNNER NAME &amp; ID</th>
+                      <th>REPOSITORY</th>
+                      <th>ENGINE / ARCH</th>
+                      <th>STATUS</th>
+                      <th>ASSIGNED GITHUB RUN &amp; PROGRESS</th>
+                      <th>UPTIME</th>
+                      <th style="text-align: right;">ACTION</th>
+                    </tr>
+                  </thead>
+                  <tbody id="runners-table-body"></tbody>
+                </table>
+                <div id="runners-table-empty" class="empty-state" style="padding: 30px;">No active runners running.</div>
+              </div>
+            </div>
+
+            <!-- TAB 2: JOB QUEUE -->
+            <div id="tab-content-queue" class="tab-content-pane hidden">
+              <!-- Capacity and Dispatch Notice -->
+              <div class="queue-steering-header" style="margin-bottom: 12px;">
+                <div class="queue-capacity-banner">
+                  <div class="queue-capacity-item">
+                    <span class="stat-label">Active Runners:</span>
+                    <span class="font-mono stat-value-sm" id="queue-busy-slots">0</span>
+                  </div>
+                  <div class="queue-capacity-item">
+                    <span class="stat-label">Max Concurrency:</span>
+                    <span class="font-mono stat-value-sm" id="queue-max-slots">3</span>
+                  </div>
+                  <div class="queue-capacity-item">
+                    <span class="stat-label">Free Slots:</span>
+                    <span id="queue-free-slots" class="font-mono stat-value-sm highlight-emerald">3</span>
+                  </div>
+                  <div class="queue-capacity-item">
+                    <span class="stat-label">Total Queued:</span>
+                    <span id="queue-total-jobs" class="font-mono stat-value-sm highlight-amber">0</span>
+                  </div>
+                </div>
+              </div>
+
+              <!-- Cards View -->
+              <div id="queue-cards-view" class="cards-view">
+                <div id="queue-jobs-view" class="queue-jobs-view">
+                  <div class="empty-substate">Queue is clear — no pending workflow jobs.</div>
+                </div>
+              </div>
+
+              <!-- Table View -->
+              <div id="queue-table-view" class="table-view hidden">
+                <table class="data-table">
+                  <thead>
+                    <tr>
+                      <th style="width: 50px;">POS</th>
+                      <th>STATUS</th>
+                      <th>JOB &amp; WORKFLOW</th>
+                      <th>ASSIGNED RUN (GITHUB)</th>
+                      <th>REPO &amp; BRANCH</th>
+                      <th>STAGES / PROGRESS</th>
+                      <th>WAIT / ELAPSED</th>
+                      <th style="text-align: right;">CONTROLS</th>
+                    </tr>
+                  </thead>
+                  <tbody id="queue-table-body"></tbody>
+                </table>
+                <div id="queue-table-empty" class="empty-state" style="padding: 30px;">Queue is clear — no pending workflow jobs.</div>
+              </div>
+            </div>
+
+            <!-- TAB 3: REPO PRIORITY -->
+            <div id="tab-content-repos" class="tab-content-pane hidden">
+              <div class="queue-hint-box" style="margin-bottom: 12px;">
+                <span class="hint-icon">ℹ️</span>
+                <span>Free runner slots are allocated to higher-priority repositories first. Reorder using <code class="font-mono">▲</code>/<code class="font-mono">▼</code> or drag handle. Click <b class="font-mono">Pause</b> to hold a repo's jobs in queue.</span>
+              </div>
+
+              <!-- Cards / List View -->
+              <div id="repos-cards-view" class="cards-view">
+                <div id="repos-list" class="repos-list">
+                  <div class="empty-substate">Discovering active repositories...</div>
+                </div>
+              </div>
+
+              <!-- Table View -->
+              <div id="repos-table-view" class="table-view hidden">
+                <table class="data-table">
+                  <thead>
+                    <tr>
+                      <th style="width: 60px;">RANK</th>
+                      <th>REPOSITORY</th>
+                      <th>STATUS</th>
+                      <th>ACTIVE / QUEUED JOBS</th>
+                      <th style="text-align: right;">ACTIONS</th>
+                    </tr>
+                  </thead>
+                  <tbody id="repos-table-body"></tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+        </section>
+      </div>
+
+      <!-- Right Column: Telemetry & Controls -->
+      <div class="grid-col side-col">
+        <!-- Hybrid Routing Telemetry Breakdown -->
+        <section class="panel" id="panel-routing-telemetry">
+          <div class="panel-header">
+            <div class="panel-title-group">
+              <span class="tag-accent">//</span>
+              <h2 class="panel-title">Hybrid Routing Telemetry</h2>
+            </div>
+          </div>
+          <div class="panel-body">
+            <div class="routing-summary-bar">
+              <div class="routing-seg-docker" id="bar-docker-jobs" style="width: 100%;"></div>
+              <div class="routing-seg-vm" id="bar-vm-jobs" style="width: 0%;"></div>
+            </div>
+            <div class="routing-legend">
+              <div class="legend-item">
+                <span class="legend-dot dot-cyan"></span>
+                <span>Docker Containers: <b id="cnt-docker-jobs" class="font-mono">0</b></span>
+              </div>
+              <div class="legend-item">
+                <span class="legend-dot dot-purple"></span>
+                <span>Dedicated VMs: <b id="cnt-vm-jobs" class="font-mono">0</b></span>
+              </div>
+            </div>
+
+            <div class="trigger-breakdown">
+              <h4 class="subheading">// VM TRIGGER DETECTIONS</h4>
+              <div class="trigger-item">
+                <span class="trig-name">Services &amp; DBs (<code>postgres</code>, <code>redis</code>)</span>
+                <span class="trigger-val font-mono" id="trig-services">0</span>
+              </div>
+              <div class="trigger-item">
+                <span class="trig-name">Docker-in-Docker (<code>dind</code>)</span>
+                <span class="trigger-val font-mono" id="trig-dind">0</span>
+              </div>
+              <div class="trigger-item">
+                <span class="trig-name">Browser &amp; Lighthouse Tests</span>
+                <span class="trigger-val font-mono" id="trig-browser">0</span>
+              </div>
+              <div class="trigger-item">
+                <span class="trig-name">E2E &amp; Integration</span>
+                <span class="trigger-val font-mono" id="trig-e2e">0</span>
+              </div>
+              <div class="trigger-item">
+                <span class="trig-name">Systemd &amp; Daemons</span>
+                <span class="trigger-val font-mono" id="trig-systemd">0</span>
+              </div>
+              <div class="trigger-item">
+                <span class="trig-name">Custom VM Runs-On Label</span>
+                <span class="trigger-val font-mono" id="trig-custom">0</span>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <!-- Proxy Registries & Cache Analytics -->
+        <section class="panel" id="panel-cache-analytics">
+          <div class="panel-header">
+            <div class="panel-title-group">
+              <span class="tag-accent">//</span>
+              <h2 class="panel-title">Cache Analytics &amp; Purge</h2>
+            </div>
+            <button id="btn-purge-all-caches" class="btn btn-sm btn-crimson">
+              <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2.5">
+                <path d="M3 6h18"></path>
+                <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"></path>
+              </svg>
+              <span>Purge All</span>
+            </button>
+          </div>
+          <div class="panel-body">
+            <div class="cache-list" id="cache-rows-container">
+              <div class="cache-row">
+                <div class="cache-info">
+                  <div class="cache-meta">
+                    <span class="cache-name">Docker Build Cache</span>
+                    <span class="cache-size font-mono" id="sz-build-cache">0 B</span>
+                  </div>
+                  <div class="cache-mini-track">
+                    <div id="bar-cache-build-cache" class="cache-mini-fill" style="width: 20%;"></div>
+                  </div>
+                </div>
+                <button class="btn btn-xs btn-outline" data-purge-category="build-cache">Clear</button>
+              </div>
+
+              <div class="cache-row">
+                <div class="cache-info">
+                  <div class="cache-meta">
+                    <span class="cache-name">pnpm store</span>
+                    <span class="cache-size font-mono" id="sz-pnpm">0 B</span>
+                  </div>
+                  <div class="cache-mini-track">
+                    <div id="bar-cache-pnpm" class="cache-mini-fill" style="width: 20%;"></div>
+                  </div>
+                </div>
+                <button class="btn btn-xs btn-outline" data-purge-category="pnpm">Clear</button>
+              </div>
+
+              <div class="cache-row">
+                <div class="cache-info">
+                  <div class="cache-meta">
+                    <span class="cache-name">Go Module &amp; Build</span>
+                    <span class="cache-size font-mono" id="sz-go-pkg">0 B</span>
+                  </div>
+                  <div class="cache-mini-track">
+                    <div id="bar-cache-go-pkg" class="cache-mini-fill" style="width: 20%;"></div>
+                  </div>
+                </div>
+                <button class="btn btn-xs btn-outline" data-purge-category="go-pkg">Clear</button>
+              </div>
+
+              <div class="cache-row">
+                <div class="cache-info">
+                  <div class="cache-meta">
+                    <span class="cache-name">Hosted Tool Cache (.NET/Node)</span>
+                    <span class="cache-size font-mono" id="sz-hostedtoolcache">0 B</span>
+                  </div>
+                  <div class="cache-mini-track">
+                    <div id="bar-cache-hostedtoolcache" class="cache-mini-fill" style="width: 20%;"></div>
+                  </div>
+                </div>
+                <button class="btn btn-xs btn-outline" data-purge-category="hostedtoolcache">Clear</button>
+              </div>
+
+              <div class="cache-row">
+                <div class="cache-info">
+                  <div class="cache-meta">
+                    <span class="cache-name">Playwright browsers</span>
+                    <span class="cache-size font-mono" id="sz-ms-playwright">0 B</span>
+                  </div>
+                  <div class="cache-mini-track">
+                    <div id="bar-cache-ms-playwright" class="cache-mini-fill" style="width: 20%;"></div>
+                  </div>
+                </div>
+                <button class="btn btn-xs btn-outline" data-purge-category="ms-playwright">Clear</button>
+              </div>
+
+              <div class="cache-row">
+                <div class="cache-info">
+                  <div class="cache-meta">
+                    <span class="cache-name">npm cache</span>
+                    <span class="cache-size font-mono" id="sz-npm">0 B</span>
+                  </div>
+                  <div class="cache-mini-track">
+                    <div id="bar-cache-npm" class="cache-mini-fill" style="width: 20%;"></div>
+                  </div>
+                </div>
+                <button class="btn btn-xs btn-outline" data-purge-category="npm">Clear</button>
+              </div>
+
+              <div class="cache-row">
+                <div class="cache-info">
+                  <div class="cache-meta">
+                    <span class="cache-name">Python pip &amp; uv</span>
+                    <span class="cache-size font-mono" id="sz-pip">0 B</span>
+                  </div>
+                  <div class="cache-mini-track">
+                    <div id="bar-cache-pip" class="cache-mini-fill" style="width: 20%;"></div>
+                  </div>
+                </div>
+                <button class="btn btn-xs btn-outline" data-purge-category="pip">Clear</button>
+              </div>
+            </div>
+
+            <!-- Proxy Services Status -->
+            <div class="proxy-services-block">
+              <h4 class="subheading">// ACTIVE CACHING PROXIES</h4>
+              <div class="proxy-tags">
+                <a href="http://localhost:49501" target="_blank" class="proxy-tag" id="tag-verdaccio" title="Open Verdaccio Web Interface">
+                  <span class="tag-status online"></span>
+                  <span>Verdaccio (49501) ↗</span>
+                </a>
+                <a href="http://localhost:49503/acng-report.html" target="_blank" class="proxy-tag" id="tag-apt" title="Open APT Cacher Report">
+                  <span class="tag-status online"></span>
+                  <span>APT Cacher (49503) ↗</span>
+                </a>
+                <span class="proxy-tag" id="tag-athens" title="Athens Go Module Proxy Active">
+                  <span class="tag-status online"></span>
+                  <span>Athens Go (49500)</span>
+                </span>
+                <span class="proxy-tag" id="tag-mirror" title="Docker Hub Pull-Through Mirror Active">
+                  <span class="tag-status online"></span>
+                  <span>Docker Mirror (49502)</span>
+                </span>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <!-- GitHub Actions Minutes -->
+        <section class="panel" id="panel-actions-billing">
+          <div class="panel-header">
+            <div class="panel-title-group">
+              <span class="tag-accent">//</span>
+              <h2 class="panel-title">GitHub Actions Minutes</h2>
+            </div>
+          </div>
+          <div class="panel-body">
+            <div class="billing-grid">
+              <div class="billing-row">
+                <span class="billing-label">Scope</span>
+                <span id="actions-scope" class="billing-value font-mono">unknown</span>
+              </div>
+              <div class="billing-row">
+                <span class="billing-label">Included Minutes</span>
+                <span id="actions-included" class="billing-value font-mono">--</span>
+              </div>
+              <div class="billing-row">
+                <span class="billing-label">Total Minutes Used</span>
+                <span id="actions-total-used" class="billing-value font-mono">--</span>
+              </div>
+              <div class="billing-row">
+                <span class="billing-label">Paid Minutes Used</span>
+                <span id="actions-paid-used" class="billing-value font-mono">--</span>
+              </div>
+              <div class="billing-row">
+                <span class="billing-label">Included Remaining</span>
+                <span id="actions-remaining" class="billing-value font-mono">--</span>
+              </div>
+              <div class="billing-row">
+                <span class="billing-label">Last Sync</span>
+                <span id="actions-updated" class="billing-value font-mono">--</span>
+              </div>
+            </div>
+            <div id="actions-status" class="billing-status font-mono">Waiting for billing sync...</div>
+            <div class="billing-hint">
+              Setup hint: use <code class="font-mono">ACCESS_TOKEN</code> with repository access plus billing-read permission for your target owner/org. See <a href="https://el-j.github.io/run-zero/#docs" target="_blank" rel="noopener noreferrer">docs setup guide</a>.
+            </div>
+          </div>
+        </section>
+
+        <!-- Driver Runtime Status -->
+        <section class="panel" id="panel-driver-runtimes">
+          <div class="panel-header">
+            <div class="panel-title-group">
+              <span class="tag-accent">//</span>
+              <h2 class="panel-title">Runtime Driver Availability</h2>
+            </div>
+          </div>
+          <div class="panel-body">
+            <div id="drivers-status-list" class="drivers-list">
+              <div class="cache-row">
+                <div class="cache-info">
+                  <span class="cache-name">🐳 Docker Engine</span>
+                  <span class="stat-label font-mono">Container Runtime</span>
+                </div>
+                <span class="badge badge-pulse">ONLINE</span>
+              </div>
+              <div class="cache-row">
+                <div class="cache-info">
+                  <span class="cache-name">🍎 OrbStack Linux VM</span>
+                  <span class="stat-label font-mono">Hypervisor Host</span>
+                </div>
+                <span class="badge badge-pulse">ONLINE</span>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <!-- Live Configuration Controls -->
+        <section class="panel" id="panel-live-settings">
+          <div class="panel-header">
+            <div class="panel-title-group">
+              <span class="tag-accent">//</span>
+              <h2 class="panel-title">System Settings</h2>
+            </div>
+            <button id="btn-open-settings-panel" class="btn btn-xs btn-outline">Edit All</button>
+          </div>
+          <div class="panel-body">
+            <div class="cache-list">
+              <div class="cache-row">
+                <span class="stat-label font-mono">MAX RUNNERS</span>
+                <span class="font-mono" id="cfg-max-runners" style="color: var(--cyan); font-weight: 700;">3</span>
+              </div>
+              <div class="cache-row">
+                <span class="stat-label font-mono">STANDBY POOL</span>
+                <span class="font-mono" id="cfg-min-runners">0</span>
+              </div>
+              <div class="cache-row">
+                <span class="stat-label font-mono">RUNNER BACKEND</span>
+                <span class="font-mono" id="cfg-runner-backend" style="color: var(--emerald);">auto</span>
+              </div>
+              <div class="cache-row">
+                <span class="stat-label font-mono">AUTO-ROUTE VM</span>
+                <span class="font-mono" id="cfg-auto-route-vm" style="color: var(--solar);">enabled</span>
+              </div>
+              <div class="cache-row">
+                <span class="stat-label font-mono">CACHE PIPELINE</span>
+                <span class="font-mono" id="cfg-cache-enabled" style="color: var(--emerald);">active</span>
+              </div>
+            </div>
+          </div>
+        </section>
+      </div>
+    </div>
+
+    <!-- Full-Size Bottom Expandable Terminal Panel -->
+    <section class="panel terminal-bottom-panel" id="panel-terminal">
+      <div class="terminal-header">
+        <div class="panel-title-group">
+          <span class="tag-accent">//</span>
+          <h2 class="panel-title">Daemon Terminal Stream</h2>
+          <span class="panel-badge badge-live font-mono">● LIVE SSE</span>
+          <span class="font-mono text-muted" id="terminal-line-count" style="font-size: 11px;">0 lines</span>
+        </div>
+        <div class="terminal-controls">
+          <label class="toggle-wrap font-mono" style="font-size: 11px;">
+            <input type="checkbox" id="auto-scroll-toggle" checked>
+            <span>Auto-scroll</span>
+          </label>
+          <button id="btn-clear-logs" class="btn btn-xs btn-outline font-mono">Clear</button>
+          <button id="btn-toggle-terminal-expand" class="btn btn-xs btn-outline font-mono" title="Expand or collapse bottom terminal">
+            <span id="btn-terminal-expand-icon">▲</span> <span id="btn-terminal-expand-text">EXPAND</span>
+          </button>
+        </div>
+      </div>
+      <div class="terminal-body-wrapper default" id="terminal-body-wrapper">
+        <pre id="log-terminal" class="terminal-output font-mono"></pre>
+      </div>
+    </section>
+  </main>
+
+  <!-- Modal: Manual Runner Launch -->
+  <dialog id="spawn-modal" class="modal-dialog">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h3 class="modal-title font-mono">// DISPATCH_EPHEMERAL_RUNNER</h3>
+        <button id="spawn-modal-close" class="btn btn-xs btn-ghost">✕</button>
+      </div>
+      <div class="modal-body">
+        <p class="modal-desc">Manually launch a single-job ephemeral runner for an active repository.</p>
+        <div class="form-group">
+          <label class="form-label font-mono">TARGET REPOSITORY</label>
+          <input type="text" id="manual-repo-input" class="form-input font-mono" placeholder="owner/repo (e.g. el-j/herbful)" />
+        </div>
+        <div class="form-group">
+          <label class="form-label font-mono">ARCHITECTURE</label>
+          <select id="manual-arch-select" class="form-select font-mono">
+            <option value="amd64">amd64 (Intel / x86_64 via Rosetta)</option>
+            <option value="arm64">arm64 (Apple Silicon Native)</option>
+          </select>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button id="spawn-modal-cancel" class="btn btn-secondary">Cancel</button>
+        <button id="spawn-modal-submit" class="btn btn-primary">Launch Runner</button>
+      </div>
+    </div>
+  </dialog>
+
+  <!-- Modal: Live System Settings -->
+  <dialog id="settings-modal" class="modal-dialog modal-lg">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h3 class="modal-title font-mono">// SYSTEM_CONFIGURATION_PLANE</h3>
+        <button id="settings-modal-close" class="btn btn-xs btn-ghost">✕</button>
+      </div>
+      <div class="modal-body">
+        <p class="modal-desc">Inspect and modify runtime settings dynamically without restarting the daemon engine. Values are applied live and persisted to <code class="font-mono">.env</code>.</p>
+        <form id="settings-form" class="settings-grid" style="margin-top: 10px;">
+          <div class="settings-section-title font-mono">⚡ Fleet Sizing &amp; Capacity</div>
+          <div class="form-group">
+            <label class="form-label font-mono">MAX RUNNERS</label>
+            <input type="number" id="input-max-runners" name="max_runners" class="form-input font-mono" min="1" max="64" required />
+          </div>
+          <div class="form-group">
+            <label class="form-label font-mono">STANDBY POOL (MIN RUNNERS)</label>
+            <input type="number" id="input-min-runners" name="min_runners" class="form-input font-mono" min="0" max="16" required />
+          </div>
+          <div class="form-group">
+            <label class="form-label font-mono">PER-RUNNER CPUS</label>
+            <input type="number" id="input-runner-cpus" name="runner_cpus" class="form-input font-mono" min="1" max="16" />
+          </div>
+          <div class="form-group">
+            <label class="form-label font-mono">PER-RUNNER MEMORY</label>
+            <input type="text" id="input-runner-memory" name="runner_memory" class="form-input font-mono" placeholder="4G" />
+          </div>
+
+          <div class="settings-section-title font-mono">⚙️ Execution Engine &amp; Routing</div>
+          <div class="form-group">
+            <label class="form-label font-mono">RUNNER BACKEND</label>
+            <select id="select-runner-backend" name="runner_backend" class="form-select font-mono">
+              <option value="auto">auto (Hybrid Auto-Routing)</option>
+              <option value="docker">docker (Lightweight Container)</option>
+              <option value="orbstack">orbstack (macOS VM Hypervisor)</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label class="form-label font-mono">RUNNER ARCHITECTURE</label>
+            <select id="select-runner-arch" name="runner_arch" class="form-select font-mono">
+              <option value="both">both (Multiarch amd64 + arm64)</option>
+              <option value="arm64">arm64 (Native Apple Silicon)</option>
+              <option value="amd64">amd64 (Intel / x86_64 via Rosetta)</option>
+            </select>
+          </div>
+          <div class="form-group" style="justify-content: center;">
+            <label class="checkbox-label font-mono">
+              <input type="checkbox" id="checkbox-auto-route-vm" name="auto_route_vm" />
+              <span>AUTO-ROUTE VM (Hybrid routing)</span>
+            </label>
+          </div>
+          <div class="form-group">
+            <label class="form-label font-mono">NATIVE ARCH OVERRIDE</label>
+            <select id="select-native-override" name="native_arch_override" class="form-select font-mono">
+              <option value="off">off</option>
+              <option value="arm64-preferred">arm64-preferred</option>
+              <option value="strict">strict</option>
+            </select>
+          </div>
+
+          <div class="settings-section-title font-mono">⏱️ Polling &amp; Discovery Timing</div>
+          <div class="form-group">
+            <label class="form-label font-mono">ACTIONS POLL INTERVAL (SEC)</label>
+            <input type="number" id="input-poll-interval" name="poll_interval" class="form-input font-mono" min="1" max="3600" />
+          </div>
+          <div class="form-group">
+            <label class="form-label font-mono">DISCOVERY INTERVAL (SEC)</label>
+            <input type="number" id="input-discovery-interval" name="discovery_interval" class="form-input font-mono" min="30" max="7200" />
+          </div>
+
+          <div class="settings-section-title font-mono">📦 Cache Pipeline &amp; Proxies</div>
+          <div class="form-group">
+            <label class="checkbox-label font-mono">
+              <input type="checkbox" id="checkbox-cache-enabled" name="cache_enabled" />
+              <span>SHARED HOST CACHE PIPELINE</span>
+            </label>
+          </div>
+          <div class="form-group">
+            <label class="checkbox-label font-mono">
+              <input type="checkbox" id="checkbox-proxies-enabled" name="proxies_enabled" />
+              <span>CACHING PROXIES (Verdaccio/Athens/Apt)</span>
+            </label>
+          </div>
+          <div class="form-group" style="grid-column: 1 / -1;">
+            <label class="form-label font-mono">HOST CACHE DIRECTORY</label>
+            <input type="text" id="input-cache-dir" name="host_cache_dir" class="form-input font-mono" />
+          </div>
+
+          <div class="settings-section-title font-mono">🖥️ Dashboard View Preferences</div>
+          <div class="form-group" style="grid-column: 1 / -1;">
+            <label class="form-label font-mono">FLEET &amp; QUEUE VIEW MODE</label>
+            <select id="select-view-mode-setting" name="view_mode" class="form-select font-mono">
+              <option value="cards">Card Grid (Visual cards with telemetry tags)</option>
+              <option value="table">Compact Styled Table (High-density aerospace table)</option>
+            </select>
+          </div>
+        </form>
+      </div>
+      <div class="modal-footer">
+        <button id="settings-modal-cancel" class="btn btn-secondary">Cancel</button>
+        <button id="settings-modal-save" class="btn btn-primary">Save Configuration</button>
+      </div>
+    </div>
+  </dialog>
+
+  <!-- Toast Notification Container -->
+  <div id="toast-container" class="toast-container"></div>
+
+  <script type="module" src="/src/main.ts"></script>
+</body>
 </html>
