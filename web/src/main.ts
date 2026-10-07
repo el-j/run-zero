@@ -1309,10 +1309,12 @@ async function refreshState() {
 // Bind Global Actions & Event Handlers
 function initHandlers() {
   // Telemetry drawer + clickable KPI cards
+  const workspace = document.querySelector<HTMLElement>(".main-workspace-full");
   const drawer = document.getElementById("telemetry-drawer");
   const backdrop = document.getElementById("drawer-backdrop");
   const openDrawer = (section?: string) => {
     drawer?.classList.add("open");
+    workspace?.classList.add("drawer-open");
     if (window.matchMedia("(max-width: 1100px)").matches) {
       backdrop?.classList.add("open");
     }
@@ -1324,6 +1326,7 @@ function initHandlers() {
   };
   const closeDrawer = () => {
     drawer?.classList.remove("open");
+    workspace?.classList.remove("drawer-open");
     backdrop?.classList.remove("open");
   };
   document.getElementById("btn-open-drawer")?.addEventListener("click", () => openDrawer());

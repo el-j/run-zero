@@ -131,10 +131,16 @@ test.describe("RunZero Web Dashboard End-to-End Tests", () => {
 
     await page.locator("#btn-open-drawer").click();
     await expect(page.locator("#telemetry-drawer")).toHaveClass(/open/);
+    await expect(page.locator(".main-workspace-full")).toHaveClass(/drawer-open/);
 
     const drawerPosition = await page.locator("#telemetry-drawer").evaluate((el) => getComputedStyle(el).position);
-    expect(drawerPosition).toBe("relative");
-    await expect(page.locator("#panel-fleet-control")).toBeVisible();
+    expect(drawerPosition).toBe("absolute");
+
+    const panelBox = await page.locator("#panel-fleet-control").boundingBox();
+    const drawerBox = await page.locator("#telemetry-drawer").boundingBox();
+    expect(panelBox).toBeTruthy();
+    expect(drawerBox).toBeTruthy();
+    expect(panelBox.width).toBeGreaterThan(drawerBox.width);
   });
 
   test("failed completed jobs expose retry and trigger rerun-failed action", async ({ page }) => {

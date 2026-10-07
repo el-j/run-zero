@@ -438,6 +438,8 @@ body {
   align-items: stretch;
   gap: 12px;
   min-height: 0;
+  position: relative;
+  overflow: hidden;
 }
 
 #panel-fleet-control {
@@ -2475,33 +2477,32 @@ body {
 }
 .drawer-backdrop.open { display: none; }
 .drawer {
-  position: relative;
-  top: auto;
-  right: auto;
-  bottom: auto;
-  width: 0;
-  min-width: 0;
-  opacity: 0;
+  position: absolute;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  width: min(460px, 42vw);
+  opacity: 1;
   background: linear-gradient(180deg, rgba(11, 15, 24, 0.98) 0%, rgba(9, 12, 20, 0.98) 100%);
-  border-left: 1px solid transparent;
+  border-left: 1px solid var(--border-subtle);
   box-shadow: -12px 0 26px rgba(0, 0, 0, 0.42);
-  transform: translateX(12px);
-  transition: width 0.24s ease, min-width 0.24s ease, opacity 0.2s ease, transform 0.24s ease, border-color 0.2s ease;
+  transform: translateX(104%);
+  transition: transform 0.24s ease;
   z-index: 2;
   display: flex;
   flex-direction: column;
   will-change: transform;
-  overflow: hidden;
+  overflow: clip;
   pointer-events: none;
-  max-height: 100%;
+  max-height: none;
 }
 .drawer.open {
-  width: min(460px, 42vw);
-  min-width: min(360px, 42vw);
-  opacity: 1;
   transform: translateX(0);
-  border-left-color: var(--border-subtle);
   pointer-events: auto;
+}
+
+.main-workspace-full.drawer-open #panel-fleet-control {
+  margin-right: min(460px, 42vw);
 }
 .drawer-header {
   display: flex; align-items: center; justify-content: space-between;
@@ -2539,16 +2540,14 @@ body {
     right: 0;
     bottom: 0;
     width: min(460px, 94vw);
-    min-width: min(320px, 90vw);
     max-height: none;
-    opacity: 1;
     transform: translateX(104%);
-    border-left-color: var(--border-subtle);
     pointer-events: auto;
     z-index: 200;
     transition: transform 0.26s cubic-bezier(0.4, 0, 0.2, 1);
   }
   .drawer.open { transform: translateX(0); }
+  .main-workspace-full.drawer-open #panel-fleet-control { margin-right: 0; }
 }
 
 /* Run / job links, current stage and step pipeline */
