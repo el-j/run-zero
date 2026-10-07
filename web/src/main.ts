@@ -1,5 +1,13 @@
 import "./styles/theme.css";
-import { client, type FleetState, type QueuedJob, type RunnerInfo, type CacheStats, type SystemSettings } from "./api/client";
+import {
+  client,
+  type CompletedJob,
+  type FleetState,
+  type QueuedJob,
+  type RunnerInfo,
+  type CacheStats,
+  type SystemSettings,
+} from "./api/client";
 
 // Global DOM elements
 const connectionBadge = document.getElementById("connection-status-badge")!;
@@ -26,15 +34,19 @@ const kpiCacheSize = document.getElementById("kpi-cache-size")!;
 // Unified Fleet Control Tabs
 const tabBtnRunners = document.getElementById("tab-btn-runners");
 const tabBtnQueue = document.getElementById("tab-btn-queue");
+const tabBtnJobs = document.getElementById("tab-btn-jobs");
 const tabBtnRepos = document.getElementById("tab-btn-repos");
 const tabRunnersCount = document.getElementById("tab-runners-count");
 const tabQueueCount = document.getElementById("tab-queue-count");
+const tabJobsCount = document.getElementById("tab-jobs-count");
 const tabReposCount = document.getElementById("tab-repos-count");
 const tabContentRunners = document.getElementById("tab-content-runners");
 const tabContentQueue = document.getElementById("tab-content-queue");
+const tabContentJobs = document.getElementById("tab-content-jobs");
 const tabContentRepos = document.getElementById("tab-content-repos");
 const tabActionsRunners = document.getElementById("tab-actions-runners");
 const tabActionsQueue = document.getElementById("tab-actions-queue");
+const tabActionsJobs = document.getElementById("tab-actions-jobs");
 const tabActionsRepos = document.getElementById("tab-actions-repos");
 
 // View Mode Toggle
@@ -71,6 +83,7 @@ const repoSearchInput = document.getElementById("repo-search-input") as HTMLInpu
 const reposList = document.getElementById("repos-list");
 const queueJobsCountTag = document.getElementById("queue-jobs-count-tag");
 const queueJobsView = document.getElementById("queue-jobs-view");
+const jobsList = document.getElementById("jobs-list");
 
 // Full-Size Bottom Terminal elements
 const logTerminal = document.getElementById("log-terminal");
@@ -143,7 +156,7 @@ let currentConcurrency = { active: 0, max: 3, min: 0 };
 let draggedRepo: string | null = null;
 let lastUptimeSeconds = 0;
 let currentViewMode: "cards" | "table" = (localStorage.getItem("runzero_display_mode") as "cards" | "table") || "cards";
-let currentTab: "runners" | "queue" | "repos" = "runners";
+let currentTab: "runners" | "queue" | "jobs" | "repos" = "runners";
 let terminalExpanded = false;
 let totalLogLines = 0;
 
@@ -260,12 +273,13 @@ function setViewMode(mode: "cards" | "table") {
 }
 
 // Master Tabs Switching
-function setActiveTab(tab: "runners" | "queue" | "repos") {
+function setActiveTab(tab: "runners" | "queue" | "jobs" | "repos") {
   currentTab = tab;
 
   const tabs = [
     { name: "runners", btn: tabBtnRunners, pane: tabContentRunners, actions: tabActionsRunners },
     { name: "queue", btn: tabBtnQueue, pane: tabContentQueue, actions: tabActionsQueue },
+    { name: "jobs", btn: tabBtnJobs, pane: tabContentJobs, actions: tabActionsJobs },
     { name: "repos", btn: tabBtnRepos, pane: tabContentRepos, actions: tabActionsRepos },
   ];
 
@@ -748,6 +762,98 @@ function renderRepos(
   });
 }
 
+function renderCompletedJobs(jobs: CompletedJob[]) {
+  if (tabJobsCount) tabJobsCount.textContent = String(jobs.length);
+
+  if (!jobsList) return;
+
+  if (jobs.length === 0) {
+    jobsList.innerHTML = `
+      <div class="empty-substate empty-queue-clean">
+        <div class="clean-check-icon">✓</div>
+        <div class="clean-text font-mono">NO COMPLETED JOBS YET</div>
+        <div class="clean-subtext">Recent successful and failed GitHub Actions jobs appear here with a quick retry path.</div>
+      </div>
+    `;
+    return;
+  }
+
+  const sorted = [...jobs].sort((a, b) => {
+    const av = a.completed_at ? new Date(a.completed_at).getTime() : 0;
+    const bv = b.completed_at ? new Date(b.completed_at).getTime() : 0;
+    return bv - av;
+  });
+
+  jobsList.innerHTML = sorted
+    .map((job) => {
+      const conclusion = (job.conclusion || "unknown").toLowerCase();
+      const isSuccess = conclusion === "success";
+      const headerKind = isSuccess ? "badge-live" : "badge-danger";
+      const statusText = isSuccess ? "SUCCESS" : conclusion.toUpperCase() || "FAILED";
+      const reason = job.failure_reason || job.failed_step || "No failure reason captured.";
+      const messages = (job.messages || []).map((msg: string) => `<li>${escapeHtml(msg)}</li>`).join("");
+      const runUrl = job.run_url || `https://github.com/${job.repo}/actions/runs/${job.run_id}`;
+      const retryBtn = !isSuccess
+        ? `<button class="btn btn-xs btn-outline job-rerun-btn font-mono" data-repo="${escapeHtml(job.repo)}" data-run-id="${job.run_id}">↻ Retry failed jobs</button>`
+        : "";
+
+      return `
+        <article class="glass-panel" style="padding: 1rem 1.1rem; display: flex; flex-direction: column; gap: 0.7rem; border-left: 3px solid ${isSuccess ? "var(--emerald)" : "var(--crimson)"};">
+          <div style="display: flex; justify-content: space-between; align-items: flex-start; gap: 1rem; flex-wrap: wrap;">
+            <div style="display: flex; flex-direction: column; gap: 0.2rem; min-width: 0;">
+              <div style="display: flex; align-items: center; gap: 0.5rem; flex-wrap: wrap;">
+                <span class="badge ${headerKind} font-mono" style="font-size: 10px;">${statusText}</span>
+                <a href="${escapeHtml(runUrl)}" target="_blank" rel="noopener noreferrer" style="font-weight: 700; color: var(--text-main); text-decoration: none;">
+                  ${escapeHtml(job.name)}
+                </a>
+              </div>
+              <div style="font-size: 0.82rem; color: var(--text-muted); display: flex; flex-wrap: wrap; gap: 0.5rem;">
+                <span class="font-mono">${escapeHtml(job.repo)}</span>
+                ${job.workflow_name ? `<span>•</span><span>${escapeHtml(job.workflow_name)}</span>` : ""}
+                ${job.run_attempt && job.run_attempt > 1 ? `<span>•</span><span class="badge mono" style="font-size: 0.65rem;">Attempt ${job.run_attempt}</span>` : ""}
+                ${job.head_branch ? `<span>•</span><span class="font-mono">${escapeHtml(job.head_branch)}</span>` : ""}
+              </div>
+            </div>
+            <div style="font-size: 0.8rem; color: var(--text-muted); text-align: right;">
+              <div class="font-mono">${job.completed_at ? new Date(job.completed_at).toLocaleString() : "—"}</div>
+              ${job.duration_sec !== undefined ? `<div class="font-mono">${job.duration_sec}s</div>` : ""}
+            </div>
+          </div>
+
+          <div style="display: flex; flex-direction: column; gap: 0.35rem;">
+            <div style="font-size: 0.8rem; color: var(--text-main); font-weight: 600;">Why it failed</div>
+            <div style="font-size: 0.82rem; color: ${isSuccess ? "var(--emerald)" : "var(--solar)"}; line-height: 1.5;">
+              ${escapeHtml(reason)}
+            </div>
+            ${job.failed_step ? `<div style="font-size: 0.75rem; color: var(--text-muted);">Failed step: <span class="font-mono">${escapeHtml(job.failed_step)}</span></div>` : ""}
+            ${messages ? `<ul style="margin: 0.2rem 0 0 1.25rem; color: var(--text-muted); font-size: 0.78rem; line-height: 1.5;">${messages}</ul>` : ""}
+          </div>
+
+          <div style="display: flex; justify-content: flex-end; gap: 0.5rem; align-items: center; flex-wrap: wrap;">
+            <a href="${escapeHtml(job.html_url || runUrl)}" target="_blank" rel="noopener noreferrer" class="btn btn-xs btn-outline font-mono">Open in GitHub</a>
+            ${retryBtn}
+          </div>
+        </article>
+      `;
+    })
+    .join("");
+
+  jobsList.querySelectorAll<HTMLButtonElement>(".job-rerun-btn").forEach((btn) => {
+    btn.onclick = async () => {
+      const repo = btn.dataset.repo!;
+      const runId = Number(btn.dataset.runId);
+      if (!repo || Number.isNaN(runId)) return;
+      if (!confirm(`Retry failed jobs for ${repo} run #${runId}?`)) return;
+      try {
+        const res = await client.triggerWorkflowAction(repo, runId, "rerun-failed");
+        showToast(res.message || `Retry queued for ${repo} run #${runId}`);
+      } catch (err) {
+        showToast(`Failed to retry jobs: ${(err as Error).message}`, true);
+      }
+    };
+  });
+}
+
 // Render Queued Workflow Jobs View (Dual Card and Table View with GitHub Run Link and Progress)
 function renderQueue(queuedJobs: QueuedJob[], concurrency: { active: number; max: number }) {
   if (tabQueueCount) tabQueueCount.textContent = String(queuedJobs.length);
@@ -1080,6 +1186,9 @@ function renderState(state: FleetState) {
     statRateMeta.textContent = `used ${tot - rem} • reset ${formatReset((state as any).rate_limit_reset)} • REST Core`;
   }
 
+  const completedJobs = (state as FleetState & { completed_jobs?: CompletedJob[] }).completed_jobs || [];
+  renderCompletedJobs(completedJobs);
+
   // Active concurrency
   const activeCount = state.busy_runners ?? 0;
   const maxCount = state.max_runners ?? 3;
@@ -1170,6 +1279,7 @@ function initHandlers() {
   // Master tabs switching
   if (tabBtnRunners) tabBtnRunners.onclick = () => setActiveTab("runners");
   if (tabBtnQueue) tabBtnQueue.onclick = () => setActiveTab("queue");
+  if (tabBtnJobs) tabBtnJobs.onclick = () => setActiveTab("jobs");
   if (tabBtnRepos) tabBtnRepos.onclick = () => setActiveTab("repos");
 
   // View mode switcher

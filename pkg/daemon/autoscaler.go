@@ -29,18 +29,20 @@ func randomHex(bytesLen int) string {
 // Scaler manages the background autoscaling loop, repository discovery,
 // job queue reconciliation, and runner provisioning.
 type Scaler struct {
-	cfg           *config.Config
-	state         *state.State
-	driver        driver.RunnerDriver
-	ghClient      *github.Client
-	priorityMgr   *github.PriorityManager
-	reconciler    *github.Reconciler
-	poller        *github.Poller
-	reaper        *reaper.Reaper
-	archOverride  *arch.NativeArchOverride
-	lastDiscovery time.Time
-	lastBilling   time.Time
-	standbyCursor int
+	cfg                *config.Config
+	state              *state.State
+	driver             driver.RunnerDriver
+	ghClient           *github.Client
+	priorityMgr        *github.PriorityManager
+	reconciler         *github.Reconciler
+	poller             *github.Poller
+	reaper             *reaper.Reaper
+	archOverride       *arch.NativeArchOverride
+	historyFetcher     *github.HistoryFetcher
+	lastDiscovery      time.Time
+	lastBilling        time.Time
+	lastHistoryRefresh time.Time
+	standbyCursor      int
 }
 
 // NewScaler creates an autoscaler engine.
@@ -56,15 +58,16 @@ func NewScaler(
 ) *Scaler {
 	override, _ := arch.NewNativeArchOverride(cfg.NativeArchOverride, "")
 	return &Scaler{
-		cfg:          cfg,
-		state:        st,
-		driver:       drv,
-		ghClient:     gh,
-		priorityMgr:  pm,
-		reconciler:   rec,
-		poller:       poller,
-		reaper:       rp,
-		archOverride: override,
+		cfg:            cfg,
+		state:          st,
+		driver:         drv,
+		ghClient:       gh,
+		priorityMgr:    pm,
+		reconciler:     rec,
+		poller:         poller,
+		reaper:         rp,
+		archOverride:   override,
+		historyFetcher: github.NewHistoryFetcher(gh),
 	}
 }
 
@@ -142,9 +145,54 @@ func (s *Scaler) CollectRunners(ctx context.Context) []state.RunnerInfo {
 	return active
 }
 
+func (s *Scaler) refreshCompletedJobs(ctx context.Context, repos []string) {
+	if s.ghClient == nil || len(repos) == 0 {
+		return
+	}
+	if s.historyFetcher == nil {
+		s.historyFetcher = github.NewHistoryFetcher(s.ghClient)
+	}
+	if time.Since(s.lastHistoryRefresh) < 30*time.Second && !s.lastHistoryRefresh.IsZero() {
+		return
+	}
+
+	var all []state.CompletedJob
+	for _, repo := range repos {
+		if repo == "" {
+			continue
+		}
+		jobs, err := s.historyFetcher.Fetch(ctx, repo)
+		if err != nil {
+			s.state.AppendLog(fmt.Sprintf("[Autoscaler] ⚠️ Could not refresh completed jobs for %s: %v", repo, err))
+			continue
+		}
+		all = append(all, jobs...)
+	}
+	if len(all) == 0 {
+		all = []state.CompletedJob{}
+	}
+	s.state.SetCompletedJobs(all)
+	s.lastHistoryRefresh = time.Now()
+}
+
 // ScaleCycle runs one complete autoscaling cycle across tracked repositories.
 func (s *Scaler) ScaleCycle(ctx context.Context) {
 	s.DiscoverAndSync(ctx)
+
+	if s.driver != nil {
+		removed, err := driver.PruneFinished(ctx, s.driver, func(r state.RunnerInfo, logTail string) {
+			if r.Name != "" && logTail != "" {
+				s.state.SetRunnerLog(r.Name, logTail)
+			}
+			s.state.AppendLog(fmt.Sprintf("[Autoscaler] 🧹 Removed finished runner '%s' for %s (%s)", r.Name, r.TargetRepo, r.Backend))
+		})
+		if err != nil {
+			s.state.AppendLog(fmt.Sprintf("[Autoscaler] ⚠️ Failed to prune finished runners: %v", err))
+		}
+		if len(removed) > 0 {
+			s.state.AppendLog(fmt.Sprintf("[Autoscaler] 🧹 Pruned %d finished runner container(s)/VM(s) from old jobs.", len(removed)))
+		}
+	}
 
 	activeRunners := s.CollectRunners(ctx)
 
@@ -352,6 +400,7 @@ func (s *Scaler) ScaleCycle(ctx context.Context) {
 
 	// Reconcile and push state to dashboard
 	reconciled := s.reconciler.Reconcile(allJobs, len(activeRunners), s.cfg.MaxRunners)
+	s.refreshCompletedJobs(ctx, tracked)
 	s.state.UpdateFleet(activeRunners, reconciled)
 }
 

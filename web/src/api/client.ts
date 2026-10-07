@@ -1,6 +1,38 @@
 import type { components } from "../types/api";
 
-export type FleetState = components["schemas"]["FleetState"];
+export interface StepInfo {
+  number: number;
+  name: string;
+  status: string;
+  conclusion?: string;
+}
+
+export interface CompletedJob {
+  id: number;
+  run_id: number;
+  name: string;
+  workflow_name?: string;
+  head_branch?: string;
+  run_attempt?: number;
+  conclusion: string;
+  started_at?: string;
+  completed_at?: string;
+  duration_sec?: number;
+  labels: string[];
+  html_url: string;
+  run_url?: string;
+  repo: string;
+  runner_name?: string;
+  failed_step?: string;
+  failure_reason?: string;
+  messages?: string[];
+  has_runner_log?: boolean;
+  steps?: StepInfo[];
+}
+
+export type FleetState = components["schemas"]["FleetState"] & {
+  completed_jobs?: CompletedJob[];
+};
 export type QueuedJob = components["schemas"]["QueuedJob"];
 export type RunnerInfo = components["schemas"]["RunnerInfo"];
 export type SystemSettings = components["schemas"]["SystemSettings"];

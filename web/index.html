@@ -195,6 +195,10 @@
                 <span>⏱️ JOB QUEUE</span>
                 <span class="badge font-mono" id="tab-queue-count">0</span>
               </button>
+              <button id="tab-btn-jobs" class="tab-btn" role="tab" data-tab="jobs">
+                <span>✅ DONE &amp; FAILED</span>
+                <span class="badge font-mono" id="tab-jobs-count">0</span>
+              </button>
               <button id="tab-btn-repos" class="tab-btn" role="tab" data-tab="repos">
                 <span>🔀 REPO PRIORITY</span>
                 <span class="badge font-mono" id="tab-repos-count">0</span>
@@ -217,6 +221,9 @@
                 <div class="queue-status-tag font-mono">
                   <span id="queue-slots-badge">0/3 SLOTS</span>
                 </div>
+              </div>
+              <div id="tab-actions-jobs" class="tab-action-group hidden">
+                <span class="badge badge-neutral font-mono" style="font-size: 10px;">history</span>
               </div>
               <div id="tab-actions-repos" class="tab-action-group hidden">
                 <input type="text" id="repo-search-input" class="form-input font-mono" placeholder="Filter repos..." style="padding: 4px 8px; font-size: 11px; width: 140px;" />
@@ -324,7 +331,16 @@
               </div>
             </div>
 
-            <!-- TAB 3: REPO PRIORITY -->
+            <!-- TAB 3: DONE & FAILED JOBS -->
+            <div id="tab-content-jobs" class="tab-content-pane hidden">
+              <div class="queue-hint-box" style="margin-bottom: 12px;">
+                <span class="hint-icon">ℹ️</span>
+                <span>Recent job history shows why older runs failed and lets you trigger a quick retry from the dashboard itself.</span>
+              </div>
+              <div id="jobs-list" class="queue-jobs-view"></div>
+            </div>
+
+            <!-- TAB 4: REPO PRIORITY -->
             <div id="tab-content-repos" class="tab-content-pane hidden">
               <div class="queue-hint-box" style="margin-bottom: 12px;">
                 <span class="hint-icon">ℹ️</span>
