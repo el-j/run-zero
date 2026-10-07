@@ -29,7 +29,9 @@ const kpiQueueBar = document.getElementById("kpi-queue-bar")!;
 const kpiReposMonitored = document.getElementById("kpi-repos-monitored")!;
 const kpiVmRatio = document.getElementById("kpi-vm-ratio")!;
 const kpiRoutingBar = document.getElementById("kpi-routing-bar")!;
+const kpiRoutingSub = document.getElementById("kpi-routing-sub")!;
 const kpiCacheSize = document.getElementById("kpi-cache-size")!;
+const kpiCacheBar = document.getElementById("kpi-cache-bar")!;
 
 // Unified Fleet Control Tabs
 const tabBtnRunners = document.getElementById("tab-btn-runners");
@@ -1221,10 +1223,19 @@ function renderState(state: FleetState) {
   const vmRatio = totalJobs > 0 ? Math.round((vmJobs / Math.max(1, totalJobs)) * 100) : 0;
   kpiVmRatio.textContent = `${vmRatio}%`;
   kpiRoutingBar.style.width = `${vmRatio}%`;
+  if (kpiRoutingSub) {
+    const routeSummary = vmJobs > 0 || dockerJobs > 0 ? `${vmJobs} VM / ${dockerJobs} container` : "Auto-detect DIND & Services";
+    kpiRoutingSub.textContent = `// ${routeSummary}`;
+  }
   if (cntDockerJobs) cntDockerJobs.textContent = String(dockerJobs);
   if (cntVmJobs) cntVmJobs.textContent = String(vmJobs);
   if (barDockerJobs) barDockerJobs.style.width = `${100 - vmRatio}%`;
   if (barVmJobs) barVmJobs.style.width = `${vmRatio}%`;
+
+  if (kpiCacheBar && state.actions_billing) {
+    const cacheFill = Math.min(100, Math.max(10, (state.actions_billing.total_minutes_used || 0) % 100));
+    kpiCacheBar.style.width = `${cacheFill}%`;
+  }
 
   // Render subcomponents
   renderRunners(state.runners || []);
