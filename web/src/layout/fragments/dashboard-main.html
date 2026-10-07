@@ -178,13 +178,13 @@
                 <table class="data-table">
                   <thead>
                     <tr>
-                      <th>RUNNER NAME &amp; ID</th>
-                      <th>REPOSITORY</th>
-                      <th>ENGINE / ARCH</th>
-                      <th>STATUS</th>
-                      <th>WORKFLOW RUN &amp; JOB</th>
-                      <th>STAGE / PROGRESS</th>
-                      <th>UPTIME</th>
+                      <th class="sortable-col" data-table="runners" data-sort-key="name">RUNNER NAME &amp; ID</th>
+                      <th class="sortable-col" data-table="runners" data-sort-key="repo">REPOSITORY</th>
+                      <th class="sortable-col" data-table="runners" data-sort-key="engine">ENGINE / ARCH</th>
+                      <th class="sortable-col" data-table="runners" data-sort-key="status">STATUS</th>
+                      <th class="sortable-col" data-table="runners" data-sort-key="workflow">WORKFLOW RUN &amp; JOB</th>
+                      <th class="sortable-col" data-table="runners" data-sort-key="progress">STAGE / PROGRESS</th>
+                      <th class="sortable-col" data-table="runners" data-sort-key="uptime">UPTIME</th>
                       <th style="text-align: right;">ACTION</th>
                     </tr>
                   </thead>
@@ -230,13 +230,13 @@
                 <table class="data-table">
                   <thead>
                     <tr>
-                      <th style="width: 50px;">POS</th>
-                      <th>STATUS</th>
-                      <th>JOB &amp; WORKFLOW</th>
-                      <th>ASSIGNED RUN (GITHUB)</th>
-                      <th>REPO &amp; BRANCH</th>
-                      <th>STAGES / PROGRESS</th>
-                      <th>WAIT / ELAPSED</th>
+                      <th style="width: 50px;" class="sortable-col" data-table="queue" data-sort-key="position">POS</th>
+                      <th class="sortable-col" data-table="queue" data-sort-key="status">STATUS</th>
+                      <th class="sortable-col" data-table="queue" data-sort-key="name">JOB &amp; WORKFLOW</th>
+                      <th class="sortable-col" data-table="queue" data-sort-key="run">ASSIGNED RUN (GITHUB)</th>
+                      <th class="sortable-col" data-table="queue" data-sort-key="repo">REPO &amp; BRANCH</th>
+                      <th class="sortable-col" data-table="queue" data-sort-key="progress">STAGES / PROGRESS</th>
+                      <th class="sortable-col" data-table="queue" data-sort-key="wait">WAIT / ELAPSED</th>
                       <th style="text-align: right;">CONTROLS</th>
                     </tr>
                   </thead>
@@ -259,11 +259,11 @@
                 <table class="data-table jobs-table">
                   <thead>
                     <tr>
-                      <th style="width: 130px;">RESULT</th>
-                      <th>JOB &amp; REPOSITORY</th>
-                      <th>FAILURE ANALYSIS</th>
-                      <th style="width: 120px;">DURATION</th>
-                      <th style="width: 210px;">COMPLETED</th>
+                      <th style="width: 130px;" class="sortable-col" data-table="jobs" data-sort-key="result">RESULT</th>
+                      <th class="sortable-col" data-table="jobs" data-sort-key="name">JOB &amp; REPOSITORY</th>
+                      <th class="sortable-col" data-table="jobs" data-sort-key="analysis">FAILURE ANALYSIS</th>
+                      <th style="width: 120px;" class="sortable-col" data-table="jobs" data-sort-key="duration">DURATION</th>
+                      <th style="width: 210px;" class="sortable-col" data-table="jobs" data-sort-key="completed">COMPLETED</th>
                       <th style="text-align: right; width: 200px;">ACTIONS</th>
                     </tr>
                   </thead>
@@ -292,10 +292,10 @@
                 <table class="data-table">
                   <thead>
                     <tr>
-                      <th style="width: 60px;">RANK</th>
-                      <th>REPOSITORY</th>
-                      <th>STATUS</th>
-                      <th>ACTIVE / QUEUED JOBS</th>
+                      <th style="width: 60px;" class="sortable-col" data-table="repos" data-sort-key="rank">RANK</th>
+                      <th class="sortable-col" data-table="repos" data-sort-key="repo">REPOSITORY</th>
+                      <th class="sortable-col" data-table="repos" data-sort-key="status">STATUS</th>
+                      <th class="sortable-col" data-table="repos" data-sort-key="queued">ACTIVE / QUEUED JOBS</th>
                       <th style="text-align: right;">ACTIONS</th>
                     </tr>
                   </thead>

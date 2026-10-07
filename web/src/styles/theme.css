@@ -2439,6 +2439,33 @@ body {
   white-space: nowrap;
 }
 
+.data-table th.sortable-col {
+  cursor: pointer;
+  user-select: none;
+  position: relative;
+  padding-right: 18px;
+}
+
+.data-table th.sortable-col::after {
+  content: "↕";
+  position: absolute;
+  right: 6px;
+  top: 50%;
+  transform: translateY(-50%);
+  color: var(--text-dim);
+  font-size: 10px;
+}
+
+.data-table th.sortable-col.sort-asc::after {
+  content: "↑";
+  color: var(--cyan);
+}
+
+.data-table th.sortable-col.sort-desc::after {
+  content: "↓";
+  color: var(--cyan);
+}
+
 .data-table td {
   padding: 9px 12px;
   border-bottom: 1px solid rgba(255, 255, 255, 0.04);

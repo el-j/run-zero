@@ -163,7 +163,9 @@ const inputCacheDir = document.getElementById("input-cache-dir") as HTMLInputEle
 
 // Application state
 let currentRepos: string[] = [];
+let currentRunners: RunnerInfo[] = [];
 let currentQueuedJobs: QueuedJob[] = [];
+let currentCompletedJobs: CompletedJob[] = [];
 let currentRepoPriority: string[] = [];
 let currentPausedRepos = new Set<string>();
 let currentConcurrency = { active: 0, max: 3, min: 0 };
@@ -176,6 +178,26 @@ let totalLogLines = 0;
 let latestSettings: SystemSettings | null = null;
 let latestCacheStats: CacheStats | null = null;
 let terminalHeightPx = Number(localStorage.getItem("runzero_terminal_height_px") || "180");
+
+type SortDirection = "asc" | "desc";
+type SortState<K extends string> = { key: K; dir: SortDirection };
+
+let runnersSort: SortState<"name" | "repo" | "engine" | "status" | "workflow" | "progress" | "uptime"> = {
+  key: "uptime",
+  dir: "desc",
+};
+let queueSort: SortState<"position" | "status" | "name" | "run" | "repo" | "progress" | "wait"> = {
+  key: "position",
+  dir: "asc",
+};
+let jobsSort: SortState<"result" | "name" | "analysis" | "duration" | "completed"> = {
+  key: "completed",
+  dir: "desc",
+};
+let reposSort: SortState<"rank" | "repo" | "status" | "queued"> = {
+  key: "rank",
+  dir: "asc",
+};
 
 function formatReset(resetEpoch?: number | null): string {
   if (!resetEpoch) return "--:--:--";
@@ -207,6 +229,37 @@ function escapeHtml(str: string): string {
     .replace(/>/g, "&gt;")
     .replace(/"/g, "&quot;")
     .replace(/'/g, "&#039;");
+}
+
+function compareValues(a: string | number, b: string | number): number {
+  if (typeof a === "number" && typeof b === "number") return a - b;
+  return String(a).localeCompare(String(b), undefined, { sensitivity: "base", numeric: true });
+}
+
+function updateSortHeaderIndicators() {
+  document.querySelectorAll<HTMLElement>("th.sortable-col").forEach((th) => {
+    th.classList.remove("sort-asc", "sort-desc");
+    const table = th.dataset.table;
+    const key = th.dataset.sortKey;
+    if (!table || !key) return;
+
+    const match =
+      (table === "runners" && runnersSort.key === key && runnersSort.dir) ||
+      (table === "queue" && queueSort.key === key && queueSort.dir) ||
+      (table === "jobs" && jobsSort.key === key && jobsSort.dir) ||
+      (table === "repos" && reposSort.key === key && reposSort.dir);
+
+    if (match) th.classList.add(match === "asc" ? "sort-asc" : "sort-desc");
+  });
+}
+
+function toggleSort<K extends string>(state: SortState<K>, key: K) {
+  if (state.key === key) {
+    state.dir = state.dir === "asc" ? "desc" : "asc";
+  } else {
+    state.key = key;
+    state.dir = "asc";
+  }
 }
 
 function showToast(message: string, isError = false) {
@@ -300,6 +353,28 @@ function setViewMode(mode: "cards" | "table") {
       jobsTableView.classList.remove("hidden");
     }
   }
+  updateSortHeaderIndicators();
+}
+
+function initTableSortingControls() {
+  document.querySelectorAll<HTMLTableCellElement>("th.sortable-col").forEach((th) => {
+    th.addEventListener("click", () => {
+      const table = th.dataset.table;
+      const key = th.dataset.sortKey;
+      if (!table || !key) return;
+
+      if (table === "runners") toggleSort(runnersSort, key as typeof runnersSort.key);
+      if (table === "queue") toggleSort(queueSort, key as typeof queueSort.key);
+      if (table === "jobs") toggleSort(jobsSort, key as typeof jobsSort.key);
+      if (table === "repos") toggleSort(reposSort, key as typeof reposSort.key);
+
+      renderRunners(currentRunners);
+      renderQueue(currentQueuedJobs, currentConcurrency);
+      renderCompletedJobs(currentCompletedJobs);
+      renderRepos(currentRepos, currentQueuedJobs, currentRepoPriority, currentPausedRepos);
+      updateSortHeaderIndicators();
+    });
+  });
 }
 
 // Master Tabs Switching
@@ -574,8 +649,31 @@ function renderRunners(runners: RunnerInfo[]) {
   }
 
   // 2. Render Table View
+  const sortedRunnersForTable = [...runners].sort((a, b) => {
+    const aIsVm = (a.backend || "").toLowerCase().includes("vm") || (a.backend || "").toLowerCase().includes("orb");
+    const bIsVm = (b.backend || "").toLowerCase().includes("vm") || (b.backend || "").toLowerCase().includes("orb");
+    const aEngine = aIsVm ? (a.backend || "VM").toUpperCase() : "DOCKER";
+    const bEngine = bIsVm ? (b.backend || "VM").toUpperCase() : "DOCKER";
+    const aProgress = a.progress_pct ?? 0;
+    const bProgress = b.progress_pct ?? 0;
+    const aUptime = a.created_at ? new Date(a.created_at).getTime() : 0;
+    const bUptime = b.created_at ? new Date(b.created_at).getTime() : 0;
+    const map: Record<typeof runnersSort.key, [string | number, string | number]> = {
+      name: [a.name || a.id, b.name || b.id],
+      repo: [a.target_repo || "Standby", b.target_repo || "Standby"],
+      engine: [`${aEngine}-${a.target_arch || ""}`, `${bEngine}-${b.target_arch || ""}`],
+      status: [a.status || "", b.status || ""],
+      workflow: [a.workflow_name || "", b.workflow_name || ""],
+      progress: [aProgress, bProgress],
+      uptime: [aUptime, bUptime],
+    };
+    const [av, bv] = map[runnersSort.key];
+    const diff = compareValues(av, bv);
+    return runnersSort.dir === "asc" ? diff : -diff;
+  });
+
   if (runnersTableBody) {
-    runnersTableBody.innerHTML = runners
+    runnersTableBody.innerHTML = sortedRunnersForTable
       .map((r) => {
         const isVm = (r.backend || "").toLowerCase().includes("vm") || (r.backend || "").toLowerCase().includes("orb");
         const engineName = isVm ? (r.backend || "VM").toUpperCase() : "DOCKER";
@@ -712,15 +810,34 @@ function renderRepos(
 
   // 2. Render Table View
   if (reposTableBody) {
-    reposTableBody.innerHTML = filtered
-      .map((repo, idx) => {
+    const sortedReposForTable = [...filtered].sort((aRepo, bRepo) => {
+      const aQueued = queuedByRepo[aRepo] || 0;
+      const bQueued = queuedByRepo[bRepo] || 0;
+      const aPaused = pausedRepos.has(aRepo) ? "PAUSED" : "ACTIVE";
+      const bPaused = pausedRepos.has(bRepo) ? "PAUSED" : "ACTIVE";
+      const aRank = ordered.indexOf(aRepo) + 1;
+      const bRank = ordered.indexOf(bRepo) + 1;
+      const map: Record<typeof reposSort.key, [string | number, string | number]> = {
+        rank: [aRank, bRank],
+        repo: [aRepo, bRepo],
+        status: [aPaused, bPaused],
+        queued: [aQueued, bQueued],
+      };
+      const [av, bv] = map[reposSort.key];
+      const diff = compareValues(av, bv);
+      return reposSort.dir === "asc" ? diff : -diff;
+    });
+
+    reposTableBody.innerHTML = sortedReposForTable
+      .map((repo) => {
         const qCount = queuedByRepo[repo] || 0;
         const isPaused = pausedRepos.has(repo);
+        const rank = ordered.indexOf(repo) + 1;
 
         return `
           <tr>
             <td>
-              <span class="priority-rank-badge font-mono">#${idx + 1}</span>
+              <span class="priority-rank-badge font-mono">#${rank}</span>
             </td>
             <td>
               <span class="repo-name font-mono" style="font-weight: 700;">${escapeHtml(repo)}</span>
@@ -739,8 +856,8 @@ function renderRepos(
               <button class="btn btn-xs ${isPaused ? "btn-resume-repo" : "btn-pause-repo"}" data-action="toggle-pause" data-repo="${escapeHtml(repo)}">
                 ${isPaused ? "RESUME" : "PAUSE"}
               </button>
-              <button class="btn btn-xs btn-move" data-action="move-up" data-repo="${escapeHtml(repo)}" ${idx === 0 ? "disabled" : ""}>▲</button>
-              <button class="btn btn-xs btn-move" data-action="move-down" data-repo="${escapeHtml(repo)}" ${idx === filtered.length - 1 ? "disabled" : ""}>▼</button>
+              <button class="btn btn-xs btn-move" data-action="move-up" data-repo="${escapeHtml(repo)}" ${rank <= 1 ? "disabled" : ""}>▲</button>
+              <button class="btn btn-xs btn-move" data-action="move-down" data-repo="${escapeHtml(repo)}" ${rank >= ordered.length ? "disabled" : ""}>▼</button>
             </td>
           </tr>
         `;
@@ -911,7 +1028,28 @@ function renderCompletedJobs(jobs: CompletedJob[]) {
     })
     .join("");
 
-  jobsTableBody.innerHTML = sorted
+  const sortedJobsForTable = [...jobs].sort((a, b) => {
+    const aConclusion = (a.conclusion || "unknown").toLowerCase();
+    const bConclusion = (b.conclusion || "unknown").toLowerCase();
+    const aReason = a.failure_reason || a.failed_step || "No failure reason captured.";
+    const bReason = b.failure_reason || b.failed_step || "No failure reason captured.";
+    const aDuration = a.duration_sec ?? 0;
+    const bDuration = b.duration_sec ?? 0;
+    const aCompleted = a.completed_at ? new Date(a.completed_at).getTime() : 0;
+    const bCompleted = b.completed_at ? new Date(b.completed_at).getTime() : 0;
+    const map: Record<typeof jobsSort.key, [string | number, string | number]> = {
+      result: [aConclusion, bConclusion],
+      name: [`${a.name} ${a.repo}`, `${b.name} ${b.repo}`],
+      analysis: [aReason, bReason],
+      duration: [aDuration, bDuration],
+      completed: [aCompleted, bCompleted],
+    };
+    const [av, bv] = map[jobsSort.key];
+    const diff = compareValues(av, bv);
+    return jobsSort.dir === "asc" ? diff : -diff;
+  });
+
+  jobsTableBody.innerHTML = sortedJobsForTable
     .map((job) => {
       const conclusion = (job.conclusion || "unknown").toLowerCase();
       const isSuccess = conclusion === "success";
@@ -1093,8 +1231,37 @@ function renderQueue(queuedJobs: QueuedJob[], concurrency: { active: number; max
   }
 
   // 2. Render Table View
+  const sortedQueueForTable = [...queuedJobs].sort((a, b) => {
+    const aPos = a.queue_position ?? Number.MAX_SAFE_INTEGER;
+    const bPos = b.queue_position ?? Number.MAX_SAFE_INTEGER;
+    const aStatus = a.status || "";
+    const bStatus = b.status || "";
+    const aName = `${a.name || ""} ${a.workflow_name || ""}`;
+    const bName = `${b.name || ""} ${b.workflow_name || ""}`;
+    const aRun = a.run_id ?? 0;
+    const bRun = b.run_id ?? 0;
+    const aRepo = `${a.repo || ""} ${a.head_branch || ""}`;
+    const bRepo = `${b.repo || ""} ${b.head_branch || ""}`;
+    const aProgress = a.progress_pct ?? 0;
+    const bProgress = b.progress_pct ?? 0;
+    const aWait = a.started_at ? new Date(a.started_at).getTime() : (a.created_at ? new Date(a.created_at).getTime() : 0);
+    const bWait = b.started_at ? new Date(b.started_at).getTime() : (b.created_at ? new Date(b.created_at).getTime() : 0);
+    const map: Record<typeof queueSort.key, [string | number, string | number]> = {
+      position: [aPos, bPos],
+      status: [aStatus, bStatus],
+      name: [aName, bName],
+      run: [aRun, bRun],
+      repo: [aRepo, bRepo],
+      progress: [aProgress, bProgress],
+      wait: [aWait, bWait],
+    };
+    const [av, bv] = map[queueSort.key];
+    const diff = compareValues(av, bv);
+    return queueSort.dir === "asc" ? diff : -diff;
+  });
+
   if (queueTableBody) {
-    queueTableBody.innerHTML = queuedJobs
+    queueTableBody.innerHTML = sortedQueueForTable
       .map((j) => {
         const isRunning = j.status === "in_progress";
         const runUrl = j.run_url || `https://github.com/${j.repo}/actions/runs/${j.run_id}`;
@@ -1323,6 +1490,7 @@ function renderState(state: FleetState) {
   }
 
   const completedJobs = (state as FleetState & { completed_jobs?: CompletedJob[] }).completed_jobs || [];
+  currentCompletedJobs = completedJobs;
   renderCompletedJobs(completedJobs);
 
   // Active concurrency
@@ -1397,7 +1565,8 @@ function renderState(state: FleetState) {
   }
 
   // Render subcomponents
-  renderRunners(state.runners || []);
+  currentRunners = state.runners || [];
+  renderRunners(currentRunners);
   renderRepos(currentRepos, currentQueuedJobs, currentRepoPriority, currentPausedRepos);
   renderQueue(currentQueuedJobs, currentConcurrency);
   renderBilling(state.actions_billing);
@@ -1417,6 +1586,8 @@ async function refreshState() {
 
 // Bind Global Actions & Event Handlers
 function initHandlers() {
+  initTableSortingControls();
+
   // Telemetry drawer + clickable KPI cards
   const workspace = document.querySelector<HTMLElement>(".main-workspace-full");
   const drawer = document.getElementById("telemetry-drawer");
