@@ -134,7 +134,7 @@ test.describe("RunZero Web Dashboard End-to-End Tests", () => {
     await expect(page.locator(".main-workspace-full")).toHaveClass(/drawer-open/);
 
     const drawerPosition = await page.locator("#telemetry-drawer").evaluate((el) => getComputedStyle(el).position);
-    expect(drawerPosition).toBe("absolute");
+    expect(drawerPosition).toBe("relative");
 
     const panelBox = await page.locator("#panel-fleet-control").boundingBox();
     const drawerBox = await page.locator("#telemetry-drawer").boundingBox();

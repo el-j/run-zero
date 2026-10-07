@@ -428,7 +428,7 @@ body {
   padding: 28px 32px 56px;
   display: flex;
   flex-direction: column;
-  gap: 26px;
+  gap: 12px;
   position: relative;
   z-index: 1;
 }
@@ -436,11 +436,14 @@ body {
 .main-workspace-full {
   display: flex;
   align-items: stretch;
-  gap: 12px;
+  gap: 0;
   min-height: 0;
   position: relative;
   overflow: hidden;
   flex: 1 1 auto;
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  background: rgba(6, 8, 13, 0.42);
 }
 
 .workspace-main-column {
@@ -465,9 +468,7 @@ body {
 }
 
 #panel-fleet-control .master-tabs-header {
-  border: 1px solid var(--border-subtle);
-  border-left: none;
-  border-right: none;
+  border-bottom: 1px solid var(--border-subtle);
   background: rgba(0, 0, 0, 0.22);
 }
 
@@ -475,9 +476,7 @@ body {
    KPI Cards Grid (Aerospace Telemetry Matrix)
    ============================================================================== */
 .kpi-grid {
-  display: grid;
-  grid-template-columns: repeat(4, 1fr);
-  gap: 18px;
+  display: none;
 }
 
 @media (max-width: 1100px) {
@@ -2486,14 +2485,6 @@ body {
     padding: 10px 16px 12px;
     gap: 10px;
   }
-  .kpi-grid { gap: 10px; flex: 0 0 auto; }
-  .kpi-card { padding: 10px 14px; gap: 12px; align-items: center; }
-  .kpi-icon-wrap { width: 36px; height: 36px; }
-  .kpi-icon-wrap svg { width: 18px; height: 18px; }
-  .kpi-num { font-size: 22px; }
-  .kpi-value-row { margin-top: 0; margin-bottom: 4px; }
-  .kpi-track { margin-bottom: 4px; }
-  .kpi-content .kpi-subtext ~ .kpi-subtext { display: none; }
   .main-workspace-full { flex: 1 1 auto; min-height: 0; display: flex; }
   .workspace-main-column { min-height: 0; }
   #panel-fleet-control { flex: 1; display: flex; flex-direction: column; min-height: 0; }
@@ -2518,33 +2509,37 @@ body {
 }
 .drawer-backdrop.open { display: none; }
 .drawer {
-  position: absolute;
-  top: 0;
-  right: 0;
-  bottom: 0;
-  width: min(380px, 34vw);
+  position: relative;
+  top: auto;
+  right: auto;
+  bottom: auto;
+  width: 0;
+  flex: 0 0 0;
   opacity: 1;
   background: linear-gradient(180deg, rgba(11, 15, 24, 0.98) 0%, rgba(9, 12, 20, 0.98) 100%);
-  border-left: 1px solid var(--border-subtle);
-  box-shadow: -12px 0 26px rgba(0, 0, 0, 0.42);
-  transform: translateX(104%);
-  transition: transform 0.24s ease;
-  z-index: 2;
+  border-left: 0;
+  box-shadow: none;
+  transform: none;
+  transition: width 0.22s ease, flex-basis 0.22s ease, border-color 0.22s ease;
+  z-index: 1;
   display: flex;
   flex-direction: column;
-  will-change: transform;
+  will-change: width, flex-basis;
   overflow: hidden;
   pointer-events: none;
-  max-height: none;
+  max-height: 100%;
   min-height: 0;
 }
 .drawer.open {
-  transform: translateX(0);
+  width: min(380px, 34vw);
+  flex-basis: min(380px, 34vw);
+  border-left: 1px solid var(--border-subtle);
+  box-shadow: -12px 0 26px rgba(0, 0, 0, 0.42);
   pointer-events: auto;
 }
 
 .main-workspace-full.drawer-open #panel-fleet-control {
-  margin-right: min(380px, 34vw);
+  margin-right: 0;
 }
 .drawer-header {
   display: flex; align-items: center; justify-content: space-between;
@@ -2645,6 +2640,81 @@ body {
   background: transparent;
   border: none;
   box-shadow: none;
+}
+
+/* Dense workspace framing: reduce card-on-card chrome and wasted space */
+#panel-fleet-control .master-tabs-header {
+  padding: 6px 10px;
+  gap: 8px;
+}
+
+#panel-fleet-control .tabs-group {
+  padding: 1px;
+  gap: 2px;
+  border-radius: 0;
+}
+
+#panel-fleet-control .tab-btn {
+  padding: 4px 8px;
+}
+
+#panel-fleet-control .panel-header-controls {
+  gap: 6px;
+}
+
+#panel-fleet-control .master-panel-body {
+  padding: 0;
+}
+
+#panel-fleet-control .tab-content-pane {
+  padding: 6px 10px 0;
+}
+
+#panel-fleet-control .queue-steering-header {
+  margin-bottom: 8px;
+  gap: 6px;
+}
+
+#panel-fleet-control .queue-capacity-banner {
+  padding: 8px 10px;
+  gap: 8px;
+  border-radius: 0;
+  background: rgba(0, 0, 0, 0.18);
+}
+
+#panel-fleet-control .queue-hint-box {
+  margin-bottom: 8px !important;
+  padding: 6px 8px;
+  border-radius: 0;
+  border-left: 2px solid rgba(0, 240, 255, 0.35);
+  border-top: none;
+  border-right: none;
+  border-bottom: none;
+  background: rgba(0, 0, 0, 0.18);
+}
+
+#panel-fleet-control .table-view {
+  border-top: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+#panel-fleet-control .data-table th {
+  padding: 6px 10px;
+}
+
+#panel-fleet-control .data-table td {
+  padding: 7px 10px;
+}
+
+#panel-fleet-control .empty-state {
+  padding: 22px 14px 18px;
+}
+
+.terminal-header {
+  padding: 4px 8px;
+}
+
+.terminal-output {
+  padding: 8px 10px;
 }
 
 /* Run / job links, current stage and step pipeline */
