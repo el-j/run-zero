@@ -94,7 +94,24 @@ func parseOrbctlList(output string) []state.RunnerInfo {
 		targetArch := ""
 
 		if strings.HasPrefix(name, "runzero-") {
-			id = strings.TrimPrefix(name, "runzero-")
+			trimmed := strings.TrimPrefix(name, "runzero-")
+			parts := strings.Split(trimmed, "-")
+			if len(parts) >= 5 && strings.HasPrefix(parts[0], "j") && strings.HasPrefix(parts[1], "r") {
+				// Expected format: runzero-j<jobID>-r<runID>-<arch>-<owner__repo>-<id>
+				// Example: runzero-j202-r101-amd64-el-j__herbful-063160
+				targetArch = parts[2]
+				id = parts[len(parts)-1]
+				repoPart := strings.Join(parts[3:len(parts)-1], "-")
+				targetRepo = parseRepoToken(repoPart)
+			} else if len(parts) >= 4 && parts[0] == "manual" {
+				// Expected format: runzero-manual-<arch>-<owner__repo>-<id>
+				targetArch = parts[1]
+				id = parts[len(parts)-1]
+				repoPart := strings.Join(parts[2:len(parts)-1], "-")
+				targetRepo = parseRepoToken(repoPart)
+			} else {
+				id = trimmed
+			}
 		} else if strings.HasPrefix(name, "local-runner-") {
 			// Expected format: local-runner-[arch]-[owner]-[repo]-[id]
 			// e.g. local-runner-amd64-el-j-herbful-063160

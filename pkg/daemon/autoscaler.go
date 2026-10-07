@@ -310,7 +310,7 @@ func (s *Scaler) ScaleCycle(ctx context.Context) {
 
 				// Generate runner name and launch
 				id := randomHex(3)
-				runnerName := fmt.Sprintf("local-runner-%s-%s-%s", targetArch, strings.ReplaceAll(repo, "/", "-"), id)
+				runnerName := driver.JobScopedRunnerName(repo, targetArch, job.RunID, job.ID, id)
 
 				spec := driver.RunnerSpec{
 					ID:       id,

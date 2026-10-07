@@ -6,7 +6,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
-	"strings"
 	"time"
 
 	"github.com/el-j/run-zero/pkg/config"
@@ -87,7 +86,7 @@ func handleRunnerActionWithDeps(st *state.State, cfg *config.Config, ghClient *g
 			}
 
 			id := randomHex(3)
-			name := fmt.Sprintf("local-runner-%s-%s-%s", targetArch, strings.ReplaceAll(targetRepo, "/", "-"), id)
+			name := driver.ManualRunnerName(targetRepo, targetArch, id)
 			spec := driver.RunnerSpec{
 				ID:       id,
 				Name:     name,
