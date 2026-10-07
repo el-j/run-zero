@@ -97,8 +97,10 @@ const btnClearLogs = document.getElementById("btn-clear-logs");
 const btnToggleTerminalExpand = document.getElementById("btn-toggle-terminal-expand");
 const btnTerminalExpandIcon = document.getElementById("btn-terminal-expand-icon");
 const btnTerminalExpandText = document.getElementById("btn-terminal-expand-text");
-const terminalBodyWrapper = document.getElementById("terminal-body-wrapper");
 const terminalLineCount = document.getElementById("terminal-line-count");
+const workspaceMainColumn = document.getElementById("workspace-main-column") as HTMLElement | null;
+const mainTerminalSplitter = document.getElementById("main-terminal-splitter") as HTMLElement | null;
+const panelTerminal = document.getElementById("panel-terminal") as HTMLElement | null;
 
 const barDockerJobs = document.getElementById("bar-docker-jobs");
 const barVmJobs = document.getElementById("bar-vm-jobs");
@@ -166,6 +168,7 @@ let terminalExpanded = false;
 let totalLogLines = 0;
 let latestSettings: SystemSettings | null = null;
 let latestCacheStats: CacheStats | null = null;
+let terminalHeightPx = Number(localStorage.getItem("runzero_terminal_height_px") || "180");
 
 function formatReset(resetEpoch?: number | null): string {
   if (!resetEpoch) return "--:--:--";
@@ -306,22 +309,61 @@ function setActiveTab(tab: "runners" | "queue" | "jobs" | "repos") {
   });
 }
 
+function clampTerminalHeight(px: number): number {
+  if (!workspaceMainColumn) return px;
+  const maxAllowed = Math.max(120, workspaceMainColumn.clientHeight - 220);
+  return Math.min(maxAllowed, Math.max(96, Math.round(px)));
+}
+
+function applyTerminalHeight(px: number) {
+  if (!workspaceMainColumn) return;
+  terminalHeightPx = clampTerminalHeight(px);
+  workspaceMainColumn.style.setProperty("--terminal-height", `${terminalHeightPx}px`);
+  localStorage.setItem("runzero_terminal_height_px", String(terminalHeightPx));
+}
+
+function initTerminalSplitter() {
+  if (!workspaceMainColumn || !mainTerminalSplitter || !panelTerminal) return;
+
+  applyTerminalHeight(terminalHeightPx);
+
+  let startY = 0;
+  let startHeight = 0;
+  let dragging = false;
+
+  const onMove = (ev: MouseEvent) => {
+    if (!dragging) return;
+    const delta = startY - ev.clientY;
+    applyTerminalHeight(startHeight + delta);
+  };
+
+  const stopDrag = () => {
+    if (!dragging) return;
+    dragging = false;
+    mainTerminalSplitter.classList.remove("dragging");
+    window.removeEventListener("mousemove", onMove);
+    window.removeEventListener("mouseup", stopDrag);
+  };
+
+  mainTerminalSplitter.addEventListener("mousedown", (ev) => {
+    ev.preventDefault();
+    dragging = true;
+    startY = ev.clientY;
+    startHeight = panelTerminal.getBoundingClientRect().height;
+    mainTerminalSplitter.classList.add("dragging");
+    window.addEventListener("mousemove", onMove);
+    window.addEventListener("mouseup", stopDrag);
+  });
+
+  window.addEventListener("resize", () => applyTerminalHeight(terminalHeightPx));
+}
+
 // Terminal Panel Expand/Collapse
 function toggleTerminal() {
   terminalExpanded = !terminalExpanded;
-  if (terminalBodyWrapper) {
-    if (terminalExpanded) {
-      terminalBodyWrapper.classList.remove("default");
-      terminalBodyWrapper.classList.add("expanded");
-      if (btnTerminalExpandIcon) btnTerminalExpandIcon.textContent = "▼";
-      if (btnTerminalExpandText) btnTerminalExpandText.textContent = "COLLAPSE";
-    } else {
-      terminalBodyWrapper.classList.remove("expanded");
-      terminalBodyWrapper.classList.add("default");
-      if (btnTerminalExpandIcon) btnTerminalExpandIcon.textContent = "▲";
-      if (btnTerminalExpandText) btnTerminalExpandText.textContent = "EXPAND";
-    }
-  }
+  applyTerminalHeight(terminalExpanded ? 320 : 180);
+  if (btnTerminalExpandIcon) btnTerminalExpandIcon.textContent = terminalExpanded ? "▼" : "▲";
+  if (btnTerminalExpandText) btnTerminalExpandText.textContent = terminalExpanded ? "COLLAPSE" : "EXPAND";
 }
 
 // Format log entry with high-tech badge styling
@@ -1332,7 +1374,10 @@ function initHandlers() {
     workspace?.classList.remove("drawer-open");
     backdrop?.classList.remove("open");
   };
-  document.getElementById("btn-open-drawer")?.addEventListener("click", () => openDrawer());
+  document.getElementById("btn-open-drawer")?.addEventListener("click", () => {
+    if (drawer?.classList.contains("open")) closeDrawer();
+    else openDrawer();
+  });
   document.getElementById("btn-close-drawer")?.addEventListener("click", closeDrawer);
   backdrop?.addEventListener("click", closeDrawer);
   document.addEventListener("keydown", (e) => {
@@ -1369,6 +1414,7 @@ function initHandlers() {
   if (btnToggleTerminalExpand) {
     btnToggleTerminalExpand.onclick = toggleTerminal;
   }
+  initTerminalSplitter();
 
   // Prune fleet
   if (btnPruneRunners) {

@@ -187,7 +187,8 @@
 
     <!-- Main Full-Width Fleet Workspace -->
     <div class="main-workspace-full">
-      <section class="panel" id="panel-fleet-control">
+      <div class="workspace-main-column" id="workspace-main-column">
+        <section class="panel" id="panel-fleet-control">
           <div class="master-tabs-header">
             <div class="tabs-group" role="tablist">
               <button id="tab-btn-runners" class="tab-btn active" role="tab" data-tab="runners">
@@ -376,8 +377,44 @@
           </div>
         </section>
 
-      <!-- Right Drawer: Telemetry & Controls -->
-      <aside id="telemetry-drawer" class="drawer" aria-label="Telemetry and controls">
+      
+    </div>
+      <div
+        id="main-terminal-splitter"
+        class="main-terminal-splitter"
+        role="separator"
+        aria-orientation="horizontal"
+        aria-label="Resize main and terminal panels"
+      ></div>
+
+      <!-- Full-Size Bottom Expandable Terminal Panel -->
+      <section class="panel terminal-bottom-panel" id="panel-terminal">
+        <div class="terminal-header">
+          <div class="panel-title-group">
+            <span class="tag-accent">//</span>
+            <h2 class="panel-title">Daemon Terminal Stream</h2>
+            <span class="panel-badge badge-live font-mono">● LIVE SSE</span>
+            <span class="font-mono text-muted" id="terminal-line-count" style="font-size: 11px;">0 lines</span>
+          </div>
+          <div class="terminal-controls">
+            <label class="toggle-wrap font-mono" style="font-size: 11px;">
+              <input type="checkbox" id="auto-scroll-toggle" checked>
+              <span>Auto-scroll</span>
+            </label>
+            <button id="btn-clear-logs" class="btn btn-xs btn-outline font-mono">Clear</button>
+            <button id="btn-toggle-terminal-expand" class="btn btn-xs btn-outline font-mono" title="Expand or collapse bottom terminal">
+              <span id="btn-terminal-expand-icon">▲</span> <span id="btn-terminal-expand-text">EXPAND</span>
+            </button>
+          </div>
+        </div>
+        <div class="terminal-body-wrapper default" id="terminal-body-wrapper">
+          <pre id="log-terminal" class="terminal-output font-mono"></pre>
+        </div>
+      </section>
+    </div>
+
+    <!-- Right Drawer: Telemetry & Controls -->
+    <aside id="telemetry-drawer" class="drawer" aria-label="Telemetry and controls">
       <div class="drawer-header">
         <div class="panel-title-group">
           <span class="tag-accent">//</span>
@@ -680,34 +717,8 @@
         </section>
       </div>
       </aside>
+      <div id="drawer-backdrop" class="drawer-backdrop"></div>
     </div>
-
-    <div id="drawer-backdrop" class="drawer-backdrop"></div>
-
-    <!-- Full-Size Bottom Expandable Terminal Panel -->
-    <section class="panel terminal-bottom-panel" id="panel-terminal">
-      <div class="terminal-header">
-        <div class="panel-title-group">
-          <span class="tag-accent">//</span>
-          <h2 class="panel-title">Daemon Terminal Stream</h2>
-          <span class="panel-badge badge-live font-mono">● LIVE SSE</span>
-          <span class="font-mono text-muted" id="terminal-line-count" style="font-size: 11px;">0 lines</span>
-        </div>
-        <div class="terminal-controls">
-          <label class="toggle-wrap font-mono" style="font-size: 11px;">
-            <input type="checkbox" id="auto-scroll-toggle" checked>
-            <span>Auto-scroll</span>
-          </label>
-          <button id="btn-clear-logs" class="btn btn-xs btn-outline font-mono">Clear</button>
-          <button id="btn-toggle-terminal-expand" class="btn btn-xs btn-outline font-mono" title="Expand or collapse bottom terminal">
-            <span id="btn-terminal-expand-icon">▲</span> <span id="btn-terminal-expand-text">EXPAND</span>
-          </button>
-        </div>
-      </div>
-      <div class="terminal-body-wrapper default" id="terminal-body-wrapper">
-        <pre id="log-terminal" class="terminal-output font-mono"></pre>
-      </div>
-    </section>
   </main>
 
   <!-- Modal: Manual Runner Launch -->

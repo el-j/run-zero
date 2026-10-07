@@ -440,15 +440,28 @@ body {
   min-height: 0;
   position: relative;
   overflow: hidden;
+  flex: 1 1 auto;
+}
+
+.workspace-main-column {
+  flex: 1 1 auto;
+  min-width: 0;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  --terminal-height: 180px;
 }
 
 #panel-fleet-control {
-  flex: 1 1 auto;
+  flex: 1 1 0;
   min-width: 0;
+  min-height: 0;
   background: transparent;
   border: none;
   border-radius: 0;
   box-shadow: none;
+  display: flex;
+  flex-direction: column;
 }
 
 #panel-fleet-control .master-tabs-header {
@@ -2282,7 +2295,31 @@ body {
 
 .master-panel-body {
   padding: 8px 0;
-  min-height: 320px;
+  min-height: 0;
+  flex: 1 1 auto;
+  overflow: auto;
+}
+
+.main-terminal-splitter {
+  flex: 0 0 6px;
+  cursor: row-resize;
+  position: relative;
+  background: transparent;
+}
+
+.main-terminal-splitter::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 2px;
+  height: 2px;
+  background: var(--border-subtle);
+}
+
+.main-terminal-splitter:hover::before,
+.main-terminal-splitter.dragging::before {
+  background: var(--cyan);
 }
 
 .tab-content-pane {
@@ -2381,13 +2418,19 @@ body {
    Full-Size Bottom Expandable Terminal Panel
    ============================================================================== */
 .terminal-bottom-panel {
-  width: 100%;
+  width: auto;
+  flex: 0 0 var(--terminal-height);
+  min-height: 96px;
+  max-height: calc(100% - 180px);
   margin-top: 6px;
   border: none;
   border-top: 1px solid var(--border-subtle);
   border-radius: 0;
   background: transparent;
   box-shadow: none;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
 }
 
 .terminal-header {
@@ -2407,33 +2450,22 @@ body {
 
 .terminal-body-wrapper {
   overflow: hidden;
-  transition: max-height 0.25s cubic-bezier(0.4, 0, 0.2, 1);
   background: #05070c;
+  flex: 1 1 auto;
+  min-height: 0;
 }
 
 .terminal-body-wrapper.collapsed {
-  max-height: 0px !important;
-}
-
-.terminal-body-wrapper.default {
-  max-height: 140px;
-}
-
-.terminal-body-wrapper.expanded {
-  max-height: 40vh;
+  height: 0 !important;
 }
 
 .terminal-output {
-  height: 140px;
+  height: 100%;
   overflow-y: auto;
   padding: 12px 16px;
   font-size: 12px;
   line-height: 1.5;
   color: var(--text-muted);
-}
-
-.terminal-body-wrapper.expanded .terminal-output {
-  height: 40vh;
 }
 
 
@@ -2463,13 +2495,10 @@ body {
   .kpi-track { margin-bottom: 4px; }
   .kpi-content .kpi-subtext ~ .kpi-subtext { display: none; }
   .main-workspace-full { flex: 1 1 auto; min-height: 0; display: flex; }
+  .workspace-main-column { min-height: 0; }
   #panel-fleet-control { flex: 1; display: flex; flex-direction: column; min-height: 0; }
   #panel-fleet-control .master-panel-body { flex: 1; min-height: 0; overflow: auto; }
-  .terminal-bottom-panel { flex: 0 0 auto; margin-top: 0; }
-  .terminal-body-wrapper.default { max-height: 18vh; }
-  .terminal-body-wrapper.default .terminal-output { height: 18vh; }
-  .terminal-body-wrapper.expanded { max-height: 50vh; }
-  .terminal-body-wrapper.expanded .terminal-output { height: 50vh; }
+  .terminal-bottom-panel { margin-top: 0; }
   .terminal-output { padding: 8px 14px; font-size: 11.5px; }
 }
 
@@ -2507,6 +2536,7 @@ body {
   overflow: hidden;
   pointer-events: none;
   max-height: none;
+  min-height: 0;
 }
 .drawer.open {
   transform: translateX(0);
@@ -2607,6 +2637,8 @@ body {
   }
   .drawer.open { transform: translateX(0); }
   .main-workspace-full.drawer-open #panel-fleet-control { margin-right: 0; }
+  .main-terminal-splitter { display: none; }
+  .workspace-main-column { --terminal-height: 150px; }
 }
 
 .dashboard-container.view-mode-table #panel-fleet-control .cards-view {
