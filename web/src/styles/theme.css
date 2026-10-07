@@ -2411,3 +2411,99 @@ body {
 }
 
 
+
+/* ==============================================================================
+   Single-Screen Layout (100vh x 100vw, no page scroll on desktop)
+   ============================================================================== */
+@media (min-width: 900px) {
+  html, body { height: 100vh; overflow: hidden; }
+  body { display: flex; flex-direction: column; }
+  .app-header { position: relative; flex: 0 0 auto; padding: 8px 20px; }
+  .dashboard-container {
+    flex: 1 1 auto;
+    min-height: 0;
+    max-width: none;
+    width: 100%;
+    margin: 0;
+    padding: 10px 16px 12px;
+    gap: 10px;
+  }
+  .kpi-grid { gap: 10px; flex: 0 0 auto; }
+  .kpi-card { padding: 10px 14px; gap: 12px; align-items: center; }
+  .kpi-icon-wrap { width: 36px; height: 36px; }
+  .kpi-icon-wrap svg { width: 18px; height: 18px; }
+  .kpi-num { font-size: 22px; }
+  .kpi-value-row { margin-top: 0; margin-bottom: 4px; }
+  .kpi-track { margin-bottom: 4px; }
+  .kpi-content .kpi-subtext ~ .kpi-subtext { display: none; }
+  .main-workspace-full { flex: 1 1 auto; min-height: 0; display: flex; }
+  #panel-fleet-control { flex: 1; display: flex; flex-direction: column; min-height: 0; }
+  #panel-fleet-control .master-panel-body { flex: 1; min-height: 0; overflow: auto; }
+  .terminal-bottom-panel { flex: 0 0 auto; margin-top: 0; }
+  .terminal-body-wrapper.default { max-height: 18vh; }
+  .terminal-body-wrapper.default .terminal-output { height: 18vh; }
+  .terminal-body-wrapper.expanded { max-height: 50vh; }
+  .terminal-body-wrapper.expanded .terminal-output { height: 50vh; }
+  .terminal-output { padding: 8px 14px; font-size: 11.5px; }
+}
+
+/* Clickable KPI cards */
+.kpi-card-clickable { cursor: pointer; position: relative; }
+.kpi-card-clickable:hover { border-color: var(--border-cyan); transform: translateY(-1px); }
+.kpi-corner-hint {
+  position: absolute; top: 6px; right: 10px;
+  font-size: 9px; letter-spacing: 0.06em; color: var(--text-dim); opacity: 0;
+  transition: opacity 0.15s ease;
+}
+.kpi-card-clickable:hover .kpi-corner-hint { opacity: 1; }
+
+/* Right-side drawer */
+.drawer-backdrop {
+  position: fixed; inset: 0; background: rgba(0, 0, 0, 0.55);
+  backdrop-filter: blur(2px); opacity: 0; pointer-events: none;
+  transition: opacity 0.2s ease; z-index: 190;
+}
+.drawer-backdrop.open { opacity: 1; pointer-events: auto; }
+.drawer {
+  position: fixed; top: 0; right: 0; bottom: 0; width: min(460px, 94vw);
+  background: var(--bg-surface, #0b111c);
+  border-left: 1px solid var(--border-subtle);
+  box-shadow: -16px 0 40px rgba(0, 0, 0, 0.6);
+  transform: translateX(105%);
+  transition: transform 0.28s cubic-bezier(0.4, 0, 0.2, 1);
+  z-index: 200; display: flex; flex-direction: column;
+}
+.drawer.open { transform: translateX(0); }
+.drawer-header {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 12px 18px; border-bottom: 1px solid var(--border-subtle);
+  background: rgba(0, 0, 0, 0.3);
+}
+.drawer-body { flex: 1; overflow-y: auto; padding: 16px; }
+
+/* Run / job links, current stage and step pipeline */
+.link-label {
+  display: inline-block; min-width: 30px; font-size: 9px; font-weight: 700;
+  letter-spacing: 0.06em; color: var(--text-dim); font-family: var(--font-mono);
+}
+.gh-link { text-decoration: none; font-weight: 700; }
+.gh-link.run-link { color: var(--solar); }
+.gh-link.job-link { color: var(--cyan); }
+.gh-link:hover { text-decoration: underline; }
+.current-stage {
+  font-size: 10.5px; color: var(--cyan); margin-top: 2px;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 280px;
+}
+.step-pipeline { display: flex; flex-wrap: wrap; gap: 3px; margin-top: 5px; max-height: 64px; overflow-y: auto; }
+.step-chip {
+  font-size: 9.5px; font-family: var(--font-mono); padding: 1px 6px; border-radius: 3px;
+  background: rgba(255, 255, 255, 0.05); color: var(--text-dim);
+  border: 1px solid transparent; max-width: 170px; overflow: hidden;
+  text-overflow: ellipsis; white-space: nowrap;
+}
+.step-chip.completed { color: var(--emerald); background: var(--emerald-dim); }
+.step-chip.in_progress {
+  color: var(--cyan); border-color: var(--border-cyan);
+  background: var(--cyan-dim); animation: step-pulse 1.4s ease-in-out infinite;
+}
+@keyframes step-pulse { 50% { opacity: 0.55; } }

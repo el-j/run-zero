@@ -113,6 +113,14 @@ func (c *Client) ListActiveJobs(ctx context.Context, repo string) ([]state.Queue
 						currentStep = &sName
 					}
 				}
+				if currentStep == nil && stepsTotal > 0 && stepsCompleted < stepsTotal {
+					sName := j.Steps[stepsCompleted].Name
+					currentStep = &sName
+				}
+				if currentStep == nil && j.Status == "in_progress" {
+					defaultStage := "Executing workflow job..."
+					currentStep = &defaultStage
+				}
 
 				var progressPct *int
 				if stepsTotal > 0 {
@@ -123,7 +131,17 @@ func (c *Client) ListActiveJobs(ctx context.Context, repo string) ([]state.Queue
 					progressPct = &pct
 				}
 
+				jobURL := j.HTMLURL
+				if jobURL == "" {
+					jobURL = fmt.Sprintf("https://github.com/%s/actions/runs/%d/job/%d", repo, run.ID, j.ID)
+				}
+				var steps []state.StepInfo
+				for _, st := range j.Steps {
+					steps = append(steps, state.StepInfo{Number: st.Number, Name: st.Name, Status: st.Status})
+				}
+
 				activeJobs = append(activeJobs, state.QueuedJob{
+					Steps:          steps,
 					ID:             j.ID,
 					RunID:          run.ID,
 					Name:           j.Name,
@@ -134,7 +152,7 @@ func (c *Client) ListActiveJobs(ctx context.Context, repo string) ([]state.Queue
 					CreatedAt:      &cAt,
 					StartedAt:      j.StartedAt,
 					Labels:         j.Labels,
-					HTMLURL:        j.HTMLURL,
+					HTMLURL:        jobURL,
 					Repo:           repo,
 					RunURL:         &runURL,
 					RunnerName:     j.RunnerName,

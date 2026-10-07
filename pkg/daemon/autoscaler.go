@@ -264,18 +264,18 @@ func (s *Scaler) ScaleCycle(ctx context.Context) {
 				runnerName := fmt.Sprintf("local-runner-%s-%s-%s", targetArch, strings.ReplaceAll(repo, "/", "-"), id)
 
 				spec := driver.RunnerSpec{
-					ID:        id,
-					Name:      runnerName,
-					Repo:      repo,
-					Arch:      targetArch,
-					Backend:   backend,
-					CPUs:      cpus,
-					MemoryMB:  memMB,
-					Labels:    append([]string{"self-hosted", "local", targetArch}, job.Labels...),
-					Token:     token,
-					CacheDir:  s.cfg.HostCacheDir,
-					Mounts:    cacheMounts,
-					Network:   "host",
+					ID:       id,
+					Name:     runnerName,
+					Repo:     repo,
+					Arch:     targetArch,
+					Backend:  backend,
+					CPUs:     cpus,
+					MemoryMB: memMB,
+					Labels:   append([]string{"self-hosted", "local", targetArch}, job.Labels...),
+					Token:    token,
+					CacheDir: s.cfg.HostCacheDir,
+					Mounts:   cacheMounts,
+					Network:  "host",
 				}
 
 				info, err := s.driver.SpawnRunner(ctx, spec)
@@ -296,6 +296,10 @@ func (s *Scaler) ScaleCycle(ctx context.Context) {
 				info.WorkflowName = job.WorkflowName
 				info.StagesDone = job.StagesDone
 				info.StagesTotal = job.StagesTotal
+				info.StepsCompleted = job.StepsCompleted
+				info.StepsTotal = job.StepsTotal
+				info.CurrentStep = job.CurrentStep
+				info.Steps = job.Steps
 				info.ProgressPct = job.ProgressPct
 
 				s.state.AppendLog(fmt.Sprintf("[Autoscaler] 🚀 Spawned %s runner '%s' for %s (%s, %s)", backend, runnerName, repo, job.Name, targetArch))
@@ -306,7 +310,7 @@ func (s *Scaler) ScaleCycle(ctx context.Context) {
 		}
 	}
 
-	// Enrich all active runners with live workflow job links and progress
+	// Enrich all active runners with live workflow job links, stages, and current steps
 	for i := range activeRunners {
 		r := &activeRunners[i]
 		if r.RunURL == nil && r.RunID != nil && r.TargetRepo != "" {
@@ -317,40 +321,30 @@ func (s *Scaler) ScaleCycle(ctx context.Context) {
 			isMatch := false
 			if j.RunnerName != nil && *j.RunnerName == r.Name {
 				isMatch = true
-			} else if r.TargetRepo == j.Repo && (r.RunID == nil || *r.RunID == j.RunID) {
+			} else if r.JobID != nil && *r.JobID == j.ID {
+				isMatch = true
+			} else if r.RunID != nil && *r.RunID == j.RunID && r.TargetRepo == j.Repo {
 				isMatch = true
 			}
 			if isMatch {
-				if r.JobID == nil {
-					jID := j.ID
-					r.JobID = &jID
-				}
-				if r.RunID == nil {
-					rID := j.RunID
-					r.RunID = &rID
-				}
-				if r.JobURL == nil {
-					r.JobURL = &j.HTMLURL
-				}
-				if r.RunURL == nil && j.RunURL != nil {
+				jID := j.ID
+				r.JobID = &jID
+				rID := j.RunID
+				r.RunID = &rID
+				r.JobURL = &j.HTMLURL
+				if j.RunURL != nil {
 					r.RunURL = j.RunURL
 				}
-				if r.JobName == nil {
-					jName := j.Name
-					r.JobName = &jName
-				}
-				if r.WorkflowName == nil {
-					r.WorkflowName = j.WorkflowName
-				}
-				if r.StagesDone == nil {
-					r.StagesDone = j.StagesDone
-				}
-				if r.StagesTotal == nil {
-					r.StagesTotal = j.StagesTotal
-				}
-				if r.ProgressPct == nil {
-					r.ProgressPct = j.ProgressPct
-				}
+				jName := j.Name
+				r.JobName = &jName
+				r.WorkflowName = j.WorkflowName
+				r.StagesDone = j.StagesDone
+				r.StagesTotal = j.StagesTotal
+				r.StepsCompleted = j.StepsCompleted
+				r.StepsTotal = j.StepsTotal
+				r.CurrentStep = j.CurrentStep
+				r.Steps = j.Steps
+				r.ProgressPct = j.ProgressPct
 				break
 			}
 		}

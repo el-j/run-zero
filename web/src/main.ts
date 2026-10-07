@@ -334,6 +334,83 @@ function appendLog(text: string, timestamp?: string) {
 }
 
 // Render Runners Fleet (Dual Card and Table View with GitHub Run Links & Stage Progress)
+// Workflow run = whole workflow execution. Job = one job of that run. Steps = stages of the job.
+type RunRef = {
+  repo?: string;
+  target_repo?: string;
+  run_id?: number;
+  job_id?: number;
+  run_url?: string;
+  job_url?: string;
+  job_name?: string;
+  current_step?: string;
+  progress_pct?: number;
+  stages_done?: number;
+  stages_total?: number;
+  steps_completed?: number;
+  steps_total?: number;
+  steps?: { number: number; name: string; status: string }[];
+};
+
+function runUrlOf(x: RunRef): string {
+  const repo = x.target_repo || x.repo;
+  return x.run_url || (x.run_id && repo ? `https://github.com/${repo}/actions/runs/${x.run_id}` : "");
+}
+
+function jobUrlOf(x: RunRef): string {
+  const repo = x.target_repo || x.repo;
+  if (x.job_url) return x.job_url;
+  return x.run_id && x.job_id && repo ? `https://github.com/${repo}/actions/runs/${x.run_id}/job/${x.job_id}` : "";
+}
+
+function runLinkHtml(x: RunRef): string {
+  const url = runUrlOf(x);
+  return url
+    ? `<a href="${escapeHtml(url)}" target="_blank" rel="noopener noreferrer" class="gh-link run-link" title="Open workflow run">Run #${x.run_id ?? ""} ↗</a>`
+    : "";
+}
+
+function jobLinkHtml(x: RunRef): string {
+  const url = jobUrlOf(x);
+  if (!url) return "";
+  const label = x.job_name ? escapeHtml(x.job_name) : `Job #${x.job_id ?? ""}`;
+  return `<a href="${escapeHtml(url)}" target="_blank" rel="noopener noreferrer" class="gh-link job-link" title="Open job">${label} ↗</a>`;
+}
+
+function stepIcon(status: string): string {
+  if (status === "completed") return "✓";
+  if (status === "in_progress") return "▶";
+  return "○";
+}
+
+// Progress for a job: step-based bar, current stage and (cards only) the full step pipeline.
+function progressHtml(x: RunRef, compact: boolean): string {
+  const steps = x.steps || [];
+  const hasData = x.progress_pct !== undefined || steps.length > 0 || !!x.current_step;
+  if (!hasData) return "";
+  const pct = x.progress_pct ?? 0;
+  const done = x.steps_completed ?? steps.filter((s) => s.status === "completed").length;
+  const total = x.steps_total ?? steps.length;
+  const stepLabel = total > 0 ? `step ${Math.min(done + 1, total)}/${total}` : `${x.stages_done ?? 0}/${x.stages_total ?? 1} jobs`;
+  const current = x.current_step ? `<div class="current-stage" title="Current stage">▶ ${escapeHtml(x.current_step)}</div>` : "";
+  const pipeline =
+    !compact && steps.length > 0
+      ? `<div class="step-pipeline">${steps
+          .map((s) => `<span class="step-chip ${escapeHtml(s.status)}" title="${escapeHtml(s.name)}">${stepIcon(s.status)} ${escapeHtml(s.name)}</span>`)
+          .join("")}</div>`
+      : "";
+  return `
+    <div class="mini-progress-wrap" style="margin-top: ${compact ? 0 : 6}px;">
+      <div class="mini-progress-text">
+        <span>${stepLabel}</span>
+        <span style="color: var(--emerald); font-weight: 700;">${pct}%</span>
+      </div>
+      <div class="mini-progress-track"><div class="mini-progress-fill" style="width: ${pct}%;"></div></div>
+      ${current}
+      ${pipeline}
+    </div>`;
+}
+
 function renderRunners(runners: RunnerInfo[]) {
   if (tabRunnersCount) tabRunnersCount.textContent = String(runners.length);
   if (runnersCountBadge) runnersCountBadge.textContent = `${runners.length} RUNNING`;
@@ -364,34 +441,19 @@ function renderRunners(runners: RunnerInfo[]) {
         const repo = r.target_repo || "Standby Pool";
         const duration = formatDuration(r.created_at);
 
-        const runUrl = r.run_url || (r.run_id && r.target_repo ? `https://github.com/${r.target_repo}/actions/runs/${r.run_id}` : "");
-        const runLink = runUrl
-          ? `<a href="${escapeHtml(runUrl)}" target="_blank" rel="noopener noreferrer" style="color: var(--solar); text-decoration: none; font-weight: 700;">Run #${r.run_id} ↗</a>`
-          : "";
-
-        let progressBlock = "";
-        if (r.progress_pct !== undefined || (r.stages_total && r.stages_total > 0)) {
-          const pct = r.progress_pct ?? 0;
-          progressBlock = `
-            <div class="mini-progress-wrap" style="margin-top: 6px;">
-              <div class="mini-progress-text">
-                <span>${r.stages_done ?? 0}/${r.stages_total ?? 1} stages</span>
-                <span style="color: var(--emerald); font-weight: 700;">${pct}%</span>
-              </div>
-              <div class="mini-progress-track">
-                <div class="mini-progress-fill" style="width: ${pct}%;"></div>
-              </div>
-              ${r.current_step ? `<span style="font-size: 10px; color: var(--cyan); margin-top: 2px;">▶ ${escapeHtml(r.current_step)}</span>` : ""}
-            </div>
-          `;
-        }
+        const runLink = runLinkHtml(r);
+        const jobLink = jobLinkHtml(r);
+        const progressBlock = progressHtml(r, false);
 
         let targetMeta = `<span>${escapeHtml(repo)}</span>`;
-        if (runLink) {
-          targetMeta += `<span style="margin-left: 0.5rem; color: var(--text-dim);">·</span> <span style="margin-left: 0.5rem;">${runLink}</span>`;
+        if (r.workflow_name) {
+          targetMeta += `<div style="font-size: 11px; color: var(--text-muted); margin-top: 2px;">Workflow: ${escapeHtml(r.workflow_name)}</div>`;
         }
-        if (r.job_name) {
-          targetMeta += `<div style="font-size: 11px; color: var(--text-muted); margin-top: 2px;">Job: ${escapeHtml(r.job_name)}</div>`;
+        if (runLink) {
+          targetMeta += `<div style="font-size: 11px; margin-top: 3px;"><span class="link-label">RUN</span> ${runLink}</div>`;
+        }
+        if (jobLink) {
+          targetMeta += `<div style="font-size: 11px; margin-top: 3px;"><span class="link-label">JOB</span> ${jobLink}</div>`;
         }
 
         return `
@@ -437,26 +499,10 @@ function renderRunners(runners: RunnerInfo[]) {
         const archName = (r.target_arch || "amd64").toUpperCase();
         const duration = formatDuration(r.created_at);
 
-        const runUrl = r.run_url || (r.run_id && r.target_repo ? `https://github.com/${r.target_repo}/actions/runs/${r.run_id}` : "");
-        const runLink = runUrl
-          ? `<a href="${escapeHtml(runUrl)}" target="_blank" rel="noopener noreferrer">Run #${r.run_id} ↗</a>`
-          : `<span style="color: var(--text-dim);">Standby / Idle</span>`;
-
-        let progressBlock = "";
-        if (r.progress_pct !== undefined || (r.stages_total && r.stages_total > 0)) {
-          const pct = r.progress_pct ?? 0;
-          progressBlock = `
-            <div class="mini-progress-wrap">
-              <div class="mini-progress-text">
-                <span>${r.stages_done ?? 0}/${r.stages_total ?? 1} stages</span>
-                <span style="color: var(--emerald);">${pct}%</span>
-              </div>
-              <div class="mini-progress-track">
-                <div class="mini-progress-fill" style="width: ${pct}%;"></div>
-              </div>
-            </div>
-          `;
-        }
+        const runLink = runLinkHtml(r);
+        const jobLink = jobLinkHtml(r);
+        const progressBlock = progressHtml(r, true);
+        const idle = !runLink && !jobLink;
 
         return `
           <tr>
@@ -475,10 +521,11 @@ function renderRunners(runners: RunnerInfo[]) {
               <span class="badge font-mono" style="color: var(--emerald);">${escapeHtml((r.status || "RUNNING").toUpperCase())}</span>
             </td>
             <td>
-              ${runLink}
-              ${r.job_name ? `<div style="font-size: 11px; color: var(--text-muted);">${escapeHtml(r.job_name)}</div>` : ""}
-              ${progressBlock}
+              ${idle ? `<span style="color: var(--text-dim);">Standby / Idle</span>` : `
+                <div><span class="link-label">RUN</span> ${runLink}${r.workflow_name ? ` <span style="color: var(--text-muted);">${escapeHtml(r.workflow_name)}</span>` : ""}</div>
+                <div><span class="link-label">JOB</span> ${jobLink || "-"}</div>`}
             </td>
+            <td>${progressBlock || `<span style="color: var(--text-dim);">-</span>`}</td>
             <td>${duration}</td>
             <td style="text-align: right;">
               <button class="btn btn-xs btn-outline stop-runner-btn" data-runner-id="${escapeHtml(r.id)}" data-runner-name="${escapeHtml(r.name || r.id)}" data-job-id="${r.job_id || ""}">
@@ -1091,6 +1138,35 @@ async function refreshState() {
 
 // Bind Global Actions & Event Handlers
 function initHandlers() {
+  // Telemetry drawer + clickable KPI cards
+  const drawer = document.getElementById("telemetry-drawer");
+  const backdrop = document.getElementById("drawer-backdrop");
+  const openDrawer = (section?: string) => {
+    drawer?.classList.add("open");
+    backdrop?.classList.add("open");
+    if (section) {
+      const map: Record<string, string> = { routing: "panel-routing-telemetry", cache: "panel-cache-analytics" };
+      const el = document.getElementById(map[section] || "");
+      if (el) setTimeout(() => el.scrollIntoView({ behavior: "smooth", block: "start" }), 120);
+    }
+  };
+  const closeDrawer = () => {
+    drawer?.classList.remove("open");
+    backdrop?.classList.remove("open");
+  };
+  document.getElementById("btn-open-drawer")?.addEventListener("click", () => openDrawer());
+  document.getElementById("btn-close-drawer")?.addEventListener("click", closeDrawer);
+  backdrop?.addEventListener("click", closeDrawer);
+  document.addEventListener("keydown", (e) => {
+    if (e.key === "Escape") closeDrawer();
+  });
+  document.querySelectorAll<HTMLElement>("[data-kpi-target]").forEach((card) => {
+    card.addEventListener("click", () => {
+      const target = card.dataset.kpiTarget!;
+      if (target === "runners" || target === "queue") setActiveTab(target);
+      else openDrawer(target);
+    });
+  });
   // Master tabs switching
   if (tabBtnRunners) tabBtnRunners.onclick = () => setActiveTab("runners");
   if (tabBtnQueue) tabBtnQueue.onclick = () => setActiveTab("queue");

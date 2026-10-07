@@ -262,12 +262,18 @@ export interface components {
             waiting_reason?: string;
             run_url?: string;
             runner_name?: string;
+            /** Format: int32 */
             stages_done?: number;
+            /** Format: int32 */
             stages_total?: number;
+            /** Format: int32 */
             steps_completed?: number;
+            /** Format: int32 */
             steps_total?: number;
             current_step?: string;
+            /** Format: int32 */
             progress_pct?: number;
+            steps?: components["schemas"]["StepInfo"][];
         };
         /** @description Update payload for repository priority ordering and pause states */
         RepoPriorityAction: {
@@ -300,12 +306,25 @@ export interface components {
             run_url?: string;
             job_name?: string;
             workflow_name?: string;
+            /** Format: int32 */
             stages_done?: number;
+            /** Format: int32 */
             stages_total?: number;
+            /** Format: int32 */
             steps_completed?: number;
+            /** Format: int32 */
             steps_total?: number;
             current_step?: string;
+            /** Format: int32 */
             progress_pct?: number;
+            steps?: components["schemas"]["StepInfo"][];
+        };
+        /** @description One step (stage) of a workflow job */
+        StepInfo: {
+            /** Format: int32 */
+            number: number;
+            name: string;
+            status: string;
         };
         /** @description Generic success response */
         SuccessResponse: {

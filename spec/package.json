@@ -11,7 +11,7 @@
   "keywords": [],
   "author": "",
   "license": "ISC",
-  "packageManager": "pnpm@10.34.5",
+  "packageManager": "pnpm@12.9.1",
   "devDependencies": {
     "@typespec/compiler": "^1.16.0",
     "@typespec/http": "^1.16.0",

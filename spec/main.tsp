@@ -33,6 +33,22 @@ model RunnerInfo {
   run_id?: int64;
   job_url?: string;
   run_url?: string;
+  job_name?: string;
+  workflow_name?: string;
+  stages_done?: int32;
+  stages_total?: int32;
+  steps_completed?: int32;
+  steps_total?: int32;
+  current_step?: string;
+  progress_pct?: int32;
+  steps?: StepInfo[];
+}
+
+/** One step (stage) of a workflow job */
+model StepInfo {
+  number: int32;
+  name: string;
+  status: string;
 }
 
 /** Information about a queued or running workflow job */
@@ -51,6 +67,15 @@ model QueuedJob {
   repo: string;
   queue_position?: int32 | null;
   waiting_reason?: string;
+  run_url?: string;
+  runner_name?: string;
+  stages_done?: int32;
+  stages_total?: int32;
+  steps_completed?: int32;
+  steps_total?: int32;
+  current_step?: string;
+  progress_pct?: int32;
+  steps?: StepInfo[];
 }
 
 /** GitHub Actions billing summary */
