@@ -152,7 +152,8 @@ func (s *Scaler) refreshCompletedJobs(ctx context.Context, repos []string) {
 	if s.historyFetcher == nil {
 		s.historyFetcher = github.NewHistoryFetcher(s.ghClient)
 	}
-	if time.Since(s.lastHistoryRefresh) < 30*time.Second && !s.lastHistoryRefresh.IsZero() {
+	forceRefresh := s.state.ConsumeHistoryRefresh()
+	if !forceRefresh && time.Since(s.lastHistoryRefresh) < 30*time.Second && !s.lastHistoryRefresh.IsZero() {
 		return
 	}
 

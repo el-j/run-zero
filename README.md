@@ -26,6 +26,7 @@
 - [Key Features](#-key-features)
 - [Proxy Registries & Upstream Ecosystem](#-proxy-registries--upstream-ecosystem)
 - [Architecture Overview](#-architecture-overview)
+- [Dashboard Live Contract (State, Retention, Retry)](#-dashboard-live-contract-state-retention-retry)
 - [Repository Structure](#-repository-structure)
 - [Quick Start](#-quick-start)
 - [Automatic Cloud Fallback in Workflows](#-automatic-cloud-fallback-in-workflows)
@@ -206,6 +207,34 @@ job outright.
 
 ---
 
+## 📡 Dashboard Live Contract (State, Retention, Retry)
+
+The dashboard is driven directly from the `/api/fleet` snapshot plus `/api/cache` and `/api/logs`
+support endpoints.
+
+- **Fleet snapshot (`/api/fleet`)** includes:
+  - Active runners, queue, and completed jobs
+  - Capacity (`busy_runners`, `free_slots`, `max_runners`)
+  - Repo priority / paused repos
+  - Rate-limit and Actions billing telemetry
+- **Completed job retention**:
+  - Up to `100` completed jobs are retained in memory (`pkg/state/history.go`)
+  - Jobs are sorted newest-first by `completed_at`
+- **Failure diagnosis parity**:
+  - Failed/timed-out/cancelled jobs include a human-readable `failure_reason`
+  - `failed_step` and top annotation messages are included where available
+- **Runner cleanup evidence**:
+  - Before finished runners are pruned, the daemon retains the last runner log tail
+  - Up to `100` runner log tails are retained, each capped at `16 KiB`
+- **Retry semantics**:
+  - The UI calls `/api/actions/workflow` with `rerun` or `rerun-failed`
+  - Retry actions mark history as dirty so the next autoscaler cycle bypasses the normal refresh throttle and updates completed-job history immediately
+- **Placeholder/TODO audit (dashboard + backend shipped paths)**:
+  - Audit command: `rg "TODO|FIXME|stub|placeholder" web/src pkg --glob "**/*.{ts,tsx,go}"`
+  - Result: no unresolved TODO/FIXME/stub markers in shipped TypeScript/Go sources (remaining `placeholder=...` matches are HTML input placeholder attributes)
+
+---
+
 ## 📁 Repository Structure
 
 ```text
@@ -325,7 +354,7 @@ build, and `bash -n` + shellcheck on every maintained shell script.
 | `make test` | Go unit tests only |
 | `make lint` | `go vet`, website Oxlint and shellcheck |
 | `make fmt` / `make fmt-check` | Format / verify formatting (Go + website) |
-| `make e2e` | Playwright end-to-end tests for the website |
+| `make e2e` | Playwright end-to-end tests for website + dashboard lifecycle/retry/cleanup flows |
 
 See [`E2E_TESTING.md`](E2E_TESTING.md) for what is automated in CI versus what requires a human
 running a manual runbook locally (OrbStack VM, WSL2, Multipass).

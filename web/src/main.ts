@@ -30,8 +30,11 @@ const kpiReposMonitored = document.getElementById("kpi-repos-monitored")!;
 const kpiVmRatio = document.getElementById("kpi-vm-ratio")!;
 const kpiRoutingBar = document.getElementById("kpi-routing-bar")!;
 const kpiRoutingSub = document.getElementById("kpi-routing-sub")!;
+const kpiRoutingHealth = document.getElementById("kpi-routing-health");
 const kpiCacheSize = document.getElementById("kpi-cache-size")!;
 const kpiCacheBar = document.getElementById("kpi-cache-bar")!;
+const kpiQueueHealth = document.getElementById("kpi-queue-health");
+const kpiCacheHealth = document.getElementById("kpi-cache-health");
 
 // Unified Fleet Control Tabs
 const tabBtnRunners = document.getElementById("tab-btn-runners");
@@ -161,6 +164,8 @@ let currentViewMode: "cards" | "table" = (localStorage.getItem("runzero_display_
 let currentTab: "runners" | "queue" | "jobs" | "repos" = "runners";
 let terminalExpanded = false;
 let totalLogLines = 0;
+let latestSettings: SystemSettings | null = null;
+let latestCacheStats: CacheStats | null = null;
 
 function formatReset(resetEpoch?: number | null): string {
   if (!resetEpoch) return "--:--:--";
@@ -1077,7 +1082,26 @@ function renderBilling(billing?: FleetState["actions_billing"]) {
 async function loadCacheStats() {
   try {
     const data: CacheStats = await client.getCacheStats();
+    latestCacheStats = data;
     if (kpiCacheSize) kpiCacheSize.textContent = data.total_human || "0 B";
+    if (kpiCacheBar) {
+      const fiftyGiB = 50 * 1024 * 1024 * 1024;
+      const fill = Math.max(4, Math.min(100, Math.round((data.total_bytes / fiftyGiB) * 100)));
+      kpiCacheBar.style.width = `${fill}%`;
+    }
+    if (kpiCacheHealth) {
+      const bytes = data.total_bytes || 0;
+      const oneGiB = 1024 * 1024 * 1024;
+      if (bytes === 0) {
+        kpiCacheHealth.textContent = "// Cache idle";
+      } else if (bytes < 5 * oneGiB) {
+        kpiCacheHealth.textContent = "// Cache warm · low pressure";
+      } else if (bytes < 20 * oneGiB) {
+        kpiCacheHealth.textContent = "// Cache active · healthy";
+      } else {
+        kpiCacheHealth.textContent = "// Cache heavy · consider prune";
+      }
+    }
 
     const maxBytes = Math.max(1, ...data.categories.map((c) => c.bytes));
     data.categories.forEach((cat) => {
@@ -1099,6 +1123,7 @@ async function loadCacheStats() {
 async function loadSettings() {
   try {
     const s = await client.getSettings();
+    latestSettings = s;
     if (cfgMaxRunners) cfgMaxRunners.textContent = String(s.max_runners ?? 3);
     if (cfgMinRunners) cfgMinRunners.textContent = String(s.min_runners ?? 0);
     if (cfgRunnerBackend) cfgRunnerBackend.textContent = s.runner_backend ?? "auto";
@@ -1194,11 +1219,16 @@ function renderState(state: FleetState) {
   // Active concurrency
   const activeCount = state.busy_runners ?? 0;
   const maxCount = state.max_runners ?? 3;
-  currentConcurrency = { active: activeCount, max: maxCount, min: 0 };
+  const minCount = latestSettings?.min_runners ?? 0;
+  currentConcurrency = { active: activeCount, max: maxCount, min: minCount };
   kpiActiveRunners.textContent = String(activeCount);
   kpiMaxRunners.textContent = `/ ${maxCount} max`;
-  kpiMinRunnersText.textContent = `// 0 standby pool`;
-  if (kpiRunnerSizing) kpiRunnerSizing.textContent = `// 3 CPU · 4.0 GiB each`;
+  kpiMinRunnersText.textContent = `// ${state.free_slots ?? Math.max(0, maxCount - activeCount)} free · ${minCount} standby target`;
+  if (kpiRunnerSizing) {
+    const cpus = latestSettings?.runner_cpus ?? 3;
+    const memory = latestSettings?.runner_memory ?? "4g";
+    kpiRunnerSizing.textContent = `// ${cpus} CPU · ${memory} each`;
+  }
 
   const runnersPct = Math.min(100, Math.round((activeCount / Math.max(1, maxCount)) * 100));
   kpiRunnersBar.style.width = `${runnersPct}%`;
@@ -1209,6 +1239,16 @@ function renderState(state: FleetState) {
   kpiQueuedJobs.textContent = String(jobs.length);
   const queuePct = Math.min(100, jobs.length * 25);
   kpiQueueBar.style.width = `${queuePct}%`;
+  if (kpiQueueHealth) {
+    const freeSlots = state.free_slots ?? Math.max(0, maxCount - activeCount);
+    if (jobs.length === 0) {
+      kpiQueueHealth.textContent = "// Queue clear";
+    } else if (freeSlots > 0) {
+      kpiQueueHealth.textContent = `// Draining now · ${freeSlots} slot(s) free`;
+    } else {
+      kpiQueueHealth.textContent = "// Backlogged · waiting for runner capacity";
+    }
+  }
 
   // Monitored repos
   currentRepos = state.repo_priority || [];
@@ -1227,14 +1267,24 @@ function renderState(state: FleetState) {
     const routeSummary = vmJobs > 0 || dockerJobs > 0 ? `${vmJobs} VM / ${dockerJobs} container` : "Auto-detect DIND & Services";
     kpiRoutingSub.textContent = `// ${routeSummary}`;
   }
+  if (kpiRoutingHealth) {
+    if (vmJobs === 0 && dockerJobs === 0) {
+      kpiRoutingHealth.textContent = "// No active workload yet";
+    } else if (vmJobs > 0 && dockerJobs > 0) {
+      kpiRoutingHealth.textContent = "// Hybrid routing active";
+    } else if (vmJobs > 0) {
+      kpiRoutingHealth.textContent = "// VM-heavy workload";
+    } else {
+      kpiRoutingHealth.textContent = "// Container-only workload";
+    }
+  }
   if (cntDockerJobs) cntDockerJobs.textContent = String(dockerJobs);
   if (cntVmJobs) cntVmJobs.textContent = String(vmJobs);
   if (barDockerJobs) barDockerJobs.style.width = `${100 - vmRatio}%`;
   if (barVmJobs) barVmJobs.style.width = `${vmRatio}%`;
 
-  if (kpiCacheBar && state.actions_billing) {
-    const cacheFill = Math.min(100, Math.max(10, (state.actions_billing.total_minutes_used || 0) % 100));
-    kpiCacheBar.style.width = `${cacheFill}%`;
+  if (kpiCacheHealth && !latestCacheStats) {
+    kpiCacheHealth.textContent = "// Cache stats syncing...";
   }
 
   // Render subcomponents
@@ -1263,7 +1313,9 @@ function initHandlers() {
   const backdrop = document.getElementById("drawer-backdrop");
   const openDrawer = (section?: string) => {
     drawer?.classList.add("open");
-    backdrop?.classList.add("open");
+    if (window.matchMedia("(max-width: 1100px)").matches) {
+      backdrop?.classList.add("open");
+    }
     if (section) {
       const map: Record<string, string> = { routing: "panel-routing-telemetry", cache: "panel-cache-analytics" };
       const el = document.getElementById(map[section] || "");
@@ -1279,6 +1331,11 @@ function initHandlers() {
   backdrop?.addEventListener("click", closeDrawer);
   document.addEventListener("keydown", (e) => {
     if (e.key === "Escape") closeDrawer();
+  });
+  window.addEventListener("resize", () => {
+    if (!window.matchMedia("(max-width: 1100px)").matches) {
+      backdrop?.classList.remove("open");
+    }
   });
   document.querySelectorAll<HTMLElement>("[data-kpi-target]").forEach((card) => {
     card.addEventListener("click", () => {

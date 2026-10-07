@@ -433,6 +433,18 @@ body {
   z-index: 1;
 }
 
+.main-workspace-full {
+  display: flex;
+  align-items: stretch;
+  gap: 12px;
+  min-height: 0;
+}
+
+#panel-fleet-control {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
 /* ==============================================================================
    KPI Cards Grid (Aerospace Telemetry Matrix)
    ============================================================================== */
@@ -2459,22 +2471,38 @@ body {
 
 /* Right-side drawer */
 .drawer-backdrop {
-  position: fixed; inset: 0; background: rgba(3, 7, 18, 0.62);
-  backdrop-filter: blur(3px); opacity: 0; pointer-events: none;
-  transition: opacity 0.18s ease; z-index: 190;
+  display: none;
 }
-.drawer-backdrop.open { opacity: 1; pointer-events: auto; }
+.drawer-backdrop.open { display: none; }
 .drawer {
-  position: fixed; top: 0; right: 0; bottom: 0; width: min(460px, 94vw);
+  position: relative;
+  top: auto;
+  right: auto;
+  bottom: auto;
+  width: 0;
+  min-width: 0;
+  opacity: 0;
   background: linear-gradient(180deg, rgba(11, 15, 24, 0.98) 0%, rgba(9, 12, 20, 0.98) 100%);
-  border-left: 1px solid var(--border-subtle);
+  border-left: 1px solid transparent;
   box-shadow: -12px 0 26px rgba(0, 0, 0, 0.42);
-  transform: translateX(104%);
-  transition: transform 0.26s cubic-bezier(0.4, 0, 0.2, 1);
-  z-index: 200; display: flex; flex-direction: column;
+  transform: translateX(12px);
+  transition: width 0.24s ease, min-width 0.24s ease, opacity 0.2s ease, transform 0.24s ease, border-color 0.2s ease;
+  z-index: 2;
+  display: flex;
+  flex-direction: column;
   will-change: transform;
+  overflow: hidden;
+  pointer-events: none;
+  max-height: 100%;
 }
-.drawer.open { transform: translateX(0); }
+.drawer.open {
+  width: min(460px, 42vw);
+  min-width: min(360px, 42vw);
+  opacity: 1;
+  transform: translateX(0);
+  border-left-color: var(--border-subtle);
+  pointer-events: auto;
+}
 .drawer-header {
   display: flex; align-items: center; justify-content: space-between;
   padding: 12px 18px; border-bottom: 1px solid var(--border-subtle);
@@ -2490,6 +2518,38 @@ body {
   overscroll-behavior: contain;
 }
 .drawer-body > * { min-width: 0; }
+
+@media (max-width: 1100px) {
+  .drawer-backdrop {
+    display: block;
+    position: fixed;
+    inset: 0;
+    background: rgba(3, 7, 18, 0.62);
+    backdrop-filter: blur(3px);
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.18s ease;
+    z-index: 190;
+  }
+  .drawer-backdrop.open { opacity: 1; pointer-events: auto; }
+
+  .drawer {
+    position: fixed;
+    top: 0;
+    right: 0;
+    bottom: 0;
+    width: min(460px, 94vw);
+    min-width: min(320px, 90vw);
+    max-height: none;
+    opacity: 1;
+    transform: translateX(104%);
+    border-left-color: var(--border-subtle);
+    pointer-events: auto;
+    z-index: 200;
+    transition: transform 0.26s cubic-bezier(0.4, 0, 0.2, 1);
+  }
+  .drawer.open { transform: translateX(0); }
+}
 
 /* Run / job links, current stage and step pipeline */
 .link-label {

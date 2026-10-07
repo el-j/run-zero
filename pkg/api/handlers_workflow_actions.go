@@ -81,6 +81,9 @@ func handleWorkflowAction(st *state.State, ghClient ...*github.Client) http.Hand
 				return
 			}
 		}
+		if act == "rerun" || act == "rerun-failed" {
+			st.RequestHistoryRefresh()
+		}
 
 		st.AppendLog(fmt.Sprintf("[Go Engine] ⚡ Workflow action '%s' triggered on %s run #%d", act, payload.Repo, payload.RunID))
 		writeJSON(w, http.StatusOK, map[string]interface{}{

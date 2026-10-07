@@ -139,17 +139,33 @@ func handleRunnerActionWithDeps(st *state.State, cfg *config.Config, ghClient *g
 	}
 }
 
-func handlePrune(st *state.State) http.HandlerFunc {
+func handlePrune(st *state.State, runnerDriver ...driver.RunnerDriver) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodPost {
 			writeError(w, http.StatusMethodNotAllowed, "Method not allowed")
 			return
 		}
 
-		st.AppendLog("[Go Engine] ✂️ Triggered fleet runner prune.")
+		pruned := 0
+		if len(runnerDriver) > 0 && runnerDriver[0] != nil {
+			removed, err := driver.PruneFinished(r.Context(), runnerDriver[0], func(r state.RunnerInfo, logTail string) {
+				if r.Name != "" && logTail != "" {
+					st.SetRunnerLog(r.Name, logTail)
+				}
+			})
+			if err != nil {
+				st.AppendLog(fmt.Sprintf("[Go Engine] ❌ Fleet prune failed: %v", err))
+				writeError(w, http.StatusInternalServerError, fmt.Sprintf("Failed to prune runners: %v", err))
+				return
+			}
+			pruned = len(removed)
+		}
+
+		st.AppendLog(fmt.Sprintf("[Go Engine] ✂️ Triggered fleet runner prune. Removed %d finished runner(s).", pruned))
 		writeJSON(w, http.StatusOK, map[string]interface{}{
-			"status":  "success",
-			"message": "Prune executed",
+			"ok":      true,
+			"message": fmt.Sprintf("Prune executed. Removed %d finished runner(s).", pruned),
+			"pruned":  pruned,
 		})
 	}
 }
