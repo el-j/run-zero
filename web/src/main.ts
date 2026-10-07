@@ -232,6 +232,9 @@ function setConnectionStatus(status: "connecting" | "online" | "error", text: st
 function setViewMode(mode: "cards" | "table") {
   currentViewMode = mode;
   localStorage.setItem("runzero_display_mode", mode);
+  const dashboard = document.querySelector<HTMLElement>(".dashboard-container");
+  dashboard?.classList.toggle("view-mode-cards", mode === "cards");
+  dashboard?.classList.toggle("view-mode-table", mode === "table");
 
   if (viewModeCards && viewModeTable) {
     if (mode === "cards") {
