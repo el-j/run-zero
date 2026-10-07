@@ -252,7 +252,25 @@
                 <span class="hint-icon">ℹ️</span>
                 <span>Recent job history shows why older runs failed and lets you trigger a quick retry from the dashboard itself.</span>
               </div>
-              <div id="jobs-list" class="queue-jobs-view"></div>
+              <div id="jobs-cards-view" class="cards-view">
+                <div id="jobs-list" class="queue-jobs-view"></div>
+              </div>
+              <div id="jobs-table-view" class="table-view hidden">
+                <table class="data-table jobs-table">
+                  <thead>
+                    <tr>
+                      <th style="width: 130px;">RESULT</th>
+                      <th>JOB &amp; REPOSITORY</th>
+                      <th>FAILURE ANALYSIS</th>
+                      <th style="width: 120px;">DURATION</th>
+                      <th style="width: 210px;">COMPLETED</th>
+                      <th style="text-align: right; width: 200px;">ACTIONS</th>
+                    </tr>
+                  </thead>
+                  <tbody id="jobs-table-body"></tbody>
+                </table>
+                <div id="jobs-table-empty" class="empty-state" style="padding: 30px;">Recent successful and failed GitHub Actions jobs appear here.</div>
+              </div>
             </div>
 
             <!-- TAB 4: REPO PRIORITY -->
@@ -629,4 +647,3 @@
       <div id="drawer-backdrop" class="drawer-backdrop"></div>
     </div>
   </main>
-

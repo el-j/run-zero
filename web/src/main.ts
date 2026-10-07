@@ -92,6 +92,10 @@ const reposList = document.getElementById("repos-list");
 const queueJobsCountTag = document.getElementById("queue-jobs-count-tag");
 const queueJobsView = document.getElementById("queue-jobs-view");
 const jobsList = document.getElementById("jobs-list");
+const jobsCardsView = document.getElementById("jobs-cards-view");
+const jobsTableView = document.getElementById("jobs-table-view");
+const jobsTableBody = document.getElementById("jobs-table-body");
+const jobsTableEmpty = document.getElementById("jobs-table-empty");
 
 // Full-Size Bottom Terminal elements
 const logTerminal = document.getElementById("log-terminal");
@@ -284,6 +288,16 @@ function setViewMode(mode: "cards" | "table") {
     } else {
       reposCardsView.classList.add("hidden");
       reposTableView.classList.remove("hidden");
+    }
+  }
+
+  if (jobsCardsView && jobsTableView) {
+    if (mode === "cards") {
+      jobsCardsView.classList.remove("hidden");
+      jobsTableView.classList.add("hidden");
+    } else {
+      jobsCardsView.classList.add("hidden");
+      jobsTableView.classList.remove("hidden");
     }
   }
 }
@@ -820,18 +834,22 @@ function renderRepos(
 function renderCompletedJobs(jobs: CompletedJob[]) {
   if (tabJobsCount) tabJobsCount.textContent = String(jobs.length);
 
-  if (!jobsList) return;
+  if (!jobsList || !jobsTableBody || !jobsTableEmpty) return;
 
   if (jobs.length === 0) {
-    jobsList.innerHTML = `
+    const emptyHtml = `
       <div class="empty-substate empty-queue-clean">
         <div class="clean-check-icon">✓</div>
         <div class="clean-text font-mono">NO COMPLETED JOBS YET</div>
         <div class="clean-subtext">Recent successful and failed GitHub Actions jobs appear here with a quick retry path.</div>
       </div>
     `;
+    jobsList.innerHTML = emptyHtml;
+    jobsTableBody.innerHTML = "";
+    jobsTableEmpty.classList.remove("hidden");
     return;
   }
+  jobsTableEmpty.classList.add("hidden");
 
   const sorted = [...jobs].sort((a, b) => {
     const av = a.completed_at ? new Date(a.completed_at).getTime() : 0;
@@ -893,7 +911,50 @@ function renderCompletedJobs(jobs: CompletedJob[]) {
     })
     .join("");
 
-  jobsList.querySelectorAll<HTMLButtonElement>(".job-rerun-btn").forEach((btn) => {
+  jobsTableBody.innerHTML = sorted
+    .map((job) => {
+      const conclusion = (job.conclusion || "unknown").toLowerCase();
+      const isSuccess = conclusion === "success";
+      const statusClass = isSuccess ? "jobs-status-success" : "jobs-status-failed";
+      const statusText = isSuccess ? "SUCCESS" : conclusion.toUpperCase() || "FAILED";
+      const reason = job.failure_reason || job.failed_step || "No failure reason captured.";
+      const runUrl = job.run_url || `https://github.com/${job.repo}/actions/runs/${job.run_id}`;
+      const details = [
+        job.workflow_name || "",
+        job.head_branch ? `branch: ${job.head_branch}` : "",
+        job.run_attempt && job.run_attempt > 1 ? `attempt ${job.run_attempt}` : "",
+      ].filter(Boolean).join(" • ");
+
+      return `
+        <tr>
+          <td><span class="jobs-status-pill ${statusClass} font-mono">${statusText}</span></td>
+          <td>
+            <div class="jobs-table-job">
+              <a href="${escapeHtml(runUrl)}" target="_blank" rel="noopener noreferrer" class="jobs-table-job-link">${escapeHtml(job.name)}</a>
+              <div class="jobs-table-repo font-mono">${escapeHtml(job.repo)}</div>
+              ${details ? `<div class="jobs-table-meta">${escapeHtml(details)}</div>` : ""}
+            </div>
+          </td>
+          <td>
+            <div class="jobs-table-reason" title="${escapeHtml(reason)}">${escapeHtml(reason)}</div>
+            ${job.failed_step ? `<div class="jobs-table-step">step: <span class="font-mono">${escapeHtml(job.failed_step)}</span></div>` : ""}
+          </td>
+          <td class="font-mono">${job.duration_sec !== undefined ? `${job.duration_sec}s` : "—"}</td>
+          <td class="font-mono">${job.completed_at ? new Date(job.completed_at).toLocaleString() : "—"}</td>
+          <td>
+            <div class="jobs-table-actions">
+              <a href="${escapeHtml(job.html_url || runUrl)}" target="_blank" rel="noopener noreferrer" class="btn btn-xs btn-outline font-mono">GitHub ↗</a>
+              ${!isSuccess
+                ? `<button class="btn btn-xs btn-outline job-rerun-btn font-mono" data-repo="${escapeHtml(job.repo)}" data-run-id="${job.run_id}">Retry failed</button>`
+                : ""}
+            </div>
+          </td>
+        </tr>
+      `;
+    })
+    .join("");
+
+  document.querySelectorAll<HTMLButtonElement>(".job-rerun-btn").forEach((btn) => {
     btn.onclick = async () => {
       const repo = btn.dataset.repo!;
       const runId = Number(btn.dataset.runId);
