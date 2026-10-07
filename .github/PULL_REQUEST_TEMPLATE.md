@@ -11,7 +11,7 @@ Briefly describe the changes introduced in this pull request and the rationale b
 ## Checklist:
 - [ ] My code follows the style guidelines of this project
 - [ ] I have performed a self-review of my own code
-- [ ] I have tested these changes locally (`make test` or `make start`)
+- [ ] I have tested these changes locally (`make check` or `make start`)
 - [ ] Python syntax compiles without errors (`python3 -m py_compile autoscaler.py`)
 - [ ] Shell scripts are valid (`bash -n start.sh`)
 - [ ] Documentation has been updated accordingly

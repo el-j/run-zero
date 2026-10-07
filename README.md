@@ -315,71 +315,44 @@ Full setup guide: [ACTIONS_BILLING_HOWTO.md](ACTIONS_BILLING_HOWTO.md)
 
 ## 🧪 Testing & Quality Suite
 
-`make check` is the single quality gate, run identically by CI and (for staged files) the
-pre-commit hook. It enforces: ruff lint + format, flake8, mypy on `src/` and `tests/`,
-docstring coverage (interrogate, currently ≥ 83%, rising to 100% in #58), pytest with **100%
-line coverage** and every warning treated as an error, plus `bash -n` and shellcheck on every
-maintained shell script. Unit tests are offline and hermetic: `tests/conftest.py` fails any test
-that reaches real `docker`/`orbctl`/`multipass`/`wsl` or the network.
+`make check` is the single quality gate, run identically by CI and the pre-push hook. It runs
+`go vet` + `go test -race -cover`, the TypeSpec compile/type generation, the dashboard typecheck and
+build, and `bash -n` + shellcheck on every maintained shell script.
 
 | Command | Description |
 |---|---|
-| `make dev-setup` | Create `.venv-dev` with the pinned tooling from `requirements-dev.txt` |
 | `make check` | Every quality gate above (what CI runs) |
-| `make test` | Just the pytest suite (with the coverage gate) |
-| `make test-suite` | The Python gates inside a clean `python:3.11-slim` container |
-| `make mutation-test` | Fast differential mutation testing locally on changed files only (`scripts/mutation_changed.py`) |
-| `make mutation-report` | Export mutmut stats and generate weekly mutation trend dashboard artifacts |
+| `make test` | Go unit tests only |
+| `make lint` | `go vet`, website Oxlint and shellcheck |
+| `make fmt` / `make fmt-check` | Format / verify formatting (Go + website) |
+| `make e2e` | Playwright end-to-end tests for the website |
 
-The suite is layered:
-
-- **White-box unit tests** (most of `tests/`) — mock every `subprocess`/HTTP call at the call site.
-- **Blackbox process-boundary tests** (`tests/test_blackbox_*.py`) — real HTTP client against a
-  real dashboard/VM-bridge server bound to a real socket, plus a real `make` subprocess
-  invocation — no real Docker/VM/GitHub infrastructure required.
-- **True end-to-end tests** (`tests/test_e2e_docker.py`) — a real, unmocked Docker container
-  lifecycle. See [`E2E_TESTING.md`](E2E_TESTING.md) for exactly what's automated in CI (Docker)
-  versus what requires a human running a manual runbook locally (OrbStack VM, WSL2, Multipass).
-- **Mutation testing** (`make mutation-test`) — proves the test suite actually fails when `src/`
-  logic breaks, not just that it executes the line. See [`MUTATION_TESTING.md`](MUTATION_TESTING.md)
-  for how it's configured and wired into CI.
-- **Mutation reporting** (`make mutation-report`) — exports machine-readable totals and writes a
-  rolling weekly trend dashboard to `reports/mutation/latest.md`.
+See [`E2E_TESTING.md`](E2E_TESTING.md) for what is automated in CI versus what requires a human
+running a manual runbook locally (OrbStack VM, WSL2, Multipass).
 
 ---
 
 ## 📋 Makefile Commands
 
+The Makefile is split per sub-package under [`mk/`](mk/) (`go`, `spec`, `web`, `website`, `shell`,
+`cache`, `stack`, `vm`). Run `make help` for the full, grouped list. Highlights:
+
 | Command | Description |
 |---|---|
-| `make start` (or `make run`, `make up`) | Launch autoscaler, apt-cacher, Verdaccio, Athens, and Docker mirror |
-| `make stop` (or `make down`) | Gracefully stop the autoscaler, proxies, and active runners |
-| `make status` (or `make ps`) | Display running autoscaler, proxies & active ephemeral runners |
-| `make check` | Run every quality gate (ruff, flake8, mypy, interrogate, pytest 100% coverage, shellcheck) |
-| `make test` | Run the pytest suite with the coverage gate |
-| `make test-suite` | Run the Python gates inside a clean `python:3.11-slim` container |
-| `make install-hooks` | Install RunZero pre-commit and pre-push quality guards into `.git/hooks/` |
-| `make pre-commit` | Run the pre-commit quality guard manually with auto-fixes |
-| `make pre-push` | Run the pre-push quality guard manually |
-| `make lint` | Run Flake8 linter and Mypy static type checker |
-| `make lint-fix` | Auto-fix Python code formatting and strip trailing whitespace |
-| `make mutation-test` | Run differential mutation testing locally on changed files only |
-| `make mutation-test-all` | Run mutation testing across all configured paths |
-| `make mutation-report` | Generate mutation trend dashboard and export stats artifacts |
-| `make build-vm-base` | Build golden OrbStack VM base image for near-instant VM spins |
-| `make website-dev` | Start Astro documentation website development server |
-| `make website-build` | Build Astro static website and synchronize to `docs/` |
-| `make docs` | Preview the documentation website locally in your browser |
-| `make verdaccio-ui` | Open Verdaccio Web UI at `http://localhost:49501` |
-| `make apt-cacher-ui` | Open apt-cacher-ng statistics report at `http://localhost:49503/acng-report.html` |
-| `make logs` | Stream live autoscaler logs |
-| `make logs-all` | Stream live logs from all services (autoscaler + proxies) |
-| `make cache-smoke` | Validate proxy caches are reachable from host and runner network; prints Docker mirror status |
-| `make cache-size` | Display disk usage of package and tool caches |
-| `make clean-cache` | Clear all shared package/tool caches |
-| `make build` (or `make build-all`) | Build all images (`arm64` + `amd64` + autoscaler) |
-| `make clean` | Force-remove stopped containers and volumes |
+| `make install` | Bootstrap: install deps, build spec/UI/engine, install git hooks |
 | `make env` | Run interactive `.env` configuration wizard |
+| `make build` | Build the autoscaler and runner (`arm64` + `amd64`) images |
+| `make build-vm-base` | Build golden OrbStack VM base image for near-instant VM spins |
+| `make start` (or `make up`) | Launch autoscaler, VM bridge, dashboard and caching proxies |
+| `make stop` (or `make down`) | Stop the autoscaler, proxies and active runners |
+| `make status` (or `make ps`) | Show autoscaler, proxies and active ephemeral runners |
+| `make logs` / `make logs-all` | Stream autoscaler / all-service logs |
+| `make dashboard` | Open the dashboard at `http://localhost:49505` |
+| `make check` | Run every quality gate |
+| `make install-hooks` | Install pre-commit and pre-push guards into `.git/hooks/` |
+| `make website-dev` / `make website-build` | Astro docs dev server / build and sync to `docs/` |
+| `make cache-smoke` / `make cache-size` / `make info` | Validate proxies / cache disk usage / total disk usage |
+| `make clean-caches` / `make clean-all` | Clear all caches / full reset |
 | `make help` | Show all available Makefile commands |
 
 ---

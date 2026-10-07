@@ -1,535 +1,60 @@
 # ==============================================================================
-# Local GitHub Actions Runner & Autoscaler - Makefile (OrbStack / Docker)
-# Multi-Architecture Support: Apple Silicon (ARM64) & Intel/AMD (AMD64 / x86_64)
-# Persistent Package Caching + Proxy Registries (Verdaccio, Athens, Docker Mirror, devpi, kellnr)
+# RunZero - root Makefile
+#
+# This file only wires things together. Each sub-package owns its own targets:
+#
+#   mk/common.mk   shared variables, colours, `make help`
+#   mk/go.mk       Go engine           (cmd/, pkg/)
+#   mk/spec.mk     TypeSpec API schema (spec/)
+#   mk/web.mk      Dashboard UI        (web/)
+#   mk/website.mk  Astro docs website  (website/ -> docs/)
+#   mk/shell.mk    Shell scripts, .env wizard, git hooks
+#   mk/cache.mk    Host cache dir + proxy cache volumes (disk usage, cleaning)
+#   mk/stack.mk    Docker Compose stack (start/stop/logs/status/images)
+#   mk/vm.mk       Host VM bridge + OrbStack VMs
 # ==============================================================================
 
 .DEFAULT_GOAL := help
 
-CACHE_DIR := $(HOME)/.local-github-runner/cache
-WEBSITE_DIR := website
-AUTOSCALER_PID_FILE := .autoscaler.pid
-AUTOSCALER_LOG_FILE := .autoscaler.log
-BRIDGE_PID_FILE := .bridge.pid
-BRIDGE_LOG_FILE := .bridge.log
-# Baked into the autoscaler image so it can tell when the bridge runs other code (#72).
-export RUNZERO_GIT_SHA := $(shell git rev-parse --short=12 HEAD 2>/dev/null)
+include mk/common.mk
+include mk/go.mk
+include mk/spec.mk
+include mk/web.mk
+include mk/website.mk
+include mk/shell.mk
+include mk/cache.mk
+include mk/stack.mk
+include mk/vm.mk
 
-SHELL_SCRIPTS := docker/start.sh docker/provision-toolchain.sh scripts/setup_env.sh scripts/pre-commit.sh scripts/bridge_supervisor.sh
-
-# Colors for terminal styling
-CYAN    := \033[36m
-GREEN   := \033[32m
-YELLOW  := \033[33m
-RED     := \033[31m
-MAGENTA := \033[35m
-RESET   := \033[0m
-BOLD    := \033[1m
-
-.PHONY: help
-help: ## Display available commands
-	@echo ""
-	@echo "$(BOLD)$(CYAN)Local GitHub Actions Runner & Autoscaler (OrbStack)$(RESET)"
-	@echo "$(YELLOW)Multi-architecture CI execution with Verdaccio, Athens & Persistent Caching$(RESET)"
-	@echo ""
-	@echo "$(BOLD)Usage:$(RESET) make $(GREEN)<target>$(RESET)"
-	@echo ""
-	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | sort | awk 'BEGIN {FS = ":.*?## "}; {printf "  $(GREEN)%-18s$(RESET) %s\n", $$1, $$2}'
-	@echo ""
-
-.PHONY: env
-env: ## Run interactive .env configuration wizard
-	@bash scripts/setup_env.sh
-
-.PHONY: website-install
-website-install: ## Install website Node dependencies (run from repo root)
-	@if command -v npm >/dev/null 2>&1; then \
-		echo "$(CYAN)Installing website Node dependencies...$(RESET)"; \
-		cd $(WEBSITE_DIR) && npm install; \
-	else \
-		echo "$(YELLOW)npm not found; skipping website dependency install.$(RESET)"; \
-	fi
+##@ Workspace (all packages)
 
 .PHONY: install
-install: init-cache website-install build-spec build-ui build-go install-hooks ## Bootstrap local development environment from repo root
-	@echo "$(GREEN)Install bootstrap complete. Next: run 'make nice'.$(RESET)"
+install: init-cache spec-install web-install website-install build-spec build-ui build-go install-hooks ## Bootstrap local development environment (deps, build, git hooks)
+	@echo "$(GREEN)Install bootstrap complete. Next: run 'make env' (first time), then 'make start'.$(RESET)"
 
-.PHONY: check-env
-check-env:
-	@if [ ! -f .env ]; then \
-		echo "$(RED)Error: .env file missing.$(RESET)"; \
-		echo "Run $(BOLD)make env$(RESET) and set your $(BOLD)ACCESS_TOKEN$(RESET) first."; \
-		exit 1; \
-	fi
-
-.PHONY: init-cache
-init-cache: ## Initialize host cache directories
-	@mkdir -p $(CACHE_DIR)/toolcache \
-	          $(CACHE_DIR)/npm \
-	          $(CACHE_DIR)/yarn \
-	          $(CACHE_DIR)/pnpm \
-	          $(CACHE_DIR)/pip \
-	          $(CACHE_DIR)/uv \
-	          $(CACHE_DIR)/go-mod \
-	          $(CACHE_DIR)/go-build \
-	          $(CACHE_DIR)/cargo-registry
-
-.PHONY: cache-size
-cache-size: ## Show disk usage of the host package/tool cache only (subset of `make info`)
-	@echo ""
-	@echo "$(BOLD)$(CYAN)=== Local Runner Cache Disk Usage ($(CACHE_DIR)) ===$(RESET)"
-	@if [ -d "$(CACHE_DIR)" ]; then \
-		du -sh $(CACHE_DIR)/* 2>/dev/null || echo "Cache directory is currently empty."; \
-		echo ""; \
-		echo "$(BOLD)Total Cache Size:$(RESET) $$(du -sh $(CACHE_DIR) 2>/dev/null | cut -f1)"; \
-	else \
-		echo "Cache directory does not exist yet. It will be created when runners run."; \
-	fi
-	@echo ""
-
-.PHONY: cache-smoke
-cache-smoke: ## Validate proxy caches are reachable from host and from runner-network, and show Docker daemon mirror status
-	@echo "$(BOLD)$(CYAN)=== Cache Proxy Smoke Test ===$(RESET)"
-	@echo "$(CYAN)Checking host-published cache endpoints...$(RESET)"
-	@curl -fsS http://localhost:49501/ >/dev/null && echo "  ✓ Verdaccio (host): http://localhost:49501/" || (echo "  ✗ Verdaccio host endpoint unavailable" && exit 1)
-	@curl -fsS http://localhost:49500/ >/dev/null && echo "  ✓ Athens (host):    http://localhost:49500/" || (echo "  ✗ Athens host endpoint unavailable" && exit 1)
-	@curl -fsS http://localhost:49507/root/pypi/+simple/ >/dev/null && echo "  ✓ devpi (host):     http://localhost:49507/root/pypi/+simple/" || (echo "  ✗ devpi host endpoint unavailable" && exit 1)
-	@curl -fsS http://localhost:49503/acng-report.html >/dev/null && echo "  ✓ apt-cacher(host): http://localhost:49503/acng-report.html" || (echo "  ✗ apt-cacher host endpoint unavailable" && exit 1)
-	@curl -fsS http://localhost:49506/api/v1/cratesio/config.json >/dev/null && echo "  ✓ kellnr (host):    http://localhost:49506/api/v1/cratesio/config.json" || (echo "  ✗ kellnr host endpoint unavailable" && exit 1)
-	@curl -fsS http://localhost:49502/v2/ >/dev/null && echo "  ✓ Docker mirror:    http://localhost:49502/v2/" || (echo "  ✗ Docker mirror host endpoint unavailable" && exit 1)
-	@echo "$(CYAN)Checking cache endpoints from runner-network DNS...$(RESET)"
-	@docker network inspect runner-network >/dev/null 2>&1 || (echo "  ✗ Docker network 'runner-network' not found. Run 'make start' first." && exit 1)
-	@docker run --rm --network runner-network curlimages/curl:8.10.1 -fsS http://verdaccio:4873/ >/dev/null && echo "  ✓ Verdaccio (runner-network): http://verdaccio:4873/" || (echo "  ✗ Verdaccio runner-network endpoint unavailable" && exit 1)
-	@docker run --rm --network runner-network curlimages/curl:8.10.1 -fsS http://athens:3000/ >/dev/null && echo "  ✓ Athens (runner-network):    http://athens:3000/" || (echo "  ✗ Athens runner-network endpoint unavailable" && exit 1)
-	@docker run --rm --network runner-network curlimages/curl:8.10.1 -fsS http://devpi:3141/root/pypi/+simple/ >/dev/null && echo "  ✓ devpi (runner-network):     http://devpi:3141/root/pypi/+simple/" || (echo "  ✗ devpi runner-network endpoint unavailable" && exit 1)
-	@docker run --rm --network runner-network curlimages/curl:8.10.1 -fsS http://apt-cacher:3142/acng-report.html >/dev/null && echo "  ✓ apt-cacher (runner-network): http://apt-cacher:3142/acng-report.html" || (echo "  ✗ apt-cacher runner-network endpoint unavailable" && exit 1)
-	@docker run --rm --network runner-network curlimages/curl:8.10.1 -fsS http://kellnr:8000/api/v1/cratesio/config.json >/dev/null && echo "  ✓ kellnr (runner-network):    http://kellnr:8000/api/v1/cratesio/config.json" || (echo "  ✗ kellnr runner-network endpoint unavailable" && exit 1)
-	@echo "$(CYAN)Inspecting host Docker daemon registry mirrors...$(RESET)"
-	@mirrors=$$(docker info --format '{{json .RegistryConfig.Mirrors}}' 2>/dev/null || echo '[]'); \
-		echo "  Mirrors: $$mirrors"; \
-		echo "$$mirrors" | grep -Eq 'localhost:49502|host\.orb\.internal:49502' && \
-			echo "  ✓ Host Docker daemon mirror includes run-zero docker-mirror" || \
-			echo "  ⚠ Host Docker daemon mirror does not include run-zero docker-mirror (Docker-backend pulls may bypass cache)"
-	@echo "$(GREEN)Cache smoke test complete.$(RESET)"
-
-.PHONY: clean-cache
-clean-cache: ## Clear the persistent package/tool cache dir ($(CACHE_DIR)) only -- see `make clean-caches` to also clear proxy volumes and images
-	@echo "$(YELLOW)Clearing local runner caches at $(CACHE_DIR)...$(RESET)"
-	@chmod -R u+w $(CACHE_DIR) 2>/dev/null || true
-	@rm -rf $(CACHE_DIR) 2>/dev/null || docker run --rm -v "$(CACHE_DIR):/cache" alpine sh -c "rm -rf /cache/* /cache/.*" 2>/dev/null || true
-	@rm -rf $(CACHE_DIR) 2>/dev/null || true
-	@echo "$(GREEN)Runner cache cleared successfully.$(RESET)"
-
-# ==============================================================================
-# Disk Usage & Cache Management
-# ==============================================================================
-# Named docker volumes are found by their Compose *logical* name (the
-# com.docker.compose.volume label), not a hardcoded "<project>_<name>" string --
-# the project-name prefix Compose derives depends on the checkout directory's
-# name, which isn't fixed.
-define find_volume
-$$(docker volume ls --filter "label=com.docker.compose.volume=$(1)" -q | head -1)
-endef
-
-.PHONY: info
-.PHONY: doctor
-doctor: build-go ## Verify cache wiring and engine diagnostics (no GitHub token needed)
-	@./bin/runzero doctor
-
-info: ## Show total disk usage of everything run-zero manages: host cache dir, proxy volumes, runner images, and OrbStack VMs
-	@echo ""
-	@echo "$(BOLD)$(CYAN)=== Host Package/Tool Cache ($(CACHE_DIR)) ===$(RESET)"
-	@if [ -d "$(CACHE_DIR)" ]; then \
-		du -sh $(CACHE_DIR)/* 2>/dev/null | sort -k2 || echo "  (empty)"; \
-		echo "  $(BOLD)Subtotal:$(RESET) $$(du -sh $(CACHE_DIR) 2>/dev/null | cut -f1)"; \
-	else \
-		echo "  (not created yet)"; \
-	fi
-	@echo ""
-	@echo "$(BOLD)$(CYAN)=== Proxy Cache Volumes (Verdaccio/Athens/Docker Mirror/apt-cacher-ng/devpi/kellnr) ===$(RESET)"
-	@for v in verdaccio-storage athens-storage docker-mirror-storage apt-cacher-storage devpi-storage kellnr-storage; do \
-		vol=$(call find_volume,$$v); \
-		if [ -n "$$vol" ]; then \
-			size=$$(docker run --rm -v "$$vol":/data:ro alpine du -sh /data 2>/dev/null | cut -f1); \
-			echo "  $$v: $${size:-unknown}"; \
-		else \
-			echo "  $$v: (not created yet)"; \
-		fi; \
-	done
-	@echo ""
-	@echo "$(BOLD)$(CYAN)=== Runner Images ===$(RESET)"
-	@docker images --filter "reference=local-github-runner*" --filter "reference=local-runner-autoscaler*" \
-		--format "  {{.Repository}}:{{.Tag}}\t{{.Size}}" 2>/dev/null || echo "  (none built yet)"
-	@echo ""
-	@echo "$(BOLD)$(CYAN)=== OrbStack VMs (golden base image + any still-active ephemeral runners) ===$(RESET)"
-	@orbctl list 2>/dev/null | grep -i runzero-vm || echo "  (none)"
-	@echo ""
-	@echo "$(BOLD)$(CYAN)=== Ephemeral Runner Containers ===$(RESET)"
-	@docker ps -a --filter "label=managed-by=local-autoscaler" --format "  {{.Names}}\t{{.Status}}" 2>/dev/null || echo "  (none)"
-	@echo ""
-
-.PHONY: clean-caches
-clean-caches: clean-cache clean-verdaccio clean-athens clean-docker-mirror clean-apt-cacher clean-devpi clean-kellnr ## Clear EVERY cache run-zero manages: host cache dir + all proxy volumes (does NOT touch runner images or the VM base image -- see clean-images/vm-clean)
-	@echo "$(GREEN)All run-zero caches cleared.$(RESET)"
-
-.PHONY: clean-npm clean-yarn clean-pnpm clean-pip clean-uv clean-go-mod clean-go-build clean-cargo-registry clean-toolcache
-clean-npm: ## Clear only the cached npm packages
-	@rm -rf $(CACHE_DIR)/npm && echo "$(GREEN)npm cache cleared.$(RESET)"
-clean-yarn: ## Clear only the cached yarn packages
-	@rm -rf $(CACHE_DIR)/yarn && echo "$(GREEN)yarn cache cleared.$(RESET)"
-clean-pnpm: ## Clear only the cached pnpm store
-	@rm -rf $(CACHE_DIR)/pnpm && echo "$(GREEN)pnpm cache cleared.$(RESET)"
-clean-pip: ## Clear only the cached pip packages
-	@rm -rf $(CACHE_DIR)/pip && echo "$(GREEN)pip cache cleared.$(RESET)"
-clean-uv: ## Clear only the cached uv packages
-	@rm -rf $(CACHE_DIR)/uv && echo "$(GREEN)uv cache cleared.$(RESET)"
-clean-go-mod: ## Clear only the cached Go module downloads
-	@chmod -R u+w $(CACHE_DIR)/go-mod 2>/dev/null || true
-	@rm -rf $(CACHE_DIR)/go-mod 2>/dev/null || docker run --rm -v "$(CACHE_DIR)/go-mod:/cache" alpine sh -c "rm -rf /cache/* /cache/.*" 2>/dev/null || true
-	@rm -rf $(CACHE_DIR)/go-mod 2>/dev/null || true
-	@echo "$(GREEN)Go module cache cleared.$(RESET)"
-clean-go-build: ## Clear only the cached Go build cache
-	@rm -rf $(CACHE_DIR)/go-build && echo "$(GREEN)Go build cache cleared.$(RESET)"
-clean-cargo-registry: ## Clear only the cached Cargo registry
-	@rm -rf $(CACHE_DIR)/cargo-registry && echo "$(GREEN)Cargo registry cache cleared.$(RESET)"
-clean-toolcache: ## Clear only the cached hosted tool versions (Node/Go/etc SDK installs, per-arch)
-	@chmod -R u+w $(CACHE_DIR)/toolcache 2>/dev/null || true
-	@rm -rf $(CACHE_DIR)/toolcache 2>/dev/null || true
-	@echo "$(GREEN)Tool cache cleared.$(RESET)"
-
-.PHONY: clean-verdaccio clean-athens clean-docker-mirror clean-apt-cacher
-clean-verdaccio: ## Wipe the Verdaccio (npm proxy) cache volume
-	@docker compose stop verdaccio >/dev/null 2>&1 || true
-	@docker compose rm -f verdaccio >/dev/null 2>&1 || true
-	@vol=$(call find_volume,verdaccio-storage); [ -n "$$vol" ] && docker volume rm "$$vol" >/dev/null 2>&1 || true
-	@echo "$(GREEN)Verdaccio cache cleared.$(RESET) Run 'make start' to recreate it."
-clean-athens: ## Wipe the Athens (Go module proxy) cache volume
-	@docker compose stop athens >/dev/null 2>&1 || true
-	@docker compose rm -f athens >/dev/null 2>&1 || true
-	@vol=$(call find_volume,athens-storage); [ -n "$$vol" ] && docker volume rm "$$vol" >/dev/null 2>&1 || true
-	@echo "$(GREEN)Athens cache cleared.$(RESET) Run 'make start' to recreate it."
-clean-docker-mirror: ## Wipe the Docker Hub pull-through mirror cache volume
-	@docker compose stop docker-mirror >/dev/null 2>&1 || true
-	@docker compose rm -f docker-mirror >/dev/null 2>&1 || true
-	@vol=$(call find_volume,docker-mirror-storage); [ -n "$$vol" ] && docker volume rm "$$vol" >/dev/null 2>&1 || true
-	@echo "$(GREEN)Docker mirror cache cleared.$(RESET) Run 'make start' to recreate it."
-clean-apt-cacher: ## Wipe the apt-cacher-ng (.deb package proxy) cache volume
-	@docker compose stop apt-cacher >/dev/null 2>&1 || true
-	@docker compose rm -f apt-cacher >/dev/null 2>&1 || true
-	@vol=$(call find_volume,apt-cacher-storage); [ -n "$$vol" ] && docker volume rm "$$vol" >/dev/null 2>&1 || true
-	@echo "$(GREEN)apt-cacher-ng cache cleared.$(RESET) Run 'make start' to recreate it."
-
-.PHONY: clean-devpi clean-kellnr
-clean-devpi: ## Wipe the devpi (pip/uv PyPI proxy) cache volume
-	@docker compose stop devpi >/dev/null 2>&1 || true
-	@docker compose rm -f devpi >/dev/null 2>&1 || true
-	@vol=$(call find_volume,devpi-storage); [ -n "$$vol" ] && docker volume rm "$$vol" >/dev/null 2>&1 || true
-	@echo "$(GREEN)devpi cache cleared.$(RESET) Run 'make start' to recreate it."
-clean-kellnr: ## Wipe the kellnr (Cargo/crates.io proxy) cache volume
-	@docker compose stop kellnr >/dev/null 2>&1 || true
-	@docker compose rm -f kellnr >/dev/null 2>&1 || true
-	@vol=$(call find_volume,kellnr-storage); [ -n "$$vol" ] && docker volume rm "$$vol" >/dev/null 2>&1 || true
-	@echo "$(GREEN)kellnr cache cleared.$(RESET) Run 'make start' to recreate it."
-
-.PHONY: clean-images
-clean-images: ## Remove the built runner/autoscaler images (local-github-runner:*, local-runner-autoscaler:*) -- forces a full rebuild next time
-	@docker rmi -f local-github-runner:arm64 local-github-runner:amd64 local-github-runner:latest local-runner-autoscaler:latest 2>/dev/null || true
-	@echo "$(GREEN)Runner images removed.$(RESET) Run 'make build' to rebuild."
-
-.PHONY: docs
-docs: ## Open documentation landing page in default browser
-	@echo "$(CYAN)Opening documentation landing page...$(RESET)"
-	@open docs/index.html || echo "Open docs/index.html in your browser."
-
-.PHONY: website-dev
-website-dev: ## Run Astro static website in local dev mode
-	@echo "$(CYAN)Starting Astro website development server...$(RESET)"
-	@cd website && npm run dev
-
-.PHONY: website-build
-website-build: ## Build Astro static website and synchronize to docs/
-	@echo "$(CYAN)Building Astro static documentation website...$(RESET)"
-	@cd website && npm run build && rm -rf ../docs/* && cp -r dist/* ../docs/ && touch ../docs/.nojekyll
-	@echo "$(GREEN)Astro website built and synced to docs/ successfully!$(RESET)"
-
-.PHONY: dashboard
-dashboard: ## Open RunZero Real-Time Observability Web Dashboard in browser (http://localhost:49505)
-	@echo "$(CYAN)Opening RunZero Observability Dashboard at http://localhost:49505...$(RESET)"
-	@open http://localhost:49505 || echo "Navigate to http://localhost:49505 in your browser."
-
-.PHONY: bridge-start bridge-stop bridge-status bridge-logs
-bridge-start: build-go ## Start Host VM Bridge server on host (port 49504, auto-restarts on crash via launchd)
-	@echo "$(CYAN)Starting Host VM Bridge on http://localhost:49504...$(RESET)"
-	@./scripts/bridge_supervisor.sh start
-
-bridge-stop: ## Stop Host VM Bridge server
-	@echo "$(YELLOW)Stopping Host VM Bridge...$(RESET)"
-	@./scripts/bridge_supervisor.sh stop
-	@echo "$(GREEN)Host VM Bridge stopped.$(RESET)"
-
-bridge-status: ## Check Host VM Bridge status
-	@echo "$(BOLD)$(CYAN)=== Host VM Bridge (port 49504) ===$(RESET)"
-	@./scripts/bridge_supervisor.sh status
-
-bridge-logs: ## Stream live logs from the Host VM Bridge
-	@touch $(BRIDGE_LOG_FILE) && tail -f $(BRIDGE_LOG_FILE)
-
-.PHONY: start up run
-start: check-env init-cache bridge-start ## Start containerized Autoscaler + Host VM Bridge + Proxy services + Web Dashboard
-	@echo "$(CYAN)Starting RunZero containerized stack (Autoscaler, Dashboard, Proxy registries)...$(RESET)"
-	@docker compose up -d --build
-	@echo "$(GREEN)RunZero Fleet & Observability Stack is running!$(RESET)"
-	@echo "  • 📊 Web Dashboard:  $(BOLD)http://localhost:49505$(RESET) (Run $(BOLD)make dashboard$(RESET))"
-	@echo "  • 🌉 Host VM Bridge: $(BOLD)http://localhost:49504$(RESET)"
-	@echo "  • 📦 Verdaccio UI:   $(BOLD)http://localhost:49501$(RESET) (Run $(BOLD)make verdaccio-ui$(RESET))"
-	@echo "  • 🐧 APT Cacher:     $(BOLD)http://localhost:49503/acng-report.html$(RESET) (Run $(BOLD)make apt-cacher-ui$(RESET))"
-	@echo "  • 🐹 Athens Go:      $(BOLD)http://localhost:49500$(RESET)"
-	@echo "  • 🐳 Docker Mirror:  $(BOLD)http://localhost:49502$(RESET)"
-	@echo "  • 🐍 devpi (pip/uv): $(BOLD)http://localhost:49507/root/pypi/+simple/$(RESET)"
-	@echo "  • 🦀 kellnr (Cargo): $(BOLD)http://localhost:49506$(RESET)"
-	@echo "Use $(BOLD)make logs$(RESET) to stream logs or $(BOLD)make status$(RESET) to see active runners."
-
-up: start
-run: start
-
-.PHONY: stop down
-stop: bridge-stop ## Stop Autoscaler, Host VM Bridge, Proxies, and remove active runner containers
-	@echo "$(YELLOW)Stopping Autoscaler and unregistering active runners...$(RESET)"
-	@if [ -f $(AUTOSCALER_PID_FILE) ]; then \
-		pid=$$(cat $(AUTOSCALER_PID_FILE)); \
-		if kill -0 "$$pid" 2>/dev/null; then kill "$$pid"; fi; \
-		rm -f $(AUTOSCALER_PID_FILE); \
-	fi
-	docker compose down
-	@echo "$(GREEN)Autoscaler, VM bridge, and proxies stopped.$(RESET)"
-
-down: stop
-
-.PHONY: restart
-restart: stop start ## Restart Autoscaler and Proxies
-
-.PHONY: logs
-logs: ## Stream live logs from the Autoscaler container
-	@docker compose logs -f autoscaler 2>/dev/null || (touch $(AUTOSCALER_LOG_FILE) && tail -f $(AUTOSCALER_LOG_FILE))
-
-.PHONY: logs-all
-logs-all: ## Stream live logs from all services (Autoscaler + Proxies)
-	@docker compose logs -f
-
-.PHONY: status ps
-status: bridge-status ## Show running Autoscaler, VM Bridge, Proxies, and active dynamic runners (containers + VMs)
-	@echo ""
-	@echo "$(BOLD)$(CYAN)=== RunZero Container Stack (Autoscaler & Proxies) ===$(RESET)"
-	@docker compose ps
-	@echo ""
-	@echo "$(BOLD)$(CYAN)=== Active Ephemeral Runner Containers ===$(RESET)"
-	@docker ps --filter "label=managed-by=local-autoscaler" --format "table {{.ID}}\t{{.Names}}\t{{.Status}}\t{{.Labels}}"
-	@echo ""
-	@echo "$(BOLD)$(CYAN)=== Active Ephemeral Runner VMs ===$(RESET)"
-	@orbctl list 2>/dev/null | grep -i runzero-vm || echo "  (none)"
-	@echo ""
-
-.PHONY: start-host stop-host
-start-host: check-env init-cache build-go build-ui bridge-start ## Start Autoscaler natively on host with Go engine (without containerizing autoscaler)
-	@echo "$(CYAN)Starting caching proxy registries (Verdaccio, Athens, Docker mirror, apt-cacher, devpi, kellnr)...$(RESET)"
-	@docker compose up -d verdaccio athens docker-mirror apt-cacher devpi kellnr
-	@if [ -f $(AUTOSCALER_PID_FILE) ] && kill -0 "$$(cat $(AUTOSCALER_PID_FILE))" 2>/dev/null; then \
-		echo "$(YELLOW)Autoscaler already running on host (PID $$(cat $(AUTOSCALER_PID_FILE))).$(RESET)"; \
-	else \
-		echo "$(CYAN)Starting RunZero Go Engine with Web Dashboard on host...$(RESET)"; \
-		nohup ./bin/runzero -dist=web/dist > $(AUTOSCALER_LOG_FILE) 2>&1 & \
-		echo $$! > $(AUTOSCALER_PID_FILE); \
-	fi
-	@echo "$(GREEN)Host Autoscaler & Stack is running!$(RESET)"
-
-stop-host: stop ## Stop host Autoscaler and stack
-
-.PHONY: clean
-clean: ## Force clean stopped containers and temporary runner volumes
-	@echo "$(YELLOW)Cleaning up stopped runner containers and volumes...$(RESET)"
-	docker compose down -v
-	@docker rm -f $$(docker ps -a -q --filter "label=managed-by=local-autoscaler") 2>/dev/null || true
-	@echo "$(GREEN)Cleaned up successfully.$(RESET)"
-
-.PHONY: vm-list
-vm-list: ## List active OrbStack Linux runner VMs
-	@echo "$(CYAN)Listing active RunZero OrbStack VMs...$(RESET)"
-	@orbctl list || true
-
-.PHONY: vm-clean
-vm-clean: ## Clean up any orphaned ephemeral RunZero VMs (does NOT touch the golden base image -- see vm-rebuild-base)
-	@echo "$(YELLOW)Cleaning up any orphaned RunZero VMs...$(RESET)"
-	@for vm in $$(orbctl list -q 2>/dev/null | grep '^runzero-vm-' | grep -v '^runzero-vm-base-'); do \
-		echo "Deleting $$vm..."; \
-		orbctl delete -f $$vm || true; \
-	done
-	@echo "$(GREEN)VM cleanup complete.$(RESET)"
-
-.PHONY: vm-clean-all
-vm-clean-all: ## Delete ALL RunZero OrbStack VMs including golden base images
-	@echo "$(YELLOW)Deleting all RunZero VMs including base master templates...$(RESET)"
-	@for vm in $$(orbctl list -q 2>/dev/null | grep '^runzero-vm-'); do \
-		echo "Deleting $$vm..."; \
-		orbctl delete -f $$vm || true; \
-	done
-	@echo "$(GREEN)All RunZero VMs deleted.$(RESET)"
-
-.PHONY: clean-all reset-all
-clean-all: stop clean vm-clean-all clean-caches clean-images ## Complete nuclear reset: stop autoscaler, wipe all caches, delete all VMs, and remove images for fresh out-of-the-box test
-	@echo "$(GREEN)RunZero completely reset to fresh out-of-the-box state.$(RESET)"
-
-reset-all: clean-all
-
-.PHONY: build-vm-base
-build-vm-base: build-go ## Build the golden OrbStack VM base image (Docker/Node/nvm/.NET/Chrome/Playwright pre-installed) so ephemeral job VMs clone instantly instead of re-provisioning from scratch every run. Takes several minutes; run it once, and again whenever you change docker/provision-toolchain.sh.
-	@echo "$(CYAN)Building golden OrbStack VM base image(s)...$(RESET)"
-	@./bin/runzero build-vm-base
-	@echo "$(GREEN)Golden VM base image(s) ready. Ephemeral VM-routed jobs will now clone instantly.$(RESET)"
-
-.PHONY: vm-rebuild-base
-vm-rebuild-base: build-vm-base ## Alias for build-vm-base -- use after changing docker/provision-toolchain.sh to refresh the golden image
-
-.PHONY: dev-setup
-.PHONY: check check-go check-spec check-web check-shell build-go
+.PHONY: check
 check: check-go check-spec check-web check-shell ## Run every quality gate (the same set CI enforces)
 	@echo "$(GREEN)All quality gates passed.$(RESET)"
 
-check-go: ## Go gates: go vet, go test with race detector and coverage
-	go vet ./...
-	go test -race -cover ./...
+.PHONY: lint
+lint: lint-go lint-web website-lint check-shell ## Lint every package (go vet, oxlint x2, shellcheck)
 
-check-spec: ## TypeSpec gate: compile API spec and check TypeScript types
-	@cd spec && pnpm run all
+.PHONY: fmt
+fmt: fmt-go fmt-web fmt-website ## Auto-format Go, dashboard (oxfmt) and website sources
 
-check-web: ## Web dashboard gate: typecheck and build production dashboard
-	@cd web && pnpm run build
+.PHONY: fmt-check
+fmt-check: fmt-check-go fmt-check-website ## Check formatting for Go and website sources
 
-build-go: ## Compile Go cloud-native daemon engine binary into bin/runzero
-	go build -o bin/runzero ./cmd/runzero
+.PHONY: deps-check
+deps-check: deps-check-go deps-check-web deps-check-website ## Report outdated dependencies in every package
 
-build-go-multiarch: ## Compile multi-architecture static Go binaries for darwin/arm64, darwin/amd64, linux/amd64, linux/arm64
-	@mkdir -p bin
-	CGO_ENABLED=0 GOOS=darwin GOARCH=arm64 go build -ldflags="-s -w" -o bin/runzero-darwin-arm64 ./cmd/runzero
-	CGO_ENABLED=0 GOOS=darwin GOARCH=amd64 go build -ldflags="-s -w" -o bin/runzero-darwin-amd64 ./cmd/runzero
-	CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -ldflags="-s -w" -o bin/runzero-linux-amd64 ./cmd/runzero
-	CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build -ldflags="-s -w" -o bin/runzero-linux-arm64 ./cmd/runzero
-	@echo "$(GREEN)Multi-architecture binaries compiled into bin/$(RESET)"
-
-check-shell: ## Shell gates: bash -n + shellcheck on every maintained script
-	@for f in $(SHELL_SCRIPTS); do bash -n "$$f" || exit 1; done
-	shellcheck -x $(SHELL_SCRIPTS)
-
-.PHONY: e2e
-e2e: ## Run Playwright end-to-end tests for the web dashboard and static documentation site
-	@echo "$(CYAN)Running Playwright E2E tests (Dashboard UI + Website)...$(RESET)"
-	@cd $(WEBSITE_DIR) && npx playwright test
-
-.PHONY: install-hooks
-install-hooks: ## Install RunZero pre-commit and pre-push quality guards into .git/hooks/
-	@echo "$(CYAN)Installing RunZero Git hooks (pre-commit & pre-push)...$(RESET)"
-	@mkdir -p .git/hooks
-	@printf '%s\n' '#!/usr/bin/env bash' 'set -euo pipefail' '' 'PROJECT_ROOT="$$(git rev-parse --show-toplevel 2>/dev/null || pwd)"' 'exec "$$PROJECT_ROOT/scripts/pre-commit.sh"' > .git/hooks/pre-commit
-	@chmod +x .git/hooks/pre-commit
-	@printf '%s\n' '#!/usr/bin/env bash' 'set -euo pipefail' '' 'PROJECT_ROOT="$$(git rev-parse --show-toplevel 2>/dev/null || pwd)"' 'exec "$$PROJECT_ROOT/scripts/pre-push.sh"' > .git/hooks/pre-push
-	@chmod +x .git/hooks/pre-push
-	@echo "$(GREEN)Hooks installed successfully! pre-commit and pre-push guards are active.$(RESET)"
+.PHONY: deps-update
+deps-update: deps-update-go deps-update-web deps-update-website ## Apply dependency updates in every package
 
 .PHONY: pre-commit
-pre-commit: ## Run the RunZero pre-commit quality guard manually
+pre-commit: ## Run the pre-commit quality guard manually
 	@bash scripts/pre-commit.sh
 
 .PHONY: pre-push
-pre-push: ## Run the RunZero pre-push quality guard manually
+pre-push: ## Run the pre-push quality guard manually
 	@bash scripts/pre-push.sh
-
-.PHONY: lint
-lint: ## Run Go vet, website Oxlint, and Shellcheck
-	@echo "$(CYAN)Running Go vet...$(RESET)"
-	go vet ./...
-	@echo "$(CYAN)Running website lint checks with Oxlint...$(RESET)"
-	@if command -v npm >/dev/null 2>&1; then \
-		(cd $(WEBSITE_DIR) && { npm ls oxlint >/dev/null 2>&1 || npm install; } && npm run lint); \
-	else \
-		echo "npm not found; skipping website lint checks."; \
-	fi
-
-.PHONY: website-lint
-website-lint: ## Run Oxlint on website sources
-	@echo "$(CYAN)Running Oxlint for website sources...$(RESET)"
-	@cd $(WEBSITE_DIR) && { npm ls oxlint >/dev/null 2>&1 || npm install; } && npm run lint
-
-.PHONY: deps-check
-deps-check: ## Check dependency update opportunities (Go modules + Web & Website Node packages)
-	@echo "$(CYAN)Checking Go module updates...$(RESET)"
-	@go list -u -m all 2>/dev/null || true
-	@echo "$(CYAN)Checking web dashboard dependencies (pnpm outdated)...$(RESET)"
-	@(cd web && pnpm outdated || true)
-	@echo "$(CYAN)Checking website Node package updates (npm outdated)...$(RESET)"
-	@if command -v npm >/dev/null 2>&1; then \
-		(cd $(WEBSITE_DIR) && npm outdated || true); \
-	fi
-
-.PHONY: deps-update
-deps-update: ## Apply dependency updates where possible (Go modules, web and website packages)
-	@echo "$(CYAN)Updating Go dependencies...$(RESET)"
-	@go get -u ./... && go mod tidy
-	@echo "$(CYAN)Updating web dashboard dependencies...$(RESET)"
-	@(cd web && pnpm update)
-	@echo "$(CYAN)Updating website Node dependencies...$(RESET)"
-	@if command -v npm >/dev/null 2>&1; then \
-		(cd $(WEBSITE_DIR) && npx -y npm-check-updates -u && npm install); \
-	fi
-
-.PHONY: fmt-check
-fmt-check: ## Check formatting for Go, web, and website sources
-	@echo "$(CYAN)Checking Go formatting...$(RESET)"
-	@test -z "$$(gofmt -l pkg cmd)" || (echo "Unformatted Go files:" && gofmt -l pkg cmd && exit 1)
-	@echo "$(CYAN)Checking website formatting with Prettier...$(RESET)"
-	@if command -v npm >/dev/null 2>&1; then \
-		(cd $(WEBSITE_DIR) && { npm ls prettier-plugin-astro >/dev/null 2>&1 || npm install; } && \
-			npm exec prettier -- --check "src/**/*.{astro,js,ts,css,md,json}" "public/**/*.{css,md,json}"); \
-	fi
-
-.PHONY: fmt
-fmt: ## Auto-format Go and website sources
-	@echo "$(CYAN)Formatting Go sources...$(RESET)"
-	@gofmt -s -w pkg cmd
-	@echo "$(CYAN)Formatting website sources with Prettier...$(RESET)"
-	@if command -v npm >/dev/null 2>&1; then \
-		(cd $(WEBSITE_DIR) && { npm ls prettier-plugin-astro >/dev/null 2>&1 || npm install; } && \
-			npm exec prettier -- --write "src/**/*.{astro,js,ts,css,md,json}" "public/**/*.{css,md,json}"); \
-	fi
-
-.PHONY: pre-stage
-pre-stage: ## Format only currently changed (unstaged) files before git add
-	@echo "$(CYAN)Pre-staging: auto-formatting changed files before git add...$(RESET)"
-	@gofmt -s -w pkg cmd 2>/dev/null || true
-	@if command -v npm >/dev/null 2>&1; then \
-		(cd $(WEBSITE_DIR) && npm exec prettier -- --write "src/**/*.{astro,js,ts,css,md,json}" "public/**/*.{css,md,json}" 2>/dev/null) || true; \
-	fi
-	@echo "  $(GREEN)✓ Changed files formatted. Ready for: git add$(RESET)"
-
-.PHONY: run-dev
-run-dev: check-env init-cache build-go build-ui ## Run local autoscaler in foreground for interactive debugging (Go engine + Vite UI)
-	@echo "$(CYAN)Starting caching proxy registries (Verdaccio, Athens, Docker mirror)...$(RESET)"
-	docker compose up -d
-	@echo "$(CYAN)Running Go engine in interactive foreground mode...$(RESET)"
-	@./bin/runzero -dist=web/dist
-
-
-
-
-
-
-.PHONY: build-spec
-build-spec: ## Compile TypeSpec schema and generate TypeScript types
-	@echo "$(CYAN)Compiling TypeSpec schema and generating TypeScript types...$(RESET)"
-	@cd spec && pnpm run all
-	@echo "$(GREEN)TypeSpec compilation complete.$(RESET)"
-
-.PHONY: build-ui
-build-ui: build-spec ## Build production dashboard TypeScript web application
-	@echo "$(CYAN)Building modular TypeScript dashboard...$(RESET)"
-	@cd web && pnpm run build
-	@echo "$(GREEN)Dashboard UI build complete.$(RESET)"
-

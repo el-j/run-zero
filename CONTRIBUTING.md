@@ -51,11 +51,10 @@ feat/my-feature  fix/bug-fix  chore/maintenance-task
    make env
    ```
 
-3. **Run Testing Suite (100% Quality Mandate)**:
+3. **Run the quality gates**:
    ```bash
-   make test           # 68 local unit tests
-   make test-suite     # Flake8 linter + Mypy type check + Pytest coverage
-   make mutation-test  # Mutmut mutation testing
+   make install   # first time: deps, builds, git hooks
+   make check     # go vet/test, TypeSpec, web, shellcheck
    ```
 
    The suite has three layers: white-box unit tests (most of `tests/`, everything mocked),
