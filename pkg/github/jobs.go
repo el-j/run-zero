@@ -17,9 +17,11 @@ type workflowRun struct {
 	Name         string  `json:"name"`
 	HeadBranch   string  `json:"head_branch"`
 	Status       string  `json:"status"`
+	Conclusion   string  `json:"conclusion"`
 	HTMLURL      string  `json:"html_url"`
 	RunAttempt   int     `json:"run_attempt"`
 	CreatedAt    string  `json:"created_at"`
+	UpdatedAt    string  `json:"updated_at"`
 	WorkflowName *string `json:"workflow_name,omitempty"`
 }
 
@@ -29,22 +31,25 @@ type workflowJobsResponse struct {
 }
 
 type workflowStep struct {
-	Name   string `json:"name"`
-	Status string `json:"status"`
-	Number int    `json:"number"`
+	Name       string  `json:"name"`
+	Status     string  `json:"status"`
+	Conclusion *string `json:"conclusion,omitempty"`
+	Number     int     `json:"number"`
 }
 
 type workflowJob struct {
-	ID         int64          `json:"id"`
-	RunID      int64          `json:"run_id"`
-	Name       string         `json:"name"`
-	Status     string         `json:"status"`
-	CreatedAt  string         `json:"created_at"`
-	StartedAt  *string        `json:"started_at,omitempty"`
-	HTMLURL    string         `json:"html_url"`
-	Labels     []string       `json:"labels"`
-	RunnerName *string        `json:"runner_name,omitempty"`
-	Steps      []workflowStep `json:"steps,omitempty"`
+	ID          int64          `json:"id"`
+	RunID       int64          `json:"run_id"`
+	Name        string         `json:"name"`
+	Status      string         `json:"status"`
+	Conclusion  string         `json:"conclusion"`
+	CreatedAt   string         `json:"created_at"`
+	StartedAt   *string        `json:"started_at,omitempty"`
+	CompletedAt *string        `json:"completed_at,omitempty"`
+	HTMLURL     string         `json:"html_url"`
+	Labels      []string       `json:"labels"`
+	RunnerName  *string        `json:"runner_name,omitempty"`
+	Steps       []workflowStep `json:"steps,omitempty"`
 }
 
 // ListActiveJobs finds queued and in-progress workflow jobs in repo, calculating stage & step progress.

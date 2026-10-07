@@ -28,6 +28,16 @@ func (o *OrbStackDriver) StopRunner(ctx context.Context, runnerID string) error 
 			}
 		}
 		if !strings.HasPrefix(name, "runzero-") && !strings.HasPrefix(name, "local-runner-") {
+			if listed, err := o.ListRunners(ctx); err == nil {
+				for _, r := range listed {
+					if r.ID == runnerID {
+						name = r.Name
+						break
+					}
+				}
+			}
+		}
+		if !strings.HasPrefix(name, "runzero-") && !strings.HasPrefix(name, "local-runner-") {
 			name = fmt.Sprintf("runzero-%s", runnerID)
 		}
 	}

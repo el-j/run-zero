@@ -19,23 +19,77 @@ func (d *DockerDriver) ListRunners(ctx context.Context) ([]state.RunnerInfo, err
 	return parseDockerPS(string(out)), nil
 }
 
-// StopRunner stops and removes a runner container.
-func (d *DockerDriver) StopRunner(ctx context.Context, runnerID string) error {
-	name := runnerID
-	if !strings.HasPrefix(name, "runzero-") {
-		name = fmt.Sprintf("runzero-%s", runnerID)
+// resolveTargets returns docker container references for a runner ID as reported by
+// ListRunners (the runzero.id label value, or a raw container ID/name).
+func (d *DockerDriver) resolveTargets(ctx context.Context, runnerID string) []string {
+	var targets []string
+	seen := make(map[string]bool)
+	add := func(t string) {
+		if t != "" && !seen[t] {
+			seen[t] = true
+			targets = append(targets, t)
+		}
 	}
 
-	_, _ = d.executor.Run(ctx, "docker", "stop", "-t", "5", name)
-	out, err := d.executor.Run(ctx, "docker", "rm", "-f", name)
-	if err != nil {
-		return fmt.Errorf("docker rm failed (%w): %s", err, strings.TrimSpace(string(out)))
+	out, err := d.executor.Run(ctx, "docker", "ps", "-aq", "--filter", "label=runzero.id="+runnerID)
+	if err == nil {
+		for _, id := range strings.Fields(string(out)) {
+			add(id)
+		}
+	}
+
+	if d.store != nil {
+		if r, ok := d.store.Get(runnerID); ok {
+			add(r.Name)
+		}
+	}
+	add(runnerID)
+	if !strings.HasPrefix(runnerID, "runzero-") {
+		add(fmt.Sprintf("runzero-%s", runnerID))
+	}
+	return targets
+}
+
+// StopRunner stops and removes a runner container.
+func (d *DockerDriver) StopRunner(ctx context.Context, runnerID string) error {
+	var lastOut string
+	var lastErr error
+	removed := false
+
+	for _, target := range d.resolveTargets(ctx, runnerID) {
+		_, _ = d.executor.Run(ctx, "docker", "stop", "-t", "5", target)
+		out, err := d.executor.Run(ctx, "docker", "rm", "-f", target)
+		if err == nil {
+			removed = true
+			break
+		}
+		lastOut, lastErr = strings.TrimSpace(string(out)), err
+	}
+
+	if !removed {
+		return fmt.Errorf("docker rm failed (%w): %s", lastErr, lastOut)
 	}
 
 	if d.store != nil {
 		d.store.Unregister(runnerID)
 	}
 	return nil
+}
+
+// RunnerLogs returns the last tail lines of a runner container's output.
+func (d *DockerDriver) RunnerLogs(ctx context.Context, runnerID string, tail int) (string, error) {
+	if tail <= 0 {
+		tail = 100
+	}
+	var lastErr error
+	for _, target := range d.resolveTargets(ctx, runnerID) {
+		out, err := d.executor.Run(ctx, "docker", "logs", "--tail", fmt.Sprintf("%d", tail), target)
+		if err == nil {
+			return strings.TrimSpace(string(out)), nil
+		}
+		lastErr = err
+	}
+	return "", fmt.Errorf("docker logs failed: %w", lastErr)
 }
 
 // CleanupAll stops and terminates all RunZero managed containers.

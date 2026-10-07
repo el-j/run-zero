@@ -9,6 +9,10 @@ type State struct {
 	autoscalerStatus   string
 	runners            []RunnerInfo
 	queuedJobs         []QueuedJob
+	completedJobs      []CompletedJob
+	runnerLogs         map[string]string
+	runnerLogOrder     []string
+	historyDirty       bool
 	maxRunners         int
 	repoPriority       []string
 	pausedRepos        []string
@@ -30,6 +34,8 @@ func NewState(maxRunners int, version string, broker *Broker) *State {
 		autoscalerStatus: "running",
 		runners:          make([]RunnerInfo, 0),
 		queuedJobs:       make([]QueuedJob, 0),
+		completedJobs:    make([]CompletedJob, 0),
+		runnerLogs:       make(map[string]string),
 		maxRunners:       maxRunners,
 		repoPriority:     make([]string, 0),
 		pausedRepos:      make([]string, 0),
@@ -66,6 +72,12 @@ func (s *State) GetSnapshot() FleetState {
 	jobsCopy := make([]QueuedJob, len(s.queuedJobs))
 	copy(jobsCopy, s.queuedJobs)
 
+	historyCopy := make([]CompletedJob, len(s.completedJobs))
+	for i, j := range s.completedJobs {
+		historyCopy[i] = j
+		_, historyCopy[i].HasRunnerLog = s.runnerLogs[derefStr(j.RunnerName)]
+	}
+
 	prioCopy := make([]string, len(s.repoPriority))
 	copy(prioCopy, s.repoPriority)
 
@@ -75,6 +87,7 @@ func (s *State) GetSnapshot() FleetState {
 	return FleetState{
 		Runners:            runnersCopy,
 		QueuedJobs:         jobsCopy,
+		CompletedJobs:      historyCopy,
 		BusyRunners:        busy,
 		MaxRunners:         s.maxRunners,
 		FreeSlots:          free,

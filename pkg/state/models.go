@@ -4,9 +4,35 @@ import "time"
 
 // StepInfo describes one step (stage) of a workflow job.
 type StepInfo struct {
-	Number int    `json:"number"`
-	Name   string `json:"name"`
-	Status string `json:"status"`
+	Number     int     `json:"number"`
+	Name       string  `json:"name"`
+	Status     string  `json:"status"`
+	Conclusion *string `json:"conclusion,omitempty"`
+}
+
+// CompletedJob describes a finished (successful, failed, cancelled or timed-out)
+// GitHub Actions workflow job together with a human-readable failure diagnosis.
+type CompletedJob struct {
+	ID            int64      `json:"id"`
+	RunID         int64      `json:"run_id"`
+	Name          string     `json:"name"`
+	WorkflowName  *string    `json:"workflow_name,omitempty"`
+	HeadBranch    *string    `json:"head_branch,omitempty"`
+	RunAttempt    *int       `json:"run_attempt,omitempty"`
+	Conclusion    string     `json:"conclusion"`
+	StartedAt     *string    `json:"started_at,omitempty"`
+	CompletedAt   *string    `json:"completed_at,omitempty"`
+	DurationSec   *int       `json:"duration_sec,omitempty"`
+	Labels        []string   `json:"labels"`
+	HTMLURL       string     `json:"html_url"`
+	RunURL        *string    `json:"run_url,omitempty"`
+	Repo          string     `json:"repo"`
+	RunnerName    *string    `json:"runner_name,omitempty"`
+	FailedStep    *string    `json:"failed_step,omitempty"`
+	FailureReason *string    `json:"failure_reason,omitempty"`
+	Messages      []string   `json:"messages,omitempty"`
+	HasRunnerLog  bool       `json:"has_runner_log"`
+	Steps         []StepInfo `json:"steps,omitempty"`
 }
 
 // RunnerInfo contains metadata about an ephemeral runner instance.
@@ -72,6 +98,7 @@ type ActionsBilling struct {
 type FleetState struct {
 	Runners            []RunnerInfo    `json:"runners"`
 	QueuedJobs         []QueuedJob     `json:"queued_jobs"`
+	CompletedJobs      []CompletedJob  `json:"completed_jobs"`
 	BusyRunners        int             `json:"busy_runners"`
 	MaxRunners         int             `json:"max_runners"`
 	FreeSlots          int             `json:"free_slots"`
