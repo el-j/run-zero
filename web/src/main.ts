@@ -1,4 +1,5 @@
 import "./styles/theme.css";
+import { renderDashboardShell } from "./layout/renderDashboardShell";
 import {
   client,
   type CompletedJob,
@@ -8,6 +9,8 @@ import {
   type CacheStats,
   type SystemSettings,
 } from "./api/client";
+
+renderDashboardShell();
 
 // Global DOM elements
 const connectionBadge = document.getElementById("connection-status-badge")!;
