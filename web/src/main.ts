@@ -22,20 +22,20 @@ const statUptime = document.getElementById("stat-uptime")!;
 const statEngine = document.getElementById("stat-default-engine")!;
 const statVersion = document.getElementById("stat-version")!;
 
-const kpiActiveRunners = document.getElementById("kpi-active-runners")!;
-const kpiMaxRunners = document.getElementById("kpi-max-runners")!;
-const kpiRunnersBar = document.getElementById("kpi-runners-bar")!;
-const kpiMinRunnersText = document.getElementById("kpi-min-runners-text")!;
-const kpiRunnerSizing = document.getElementById("kpi-runner-sizing")!;
-const kpiQueuedJobs = document.getElementById("kpi-queued-jobs")!;
-const kpiQueueBar = document.getElementById("kpi-queue-bar")!;
-const kpiReposMonitored = document.getElementById("kpi-repos-monitored")!;
-const kpiVmRatio = document.getElementById("kpi-vm-ratio")!;
-const kpiRoutingBar = document.getElementById("kpi-routing-bar")!;
-const kpiRoutingSub = document.getElementById("kpi-routing-sub")!;
+const kpiActiveRunners = document.getElementById("kpi-active-runners");
+const kpiMaxRunners = document.getElementById("kpi-max-runners");
+const kpiRunnersBar = document.getElementById("kpi-runners-bar");
+const kpiMinRunnersText = document.getElementById("kpi-min-runners-text");
+const kpiRunnerSizing = document.getElementById("kpi-runner-sizing");
+const kpiQueuedJobs = document.getElementById("kpi-queued-jobs");
+const kpiQueueBar = document.getElementById("kpi-queue-bar");
+const kpiReposMonitored = document.getElementById("kpi-repos-monitored");
+const kpiVmRatio = document.getElementById("kpi-vm-ratio");
+const kpiRoutingBar = document.getElementById("kpi-routing-bar");
+const kpiRoutingSub = document.getElementById("kpi-routing-sub");
 const kpiRoutingHealth = document.getElementById("kpi-routing-health");
-const kpiCacheSize = document.getElementById("kpi-cache-size")!;
-const kpiCacheBar = document.getElementById("kpi-cache-bar")!;
+const kpiCacheSize = document.getElementById("kpi-cache-size");
+const kpiCacheBar = document.getElementById("kpi-cache-bar");
 const kpiQueueHealth = document.getElementById("kpi-queue-health");
 const kpiCacheHealth = document.getElementById("kpi-cache-health");
 
@@ -1498,9 +1498,9 @@ function renderState(state: FleetState) {
   const maxCount = state.max_runners ?? 3;
   const minCount = latestSettings?.min_runners ?? 0;
   currentConcurrency = { active: activeCount, max: maxCount, min: minCount };
-  kpiActiveRunners.textContent = String(activeCount);
-  kpiMaxRunners.textContent = `/ ${maxCount} max`;
-  kpiMinRunnersText.textContent = `// ${state.free_slots ?? Math.max(0, maxCount - activeCount)} free · ${minCount} standby target`;
+  if (kpiActiveRunners) kpiActiveRunners.textContent = String(activeCount);
+  if (kpiMaxRunners) kpiMaxRunners.textContent = `/ ${maxCount} max`;
+  if (kpiMinRunnersText) kpiMinRunnersText.textContent = `// ${state.free_slots ?? Math.max(0, maxCount - activeCount)} free · ${minCount} standby target`;
   if (kpiRunnerSizing) {
     const cpus = latestSettings?.runner_cpus ?? 3;
     const memory = latestSettings?.runner_memory ?? "4g";
@@ -1508,14 +1508,14 @@ function renderState(state: FleetState) {
   }
 
   const runnersPct = Math.min(100, Math.round((activeCount / Math.max(1, maxCount)) * 100));
-  kpiRunnersBar.style.width = `${runnersPct}%`;
+  if (kpiRunnersBar) kpiRunnersBar.style.width = `${runnersPct}%`;
 
   // Queued jobs
   const jobs = state.queued_jobs || [];
   currentQueuedJobs = jobs;
-  kpiQueuedJobs.textContent = String(jobs.length);
+  if (kpiQueuedJobs) kpiQueuedJobs.textContent = String(jobs.length);
   const queuePct = Math.min(100, jobs.length * 25);
-  kpiQueueBar.style.width = `${queuePct}%`;
+  if (kpiQueueBar) kpiQueueBar.style.width = `${queuePct}%`;
   if (kpiQueueHealth) {
     const freeSlots = state.free_slots ?? Math.max(0, maxCount - activeCount);
     if (jobs.length === 0) {
@@ -1529,7 +1529,7 @@ function renderState(state: FleetState) {
 
   // Monitored repos
   currentRepos = state.repo_priority || [];
-  kpiReposMonitored.textContent = `// Across ${currentRepos.length} tracked repo(s)`;
+  if (kpiReposMonitored) kpiReposMonitored.textContent = `// Across ${currentRepos.length} tracked repo(s)`;
   currentRepoPriority = state.repo_priority || [];
   currentPausedRepos = new Set(state.paused_repos || []);
 
@@ -1538,8 +1538,8 @@ function renderState(state: FleetState) {
   const vmJobs = (state.runners || []).filter((r) => r.backend === "orbstack").length;
   const dockerJobs = (state.runners || []).filter((r) => r.backend !== "orbstack").length;
   const vmRatio = totalJobs > 0 ? Math.round((vmJobs / Math.max(1, totalJobs)) * 100) : 0;
-  kpiVmRatio.textContent = `${vmRatio}%`;
-  kpiRoutingBar.style.width = `${vmRatio}%`;
+  if (kpiVmRatio) kpiVmRatio.textContent = `${vmRatio}%`;
+  if (kpiRoutingBar) kpiRoutingBar.style.width = `${vmRatio}%`;
   if (kpiRoutingSub) {
     const routeSummary = vmJobs > 0 || dockerJobs > 0 ? `${vmJobs} VM / ${dockerJobs} container` : "Auto-detect DIND & Services";
     kpiRoutingSub.textContent = `// ${routeSummary}`;
