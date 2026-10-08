@@ -495,46 +495,42 @@ body {
   }
 
   .header-right {
-    display: flex !important;
+    display: none !important;
     flex-direction: column;
     align-items: stretch;
     position: fixed;
-    top: 50px;
+    top: 0;
     right: 0;
     bottom: 0;
     width: min(360px, 90vw);
     z-index: 220;
-    padding: 10px;
+    padding: 62px 10px 10px;
     border-left: 1px solid var(--border-subtle);
     background: rgba(8, 12, 20, 0.98);
     backdrop-filter: var(--glass-blur);
     box-shadow: -10px 0 24px rgba(0, 0, 0, 0.65);
     overflow-y: auto;
     gap: 10px;
-    transform: translateX(102%);
-    opacity: 0;
-    pointer-events: none;
-    transition: transform 0.2s ease, opacity 0.2s ease;
   }
 
-  .app-header.menu-open .header-right {
-    transform: translateX(0);
-    opacity: 1;
-    pointer-events: auto;
+  .app-header.menu-open .header-right,
+  body.mobile-menu-open .header-right {
+    display: flex !important;
   }
 
   .header-menu-backdrop {
     display: block;
     position: fixed;
-    inset: 50px 0 0;
+    inset: 0;
     background: rgba(3, 7, 18, 0.58);
     opacity: 0;
     pointer-events: none;
     transition: opacity 0.2s ease;
-    z-index: 210;
+    z-index: 205;
   }
 
-  .header-menu-backdrop.open {
+  .header-menu-backdrop.open,
+  body.mobile-menu-open .header-menu-backdrop {
     opacity: 1;
     pointer-events: auto;
   }
@@ -579,6 +575,53 @@ body {
   .header-fleet-metrics {
     grid-template-columns: repeat(2, minmax(0, 1fr));
     gap: 8px 10px;
+  }
+
+  .master-tabs-header {
+    padding: 6px 8px;
+    gap: 6px;
+  }
+
+  .tabs-group {
+    width: 100%;
+    overflow-x: auto;
+    overflow-y: hidden;
+    white-space: nowrap;
+    scrollbar-width: thin;
+  }
+
+  .tab-btn {
+    font-size: 10px;
+    padding: 4px 7px;
+    gap: 4px;
+  }
+
+  .terminal-header {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 6px;
+    padding: 6px 7px;
+  }
+
+  .terminal-header .panel-title-group {
+    flex-wrap: wrap;
+    row-gap: 4px;
+  }
+
+  .terminal-header .panel-title {
+    font-size: 13px;
+    white-space: nowrap;
+  }
+
+  .terminal-controls {
+    width: 100%;
+    justify-content: flex-end;
+    flex-wrap: wrap;
+    gap: 6px;
+  }
+
+  #terminal-line-count {
+    font-size: 10px !important;
   }
 }
 
@@ -2785,10 +2828,18 @@ body {
 
   .header-right {
     width: 100vw;
+    padding-top: 56px;
   }
 
   .table-filter-input {
     flex-basis: 100%;
+  }
+
+}
+
+@media (max-width: 900px) {
+  body.mobile-menu-open {
+    overflow: hidden;
   }
 }
 

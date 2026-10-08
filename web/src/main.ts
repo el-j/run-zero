@@ -1877,17 +1877,21 @@ function initHandlers() {
   }
 
   if (btnHeaderMenu) {
-    const closeHeaderMenu = () => {
+    const setHeaderMenuOpen = (open: boolean) => {
       const header = document.querySelector<HTMLElement>(".app-header");
-      header?.classList.remove("menu-open");
-      headerMenuBackdrop?.classList.remove("open");
-      btnHeaderMenu.setAttribute("aria-expanded", "false");
+      header?.classList.toggle("menu-open", open);
+      document.body.classList.toggle("mobile-menu-open", open);
+      headerMenuBackdrop?.classList.toggle("open", open);
+      btnHeaderMenu.setAttribute("aria-expanded", open ? "true" : "false");
     };
-    btnHeaderMenu.onclick = () => {
+    const closeHeaderMenu = () => {
+      setHeaderMenuOpen(false);
+    };
+    btnHeaderMenu.onclick = (event) => {
+      event.stopPropagation();
       const header = document.querySelector<HTMLElement>(".app-header");
-      const opened = header?.classList.toggle("menu-open") ?? false;
-      headerMenuBackdrop?.classList.toggle("open", opened);
-      btnHeaderMenu.setAttribute("aria-expanded", opened ? "true" : "false");
+      const opened = !(header?.classList.contains("menu-open") ?? false);
+      setHeaderMenuOpen(opened);
     };
     headerMenuBackdrop?.addEventListener("click", closeHeaderMenu);
     document.addEventListener("click", (event) => {

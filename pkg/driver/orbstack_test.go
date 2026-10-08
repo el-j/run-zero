@@ -54,6 +54,49 @@ func TestOrbStackDriver_SpawnRunner(t *testing.T) {
 	}
 }
 
+func TestOrbStackDriver_SpawnRunner_PrefersGoldenBaseWithFallback(t *testing.T) {
+	var calls [][]string
+	mock := &mockCmdExecutor{
+		runFunc: func(ctx context.Context, name string, args ...string) ([]byte, error) {
+			calls = append(calls, args)
+			if args[0] == "create" && len(args) >= 2 && args[1] == "runzero-vm-base-arm64" {
+				return []byte("base image not found"), fmt.Errorf("not found")
+			}
+			return []byte("ok"), nil
+		},
+	}
+
+	o := NewOrbStackDriver(mock, nil, "ubuntu:jammy")
+	_, err := o.SpawnRunner(context.Background(), RunnerSpec{
+		ID:   "vm-fallback",
+		Repo: "org/repo",
+		Arch: "arm64",
+	})
+	if err != nil {
+		t.Fatalf("unexpected spawn error: %v", err)
+	}
+
+	if len(calls) < 3 {
+		t.Fatalf("expected create retries + start sequence, got %d calls", len(calls))
+	}
+	if calls[0][0] != "create" || calls[0][1] != "runzero-vm-base-arm64" {
+		t.Fatalf("expected first create to use golden base, got %v", calls[0])
+	}
+	if calls[1][0] != "create" || calls[1][1] != "ubuntu:jammy" {
+		t.Fatalf("expected fallback create to default distro, got %v", calls[1])
+	}
+	foundArch := false
+	for _, token := range calls[1] {
+		if token == "--arch" {
+			foundArch = true
+			break
+		}
+	}
+	if !foundArch {
+		t.Fatalf("expected fallback create call to include --arch, got %v", calls[1])
+	}
+}
+
 func TestOrbStackDriver_Operations(t *testing.T) {
 	listOutput := "runzero-vm-1 running\nrunzero-vm-2 stopped\nother-vm running\n"
 

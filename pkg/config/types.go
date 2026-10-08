@@ -11,6 +11,7 @@ type Config struct {
 	DiscoveryInterval             int
 	RunnerBackend                 string
 	AutoRouteVM                   bool
+	VMTriggerLabels               []string
 	RunnerArch                    string
 	ProxiesEnabled                bool
 	CacheEnabled                  bool
