@@ -129,19 +129,22 @@
 
               <!-- Context Actions based on Tab -->
               <div id="tab-actions-runners" class="tab-action-group">
+                <input type="text" id="runners-search-input" class="form-input font-mono table-filter-input" placeholder="Filter runners..." />
                 <button id="btn-prune-runners" class="btn btn-xs btn-outline font-mono">Prune Dead</button>
                 <button id="btn-start-runner" class="btn btn-xs btn-crimson font-mono">+ Start Runner</button>
               </div>
               <div id="tab-actions-queue" class="tab-action-group hidden">
+                <input type="text" id="queue-search-input" class="form-input font-mono table-filter-input" placeholder="Filter queue..." />
                 <div class="queue-status-tag font-mono">
                   <span id="queue-slots-badge">0/3 SLOTS</span>
                 </div>
               </div>
               <div id="tab-actions-jobs" class="tab-action-group hidden">
+                <input type="text" id="jobs-search-input" class="form-input font-mono table-filter-input" placeholder="Filter history..." />
                 <span class="badge badge-neutral font-mono" style="font-size: 10px;">history</span>
               </div>
               <div id="tab-actions-repos" class="tab-action-group hidden">
-                <input type="text" id="repo-search-input" class="form-input font-mono" placeholder="Filter repos..." style="padding: 4px 8px; font-size: 11px; width: 140px;" />
+                <input type="text" id="repo-search-input" class="form-input font-mono table-filter-input" placeholder="Filter repos..." />
               </div>
             </div>
           </div>
@@ -196,28 +199,6 @@
 
             <!-- TAB 2: JOB QUEUE -->
             <div id="tab-content-queue" class="tab-content-pane hidden">
-              <!-- Capacity and Dispatch Notice -->
-              <div class="queue-steering-header" style="margin-bottom: 12px;">
-                <div class="queue-capacity-banner">
-                  <div class="queue-capacity-item">
-                    <span class="stat-label">Active Runners:</span>
-                    <span class="font-mono stat-value-sm" id="queue-busy-slots">0</span>
-                  </div>
-                  <div class="queue-capacity-item">
-                    <span class="stat-label">Max Concurrency:</span>
-                    <span class="font-mono stat-value-sm" id="queue-max-slots">3</span>
-                  </div>
-                  <div class="queue-capacity-item">
-                    <span class="stat-label">Free Slots:</span>
-                    <span id="queue-free-slots" class="font-mono stat-value-sm highlight-emerald">3</span>
-                  </div>
-                  <div class="queue-capacity-item">
-                    <span class="stat-label">Total Queued:</span>
-                    <span id="queue-total-jobs" class="font-mono stat-value-sm highlight-amber">0</span>
-                  </div>
-                </div>
-              </div>
-
               <!-- Cards View -->
               <div id="queue-cards-view" class="cards-view">
                 <div id="queue-jobs-view" class="queue-jobs-view">

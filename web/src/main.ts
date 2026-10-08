@@ -87,6 +87,9 @@ const queueMaxSlots = document.getElementById("queue-max-slots");
 const queueFreeSlots = document.getElementById("queue-free-slots");
 const queueTotalJobs = document.getElementById("queue-total-jobs");
 const reposCountBadge = document.getElementById("repos-count-badge");
+const runnersSearchInput = document.getElementById("runners-search-input") as HTMLInputElement | null;
+const queueSearchInput = document.getElementById("queue-search-input") as HTMLInputElement | null;
+const jobsSearchInput = document.getElementById("jobs-search-input") as HTMLInputElement | null;
 const repoSearchInput = document.getElementById("repo-search-input") as HTMLInputElement | null;
 const reposList = document.getElementById("repos-list");
 const queueJobsCountTag = document.getElementById("queue-jobs-count-tag");
@@ -123,6 +126,8 @@ const actionsUpdated = document.getElementById("actions-updated");
 const actionsStatus = document.getElementById("actions-status");
 
 const btnPurgeAllCaches = document.getElementById("btn-purge-all-caches");
+const btnHeaderMenu = document.getElementById("btn-header-menu") as HTMLButtonElement | null;
+const headerMenuBackdrop = document.getElementById("header-menu-backdrop") as HTMLElement | null;
 
 // Modal elements
 const spawnModal = document.getElementById("spawn-modal") as HTMLDialogElement | null;
@@ -178,6 +183,12 @@ let totalLogLines = 0;
 let latestSettings: SystemSettings | null = null;
 let latestCacheStats: CacheStats | null = null;
 let terminalHeightPx = Number(localStorage.getItem("runzero_terminal_height_px") || "180");
+const filterStorageKeys = {
+  runners: "runzero_filter_runners",
+  queue: "runzero_filter_queue",
+  jobs: "runzero_filter_jobs",
+  repos: "runzero_filter_repos",
+} as const;
 
 type SortDirection = "asc" | "desc";
 type SortState<K extends string> = { key: K; dir: SortDirection };
@@ -234,6 +245,25 @@ function escapeHtml(str: string): string {
 function compareValues(a: string | number, b: string | number): number {
   if (typeof a === "number" && typeof b === "number") return a - b;
   return String(a).localeCompare(String(b), undefined, { sensitivity: "base", numeric: true });
+}
+
+function normalizeFilter(value: string): string {
+  return value.trim().toLowerCase();
+}
+
+function includesFilter(fields: Array<string | number | undefined | null>, query: string): boolean {
+  if (!query) return true;
+  const haystack = fields
+    .map((f) => (f === undefined || f === null ? "" : String(f).toLowerCase()))
+    .join(" ");
+  return haystack.includes(query);
+}
+
+function restoreTabFilters() {
+  if (runnersSearchInput) runnersSearchInput.value = localStorage.getItem(filterStorageKeys.runners) || "";
+  if (queueSearchInput) queueSearchInput.value = localStorage.getItem(filterStorageKeys.queue) || "";
+  if (jobsSearchInput) jobsSearchInput.value = localStorage.getItem(filterStorageKeys.jobs) || "";
+  if (repoSearchInput) repoSearchInput.value = localStorage.getItem(filterStorageKeys.repos) || "";
 }
 
 function updateSortHeaderIndicators() {
@@ -572,15 +602,42 @@ function progressHtml(x: RunRef, compact: boolean): string {
 function renderRunners(runners: RunnerInfo[]) {
   if (tabRunnersCount) tabRunnersCount.textContent = String(runners.length);
   if (runnersCountBadge) runnersCountBadge.textContent = `${runners.length} RUNNING`;
-
+  const runnersFilter = normalizeFilter(runnersSearchInput?.value || "");
+  const filteredRunners = runners.filter((r) =>
+    includesFilter(
+      [
+        r.name,
+        r.id,
+        r.target_repo,
+        r.backend,
+        r.target_arch,
+        r.status,
+        r.workflow_name,
+        r.job_name,
+        r.job_id,
+        r.run_id,
+      ],
+      runnersFilter,
+    ),
+  );
   const hasRunners = runners.length > 0;
+  const hasFilteredRunners = filteredRunners.length > 0;
+  const hasFilter = !!runnersFilter;
 
   if (runnersEmptyState) {
-    if (hasRunners) runnersEmptyState.classList.add("hidden");
+    if (hasFilteredRunners) runnersEmptyState.classList.add("hidden");
     else runnersEmptyState.classList.remove("hidden");
+    const title = runnersEmptyState.querySelector<HTMLElement>(".empty-title");
+    const desc = runnersEmptyState.querySelector<HTMLElement>(".empty-desc");
+    if (title) title.textContent = hasFilter ? "No runners match this filter" : "Fleet is on Standby";
+    if (desc) {
+      desc.textContent = hasFilter
+        ? `Try a different filter. Current query: "${runnersFilter}".`
+        : "Zero active runner containers or VMs right now. As soon as a GitHub Actions workflow queues, the autoscaler will spawn an ephemeral runner instantaneously.";
+    }
   }
   if (runnersGrid) {
-    if (hasRunners) runnersGrid.classList.remove("hidden");
+    if (hasFilteredRunners) runnersGrid.classList.remove("hidden");
     else runnersGrid.classList.add("hidden");
   }
   if (runnersTableEmpty) {
@@ -590,7 +647,7 @@ function renderRunners(runners: RunnerInfo[]) {
 
   // 1. Render Cards View
   if (runnersGrid) {
-    runnersGrid.innerHTML = runners
+    runnersGrid.innerHTML = filteredRunners
       .map((r) => {
         const isVm = (r.backend || "").toLowerCase().includes("vm") || (r.backend || "").toLowerCase().includes("orb");
         const engineTagClass = isVm ? "tag-vm" : "tag-docker";
@@ -671,9 +728,22 @@ function renderRunners(runners: RunnerInfo[]) {
     const diff = compareValues(av, bv);
     return runnersSort.dir === "asc" ? diff : -diff;
   });
+  const filteredRunnerIds = new Set(filteredRunners.map((r) => r.id));
+  const filteredRunnersForTable = sortedRunnersForTable.filter((r) => filteredRunnerIds.has(r.id));
+
+  if (runnersTableEmpty) {
+    if (currentViewMode === "table") {
+      runnersTableEmpty.classList.toggle("hidden", filteredRunnersForTable.length > 0);
+      runnersTableEmpty.textContent = hasFilter
+        ? `No runners matching "${runnersFilter}".`
+        : "No active runners running.";
+    } else {
+      runnersTableEmpty.classList.toggle("hidden", hasFilteredRunners);
+    }
+  }
 
   if (runnersTableBody) {
-    runnersTableBody.innerHTML = sortedRunnersForTable
+    runnersTableBody.innerHTML = filteredRunnersForTable
       .map((r) => {
         const isVm = (r.backend || "").toLowerCase().includes("vm") || (r.backend || "").toLowerCase().includes("orb");
         const engineName = isVm ? (r.backend || "VM").toUpperCase() : "DOCKER";
@@ -950,25 +1020,53 @@ function renderRepos(
 
 function renderCompletedJobs(jobs: CompletedJob[]) {
   if (tabJobsCount) tabJobsCount.textContent = String(jobs.length);
+  const jobsFilter = normalizeFilter(jobsSearchInput?.value || "");
+  const filteredJobs = jobs.filter((job) =>
+    includesFilter(
+      [
+        job.name,
+        job.repo,
+        job.conclusion,
+        job.workflow_name,
+        job.head_branch,
+        job.failure_reason,
+        job.failed_step,
+        job.run_id,
+        job.run_attempt,
+      ],
+      jobsFilter,
+    ),
+  );
+  const hasFilter = !!jobsFilter;
 
   if (!jobsList || !jobsTableBody || !jobsTableEmpty) return;
 
-  if (jobs.length === 0) {
+  if (jobs.length === 0 || filteredJobs.length === 0) {
+    const noHistory = jobs.length === 0;
     const emptyHtml = `
       <div class="empty-substate empty-queue-clean">
-        <div class="clean-check-icon">✓</div>
-        <div class="clean-text font-mono">NO COMPLETED JOBS YET</div>
-        <div class="clean-subtext">Recent successful and failed GitHub Actions jobs appear here with a quick retry path.</div>
+        <div class="clean-check-icon">${noHistory ? "✓" : "⌕"}</div>
+        <div class="clean-text font-mono">${noHistory ? "NO COMPLETED JOBS YET" : "NO HISTORY MATCHES FILTER"}</div>
+        <div class="clean-subtext">${noHistory
+          ? "Recent successful and failed GitHub Actions jobs appear here with a quick retry path."
+          : `Try a different history filter. Current query: "${escapeHtml(jobsFilter)}".`}</div>
       </div>
     `;
     jobsList.innerHTML = emptyHtml;
     jobsTableBody.innerHTML = "";
-    jobsTableEmpty.classList.remove("hidden");
+    if (currentViewMode === "table") {
+      jobsTableEmpty.classList.remove("hidden");
+      jobsTableEmpty.textContent = noHistory
+        ? "Recent successful and failed GitHub Actions jobs appear here."
+        : `No completed jobs matching "${jobsFilter}".`;
+    } else {
+      jobsTableEmpty.classList.add("hidden");
+    }
     return;
   }
   jobsTableEmpty.classList.add("hidden");
 
-  const sorted = [...jobs].sort((a, b) => {
+  const sorted = [...filteredJobs].sort((a, b) => {
     const av = a.completed_at ? new Date(a.completed_at).getTime() : 0;
     const bv = b.completed_at ? new Date(b.completed_at).getTime() : 0;
     return bv - av;
@@ -1028,7 +1126,7 @@ function renderCompletedJobs(jobs: CompletedJob[]) {
     })
     .join("");
 
-  const sortedJobsForTable = [...jobs].sort((a, b) => {
+  const sortedJobsForTable = [...filteredJobs].sort((a, b) => {
     const aConclusion = (a.conclusion || "unknown").toLowerCase();
     const bConclusion = (b.conclusion || "unknown").toLowerCase();
     const aReason = a.failure_reason || a.failed_step || "No failure reason captured.";
@@ -1048,6 +1146,12 @@ function renderCompletedJobs(jobs: CompletedJob[]) {
     const diff = compareValues(av, bv);
     return jobsSort.dir === "asc" ? diff : -diff;
   });
+  if (currentViewMode === "table") {
+    jobsTableEmpty.classList.toggle("hidden", sortedJobsForTable.length > 0);
+    jobsTableEmpty.textContent = hasFilter
+      ? `No completed jobs matching "${jobsFilter}".`
+      : "Recent successful and failed GitHub Actions jobs appear here.";
+  }
 
   jobsTableBody.innerHTML = sortedJobsForTable
     .map((job) => {
@@ -1081,9 +1185,13 @@ function renderCompletedJobs(jobs: CompletedJob[]) {
           <td class="font-mono">${job.completed_at ? new Date(job.completed_at).toLocaleString() : "—"}</td>
           <td>
             <div class="jobs-table-actions">
-              <a href="${escapeHtml(job.html_url || runUrl)}" target="_blank" rel="noopener noreferrer" class="btn btn-xs btn-outline font-mono">GitHub ↗</a>
+              <a href="${escapeHtml(job.html_url || runUrl)}" target="_blank" rel="noopener noreferrer" class="btn btn-xs btn-outline font-mono jobs-action-btn">
+                <span class="jobs-action-icon">↗</span><span class="jobs-action-text">GitHub</span>
+              </a>
               ${!isSuccess
-                ? `<button class="btn btn-xs btn-outline job-rerun-btn font-mono" data-repo="${escapeHtml(job.repo)}" data-run-id="${job.run_id}">Retry failed</button>`
+                ? `<button class="btn btn-xs btn-outline job-rerun-btn font-mono jobs-action-btn" data-repo="${escapeHtml(job.repo)}" data-run-id="${job.run_id}">
+                    <span class="jobs-action-icon">↻</span><span class="jobs-action-text">Retry failed</span>
+                  </button>`
                 : ""}
             </div>
           </td>
@@ -1111,6 +1219,23 @@ function renderCompletedJobs(jobs: CompletedJob[]) {
 // Render Queued Workflow Jobs View (Dual Card and Table View with GitHub Run Link and Progress)
 function renderQueue(queuedJobs: QueuedJob[], concurrency: { active: number; max: number }) {
   if (tabQueueCount) tabQueueCount.textContent = String(queuedJobs.length);
+  const queueFilter = normalizeFilter(queueSearchInput?.value || "");
+  const filteredQueueJobs = queuedJobs.filter((j) =>
+    includesFilter(
+      [
+        j.name,
+        j.workflow_name,
+        j.repo,
+        j.head_branch,
+        j.status,
+        j.waiting_reason,
+        j.run_id,
+        j.labels?.join(" "),
+      ],
+      queueFilter,
+    ),
+  );
+  const hasFilter = !!queueFilter;
   const activeRunners = concurrency.active;
   const maxRunners = concurrency.max;
   const freeSlots = Math.max(0, maxRunners - activeRunners);
@@ -1128,30 +1253,46 @@ function renderQueue(queuedJobs: QueuedJob[], concurrency: { active: number; max
   }
 
   const hasJobs = queuedJobs.length > 0;
+  const hasFilteredJobs = filteredQueueJobs.length > 0;
   if (queueTableEmpty) {
-    if (hasJobs) queueTableEmpty.classList.add("hidden");
+    if (hasFilteredJobs) queueTableEmpty.classList.add("hidden");
     else queueTableEmpty.classList.remove("hidden");
   }
 
-  if (!hasJobs) {
+  if (!hasJobs || !hasFilteredJobs) {
     if (queueJobsView) {
-      queueJobsView.innerHTML = `
-        <div class="empty-substate empty-queue-clean">
-          <div class="clean-check-icon">✓</div>
-          <div class="clean-text font-mono">ALL WORKFLOW QUEUES ARE CLEAR</div>
-          <div class="clean-subtext">Waiting jobs will appear here in real-time as GitHub Actions workflows trigger.</div>
-        </div>
-      `;
+      if (hasJobs && hasFilter) {
+        queueJobsView.innerHTML = `
+          <div class="empty-substate empty-queue-clean">
+            <div class="clean-check-icon">⌕</div>
+            <div class="clean-text font-mono">NO QUEUED JOBS MATCH</div>
+            <div class="clean-subtext">Try a different queue filter. Current query: "${escapeHtml(queueFilter)}".</div>
+          </div>
+        `;
+      } else {
+        queueJobsView.innerHTML = `
+          <div class="empty-substate empty-queue-clean">
+            <div class="clean-check-icon">✓</div>
+            <div class="clean-text font-mono">ALL WORKFLOW QUEUES ARE CLEAR</div>
+            <div class="clean-subtext">Waiting jobs will appear here in real-time as GitHub Actions workflows trigger.</div>
+          </div>
+        `;
+      }
     }
     if (queueTableBody) {
       queueTableBody.innerHTML = "";
+    }
+    if (queueTableEmpty && currentViewMode === "table") {
+      queueTableEmpty.textContent = hasJobs && hasFilter
+        ? `No queued jobs matching "${queueFilter}".`
+        : "Queue is clear — no pending workflow jobs.";
     }
     return;
   }
 
   // 1. Render Cards View
   if (queueJobsView) {
-    queueJobsView.innerHTML = queuedJobs
+    queueJobsView.innerHTML = filteredQueueJobs
       .map((j) => {
         const isRunning = j.status === "in_progress";
         const posTag = j.queue_position ? `<span class="priority-rank-badge font-mono" style="margin-right: 0.5rem;">Rank #${j.queue_position}</span>` : "";
@@ -1259,9 +1400,18 @@ function renderQueue(queuedJobs: QueuedJob[], concurrency: { active: number; max
     const diff = compareValues(av, bv);
     return queueSort.dir === "asc" ? diff : -diff;
   });
+  const filteredQueueSet = new Set(filteredQueueJobs);
+  const filteredQueueForTable = sortedQueueForTable.filter((j) => filteredQueueSet.has(j));
+
+  if (queueTableEmpty && currentViewMode === "table") {
+    queueTableEmpty.classList.toggle("hidden", filteredQueueForTable.length > 0);
+    queueTableEmpty.textContent = hasFilter
+      ? `No queued jobs matching "${queueFilter}".`
+      : "Queue is clear — no pending workflow jobs.";
+  }
 
   if (queueTableBody) {
-    queueTableBody.innerHTML = sortedQueueForTable
+    queueTableBody.innerHTML = filteredQueueForTable
       .map((j) => {
         const isRunning = j.status === "in_progress";
         const runUrl = j.run_url || `https://github.com/${j.repo}/actions/runs/${j.run_id}`;
@@ -1701,10 +1851,61 @@ function initHandlers() {
   });
 
   // Search input filter
+  if (runnersSearchInput) {
+    runnersSearchInput.oninput = () => {
+      localStorage.setItem(filterStorageKeys.runners, runnersSearchInput.value);
+      renderRunners(currentRunners);
+    };
+  }
+  if (queueSearchInput) {
+    queueSearchInput.oninput = () => {
+      localStorage.setItem(filterStorageKeys.queue, queueSearchInput.value);
+      renderQueue(currentQueuedJobs, currentConcurrency);
+    };
+  }
+  if (jobsSearchInput) {
+    jobsSearchInput.oninput = () => {
+      localStorage.setItem(filterStorageKeys.jobs, jobsSearchInput.value);
+      renderCompletedJobs(currentCompletedJobs);
+    };
+  }
   if (repoSearchInput) {
     repoSearchInput.oninput = () => {
+      localStorage.setItem(filterStorageKeys.repos, repoSearchInput.value);
       renderRepos(currentRepos, currentQueuedJobs, currentRepoPriority, currentPausedRepos);
     };
+  }
+
+  if (btnHeaderMenu) {
+    const closeHeaderMenu = () => {
+      const header = document.querySelector<HTMLElement>(".app-header");
+      header?.classList.remove("menu-open");
+      headerMenuBackdrop?.classList.remove("open");
+      btnHeaderMenu.setAttribute("aria-expanded", "false");
+    };
+    btnHeaderMenu.onclick = () => {
+      const header = document.querySelector<HTMLElement>(".app-header");
+      const opened = header?.classList.toggle("menu-open") ?? false;
+      headerMenuBackdrop?.classList.toggle("open", opened);
+      btnHeaderMenu.setAttribute("aria-expanded", opened ? "true" : "false");
+    };
+    headerMenuBackdrop?.addEventListener("click", closeHeaderMenu);
+    document.addEventListener("click", (event) => {
+      if (!window.matchMedia("(max-width: 900px)").matches) return;
+      const target = event.target as Node | null;
+      const header = document.querySelector<HTMLElement>(".app-header");
+      if (!header || !target) return;
+      if (header.contains(target)) return;
+      closeHeaderMenu();
+    });
+    window.addEventListener("resize", () => {
+      if (window.matchMedia("(min-width: 901px)").matches) {
+        closeHeaderMenu();
+      }
+    });
+    document.addEventListener("keydown", (event) => {
+      if (event.key === "Escape") closeHeaderMenu();
+    });
   }
 
   // Spawn Modal Controls
@@ -1788,6 +1989,7 @@ function initHandlers() {
 
 // Bootstrap Application
 async function startApp() {
+  restoreTabFilters();
   initHandlers();
   setViewMode(currentViewMode);
   setActiveTab(currentTab);
