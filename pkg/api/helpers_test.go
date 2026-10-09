@@ -20,6 +20,9 @@ func setupTestServer(t *testing.T) (*Server, *config.Config, *state.State, strin
 	_ = os.WriteFile(filepath.Join(tmpDist, "assets", "script.js"), []byte("console.log('test');"), 0644)
 	_ = os.MkdirAll(filepath.Join(tmpDist, "fonts"), 0755)
 	_ = os.WriteFile(filepath.Join(tmpDist, "fonts", "test-font.woff2"), []byte("woff2-data"), 0644)
+	_ = os.WriteFile(filepath.Join(tmpDist, "favicon.svg"), []byte("<svg xmlns=\"http://www.w3.org/2000/svg\"/>"), 0644)
+	_ = os.WriteFile(filepath.Join(tmpDist, "favicon.ico"), []byte("ico-data"), 0644)
+	_ = os.WriteFile(filepath.Join(tmpDist, "icon.svg"), []byte("<svg xmlns=\"http://www.w3.org/2000/svg\"/>"), 0644)
 
 	_ = os.WriteFile(filepath.Join(tmpStatic, "index.html"), []byte("<html>static index</html>"), 0644)
 	_ = os.WriteFile(filepath.Join(tmpStatic, "dashboard.css"), []byte("/* css */"), 0644)

@@ -5,6 +5,8 @@ import dialogsAndToastHtml from "./fragments/dialogs-and-toast.html?raw";
 export function renderDashboardShell() {
   if (document.body.dataset.shellRendered === "true") return;
   document.body.classList.add("theme-dark");
-  document.body.innerHTML = `${ambientAndHeaderHtml}\n${dashboardMainHtml}\n${dialogsAndToastHtml}`;
+  const appIconUrl = `${import.meta.env.BASE_URL}icon.svg`;
+  const shellHeaderHtml = ambientAndHeaderHtml.replaceAll("__APP_ICON_URL__", appIconUrl);
+  document.body.innerHTML = `${shellHeaderHtml}\n${dashboardMainHtml}\n${dialogsAndToastHtml}`;
   document.body.dataset.shellRendered = "true";
 }
