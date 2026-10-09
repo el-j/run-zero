@@ -1,101 +1,4 @@
   <main class="dashboard-container">
-    <!-- Top Level KPI Metrics Bar -->
-    <!-- <section class="kpi-grid" aria-label="Key Performance Indicators">
-      <div class="kpi-card kpi-card-clickable" id="kpi-runners-card" data-kpi-target="runners" title="Switch to Active Runners">
-        <span class="kpi-corner-hint font-mono">TAB ↵</span>
-        <div class="kpi-icon-wrap icon-cyan">
-          <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-            <circle cx="12" cy="12" r="10"></circle>
-            <polyline points="12 6 12 12 16 14"></polyline>
-          </svg>
-        </div>
-        <div class="kpi-content">
-          <span class="kpi-title">Active Fleet</span>
-          <div class="kpi-value-row">
-            <span id="kpi-active-runners" class="kpi-num">0</span>
-            <span class="kpi-subnum" id="kpi-max-runners">/ 3 max</span>
-          </div>
-          <div class="kpi-track">
-            <div id="kpi-runners-bar" class="kpi-progress-bar cyan" style="width: 0%;"></div>
-          </div>
-          <span class="kpi-subtext" id="kpi-min-runners-text">// 0 idle standby</span>
-          <span class="kpi-subtext" id="kpi-runner-sizing" title="Per-runner CPU/memory limit">// sizing …</span>
-        </div>
-      </div>
-
-      <div class="kpi-card kpi-card-clickable" id="kpi-queue-card" data-kpi-target="queue" title="Switch to Job Queue">
-        <span class="kpi-corner-hint font-mono">TAB ↵</span>
-        <div class="kpi-icon-wrap icon-amber">
-          <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-            <path d="M5 22h14"></path>
-            <path d="M5 2h14"></path>
-            <path d="M17 22v-4.172a2 2 0 0 0-.586-1.414L12 12l-4.414 4.414A2 2 0 0 0 7 17.828V22"></path>
-            <path d="M7 2v4.172a2 2 0 0 0 .586 1.414L12 12l4.414-4.414A2 2 0 0 0 17 6.172V2"></path>
-          </svg>
-        </div>
-        <div class="kpi-content">
-          <span class="kpi-title">Queued Jobs</span>
-          <div class="kpi-value-row">
-            <span id="kpi-queued-jobs" class="kpi-num">0</span>
-            <span class="kpi-subnum">pending</span>
-          </div>
-          <div class="kpi-track">
-            <div id="kpi-queue-bar" class="kpi-progress-bar amber" style="width: 0%;"></div>
-          </div>
-          <span class="kpi-subtext" id="kpi-repos-monitored">// Across 0 tracked repos</span>
-          <span class="kpi-subtext" id="kpi-queue-health">// Queue healthy</span>
-        </div>
-      </div>
-
-      <div class="kpi-card kpi-card-clickable" id="kpi-routing-card" data-kpi-target="routing" title="Open Hybrid Routing in Telemetry Drawer">
-        <span class="kpi-corner-hint font-mono">DRAWER ↗</span>
-        <div class="kpi-icon-wrap icon-purple">
-          <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-            <line x1="6" y1="3" x2="6" y2="15"></line>
-            <circle cx="18" cy="6" r="3"></circle>
-            <circle cx="6" cy="18" r="3"></circle>
-            <path d="M18 9a9 9 0 0 1-9 9"></path>
-          </svg>
-        </div>
-        <div class="kpi-content">
-          <span class="kpi-title">Hybrid Routing</span>
-          <div class="kpi-value-row">
-            <span id="kpi-vm-ratio" class="kpi-num">0%</span>
-            <span class="kpi-subnum">VM routed</span>
-          </div>
-          <div class="kpi-track">
-            <div id="kpi-routing-bar" class="kpi-progress-bar purple" style="width: 0%;"></div>
-          </div>
-          <span class="kpi-subtext" id="kpi-routing-sub">// Auto-detect DIND &amp; Services</span>
-          <span class="kpi-subtext" id="kpi-routing-health">// No active routing decisions yet</span>
-        </div>
-      </div>
-
-      <div class="kpi-card kpi-card-clickable" id="kpi-cache-card" data-kpi-target="cache" title="Open Host Cache in Telemetry Drawer">
-        <span class="kpi-corner-hint font-mono">DRAWER ↗</span>
-        <div class="kpi-icon-wrap icon-emerald">
-          <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-            <rect x="2" y="2" width="20" height="8" rx="2" ry="2"></rect>
-            <rect x="2" y="14" width="20" height="8" rx="2" ry="2"></rect>
-            <line x1="6" y1="6" x2="6.01" y2="6"></line>
-            <line x1="6" y1="18" x2="6.01" y2="18"></line>
-          </svg>
-        </div>
-        <div class="kpi-content">
-          <span class="kpi-title">Host Cache Storage</span>
-          <div class="kpi-value-row">
-            <span id="kpi-cache-size" class="kpi-num">0 B</span>
-            <span class="kpi-subnum">saved</span>
-          </div>
-          <div class="kpi-track">
-            <div id="kpi-cache-bar" class="kpi-progress-bar emerald" style="width: 100%;"></div>
-          </div>
-          <span class="kpi-subtext">// Shared Multi-Language Cache</span>
-          <span class="kpi-subtext" id="kpi-cache-health">// Cache usage idle</span>
-        </div>
-      </div>
-    </section> -->
-
     <!-- Main Full-Width Fleet Workspace -->
     <div class="main-workspace-full">
       <div class="workspace-main-column" id="workspace-main-column">
@@ -321,7 +224,9 @@
       </section>
       </div>
 
+    </div>
     <!-- Right Drawer: Telemetry & Controls -->
+    <div id="drawer-backdrop" class="drawer-backdrop"></div>
     <aside id="telemetry-drawer" class="drawer" aria-label="Telemetry and controls">
       <div class="drawer-header">
         <div class="panel-title-group">
@@ -625,6 +530,4 @@
         </section>
       </div>
       </aside>
-      <div id="drawer-backdrop" class="drawer-backdrop"></div>
-    </div>
   </main>

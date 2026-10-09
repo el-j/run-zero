@@ -1745,7 +1745,7 @@ function initHandlers() {
   const openDrawer = (section?: string) => {
     drawer?.classList.add("open");
     workspace?.classList.add("drawer-open");
-    if (window.matchMedia("(max-width: 1100px)").matches) {
+    if (window.matchMedia("(max-width: 900px)").matches) {
       backdrop?.classList.add("open");
     }
     if (section) {
@@ -1759,9 +1759,21 @@ function initHandlers() {
     workspace?.classList.remove("drawer-open");
     backdrop?.classList.remove("open");
   };
+  const closeHeaderMenu = () => {
+    const header = document.querySelector<HTMLElement>(".app-header");
+    const panel = header?.querySelector<HTMLElement>(".header-right");
+    header?.classList.remove("menu-open");
+    document.body.classList.remove("mobile-menu-open");
+    headerMenuBackdrop?.classList.remove("open");
+    btnHeaderMenu?.setAttribute("aria-expanded", "false");
+    if (panel) panel.style.display = "";
+  };
   document.getElementById("btn-open-drawer")?.addEventListener("click", () => {
     if (drawer?.classList.contains("open")) closeDrawer();
-    else openDrawer();
+    else {
+      closeHeaderMenu();
+      openDrawer();
+    }
   });
   document.getElementById("btn-close-drawer")?.addEventListener("click", closeDrawer);
   backdrop?.addEventListener("click", closeDrawer);
@@ -1769,7 +1781,7 @@ function initHandlers() {
     if (e.key === "Escape") closeDrawer();
   });
   window.addEventListener("resize", () => {
-    if (!window.matchMedia("(max-width: 1100px)").matches) {
+    if (!window.matchMedia("(max-width: 900px)").matches) {
       backdrop?.classList.remove("open");
     }
   });
@@ -1879,10 +1891,20 @@ function initHandlers() {
   if (btnHeaderMenu) {
     const setHeaderMenuOpen = (open: boolean) => {
       const header = document.querySelector<HTMLElement>(".app-header");
+      const panel = header?.querySelector<HTMLElement>(".header-right");
+      const isMobile = window.matchMedia("(max-width: 900px)").matches;
       header?.classList.toggle("menu-open", open);
       document.body.classList.toggle("mobile-menu-open", open);
       headerMenuBackdrop?.classList.toggle("open", open);
+      if (panel && isMobile) {
+        panel.style.display = open ? "flex" : "none";
+      } else if (panel) {
+        panel.style.removeProperty("display");
+      }
       btnHeaderMenu.setAttribute("aria-expanded", open ? "true" : "false");
+      if (open) {
+        closeDrawer();
+      }
     };
     const closeHeaderMenu = () => {
       setHeaderMenuOpen(false);

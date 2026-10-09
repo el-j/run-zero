@@ -187,4 +187,17 @@ test.describe("RunZero Web Dashboard End-to-End Tests", () => {
     expect(pruneCalled).toBeTruthy();
     await expect(page.locator("#toast-container")).toContainText("Triggered fleet runner prune");
   });
+
+  test("mobile header menu opens and reveals controls", async ({ page }) => {
+    await page.setViewportSize({ width: 390, height: 844 });
+    await page.goto("http://127.0.0.1:49505/");
+
+    const menuBtn = page.locator("#btn-header-menu");
+    await expect(menuBtn).toBeVisible();
+    await menuBtn.click();
+
+    await expect(page.locator("body")).toHaveClass(/mobile-menu-open/);
+    await expect(page.locator("#btn-open-settings")).toBeVisible();
+    await expect(page.locator("#btn-open-drawer")).toBeVisible();
+  });
 });
