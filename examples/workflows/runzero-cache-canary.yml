@@ -1,7 +1,7 @@
 # RunZero cache canary (el-j/run-zero#74).
 #
 # Copy this file to .github/workflows/runzero-cache-canary.yml in a disposable repository
-# that RunZero serves, then run tests/test_e2e_github.py with RUNZERO_E2E_REPO/RUNZERO_E2E_TOKEN.
+# that RunZero serves, then validate dashboard and website flows via `make e2e`.
 # The test dispatches it twice; on the second run every cache must hit. Each check prints a
 # `RUNZERO_CANARY key=value` line that the test reads back from the job log.
 name: RunZero cache canary

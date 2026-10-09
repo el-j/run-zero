@@ -1,3 +1,5 @@
+name: run-zero
+
 networks:
   runner-network:
     name: runner-network

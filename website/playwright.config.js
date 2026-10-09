@@ -27,15 +27,11 @@ export default defineConfig({
       timeout: 60000,
     },
     {
-      command: "PYTHONPATH=../src ../.venv-dev/bin/python -m dashboard.server",
+      command:
+        "pnpm --dir ../web run build && pnpm --dir ../web exec vite preview --host 127.0.0.1 --port 49505",
       port: 49505,
       reuseExistingServer: !process.env.CI,
-      timeout: 30000,
-      env: {
-        PYTHONPATH: "../src",
-        DASHBOARD_PORT: "49505",
-        DASHBOARD_HOST: "127.0.0.1",
-      },
+      timeout: 90000,
     },
   ],
 });

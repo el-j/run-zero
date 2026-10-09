@@ -57,13 +57,12 @@ feat/my-feature  fix/bug-fix  chore/maintenance-task
    make check     # go vet/test, TypeSpec, web, shellcheck
    ```
 
-   The suite has three layers: white-box unit tests (most of `tests/`, everything mocked),
-   blackbox process-boundary tests (`tests/test_blackbox_*.py` — real HTTP/subprocess calls
-   against run-zero's own dashboard/bridge/Makefile surfaces, no real Docker/VM/GitHub needed),
-   and true end-to-end tests (`tests/test_e2e_docker.py` — a real, unmocked Docker container
-   lifecycle). See [`E2E_TESTING.md`](E2E_TESTING.md) for the honest boundary between what's
-   automated in CI and what requires a human running a manual runbook locally (OrbStack VM,
-   WSL2, Multipass).
+   The suite has three layers:
+   - Go unit/integration tests under [`pkg/`](./pkg/) and [`cmd/`](./cmd/)
+   - Dashboard static checks in [`web/`](./web/) (lint + typecheck + production build)
+   - Playwright end-to-end tests in [`website/e2e/`](./website/e2e/) covering website + dashboard lifecycle flows
+
+   See [`E2E_TESTING.md`](E2E_TESTING.md) for scope and CI/manual boundaries.
 
 4. **Astro Website Development**:
    ```bash

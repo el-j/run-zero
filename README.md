@@ -26,6 +26,7 @@
 - [Key Features](#-key-features)
 - [Proxy Registries & Upstream Ecosystem](#-proxy-registries--upstream-ecosystem)
 - [Architecture Overview](#-architecture-overview)
+- [Dashboard Live Contract (State, Retention, Retry)](#-dashboard-live-contract-state-retention-retry)
 - [Repository Structure](#-repository-structure)
 - [Quick Start](#-quick-start)
 - [Automatic Cloud Fallback in Workflows](#-automatic-cloud-fallback-in-workflows)
@@ -58,7 +59,7 @@ RunZero is the **first local runner fleet that gives you the choice between ultr
 
 | Engine Backend | Upstream Runtime | Best Used For | Verification Status |
 |---|---|---|---|
-| 🐳 **Docker Containers** (`RUNNER_BACKEND=docker`) | [Docker Engine](https://docs.docker.com/engine/) / [OrbStack](https://orbstack.dev/) | Fast unit tests, linting, build pipelines, JS/Node/Python steps (**instant ~0.3s boot, ~20MB RAM**). | ✅ Unit-tested + automated e2e in CI |
+| 🐳 **Docker Containers** (`RUNNER_BACKEND=docker`) | [Docker Engine](https://docs.docker.com/engine/) / [OrbStack](https://orbstack.dev/) | Fast unit tests, linting, build pipelines, JS/Node/Go steps (**instant ~0.3s boot, ~20MB RAM**). | ✅ Unit-tested + automated e2e in CI |
 | 💻 **OrbStack Linux Machines** (`RUNNER_BACKEND=orbstack-vm`) | [OrbStack Virtualization](https://orbstack.dev/) | **Full systemd support**, background daemons, headless Chrome/Lighthouse, unconfined Docker daemon. | ✅ Unit-tested + manually verified against real OrbStack VMs |
 | 🪟 **Windows WSL2** (`RUNNER_BACKEND=wsl2`) | [Windows Subsystem for Linux 2](https://learn.microsoft.com/en-us/windows/wsl/) | Native Linux VM execution on Windows 10/11 & Windows Server. | ⚠️ Unit-tested only — **not yet verified against a real Windows/WSL2 host** |
 | 🐧 **Canonical Multipass** (`RUNNER_BACKEND=multipass`) | [Canonical Multipass](https://multipass.run/) | Universal cross-platform VM backend for macOS, Linux, and Windows. | ⚠️ Unit-tested only — **not yet verified against a real Multipass install** |
@@ -206,32 +207,54 @@ job outright.
 
 ---
 
+## 📡 Dashboard Live Contract (State, Retention, Retry)
+
+The dashboard is driven directly from the `/api/fleet` snapshot plus `/api/cache` and `/api/logs`
+support endpoints.
+
+- **Fleet snapshot (`/api/fleet`)** includes:
+  - Active runners, queue, and completed jobs
+  - Capacity (`busy_runners`, `free_slots`, `max_runners`)
+  - Repo priority / paused repos
+  - Rate-limit and Actions billing telemetry
+- **Completed job retention**:
+  - Up to `100` completed jobs are retained in memory (`pkg/state/history.go`)
+  - Jobs are sorted newest-first by `completed_at`
+- **Failure diagnosis parity**:
+  - Failed/timed-out/cancelled jobs include a human-readable `failure_reason`
+  - `failed_step` and top annotation messages are included where available
+- **Runner cleanup evidence**:
+  - Before finished runners are pruned, the daemon retains the last runner log tail
+  - Up to `100` runner log tails are retained, each capped at `16 KiB`
+- **Retry semantics**:
+  - The UI calls `/api/actions/workflow` with `rerun` or `rerun-failed`
+  - Retry actions mark history as dirty so the next autoscaler cycle bypasses the normal refresh throttle and updates completed-job history immediately
+- **Placeholder/TODO audit (dashboard + backend shipped paths)**:
+  - Audit command: `rg "TODO|FIXME|stub|placeholder" web/src pkg --glob "**/*.{ts,tsx,go}"`
+  - Result: no unresolved TODO/FIXME/stub markers in shipped TypeScript/Go sources (remaining `placeholder=...` matches are HTML input placeholder attributes)
+
+---
+
 ## 📁 Repository Structure
 
 ```text
 .
-├── src/                                   # 🐍 Pure Python Application Code
-│   ├── autoscaler.py                      #    Dynamic queue monitor, rate limiter, zombie healer & hybrid router
-│   ├── version.py                         #    Dynamic SemVer resolver (main: 0.0.1, develop: beta, feat: alpha)
-│   └── drivers/                           #    Pluggable Execution Drivers
-│       ├── __init__.py                    #    RunnerDriver interface & discovery factory
-│       ├── docker_driver.py               #    Docker container engine
-│       ├── orbstack_vm_driver.py          #    OrbStack macOS Linux VM engine (with golden base cloning)
-│       ├── wsl_driver.py                  #    Windows WSL2 engine (with proxy caching)
-│       └── multipass_driver.py            #    Canonical Multipass engine (with proxy caching)
+├── cmd/runzero/                           # ⚙️ CLI entrypoints (daemon, bridge, doctor, VM base build)
+├── pkg/                                   # 🧠 Go engine modules (api, daemon, driver, github, state, reaper, ...)
+├── web/                                   # 🖥️ TypeScript/Vite dashboard (live fleet UI + API client)
+│   ├── src/                               #    Dashboard TS, styles, generated OpenAPI types
+│   ├── dist/                              #    Production bundle served by the Go daemon
+│   └── package.json                       #    Dashboard dependencies and scripts
 ├── docker/                                # 🐳 Container Build Manifests & Entrypoints
 │   ├── Dockerfile                         #    Multi-arch runner image (ARM64 + AMD64)
 │   ├── Dockerfile.autoscaler              #    Autoscaler daemon container
 │   ├── Dockerfile.devpi                   #    devpi pip/uv PyPI proxy image (no maintained multi-arch upstream)
 │   ├── provision-toolchain.sh             #    Unified toolchain script (shared by Docker & VM base images)
 │   └── start.sh                           #    Runner entrypoint with proxy auto-detect
-├── tests/                                 # 🧪 Comprehensive Test Suite (90 Tests)
-│   ├── test_autoscaler.py                 #    Autoscaler, rate limiting, zombie healing & hybrid routing tests
-│   ├── test_drivers.py                    #    All driver lifecycle, base image & error branch tests
-│   ├── test_version.py                    #    Dynamic SemVer branch resolver tests
-│   └── test_shell_scripts.py              #    Shell script syntax & wizard tests
+├── spec/                                  # 📐 TypeSpec API contract + generated OpenAPI artifacts
 ├── website/                               # 🚀 Astro Static Website & Documentation
 │   ├── src/                               #    Astro components, pages (Hero + Docs + Versions) & styles
+│   ├── e2e/                               #    Playwright E2E tests (website + dashboard lifecycle flows)
 │   ├── public/                            #    Self-hosted fonts, versions.json, and SVG assets
 │   ├── astro.config.mjs                   #    Astro static SSG configuration
 │   └── package.json                       #    Website dependencies
@@ -241,7 +264,6 @@ job outright.
 │   └── versions/index.html                #    Compiled Release Version Archive Page
 ├── docker-compose.yml                     # 🚀 Orchestration (apt-cacher + Verdaccio + Athens + Docker Mirror + devpi + kellnr)
 ├── Makefile                               # 🛠️ Unified management commands
-├── pyproject.toml                         # ⚙️ Python project configuration (Pytest, Mypy, Mutmut)
 ├── .env.example                           # ⚙️ Configuration template
 ├── CONTRIBUTING.md                        # 🤝 Contributor guidelines & Git-Flow guide
 ├── LICENSE                                # 📄 MIT License
@@ -325,7 +347,7 @@ build, and `bash -n` + shellcheck on every maintained shell script.
 | `make test` | Go unit tests only |
 | `make lint` | `go vet`, website Oxlint and shellcheck |
 | `make fmt` / `make fmt-check` | Format / verify formatting (Go + website) |
-| `make e2e` | Playwright end-to-end tests for the website |
+| `make e2e` | Playwright end-to-end tests for website + dashboard lifecycle/retry/cleanup flows |
 
 See [`E2E_TESTING.md`](E2E_TESTING.md) for what is automated in CI versus what requires a human
 running a manual runbook locally (OrbStack VM, WSL2, Multipass).

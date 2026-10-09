@@ -8,6 +8,7 @@ import (
 type runnerOptions struct {
 	backend            string
 	autoRouteVM        bool
+	vmTriggerLabels    []string
 	arch               string
 	proxies            bool
 	cache              bool
@@ -29,6 +30,24 @@ func loadRunnerOptions(env EnvLookup) (*runnerOptions, error) {
 	autoRouteVM, err := parseBool(env, "AUTO_ROUTE_VM", true)
 	if err != nil {
 		return nil, err
+	}
+	rawVMTriggerLabels, _ := env.Lookup("VM_TRIGGER_LABELS")
+	defaultVMTriggerLabels := "vm,browser,e2e,lighthouse,systemd,gui,unconfined,postgres,mysql,redis,db,database,integration,service,services,dind"
+	if strings.TrimSpace(rawVMTriggerLabels) == "" {
+		rawVMTriggerLabels = defaultVMTriggerLabels
+	}
+	vmTriggerLabels := make([]string, 0)
+	seen := make(map[string]struct{})
+	for _, part := range strings.Split(rawVMTriggerLabels, ",") {
+		token := strings.ToLower(strings.TrimSpace(part))
+		if token == "" {
+			continue
+		}
+		if _, exists := seen[token]; exists {
+			continue
+		}
+		seen[token] = struct{}{}
+		vmTriggerLabels = append(vmTriggerLabels, token)
 	}
 	arch, err := parseArch(env, "RUNNER_ARCH", "both")
 	if err != nil {
@@ -72,6 +91,7 @@ func loadRunnerOptions(env EnvLookup) (*runnerOptions, error) {
 	return &runnerOptions{
 		backend:            backend,
 		autoRouteVM:        autoRouteVM,
+		vmTriggerLabels:    vmTriggerLabels,
 		arch:               arch,
 		proxies:            proxies,
 		cache:              cache,

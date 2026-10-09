@@ -87,6 +87,7 @@ func LoadConfig(env EnvLookup) (*Config, error) {
 		DiscoveryInterval:             discoveryInterval,
 		RunnerBackend:                 opts.backend,
 		AutoRouteVM:                   opts.autoRouteVM,
+		VMTriggerLabels:               opts.vmTriggerLabels,
 		RunnerArch:                    opts.arch,
 		ProxiesEnabled:                opts.proxies,
 		CacheEnabled:                  opts.cache,

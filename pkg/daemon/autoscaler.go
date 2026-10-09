@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"strings"
 	"time"
+	"unicode"
 
 	"github.com/el-j/run-zero/pkg/arch"
 	"github.com/el-j/run-zero/pkg/cache"
@@ -24,6 +25,47 @@ func randomHex(bytesLen int) string {
 		return fmt.Sprintf("%06x", time.Now().UnixNano()%0xFFFFFF)
 	}
 	return hex.EncodeToString(b)
+}
+
+func tokenizeLower(input string) []string {
+	if strings.TrimSpace(input) == "" {
+		return nil
+	}
+	return strings.FieldsFunc(strings.ToLower(input), func(r rune) bool {
+		return !unicode.IsLetter(r) && !unicode.IsDigit(r)
+	})
+}
+
+func shouldRouteToVM(job state.QueuedJob, triggers []string) bool {
+	if len(triggers) == 0 {
+		return false
+	}
+	triggerSet := make(map[string]struct{}, len(triggers))
+	for _, t := range triggers {
+		tt := strings.ToLower(strings.TrimSpace(t))
+		if tt == "" {
+			continue
+		}
+		triggerSet[tt] = struct{}{}
+	}
+	if len(triggerSet) == 0 {
+		return false
+	}
+
+	for _, label := range job.Labels {
+		for _, token := range tokenizeLower(label) {
+			if _, ok := triggerSet[token]; ok {
+				return true
+			}
+		}
+	}
+
+	for _, token := range tokenizeLower(job.Name) {
+		if _, ok := triggerSet[token]; ok {
+			return true
+		}
+	}
+	return false
 }
 
 // Scaler manages the background autoscaling loop, repository discovery,
@@ -152,7 +194,8 @@ func (s *Scaler) refreshCompletedJobs(ctx context.Context, repos []string) {
 	if s.historyFetcher == nil {
 		s.historyFetcher = github.NewHistoryFetcher(s.ghClient)
 	}
-	if time.Since(s.lastHistoryRefresh) < 30*time.Second && !s.lastHistoryRefresh.IsZero() {
+	forceRefresh := s.state.ConsumeHistoryRefresh()
+	if !forceRefresh && time.Since(s.lastHistoryRefresh) < 30*time.Second && !s.lastHistoryRefresh.IsZero() {
 		return
 	}
 
@@ -274,13 +317,8 @@ func (s *Scaler) ScaleCycle(ctx context.Context) {
 				if s.cfg.RunnerBackend != "" && s.cfg.RunnerBackend != "auto" {
 					backend = s.cfg.RunnerBackend
 				} else if s.cfg.AutoRouteVM {
-					// Route to VM backend only if job explicitly demands a VM via labels
-					for _, l := range job.Labels {
-						low := strings.ToLower(strings.TrimSpace(l))
-						if low == "vm" || low == "orbstack" || low == "linux-vm" {
-							backend = "orbstack"
-							break
-						}
+					if shouldRouteToVM(job, s.cfg.VMTriggerLabels) {
+						backend = "orbstack"
 					}
 				}
 
@@ -309,7 +347,7 @@ func (s *Scaler) ScaleCycle(ctx context.Context) {
 
 				// Generate runner name and launch
 				id := randomHex(3)
-				runnerName := fmt.Sprintf("local-runner-%s-%s-%s", targetArch, strings.ReplaceAll(repo, "/", "-"), id)
+				runnerName := driver.JobScopedRunnerName(repo, targetArch, job.RunID, job.ID, id)
 
 				spec := driver.RunnerSpec{
 					ID:       id,
