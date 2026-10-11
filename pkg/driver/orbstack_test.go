@@ -293,8 +293,13 @@ func TestOrbStackEnrichFromStore_RestoresRepoAndArch(t *testing.T) {
 
 func TestRunnerLabels(t *testing.T) {
 	got := runnerLabels(RunnerSpec{Labels: []string{"self-hosted", "local", "amd64", "Linux"}, Arch: "amd64"})
-	if got != "local,amd64" {
-		t.Fatalf("labels = %q, want local,amd64", got)
+	if got != "local,amd64,vm" {
+		t.Fatalf("labels = %q, want local,amd64,vm", got)
+	}
+	// A job that already asks for vm must not get it twice.
+	got = runnerLabels(RunnerSpec{Labels: []string{"self-hosted", "local", "vm"}, Arch: "amd64"})
+	if got != "local,vm,amd64" {
+		t.Fatalf("labels = %q, want local,vm,amd64", got)
 	}
 }
 

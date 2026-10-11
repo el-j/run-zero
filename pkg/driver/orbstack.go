@@ -167,7 +167,10 @@ func shellQuote(v string) string {
 }
 
 // runnerLabels returns the custom labels to register: the job's own labels (minus the
-// ones GitHub adds itself) plus "local" and the arch label the router matched on.
+// ones GitHub adds itself) plus "local", "vm" and the arch label the router matched on.
+// "vm" is always registered so jobs that request it (runs-on: [self-hosted, local, vm])
+// can only ever be picked up by a VM runner, never by a docker runner that was spawned
+// for a different job - GitHub hands a queued job to ANY idle runner with matching labels.
 func runnerLabels(spec RunnerSpec) string {
 	builtin := map[string]bool{"self-hosted": true, "linux": true, "x64": true, "arm64": true}
 	seen := map[string]bool{}
@@ -185,6 +188,7 @@ func runnerLabels(spec RunnerSpec) string {
 		add(l)
 	}
 	add("local")
+	add("vm")
 	if spec.Arch != "" && spec.Arch != "both" {
 		add(spec.Arch)
 	}
