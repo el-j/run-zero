@@ -2,6 +2,7 @@ package bridge
 
 import (
 	"encoding/json"
+	"log"
 	"net/http"
 	"runtime"
 	"strings"
@@ -108,6 +109,7 @@ func (s *Server) handlePostDriverStop(w http.ResponseWriter, r *http.Request, dr
 		targetID = body.ID
 	}
 
+	log.Printf("[bridge] %s stop/destroy request for %q (driver %s) from %s", r.Method, targetID, driverName, r.RemoteAddr)
 	if err := d.StopRunner(r.Context(), targetID); err != nil {
 		s.writeJSON(w, http.StatusInternalServerError, ActionResponse{Status: "error", Error: err.Error()})
 		return
@@ -122,6 +124,7 @@ func (s *Server) handlePostDriverPrune(w http.ResponseWriter, r *http.Request, d
 
 func (s *Server) handlePostDriverCleanup(w http.ResponseWriter, r *http.Request, driverName string) {
 	d := s.resolveDriver(driverName)
+	log.Printf("[bridge] cleanup-all request for driver %s from %s", driverName, r.RemoteAddr)
 	if d != nil {
 		_ = d.CleanupAll(r.Context())
 	}

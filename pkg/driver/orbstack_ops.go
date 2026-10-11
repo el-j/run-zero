@@ -3,6 +3,7 @@ package driver
 import (
 	"context"
 	"fmt"
+	"log"
 	"strings"
 
 	"github.com/el-j/run-zero/pkg/state"
@@ -72,6 +73,7 @@ func (o *OrbStackDriver) StopRunner(ctx context.Context, runnerID string) error 
 		}
 	}
 
+	log.Printf("[orbstack] StopRunner: deleting VM %q (requested id %q)", name, runnerID)
 	_, _ = o.executor.Run(ctx, "orbctl", "stop", name)
 	out, err := o.executor.Run(ctx, "orbctl", "delete", "-f", name)
 	if err != nil {
