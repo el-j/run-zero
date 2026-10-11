@@ -1,0 +1,94 @@
+  <!-- Ambient Atmospheric Light Elements matching Landing Page -->
+  <div class="ambient-glow ambient-crimson" aria-hidden="true"></div>
+  <div class="ambient-glow ambient-solar" aria-hidden="true"></div>
+  <div class="ambient-glow ambient-cyan" aria-hidden="true"></div>
+
+  <!-- Top Navigation & Global Header -->
+  <header class="app-header">
+    <div class="header-left">
+      <div class="logo-group">
+        <div class="logo-icon">
+          <img src="__APP_ICON_URL__" alt="RunZero logo" width="22" height="22">
+        </div>
+        <div class="logo-text">
+          <span class="brand-title">RunZero</span>
+          <span class="brand-subtitle">// FLEET_MANAGEMENT_CONSOLE</span>
+        </div>
+      </div>
+      <div id="connection-status-badge" class="badge badge-pulse">
+        <span class="beacon-dot"></span>
+        <span id="connection-status-text">CONNECTING</span>
+      </div>
+    </div>
+
+    <button id="btn-header-menu" class="header-menu-toggle btn btn-xs btn-outline font-mono" aria-label="Toggle header menu" aria-expanded="false">
+      ☰
+    </button>
+
+    <div class="header-right">
+      <div class="header-stats-row">
+        <div class="header-stat-box header-fleet-box">
+          <span class="stat-label">Fleet Capacity</span>
+          <div class="header-fleet-metrics font-mono">
+            <span><small>active</small> <b id="queue-busy-slots">0</b></span>
+            <span><small>max</small> <b id="queue-max-slots">3</b></span>
+            <span><small>free</small> <b id="queue-free-slots" class="highlight-emerald">3</b></span>
+            <span><small>queued</small> <b id="queue-total-jobs" class="highlight-amber">0</b></span>
+          </div>
+        </div>
+
+        <div class="header-stat-box api-quota-box">
+        <span class="stat-label">API Quota</span>
+        <div class="stat-val-group">
+          <span id="stat-rate-limit" class="stat-value font-mono">--/--</span>
+          <div class="quota-bar-wrapper">
+            <div id="stat-rate-limit-bar" class="quota-bar" style="width: 0%;"></div>
+          </div>
+        </div>
+        <span id="stat-rate-meta" class="stat-meta font-mono">used -- • reset --:--:-- • unknown</span>
+        </div>
+
+        <div class="header-stat-box">
+          <span class="stat-label">Uptime</span>
+          <span id="stat-uptime" class="stat-value font-mono">00:00:00</span>
+        </div>
+
+        <div class="header-stat-box">
+          <span class="stat-label">Engine</span>
+          <span id="stat-default-engine" class="stat-badge badge-cyan">DOCKER</span>
+        </div>
+
+        <div class="header-stat-box">
+          <span class="stat-label">Version</span>
+          <span id="stat-version" class="stat-badge badge-neutral font-mono">v…</span>
+        </div>
+
+        <div class="header-stat-box" id="bridge-drift-box" hidden>
+          <span class="stat-label">Bridge</span>
+          <span id="stat-bridge-drift" class="stat-badge badge-danger font-mono">STALE</span>
+        </div>
+      </div>
+
+      <div class="header-actions">
+        <button id="btn-open-drawer" class="btn btn-sm btn-outline font-mono header-action-btn" title="Open Telemetry & Caching Drawer">
+          <span>📡</span>
+          <span>TELEMETRY</span>
+        </button>
+
+        <button id="btn-open-settings" class="btn btn-sm btn-outline font-mono header-action-btn" title="Open live daemon configuration plane">
+          <span>⚙️</span>
+          <span>SETTINGS</span>
+        </button>
+
+        <a href="https://el-j.github.io/run-zero/" target="_blank" rel="noopener noreferrer" class="btn-docs-link header-action-btn">
+          <span>DOCS</span>
+          <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"></path>
+            <polyline points="15 3 21 3 21 9"></polyline>
+            <line x1="10" y1="14" x2="21" y2="3"></line>
+          </svg>
+        </a>
+      </div>
+    </div>
+  </header>
+  <div id="header-menu-backdrop" class="header-menu-backdrop" aria-hidden="true"></div>

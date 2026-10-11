@@ -7,7 +7,6 @@ on:
     paths:
       - 'website/**'
       - '.github/workflows/deploy-pages.yml'
-      - 'scripts/generate_versions_manifest.py'
   release:
     types:
       - published
@@ -49,7 +48,33 @@ jobs:
 
       - name: Generate versions manifest
         run: |
-          python scripts/generate_versions_manifest.py --output website/public/versions.json --base-path "${SITE_BASE}" --repo-url "${REPO_URL}"
+          node - <<'NODE'
+          const fs = require("fs");
+          const { execSync } = require("child_process");
+
+          const siteBase = process.env.SITE_BASE || "/run-zero";
+          const repoUrl = process.env.REPO_URL || "";
+          const rawTags = execSync("git tag --list 'v*' --sort=-v:refname", { encoding: "utf8" })
+            .trim()
+            .split("\n")
+            .filter(Boolean);
+
+          const versions = rawTags.map((tag, idx) => {
+            const releaseDate = execSync(`git log -1 --format=%cs ${tag}`, { encoding: "utf8" }).trim();
+            return {
+              version: tag,
+              name: idx === 0 ? `${tag} (Latest Release)` : tag,
+              url: `${siteBase}/${tag}/`,
+              docsUrl: `${siteBase}/${tag}/docs/`,
+              releaseDate,
+              status: idx === 0 ? "latest" : "archived",
+              notes: `Pinned documentation snapshot for RunZero ${tag}.`,
+              changelogUrl: `${repoUrl}/releases/tag/${tag}`
+            };
+          });
+
+          fs.writeFileSync("website/public/versions.json", `${JSON.stringify(versions, null, 2)}\n`, "utf8");
+          NODE
 
       - name: Build Astro current site
         run: |
@@ -63,15 +88,7 @@ jobs:
 
       - name: Build stable release snapshots
         run: |
-          mapfile -t STABLE_VERSIONS < <(python - <<'PY'
-          import json
-          from pathlib import Path
-
-          versions = json.loads(Path("website/public/versions.json").read_text(encoding="utf-8"))
-          for entry in versions:
-              print(entry["version"])
-          PY
-          )
+          mapfile -t STABLE_VERSIONS < <(node -e 'const fs=require("fs");const versions=JSON.parse(fs.readFileSync("website/public/versions.json","utf8"));for (const entry of versions){if(entry.version) console.log(entry.version)}')
 
           for VERSION in "${STABLE_VERSIONS[@]}"; do
             echo "Building stable docs snapshot for ${VERSION}"

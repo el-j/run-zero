@@ -53,7 +53,7 @@ Check panel: `GitHub Actions Minutes`
 ## 5. API-level Verification (Optional)
 
 ```bash
-curl -sS http://localhost:49505/api/status | python3 -c 'import sys, json; d=json.load(sys.stdin); print(json.dumps(d.get("github", {}).get("actions_billing", {}), indent=2))'
+curl -sS http://localhost:49505/api/status | node -e 'let d="";process.stdin.on("data",c=>d+=c);process.stdin.on("end",()=>{const j=JSON.parse(d);console.log(JSON.stringify(j.actions_billing ?? {}, null, 2));});'
 ```
 
 Expected fields when successful:

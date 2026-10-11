@@ -1,0 +1,136 @@
+  <!-- Modal: Manual Runner Launch -->
+  <dialog id="spawn-modal" class="modal-dialog">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h3 class="modal-title font-mono">// DISPATCH_EPHEMERAL_RUNNER</h3>
+        <button id="spawn-modal-close" class="btn btn-xs btn-ghost">✕</button>
+      </div>
+      <div class="modal-body">
+        <p class="modal-desc">Manually launch a single-job ephemeral runner for an active repository.</p>
+        <div class="form-group">
+          <label class="form-label font-mono">TARGET REPOSITORY</label>
+          <input type="text" id="manual-repo-input" class="form-input font-mono" placeholder="owner/repo (e.g. el-j/herbful)" />
+        </div>
+        <div class="form-group">
+          <label class="form-label font-mono">ARCHITECTURE</label>
+          <select id="manual-arch-select" class="form-select font-mono">
+            <option value="amd64">amd64 (Intel / x86_64 via Rosetta)</option>
+            <option value="arm64">arm64 (Apple Silicon Native)</option>
+          </select>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button id="spawn-modal-cancel" class="btn btn-secondary">Cancel</button>
+        <button id="spawn-modal-submit" class="btn btn-primary">Launch Runner</button>
+      </div>
+    </div>
+  </dialog>
+
+  <!-- Modal: Live System Settings -->
+  <dialog id="settings-modal" class="modal-dialog modal-lg">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h3 class="modal-title font-mono">// SYSTEM_CONFIGURATION_PLANE</h3>
+        <button id="settings-modal-close" class="btn btn-xs btn-ghost">✕</button>
+      </div>
+      <div class="modal-body">
+        <p class="modal-desc">Inspect and modify runtime settings dynamically without restarting the daemon engine. Values are applied live and persisted to <code class="font-mono">.env</code>.</p>
+        <form id="settings-form" class="settings-grid" style="margin-top: 10px;">
+          <div class="settings-section-title font-mono">⚡ Fleet Sizing &amp; Capacity</div>
+          <div class="form-group">
+            <label class="form-label font-mono">MAX RUNNERS</label>
+            <input type="number" id="input-max-runners" name="max_runners" class="form-input font-mono" min="1" max="64" required />
+          </div>
+          <div class="form-group">
+            <label class="form-label font-mono">STANDBY POOL (MIN RUNNERS)</label>
+            <input type="number" id="input-min-runners" name="min_runners" class="form-input font-mono" min="0" max="16" required />
+          </div>
+          <div class="form-group">
+            <label class="form-label font-mono">PER-RUNNER CPUS</label>
+            <input type="number" id="input-runner-cpus" name="runner_cpus" class="form-input font-mono" min="1" max="16" />
+          </div>
+          <div class="form-group">
+            <label class="form-label font-mono">PER-RUNNER MEMORY</label>
+            <input type="text" id="input-runner-memory" name="runner_memory" class="form-input font-mono" placeholder="4G" />
+          </div>
+
+          <div class="settings-section-title font-mono">⚙️ Execution Engine &amp; Routing</div>
+          <div class="form-group">
+            <label class="form-label font-mono">RUNNER BACKEND</label>
+            <select id="select-runner-backend" name="runner_backend" class="form-select font-mono">
+              <option value="auto">auto (Hybrid Auto-Routing)</option>
+              <option value="docker">docker (Lightweight Container)</option>
+              <option value="orbstack">orbstack (macOS VM Hypervisor)</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label class="form-label font-mono">RUNNER ARCHITECTURE</label>
+            <select id="select-runner-arch" name="runner_arch" class="form-select font-mono">
+              <option value="both">both (Multiarch amd64 + arm64)</option>
+              <option value="arm64">arm64 (Native Apple Silicon)</option>
+              <option value="amd64">amd64 (Intel / x86_64 via Rosetta)</option>
+            </select>
+          </div>
+          <div class="form-group" style="justify-content: center;">
+            <label class="checkbox-label font-mono">
+              <input type="checkbox" id="checkbox-auto-route-vm" name="auto_route_vm" />
+              <span>AUTO-ROUTE VM (Hybrid routing)</span>
+            </label>
+          </div>
+          <div class="form-group">
+            <label class="form-label font-mono">NATIVE ARCH OVERRIDE</label>
+            <select id="select-native-override" name="native_arch_override" class="form-select font-mono">
+              <option value="off">off</option>
+              <option value="arm64-preferred">arm64-preferred</option>
+              <option value="strict">strict</option>
+            </select>
+          </div>
+
+          <div class="settings-section-title font-mono">⏱️ Polling &amp; Discovery Timing</div>
+          <div class="form-group">
+            <label class="form-label font-mono">ACTIONS POLL INTERVAL (SEC)</label>
+            <input type="number" id="input-poll-interval" name="poll_interval" class="form-input font-mono" min="1" max="3600" />
+          </div>
+          <div class="form-group">
+            <label class="form-label font-mono">DISCOVERY INTERVAL (SEC)</label>
+            <input type="number" id="input-discovery-interval" name="discovery_interval" class="form-input font-mono" min="30" max="7200" />
+          </div>
+
+          <div class="settings-section-title font-mono">📦 Cache Pipeline &amp; Proxies</div>
+          <div class="form-group">
+            <label class="checkbox-label font-mono">
+              <input type="checkbox" id="checkbox-cache-enabled" name="cache_enabled" />
+              <span>SHARED HOST CACHE PIPELINE</span>
+            </label>
+          </div>
+          <div class="form-group">
+            <label class="checkbox-label font-mono">
+              <input type="checkbox" id="checkbox-proxies-enabled" name="proxies_enabled" />
+              <span>CACHING PROXIES (Verdaccio/Athens/Apt)</span>
+            </label>
+          </div>
+          <div class="form-group" style="grid-column: 1 / -1;">
+            <label class="form-label font-mono">HOST CACHE DIRECTORY</label>
+            <input type="text" id="input-cache-dir" name="host_cache_dir" class="form-input font-mono" />
+          </div>
+
+          <div class="settings-section-title font-mono">🖥️ Dashboard View Preferences</div>
+          <div class="form-group" style="grid-column: 1 / -1;">
+            <label class="form-label font-mono">FLEET &amp; QUEUE VIEW MODE</label>
+            <select id="select-view-mode-setting" name="view_mode" class="form-select font-mono">
+              <option value="cards">Card Grid (Visual cards with telemetry tags)</option>
+              <option value="table">Compact Styled Table (High-density aerospace table)</option>
+            </select>
+          </div>
+        </form>
+      </div>
+      <div class="modal-footer">
+        <button id="settings-modal-cancel" class="btn btn-secondary">Cancel</button>
+        <button id="settings-modal-save" class="btn btn-primary">Save Configuration</button>
+      </div>
+    </div>
+  </dialog>
+
+  <!-- Toast Notification Container -->
+  <div id="toast-container" class="toast-container"></div>
+
