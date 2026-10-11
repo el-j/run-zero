@@ -43,6 +43,19 @@ func TestServer_StaticAssetRoutes(t *testing.T) {
 		t.Errorf("expected 200 for test-font.woff2, got %d", respFont.StatusCode)
 	}
 
+	respFaviconSVG, _ := http.Get("http://" + addr + "/favicon.svg")
+	if respFaviconSVG.StatusCode != http.StatusOK {
+		t.Errorf("expected 200 for favicon.svg, got %d", respFaviconSVG.StatusCode)
+	}
+	respFaviconICO, _ := http.Get("http://" + addr + "/favicon.ico")
+	if respFaviconICO.StatusCode != http.StatusOK {
+		t.Errorf("expected 200 for favicon.ico, got %d", respFaviconICO.StatusCode)
+	}
+	respAppIcon, _ := http.Get("http://" + addr + "/icon.svg")
+	if respAppIcon.StatusCode != http.StatusOK {
+		t.Errorf("expected 200 for icon.svg, got %d", respAppIcon.StatusCode)
+	}
+
 	respBadFont1, _ := http.Get("http://" + addr + "/fonts/../bad.woff2")
 	if respBadFont1.StatusCode != http.StatusNotFound {
 		t.Errorf("expected 404 on font traversal, got %d", respBadFont1.StatusCode)
@@ -85,6 +98,11 @@ func TestServer_StaticAssetRoutes(t *testing.T) {
 	resp404, _ := http.Get("http://" + addr + "/does-not-exist")
 	if resp404.StatusCode != http.StatusNotFound {
 		t.Errorf("expected 404 on unknown route, got %d", resp404.StatusCode)
+	}
+
+	respUnsupportedRootAsset, _ := http.Get("http://" + addr + "/favicon.gif")
+	if respUnsupportedRootAsset.StatusCode != http.StatusNotFound {
+		t.Errorf("expected 404 on unsupported root asset type, got %d", respUnsupportedRootAsset.StatusCode)
 	}
 }
 

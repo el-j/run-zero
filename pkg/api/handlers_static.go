@@ -25,6 +25,10 @@ func handleStatic(distDir string, staticDir string) http.HandlerFunc {
 			return
 		}
 
+		if serveRootStaticFile(w, path, distDir, staticDir) {
+			return
+		}
+
 		// Legacy files
 		if path == "/dashboard.css" || path == "/dashboard.js" {
 			serveLegacy(w, r, staticDir, path[1:])
@@ -113,4 +117,43 @@ func serveLegacy(w http.ResponseWriter, r *http.Request, staticDir, filename str
 	}
 	w.WriteHeader(http.StatusOK)
 	_, _ = w.Write(data)
+}
+
+func serveRootStaticFile(w http.ResponseWriter, path, distDir, staticDir string) bool {
+	name := strings.TrimPrefix(path, "/")
+	if name == "" || strings.Contains(name, "..") || strings.Contains(name, "/") || strings.Contains(name, "\\") {
+		return false
+	}
+
+	contentType := ""
+	switch {
+	case strings.HasSuffix(name, ".svg"):
+		contentType = "image/svg+xml"
+	case strings.HasSuffix(name, ".ico"):
+		contentType = "image/x-icon"
+	case strings.HasSuffix(name, ".png"):
+		contentType = "image/png"
+	case strings.HasSuffix(name, ".webmanifest"):
+		contentType = "application/manifest+json"
+	default:
+		return false
+	}
+
+	candidates := []string{
+		filepath.Join(distDir, name),
+		filepath.Join(staticDir, name),
+		filepath.Join("web/public", name),
+	}
+
+	for _, cand := range candidates {
+		if data, err := os.ReadFile(cand); err == nil {
+			w.Header().Set("Content-Type", contentType)
+			w.WriteHeader(http.StatusOK)
+			_, _ = w.Write(data)
+			return true
+		}
+	}
+
+	writeError(w, http.StatusNotFound, "File not found")
+	return true
 }

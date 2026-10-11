@@ -16,6 +16,8 @@ type OrbStackDriver struct {
 	defaultDistro string
 }
 
+const goldenVMBasePrefix = "runzero-vm-base-"
+
 // NewOrbStackDriver creates an OrbStack VM driver.
 func NewOrbStackDriver(executor CmdExecutor, store *InstanceStore, defaultDistro string) *OrbStackDriver {
 	if executor == nil {
@@ -43,19 +45,37 @@ func (o *OrbStackDriver) SpawnRunner(ctx context.Context, spec RunnerSpec) (*sta
 		name = fmt.Sprintf("runzero-%s", spec.ID)
 	}
 
-	distro := spec.ImageName
-	if distro == "" {
-		distro = o.defaultDistro
+	candidates := make([]string, 0, 2)
+	if spec.ImageName != "" {
+		candidates = append(candidates, spec.ImageName)
+	} else {
+		if spec.Arch != "" && spec.Arch != "both" {
+			candidates = append(candidates, goldenVMBasePrefix+spec.Arch)
+		}
+		candidates = append(candidates, o.defaultDistro)
 	}
 
-	createArgs := []string{"create", distro, name}
-	if spec.Arch != "" && spec.Arch != "both" {
-		createArgs = append(createArgs, "--arch", spec.Arch)
+	var (
+		out []byte
+		err error
+	)
+	createErrors := make([]string, 0, len(candidates))
+	for _, source := range candidates {
+		createArgs := []string{"create", source, name}
+		if spec.Arch != "" && spec.Arch != "both" && !strings.HasPrefix(source, goldenVMBasePrefix) {
+			createArgs = append(createArgs, "--arch", spec.Arch)
+		}
+		out, err = o.executor.Run(ctx, "orbctl", createArgs...)
+		if err == nil {
+			break
+		}
+		createErrors = append(createErrors, fmt.Sprintf("%s: %s", source, strings.TrimSpace(string(out))))
+		if spec.ImageName != "" {
+			break
+		}
 	}
-
-	out, err := o.executor.Run(ctx, "orbctl", createArgs...)
 	if err != nil {
-		return nil, fmt.Errorf("orbctl create failed (%w): %s", err, strings.TrimSpace(string(out)))
+		return nil, fmt.Errorf("orbctl create failed for %s (%w): %s", strings.Join(candidates, " -> "), err, strings.Join(createErrors, " | "))
 	}
 
 	if spec.CPUs > 0 {
@@ -81,7 +101,6 @@ func (o *OrbStackDriver) SpawnRunner(ctx context.Context, spec RunnerSpec) (*sta
 		Backend:    "orbstack",
 		CreatedAt:  &now,
 	}
-
 	if o.store != nil {
 		o.store.Register(info)
 	}

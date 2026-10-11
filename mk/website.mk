@@ -35,7 +35,7 @@ website-lint: ## Run Oxlint on website sources
 	fi
 
 .PHONY: e2e
-e2e: ## Run Playwright end-to-end tests for the website
+e2e: ## Run Playwright end-to-end tests for website + dashboard lifecycle flows
 	@cd $(WEBSITE_DIR) && npx playwright test
 
 .PHONY: docs
