@@ -95,6 +95,26 @@ jobs:
 
 ---
 
+## 🖥️ How VM Runners Are Built & Registered
+
+VM-routed jobs (E2E, Lighthouse, anything needing a real Docker daemon or systemd) run in an
+ephemeral OrbStack VM **cloned** (`orbctl clone`) from a golden base image `runzero-vm-base-<arch>`:
+
+- **Golden image** (`make build-vm-base`, also run by `make start`): Docker engine, the shared
+  toolchain from `docker/provision-toolchain.sh` (Node via nvm, pnpm, .NET, Chrome, Playwright deps,
+  `libatomic1`, ...) and the Actions runner in `/home/runner/actions-runner`. It is stamped with the
+  runner version **and** a hash of the provisioning script, so editing the script marks it stale and
+  the next build refreshes it. Golden images are templates: they are never listed as runners and
+  never pruned.
+- **Per job**: the bridge clones the image, starts it, then registers an `--ephemeral` runner with the
+  job's labels (`local`, arch). If registration fails the VM is deleted rather than left idle.
+  `localhost` is made IPv4-only in the VM (GitHub-hosted behaviour) so services bound to
+  `127.0.0.1` work. VM names are sanitised to OrbStack's hostname rules; the repo mapping is kept
+  in the bridge's persisted instance store (`~/.local-github-runner/state/bridge-instances.json`).
+- **Rate limits**: GitHub list calls use ETag revalidation (`304` is free), calls stop while the
+  quota is exhausted, and the completed-jobs history sweep runs in the background every 5 minutes so
+  it can never delay job detection.
+
 ## 📦 Proxy Registries & Upstream Ecosystem
 
 RunZero runs local caching proxy registries alongside the autoscaler so your runners and image builds never re-download packages over the public internet:

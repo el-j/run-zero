@@ -3,6 +3,7 @@ package builder
 import (
 	"context"
 	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 )
@@ -108,5 +109,26 @@ func TestTemplates(t *testing.T) {
 	full := FullProvisionScript("arm64", "2.337.0", "echo custom")
 	if !strings.Contains(full, "echo custom") || !strings.Contains(full, "provisioning complete") {
 		t.Fatalf("unexpected full script: %s", full)
+	}
+}
+
+func TestGoldenBuilder_ProvisionScriptChangeMarksImageStale(t *testing.T) {
+	dir := t.TempDir()
+	script := filepath.Join(dir, "provision.sh")
+	if err := os.WriteFile(script, []byte("echo v1"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	b := NewGoldenBuilder(Config{StateDir: dir, RunnerVersion: "2.337.0", ProvisionScriptPath: script}, nil)
+	if err := b.WriteStamp("arm64"); err != nil {
+		t.Fatal(err)
+	}
+	if b.IsStale("arm64") {
+		t.Fatal("image should be fresh right after its stamp is written")
+	}
+	if err := os.WriteFile(script, []byte("echo v2"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	if !b.IsStale("arm64") {
+		t.Fatal("editing the provisioning script must mark the image stale")
 	}
 }

@@ -2,6 +2,8 @@ package builder
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"os"
 	"path/filepath"
@@ -59,7 +61,7 @@ func (b *GoldenBuilder) IsStale(arch string) bool {
 	if err != nil {
 		return true
 	}
-	return strings.TrimSpace(string(data)) != b.cfg.RunnerVersion
+	return strings.TrimSpace(string(data)) != b.stampValue()
 }
 
 // WriteStamp records the runner version for a freshly built image.
@@ -68,7 +70,23 @@ func (b *GoldenBuilder) WriteStamp(arch string) error {
 	if err := os.MkdirAll(filepath.Dir(p), 0755); err != nil {
 		return err
 	}
-	return os.WriteFile(p, []byte(b.cfg.RunnerVersion+"\n"), 0644)
+	return os.WriteFile(p, []byte(b.stampValue()+"\n"), 0644)
+}
+
+// stampValue identifies what a golden image was built from: the runner version plus a
+// short hash of the toolchain provisioning script. Editing the script (new apt
+// package, Node version, ...) therefore marks existing images stale and they get
+// rebuilt, instead of silently keeping an outdated toolchain.
+func (b *GoldenBuilder) stampValue() string {
+	if b.cfg.ProvisionScriptPath == "" {
+		return b.cfg.RunnerVersion
+	}
+	data, err := os.ReadFile(b.cfg.ProvisionScriptPath)
+	if err != nil {
+		return b.cfg.RunnerVersion
+	}
+	sum := sha256.Sum256(data)
+	return b.cfg.RunnerVersion + "+" + hex.EncodeToString(sum[:])[:12]
 }
 
 // ListVMs queries OrbStack for existing virtual machine names.
