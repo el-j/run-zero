@@ -145,6 +145,8 @@ render_plist() {
     <string>${port}</string>
     <key>RUNZERO_BRIDGE_TOKEN</key>
     <string>${token}</string>
+    <key>RUNZERO_STATE_DIR</key>
+    <string>${HOME}/.runzero-state</string>
   </dict>
   <key>RunAtLoad</key>
   <true/>
@@ -177,7 +179,7 @@ nohup_start() {
     fi
     (
         cd "$REPO_DIR"
-        nohup ./bin/runzero bridge > "$LOG_FILE" 2>&1 &
+        RUNZERO_STATE_DIR="$REPO_DIR/.runzero-state" PROVISION_SCRIPT="$REPO_DIR/docker/provision-toolchain.sh" nohup ./bin/runzero bridge > "$LOG_FILE" 2>&1 &
         echo $! > "$PID_FILE"
     )
     echo "nohup" > "$MODE_FILE"

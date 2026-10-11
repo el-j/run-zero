@@ -2,8 +2,11 @@ package builder
 
 import (
 	"context"
+	"encoding/json"
+	"net/http"
 	"os"
 	"strings"
+	"time"
 
 	"github.com/el-j/run-zero/pkg/driver"
 )
@@ -20,14 +23,22 @@ func NewImageInspector(gb *GoldenBuilder, exec driver.CmdExecutor) *ImageInspect
 		exec = &driver.OSExecutor{}
 	}
 	if gb == nil {
-		stateDir := ".runzero-state"
+		stateDir := os.Getenv("RUNZERO_STATE_DIR")
+		if stateDir == "" {
+			stateDir = ".runzero-state"
+		}
 		if _, err := os.Stat(stateDir); err != nil {
 			_ = os.MkdirAll(stateDir, 0755)
 		}
+		provisionScript := os.Getenv("PROVISION_SCRIPT")
+		if provisionScript == "" {
+			provisionScript = "docker/provision-toolchain.sh"
+		}
 		gb = NewGoldenBuilder(Config{
-			Distro:        "ubuntu:noble",
-			RunnerVersion: DefaultRunnerVersion,
-			StateDir:      stateDir,
+			Distro:              "ubuntu:noble",
+			RunnerVersion:       DefaultRunnerVersion,
+			StateDir:            stateDir,
+			ProvisionScriptPath: provisionScript,
 		}, exec)
 	}
 	return &ImageInspector{
@@ -67,6 +78,13 @@ func (ins *ImageInspector) Inspect(ctx context.Context) ImagesStatusResponse {
 func (ins *ImageInspector) inspectVMs(ctx context.Context) []InfrastructureImageStatus {
 	arches := []string{"arm64", "amd64"}
 	vms, err := ins.gb.ListVMs(ctx)
+	if err != nil {
+		if bridgeURL := os.Getenv("HOST_VM_BRIDGE_URL"); bridgeURL != "" && bridgeURL != "none" {
+			if bridgeVMs := ins.fetchVMsFromBridge(ctx, bridgeURL); len(bridgeVMs) > 0 {
+				return bridgeVMs
+			}
+		}
+	}
 	vmSet := make(map[string]bool)
 	if err == nil {
 		for _, v := range vms {
@@ -162,4 +180,29 @@ func (ins *ImageInspector) inspectContainers(ctx context.Context) []Infrastructu
 		})
 	}
 	return results
+}
+
+func (ins *ImageInspector) fetchVMsFromBridge(ctx context.Context, bridgeURL string) []InfrastructureImageStatus {
+	reqURL := strings.TrimSuffix(bridgeURL, "/") + "/api/images"
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, reqURL, nil)
+	if err != nil {
+		return nil
+	}
+	if token := os.Getenv("RUNZERO_BRIDGE_TOKEN"); token != "" {
+		req.Header.Set("Authorization", "Bearer "+token)
+	}
+	client := &http.Client{Timeout: 5 * time.Second}
+	resp, err := client.Do(req)
+	if err != nil {
+		return nil
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		return nil
+	}
+	var data ImagesStatusResponse
+	if err := json.NewDecoder(resp.Body).Decode(&data); err != nil {
+		return nil
+	}
+	return data.VMImages
 }

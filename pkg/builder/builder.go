@@ -11,6 +11,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/el-j/run-zero/docker"
 	"github.com/el-j/run-zero/pkg/driver"
 )
 
@@ -78,11 +79,14 @@ func (b *GoldenBuilder) WriteStamp(arch string) error {
 // package, Node version, ...) therefore marks existing images stale and they get
 // rebuilt, instead of silently keeping an outdated toolchain.
 func (b *GoldenBuilder) stampValue() string {
-	if b.cfg.ProvisionScriptPath == "" {
-		return b.cfg.RunnerVersion
+	var data []byte
+	if b.cfg.ProvisionScriptPath != "" {
+		data, _ = os.ReadFile(b.cfg.ProvisionScriptPath)
 	}
-	data, err := os.ReadFile(b.cfg.ProvisionScriptPath)
-	if err != nil {
+	if len(data) == 0 && docker.ProvisionToolchainScript != "" {
+		data = []byte(docker.ProvisionToolchainScript)
+	}
+	if len(data) == 0 {
 		return b.cfg.RunnerVersion
 	}
 	sum := sha256.Sum256(data)

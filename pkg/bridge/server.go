@@ -9,18 +9,21 @@ import (
 	"os"
 	"strings"
 
+	"github.com/el-j/run-zero/pkg/builder"
 	"github.com/el-j/run-zero/pkg/driver"
 )
 
 // Server coordinates HTTP API routing for the Host VM Bridge.
 type Server struct {
-	port      int
-	host      string
-	token     string
-	version   string
-	gitSHA    string
-	driverMap map[string]driver.RunnerDriver
-	httpSrv   *http.Server
+	port         int
+	host         string
+	token        string
+	version      string
+	gitSHA       string
+	driverMap    map[string]driver.RunnerDriver
+	httpSrv      *http.Server
+	imgInspector *builder.ImageInspector
+	buildMgr     *builder.BuildManager
 }
 
 // NewServer creates a new Host VM Bridge server instance.
@@ -34,13 +37,34 @@ func NewServer(port int, host, token, version, gitSHA string, drivers map[string
 	if gitSHA == "" {
 		gitSHA = os.Getenv("RUNZERO_GIT_SHA")
 	}
+
+	stateDir := os.Getenv("RUNZERO_STATE_DIR")
+	if stateDir == "" {
+		stateDir = ".runzero-state"
+	}
+	provisionScript := os.Getenv("PROVISION_SCRIPT")
+	if provisionScript == "" {
+		provisionScript = "docker/provision-toolchain.sh"
+	}
+	bCfg := builder.Config{
+		Distro:              "ubuntu:noble",
+		RunnerVersion:       builder.DefaultRunnerVersion,
+		StateDir:            stateDir,
+		ProvisionScriptPath: provisionScript,
+	}
+	gb := builder.NewGoldenBuilder(bCfg, nil)
+	inspector := builder.NewImageInspector(gb, nil)
+	mgr := builder.NewBuildManager(gb, nil, nil, nil)
+
 	return &Server{
-		port:      port,
-		host:      host,
-		token:     token,
-		version:   version,
-		gitSHA:    gitSHA,
-		driverMap: drivers,
+		port:         port,
+		host:         host,
+		token:        token,
+		version:      version,
+		gitSHA:       gitSHA,
+		driverMap:    drivers,
+		imgInspector: inspector,
+		buildMgr:     mgr,
 	}
 }
 
@@ -79,6 +103,51 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 	if path == "/api/status" {
 		s.handleStatus(w, r)
+		return
+	}
+
+	if path == "/api/images" && r.Method == http.MethodGet {
+		s.writeJSON(w, http.StatusOK, s.imgInspector.Inspect(r.Context()))
+		return
+	}
+	if path == "/api/actions/build-image" && r.Method == http.MethodPost {
+		if !s.checkAuth(r) {
+			s.writeJSON(w, http.StatusUnauthorized, map[string]string{"error": "Unauthorized"})
+			return
+		}
+		var req builder.ImageBuildRequest
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			s.writeJSON(w, http.StatusBadRequest, map[string]string{"error": "Invalid JSON: " + err.Error()})
+			return
+		}
+		prog, err := s.buildMgr.TriggerBuild(r.Context(), req)
+		if err != nil {
+			s.writeJSON(w, http.StatusConflict, map[string]string{"error": err.Error()})
+			return
+		}
+		s.writeJSON(w, http.StatusAccepted, prog)
+		return
+	}
+	if path == "/api/actions/build-image/cancel" && r.Method == http.MethodPost {
+		if !s.checkAuth(r) {
+			s.writeJSON(w, http.StatusUnauthorized, map[string]string{"error": "Unauthorized"})
+			return
+		}
+		if err := s.buildMgr.CancelBuild(); err != nil {
+			s.writeJSON(w, http.StatusNotFound, map[string]string{"error": err.Error()})
+			return
+		}
+		s.writeJSON(w, http.StatusOK, map[string]string{"status": "cancelled"})
+		return
+	}
+	if strings.HasPrefix(path, "/api/images/build/") && r.Method == http.MethodGet {
+		id := strings.TrimPrefix(path, "/api/images/build/")
+		prog, ok := s.buildMgr.GetBuildByID(id)
+		if !ok {
+			s.writeJSON(w, http.StatusNotFound, map[string]string{"error": "Build not found"})
+			return
+		}
+		s.writeJSON(w, http.StatusOK, prog)
 		return
 	}
 

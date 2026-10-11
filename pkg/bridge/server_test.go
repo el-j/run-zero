@@ -120,7 +120,33 @@ func TestBridgeServer_Endpoints(t *testing.T) {
 		t.Fatalf("expected 200, got %d", rec.Code)
 	}
 
-	// 8. Not found
+	// 8. Images status
+	req = httptest.NewRequest(http.MethodGet, "/api/images", nil)
+	rec = httptest.NewRecorder()
+	srv.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", rec.Code)
+	}
+
+	// 9. Build image trigger & cancel
+	body, _ = json.Marshal(map[string]string{"target": "container", "arch": "arm64"})
+	req = httptest.NewRequest(http.MethodPost, "/api/actions/build-image", bytes.NewReader(body))
+	req.Header.Set("Authorization", "Bearer secret")
+	rec = httptest.NewRecorder()
+	srv.ServeHTTP(rec, req)
+	if rec.Code != http.StatusAccepted {
+		t.Fatalf("expected 202, got %d", rec.Code)
+	}
+
+	req = httptest.NewRequest(http.MethodPost, "/api/actions/build-image/cancel", nil)
+	req.Header.Set("Authorization", "Bearer secret")
+	rec = httptest.NewRecorder()
+	srv.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", rec.Code)
+	}
+
+	// 10. Not found
 	req = httptest.NewRequest(http.MethodGet, "/invalid", nil)
 	rec = httptest.NewRecorder()
 	srv.ServeHTTP(rec, req)

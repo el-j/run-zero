@@ -2,11 +2,15 @@ package builder
 
 import (
 	"bufio"
+	"bytes"
 	"context"
+	"encoding/json"
 	"fmt"
 	"io"
+	"net/http"
 	"os"
 	"os/exec"
+	"strings"
 	"sync"
 	"time"
 
@@ -38,12 +42,20 @@ func NewBuildManager(gb *GoldenBuilder, exec driver.CmdExecutor, logHook LogHook
 		exec = &driver.OSExecutor{}
 	}
 	if gb == nil {
-		stateDir := ".runzero-state"
+		stateDir := os.Getenv("RUNZERO_STATE_DIR")
+		if stateDir == "" {
+			stateDir = ".runzero-state"
+		}
 		_ = os.MkdirAll(stateDir, 0755)
+		provisionScript := os.Getenv("PROVISION_SCRIPT")
+		if provisionScript == "" {
+			provisionScript = "docker/provision-toolchain.sh"
+		}
 		gb = NewGoldenBuilder(Config{
-			Distro:        "ubuntu:noble",
-			RunnerVersion: DefaultRunnerVersion,
-			StateDir:      stateDir,
+			Distro:              "ubuntu:noble",
+			RunnerVersion:       DefaultRunnerVersion,
+			StateDir:            stateDir,
+			ProvisionScriptPath: provisionScript,
 		}, exec)
 	}
 
@@ -254,6 +266,11 @@ func (m *BuildManager) buildContainerImage(ctx context.Context, arch string) err
 
 func (m *BuildManager) buildVMImage(ctx context.Context, arch string) error {
 	m.appendLog(fmt.Sprintf("[BUILD:VM] Provisioning OrbStack golden base VM for %s...", arch))
+	if bridgeURL := os.Getenv("HOST_VM_BRIDGE_URL"); bridgeURL != "" && bridgeURL != "none" {
+		if _, err := m.exec.Run(ctx, "orbctl", "version"); err != nil {
+			return m.buildVMImageViaBridge(ctx, bridgeURL, arch)
+		}
+	}
 	built, err := m.gb.BuildBaseImage(ctx, arch)
 	if err != nil {
 		return err
@@ -264,6 +281,115 @@ func (m *BuildManager) buildVMImage(ctx context.Context, arch string) error {
 		m.appendLog(fmt.Sprintf("[BUILD:VM] Golden base %s is already up to date.", m.gb.BaseImageName(arch)))
 	}
 	return nil
+}
+
+func (m *BuildManager) buildVMImageViaBridge(ctx context.Context, bridgeURL, arch string) error {
+	m.appendLog(fmt.Sprintf("[BUILD:VM] Delegating VM build to Host VM Bridge at %s...", bridgeURL))
+	reqURL := strings.TrimSuffix(bridgeURL, "/") + "/api/actions/build-image"
+	payload, err := json.Marshal(ImageBuildRequest{
+		Target: "vm",
+		Arch:   arch,
+	})
+	if err != nil {
+		return err
+	}
+
+	httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost, reqURL, bytes.NewReader(payload))
+	if err != nil {
+		return err
+	}
+	httpReq.Header.Set("Content-Type", "application/json")
+	if token := os.Getenv("RUNZERO_BRIDGE_TOKEN"); token != "" {
+		httpReq.Header.Set("Authorization", "Bearer "+token)
+	}
+
+	client := &http.Client{Timeout: 30 * time.Second}
+	resp, err := client.Do(httpReq)
+	if err != nil {
+		return fmt.Errorf("failed to contact bridge: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusAccepted {
+		var errResp map[string]string
+		_ = json.NewDecoder(resp.Body).Decode(&errResp)
+		if msg, ok := errResp["error"]; ok {
+			return fmt.Errorf("bridge build error: %s", msg)
+		}
+		return fmt.Errorf("bridge returned HTTP %d", resp.StatusCode)
+	}
+
+	var initProg ImageBuildProgress
+	if err := json.NewDecoder(resp.Body).Decode(&initProg); err != nil {
+		return fmt.Errorf("failed to parse bridge response: %w", err)
+	}
+
+	pollURL := fmt.Sprintf("%s/api/images/build/%s", strings.TrimSuffix(bridgeURL, "/"), initProg.BuildID)
+	token := os.Getenv("RUNZERO_BRIDGE_TOKEN")
+	lastLogIndex := 0
+
+	ticker := time.NewTicker(1 * time.Second)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-ctx.Done():
+			cancelURL := strings.TrimSuffix(bridgeURL, "/") + "/api/actions/build-image/cancel"
+			cPayload, _ := json.Marshal(map[string]string{"build_id": initProg.BuildID})
+			cReq, _ := http.NewRequest(http.MethodPost, cancelURL, bytes.NewReader(cPayload))
+			if cReq != nil {
+				cReq.Header.Set("Content-Type", "application/json")
+				if token != "" {
+					cReq.Header.Set("Authorization", "Bearer "+token)
+				}
+				_, _ = client.Do(cReq)
+			}
+			return ctx.Err()
+		case <-ticker.C:
+			pReq, err := http.NewRequestWithContext(ctx, http.MethodGet, pollURL, nil)
+			if err != nil {
+				continue
+			}
+			if token != "" {
+				pReq.Header.Set("Authorization", "Bearer "+token)
+			}
+			pResp, err := client.Do(pReq)
+			if err != nil {
+				continue
+			}
+			var curProg ImageBuildProgress
+			err = json.NewDecoder(pResp.Body).Decode(&curProg)
+			pResp.Body.Close()
+			if err != nil {
+				continue
+			}
+
+			if len(curProg.LogLines) > lastLogIndex {
+				for _, line := range curProg.LogLines[lastLogIndex:] {
+					m.appendLog(line)
+				}
+				lastLogIndex = len(curProg.LogLines)
+			}
+
+			if curProg.CurrentStep != "" {
+				m.mu.Lock()
+				if m.activeBuild != nil {
+					m.activeBuild.CurrentStep = curProg.CurrentStep
+				}
+				m.mu.Unlock()
+			}
+
+			if curProg.Status == string(StatusReady) {
+				return nil
+			}
+			if curProg.Status == string(StatusFailed) {
+				if curProg.Error != "" {
+					return fmt.Errorf("%s", curProg.Error)
+				}
+				return fmt.Errorf("bridge build failed")
+			}
+		}
+	}
 }
 
 func (m *BuildManager) streamCommandOutput(cmd *exec.Cmd, prefix string) error {

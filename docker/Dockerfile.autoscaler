@@ -20,6 +20,9 @@ FROM golang:1.24-bullseye AS go-builder
 WORKDIR /src
 COPY go.mod go.sum* ./
 RUN go mod download 2>/dev/null || true
+COPY docker/ ./docker/
+COPY web/ ./web/
+COPY --from=ui-builder /app/web/dist ./web/dist
 COPY pkg/ ./pkg/
 COPY cmd/ ./cmd/
 RUN CGO_ENABLED=0 go build -ldflags="-s -w" -o /bin/runzero ./cmd/runzero
