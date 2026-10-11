@@ -1,5 +1,6 @@
 import "./styles/theme.css";
 import { renderDashboardShell } from "./layout/renderDashboardShell";
+import { BuildImagesModal } from "./components/BuildImagesModal";
 import {
   client,
   type CompletedJob,
@@ -2039,6 +2040,9 @@ async function startApp() {
     console.warn("Could not load initial logs:", err);
   }
 
+  // Infrastructure Images Modal
+  const imagesModal = new BuildImagesModal();
+
   // Subscribe to real-time SSE stream
   client.subscribeSSE({
     onFleet: (newState) => {
@@ -2048,14 +2052,18 @@ async function startApp() {
     onActivity: (msg) => {
       appendLog(msg);
     },
+    onBuildProgress: (progress) => {
+      imagesModal.handleProgressEvent(progress);
+    },
     onError: () => {
       setConnectionStatus("error", "RECONNECTING...");
     },
   });
 
-  // Background refresh every 10s for state, 20s for cache
+  // Background refresh every 10s for state, 20s for cache, 15s for image status
   window.setInterval(refreshState, 10000);
   window.setInterval(loadCacheStats, 20000);
+  window.setInterval(() => imagesModal.refresh(), 15000);
 }
 
 startApp();

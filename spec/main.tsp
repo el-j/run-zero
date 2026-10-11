@@ -190,6 +190,50 @@ model ErrorResponse {
   details?: string;
 }
 
+/** Status of a golden base image or runner container */
+model InfrastructureImageStatus {
+  id: string;
+  name: string;
+  kind: "orbstack-vm" | "docker-container" | string;
+  arch: "arm64" | "amd64" | string;
+  exists: boolean;
+  is_stale: boolean;
+  version?: string;
+  size_bytes?: int64;
+  size_human?: string;
+  created_at?: string;
+  status: "ready" | "missing" | "stale" | "building" | "failed" | string;
+}
+
+/** Real-time progress of an in-flight image build */
+model ImageBuildProgress {
+  build_id: string;
+  target: "all" | "vm" | "container" | string;
+  arch: string;
+  status: "idle" | "building" | "success" | "failed" | string;
+  progress_pct: int32;
+  current_step: string;
+  started_at: string;
+  completed_at?: string;
+  error?: string;
+  log_lines?: string[];
+}
+
+/** Overall status of all required infrastructure images */
+model ImagesStatusResponse {
+  vm_images: InfrastructureImageStatus[];
+  container_images: InfrastructureImageStatus[];
+  all_ready: boolean;
+  active_build?: ImageBuildProgress | null;
+}
+
+/** Request payload to trigger image builds */
+model ImageBuildRequest {
+  target: "all" | "vm" | "container" | string;
+  arch?: "all" | "arm64" | "amd64" | string;
+  force?: boolean;
+}
+
 // =============================================================================
 // API Operations
 // =============================================================================
@@ -250,4 +294,25 @@ namespace Api {
   @post
   @route("/cache/purge")
   op purgeCache(@body payload: CachePurgeRequest): SuccessResponse | ErrorResponse;
+
+  /** Inspect infrastructure image readiness for VMs and runner containers */
+  @get
+  @route("/images")
+  op getImages(): ImagesStatusResponse | ErrorResponse;
+
+  /** Trigger asynchronous build for golden VMs, container runners, or both */
+  @post
+  @route("/actions/build-image")
+  op triggerImageBuild(@body payload: ImageBuildRequest): ImageBuildProgress | ErrorResponse;
+
+  /** Cancel currently in-flight image build job */
+  @post
+  @route("/actions/build-image/cancel")
+  op cancelImageBuild(): SuccessResponse | ErrorResponse;
+
+  /** Get active or specific image build progress */
+  @get
+  @route("/images/build/{id}")
+  op getImageBuildProgress(@path id: string): ImageBuildProgress | ErrorResponse;
 }
+

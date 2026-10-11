@@ -131,6 +131,65 @@
     </div>
   </dialog>
 
+  <!-- Modal: Infrastructure Image Builder -->
+  <dialog id="images-modal" class="modal-dialog modal-lg">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h3 class="modal-title font-mono">// INFRASTRUCTURE_IMAGE_BUILDER</h3>
+        <button id="images-modal-close" class="btn btn-xs btn-ghost">✕</button>
+      </div>
+      <div class="modal-body">
+        <p class="modal-desc">
+          Pre-bakes GitHub runner binaries, Node.js, .NET, and Playwright browsers into golden images. Cloned VMs and pre-built containers launch in ~2 seconds instead of taking 5+ minutes to provision on demand.
+        </p>
+
+        <!-- Current Status Grid -->
+        <div class="settings-section-title font-mono">📦 Image Readiness Status</div>
+        <div id="images-status-grid" class="settings-grid" style="margin-top: 8px;">
+          <!-- Dynamically populated via BuildImagesModal.ts -->
+          <div class="glass-panel" style="padding: 10px 14px;">Loading image status...</div>
+        </div>
+
+        <!-- Trigger Action Buttons -->
+        <div class="settings-section-title font-mono" style="margin-top: 16px;">⚡ Pre-Warm Build Actions</div>
+        <div style="display: flex; gap: 8px; flex-wrap: wrap; margin-top: 8px;">
+          <button id="btn-build-all-images" class="btn btn-crimson font-mono" style="font-size: 11px;">
+            <span>⚡ Pre-Warm All (Recommended)</span>
+          </button>
+          <button id="btn-build-vm-images" class="btn btn-outline font-mono" style="font-size: 11px;">
+            <span>Build Golden VMs (OrbStack)</span>
+          </button>
+          <button id="btn-build-container-images" class="btn btn-outline font-mono" style="font-size: 11px;">
+            <span>Build Containers (Docker)</span>
+          </button>
+        </div>
+
+        <!-- In-Flight Build Progress Area (hidden when idle) -->
+        <div id="images-build-progress-panel" class="hidden" style="margin-top: 20px; border-top: 1px solid var(--border-subtle); padding-top: 14px;">
+          <div class="settings-section-title font-mono" style="display: flex; justify-content: space-between; align-items: center;">
+            <span id="images-build-step-text">Building images...</span>
+            <span id="images-build-pct" class="font-mono">0%</span>
+          </div>
+
+          <div class="routing-summary-bar" style="height: 6px; margin: 8px 0 12px 0;">
+            <div id="images-build-progress-bar" style="width: 0%; height: 100%; background: var(--crimson); border-radius: 3px; transition: width 0.3s ease;"></div>
+          </div>
+
+          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
+            <span class="font-mono text-muted" style="font-size: 11px;">Build Console Stream:</span>
+            <button id="btn-cancel-image-build" class="btn btn-xs btn-outline font-mono" style="color: var(--crimson);">Cancel Build</button>
+          </div>
+
+          <pre id="images-build-log" class="terminal-output font-mono" style="max-height: 180px; overflow-y: auto; background: rgba(0, 0, 0, 0.6); padding: 10px; border-radius: 4px; font-size: 11px;"></pre>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button id="images-modal-done" class="btn btn-secondary font-mono">Close</button>
+      </div>
+    </div>
+  </dialog>
+
   <!-- Toast Notification Container -->
   <div id="toast-container" class="toast-container"></div>
+
 

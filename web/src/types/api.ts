@@ -4,6 +4,40 @@
  */
 
 export interface paths {
+    "/api/actions/build-image": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** @description Trigger asynchronous build for golden VMs, container runners, or both */
+        post: operations["Api_triggerImageBuild"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/actions/build-image/cancel": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** @description Cancel currently in-flight image build job */
+        post: operations["Api_cancelImageBuild"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/actions/repo-priority": {
         parameters: {
             query?: never;
@@ -98,6 +132,40 @@ export interface paths {
         };
         /** @description Get current fleet state, active runners, and queued workflow jobs */
         get: operations["Api_getFleet"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/images": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** @description Inspect infrastructure image readiness for VMs and runner containers */
+        get: operations["Api_getImages"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/images/build/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** @description Get active or specific image build progress */
+        get: operations["Api_getImageBuildProgress"];
         put?: never;
         post?: never;
         delete?: never;
@@ -230,6 +298,48 @@ export interface components {
             /** Format: int32 */
             rate_limit_limit?: number;
             actions_billing?: components["schemas"]["ActionsBilling"];
+        };
+        /** @description Real-time progress of an in-flight image build */
+        ImageBuildProgress: {
+            build_id: string;
+            target: ("all" | "vm" | "container") | string;
+            arch: string;
+            status: ("idle" | "building" | "success" | "failed") | string;
+            /** Format: int32 */
+            progress_pct: number;
+            current_step: string;
+            started_at: string;
+            completed_at?: string;
+            error?: string;
+            log_lines?: string[];
+        };
+        /** @description Request payload to trigger image builds */
+        ImageBuildRequest: {
+            target: ("all" | "vm" | "container") | string;
+            arch?: ("all" | "arm64" | "amd64") | string;
+            force?: boolean;
+        };
+        /** @description Overall status of all required infrastructure images */
+        ImagesStatusResponse: {
+            vm_images: components["schemas"]["InfrastructureImageStatus"][];
+            container_images: components["schemas"]["InfrastructureImageStatus"][];
+            all_ready: boolean;
+            active_build?: components["schemas"]["ImageBuildProgress"] | null;
+        };
+        /** @description Status of a golden base image or runner container */
+        InfrastructureImageStatus: {
+            id: string;
+            name: string;
+            kind: ("orbstack-vm" | "docker-container") | string;
+            arch: ("arm64" | "amd64") | string;
+            exists: boolean;
+            is_stale: boolean;
+            version?: string;
+            /** Format: int64 */
+            size_bytes?: number;
+            size_human?: string;
+            created_at?: string;
+            status: ("ready" | "missing" | "stale" | "building" | "failed") | string;
         };
         /** @description Log line entry */
         LogEntry: {
@@ -378,6 +488,68 @@ export interface components {
 }
 export type $defs = Record<string, never>;
 export interface operations {
+    Api_triggerImageBuild: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ImageBuildRequest"];
+            };
+        };
+        responses: {
+            /** @description The request has succeeded. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ImageBuildProgress"];
+                };
+            };
+            /** @description An unexpected error response. */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    Api_cancelImageBuild: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The request has succeeded. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SuccessResponse"];
+                };
+            };
+            /** @description An unexpected error response. */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
     Api_updateRepoPriority: {
         parameters: {
             query?: never;
@@ -555,6 +727,66 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["FleetState"];
+                };
+            };
+            /** @description An unexpected error response. */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    Api_getImages: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The request has succeeded. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ImagesStatusResponse"];
+                };
+            };
+            /** @description An unexpected error response. */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    Api_getImageBuildProgress: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The request has succeeded. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ImageBuildProgress"];
                 };
             };
             /** @description An unexpected error response. */

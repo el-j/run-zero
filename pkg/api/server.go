@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/el-j/run-zero/pkg/builder"
 	"github.com/el-j/run-zero/pkg/config"
 	"github.com/el-j/run-zero/pkg/driver"
 	"github.com/el-j/run-zero/pkg/github"
@@ -67,6 +68,24 @@ func NewServerWithDeps(
 	sseHandler := handleSSEStream(st, heartbeatInterval)
 	mux.HandleFunc("/api/events", sseHandler)
 	mux.HandleFunc("/api/stream", sseHandler)
+
+	// Infrastructure Images & Golden Builder
+	logHook := func(line string) {
+		st.AppendLog(line)
+	}
+	progressHook := func(p builder.ImageBuildProgress) {
+		st.Broker().Broadcast(state.Event{
+			Type: "build_progress",
+			Data: p,
+		})
+	}
+	buildMgr := builder.NewBuildManager(nil, nil, logHook, progressHook)
+	inspector := builder.NewImageInspector(nil, nil)
+
+	mux.HandleFunc("/api/images", handleGetImages(inspector, buildMgr))
+	mux.HandleFunc("/api/actions/build-image", handleTriggerBuild(buildMgr))
+	mux.HandleFunc("/api/actions/build-image/cancel", handleCancelBuild(buildMgr))
+	mux.HandleFunc("/api/images/build/", handleGetBuildProgress(buildMgr))
 
 	// Static UI assets
 	mux.HandleFunc("/", handleStatic(distDir, staticDir))

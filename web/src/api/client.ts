@@ -39,6 +39,10 @@ export type SystemSettings = components["schemas"]["SystemSettings"];
 export type CacheStats = components["schemas"]["CacheStats"];
 export type SuccessResponse = components["schemas"]["SuccessResponse"];
 export type ErrorResponse = components["schemas"]["ErrorResponse"];
+export type InfrastructureImageStatus = components["schemas"]["InfrastructureImageStatus"];
+export type ImagesStatusResponse = components["schemas"]["ImagesStatusResponse"];
+export type ImageBuildProgress = components["schemas"]["ImageBuildProgress"];
+export type ImageBuildRequest = components["schemas"]["ImageBuildRequest"];
 
 export class RunZeroClient {
   private baseUrl: string;
@@ -146,6 +150,7 @@ export class RunZeroClient {
   subscribeSSE(callbacks: {
     onFleet?: (state: FleetState) => void;
     onActivity?: (msg: string) => void;
+    onBuildProgress?: (progress: any) => void;
     onError?: (err: Event) => void;
   }): () => void {
     const source = new EventSource(`${this.baseUrl}/api/stream`);
@@ -161,6 +166,15 @@ export class RunZeroClient {
 
     source.addEventListener("activity", (e: MessageEvent) => {
       callbacks.onActivity?.(e.data);
+    });
+
+    source.addEventListener("build_progress", (e: MessageEvent) => {
+      try {
+        const data = JSON.parse(e.data);
+        callbacks.onBuildProgress?.(data);
+      } catch (err) {
+        console.error("Failed to parse build_progress SSE data", err);
+      }
     });
 
     source.onerror = (e) => {

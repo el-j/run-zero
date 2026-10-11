@@ -5,6 +5,8 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+
+	"github.com/el-j/run-zero/web"
 )
 
 func handleStatic(distDir string, staticDir string) http.HandlerFunc {
@@ -39,6 +41,10 @@ func handleStatic(distDir string, staticDir string) http.HandlerFunc {
 	}
 }
 
+func isEmbeddedFallbackEligible(distDir string) bool {
+	return distDir == "web/dist" || distDir == "" || distDir == "embedded"
+}
+
 func serveIndex(w http.ResponseWriter, distDir, staticDir string) {
 	distIndex := filepath.Join(distDir, "index.html")
 	if data, err := os.ReadFile(distIndex); err == nil {
@@ -56,6 +62,16 @@ func serveIndex(w http.ResponseWriter, distDir, staticDir string) {
 		return
 	}
 
+	// Fallback to embedded bundle in binary when running in standard standalone mode
+	if isEmbeddedFallbackEligible(distDir) {
+		if data, err := web.DistFS.ReadFile("dist/index.html"); err == nil {
+			w.Header().Set("Content-Type", "text/html; charset=utf-8")
+			w.WriteHeader(http.StatusOK)
+			_, _ = w.Write(data)
+			return
+		}
+	}
+
 	writeError(w, http.StatusNotFound, "Index not found")
 }
 
@@ -67,8 +83,17 @@ func serveAsset(w http.ResponseWriter, r *http.Request, distDir, assetRel string
 	full := filepath.Join(distDir, "assets", assetRel)
 	data, err := os.ReadFile(full)
 	if err != nil {
-		writeError(w, http.StatusNotFound, "Asset not found")
-		return
+		if isEmbeddedFallbackEligible(distDir) {
+			if embData, embErr := web.DistFS.ReadFile("dist/assets/" + assetRel); embErr == nil {
+				data = embData
+			} else {
+				writeError(w, http.StatusNotFound, "Asset not found")
+				return
+			}
+		} else {
+			writeError(w, http.StatusNotFound, "Asset not found")
+			return
+		}
 	}
 
 	if strings.HasSuffix(assetRel, ".css") {
@@ -100,6 +125,16 @@ func serveFont(w http.ResponseWriter, fontName, distDir, staticDir string) {
 			return
 		}
 	}
+
+	if isEmbeddedFallbackEligible(distDir) {
+		if data, err := web.DistFS.ReadFile("dist/fonts/" + fontName); err == nil {
+			w.Header().Set("Content-Type", "font/woff2")
+			w.WriteHeader(http.StatusOK)
+			_, _ = w.Write(data)
+			return
+		}
+	}
+
 	writeError(w, http.StatusNotFound, "Font not found")
 }
 
@@ -147,6 +182,15 @@ func serveRootStaticFile(w http.ResponseWriter, path, distDir, staticDir string)
 
 	for _, cand := range candidates {
 		if data, err := os.ReadFile(cand); err == nil {
+			w.Header().Set("Content-Type", contentType)
+			w.WriteHeader(http.StatusOK)
+			_, _ = w.Write(data)
+			return true
+		}
+	}
+
+	if isEmbeddedFallbackEligible(distDir) {
+		if data, err := web.DistFS.ReadFile("dist/" + name); err == nil {
 			w.Header().Set("Content-Type", contentType)
 			w.WriteHeader(http.StatusOK)
 			_, _ = w.Write(data)
