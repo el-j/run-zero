@@ -76,6 +76,13 @@ func (b *BridgeDriver) SpawnRunner(ctx context.Context, spec RunnerSpec) (*state
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
+		var errBody struct {
+			Error string `json:"error"`
+		}
+		_ = json.NewDecoder(resp.Body).Decode(&errBody)
+		if errBody.Error != "" {
+			return nil, fmt.Errorf("bridge spawn returned status %d: %s", resp.StatusCode, errBody.Error)
+		}
 		return nil, fmt.Errorf("bridge spawn returned status %d", resp.StatusCode)
 	}
 

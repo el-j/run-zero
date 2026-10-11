@@ -26,7 +26,20 @@ type Client struct {
 	httpClient *http.Client
 	mu         sync.RWMutex
 	rateLimit  RateLimit
+
+	etagMu sync.Mutex
+	etags  map[string]cachedResponse
 }
+
+// cachedResponse is a GET response remembered for ETag revalidation. GitHub does
+// not count 304 Not Modified responses against the primary rate limit.
+type cachedResponse struct {
+	etag string
+	body []byte
+}
+
+// maxETagEntries bounds the revalidation cache; it is reset when exceeded.
+const maxETagEntries = 4000
 
 // NewClient creates an authenticated GitHub API client.
 func NewClient(token string, baseURL string, httpClient *http.Client) *Client {
@@ -40,6 +53,7 @@ func NewClient(token string, baseURL string, httpClient *http.Client) *Client {
 		baseURL:    strings.TrimSuffix(baseURL, "/"),
 		token:      strings.TrimSpace(token),
 		httpClient: httpClient,
+		etags:      make(map[string]cachedResponse),
 	}
 }
 
@@ -81,9 +95,23 @@ func (c *Client) DoRequest(ctx context.Context, method, endpoint string, body io
 		url = c.baseURL + "/" + strings.TrimPrefix(endpoint, "/")
 	}
 
+	cacheable := method == http.MethodGet && body == nil && out != nil
+	if rl := c.RateLimit(); rl.Limit > 0 && rl.Remaining <= 0 && time.Now().Before(rl.Reset) {
+		// Quota exhausted: do not hammer GitHub (and extend the lockout) until reset.
+		return nil, fmt.Errorf("github api rate limit exhausted until %s", rl.Reset.Format(time.RFC3339))
+	}
+
 	req, err := http.NewRequestWithContext(ctx, method, url, body)
 	if err != nil {
 		return nil, err
+	}
+	if cacheable {
+		c.etagMu.Lock()
+		cached, ok := c.etags[url]
+		c.etagMu.Unlock()
+		if ok {
+			req.Header.Set("If-None-Match", cached.etag)
+		}
 	}
 
 	req.Header.Set("Accept", "application/vnd.github+json")
@@ -103,14 +131,38 @@ func (c *Client) DoRequest(ctx context.Context, method, endpoint string, body io
 
 	c.updateRateLimit(resp.Header)
 
+	if cacheable && resp.StatusCode == http.StatusNotModified {
+		c.etagMu.Lock()
+		cached, ok := c.etags[url]
+		c.etagMu.Unlock()
+		if ok {
+			if err := json.Unmarshal(cached.body, out); err != nil {
+				return resp, fmt.Errorf("failed decoding cached response: %w", err)
+			}
+			return resp, nil
+		}
+	}
+
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		respBody, _ := io.ReadAll(resp.Body)
 		return resp, fmt.Errorf("github api error (%d): %s", resp.StatusCode, string(respBody))
 	}
 
 	if out != nil {
-		if err := json.NewDecoder(resp.Body).Decode(out); err != nil {
+		raw, err := io.ReadAll(resp.Body)
+		if err != nil {
+			return resp, fmt.Errorf("failed reading response: %w", err)
+		}
+		if err := json.Unmarshal(raw, out); err != nil {
 			return resp, fmt.Errorf("failed decoding response: %w", err)
+		}
+		if etag := resp.Header.Get("ETag"); cacheable && etag != "" {
+			c.etagMu.Lock()
+			if len(c.etags) >= maxETagEntries {
+				c.etags = make(map[string]cachedResponse)
+			}
+			c.etags[url] = cachedResponse{etag: etag, body: raw}
+			c.etagMu.Unlock()
 		}
 	}
 

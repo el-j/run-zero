@@ -27,3 +27,16 @@ func TestManualRunnerNameUsesManualPrefix(t *testing.T) {
 		t.Fatalf("expected encoded repo in name, got %q", name)
 	}
 }
+
+func TestRunnerNames_RespectGitHub64CharLimit(t *testing.T) {
+	job := JobScopedRunnerName("el-j/landing.inquam-services", "amd64", 38156662479, 114520936456, "734f0c")
+	manual := ManualRunnerName("el-j/landing.inquam-services", "amd64", "734f0c")
+	for _, n := range []string{job, manual} {
+		if len(n) > 64 {
+			t.Fatalf("runner name %q is %d chars, GitHub allows 64", n, len(n))
+		}
+		if !strings.HasSuffix(n, "-734f0c") {
+			t.Fatalf("entropy suffix lost in %q", n)
+		}
+	}
+}

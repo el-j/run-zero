@@ -39,8 +39,22 @@ func runBuildVMBase(args []string, stdout, stderr io.Writer) int {
 		return 1
 	}
 
+	// The shared toolchain script (Node/nvm, pnpm, .NET, Chrome, Playwright deps) is
+	// what makes the golden VM equivalent to the runner container image. Without it
+	// the VM only has Docker and the runner binary, so fail loudly instead of
+	// silently building a bare image.
+	provisionScript := os.Getenv("PROVISION_SCRIPT")
+	if provisionScript == "" {
+		provisionScript = "docker/provision-toolchain.sh"
+	}
+	if _, err := os.Stat(provisionScript); err != nil {
+		fmt.Fprintf(stderr, "Cannot read toolchain provisioning script %q (run from the repo root or set PROVISION_SCRIPT): %v\n", provisionScript, err)
+		return 1
+	}
+
 	cfg := builder.Config{
-		StateDir: ".runzero-state",
+		StateDir:            ".runzero-state",
+		ProvisionScriptPath: provisionScript,
 	}
 	gb := builder.NewGoldenBuilder(cfg, nil)
 

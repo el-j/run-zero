@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"path/filepath"
 	"strconv"
 
 	"github.com/el-j/run-zero/pkg/bridge"
@@ -45,7 +46,15 @@ func runBridge(args []string, stdout, stderr io.Writer) int {
 		}
 	}
 
-	store := driver.NewInstanceStore("")
+	// Persist spawn metadata so VMs keep their repo mapping across bridge restarts.
+	storePath := ""
+	if home, err := os.UserHomeDir(); err == nil {
+		storePath = filepath.Join(home, ".local-github-runner", "state", "bridge-instances.json")
+	}
+	store := driver.NewInstanceStore(storePath)
+	if err := store.Load(); err != nil {
+		fmt.Fprintf(stderr, "[Bridge] could not load %s: %v\n", storePath, err)
+	}
 	orbDriver := driver.NewOrbStackDriver(nil, store, "")
 	dockerDriver := driver.NewDockerDriver(nil, store, "", "")
 

@@ -15,7 +15,37 @@ func (o *OrbStackDriver) ListRunners(ctx context.Context) ([]state.RunnerInfo, e
 		return nil, fmt.Errorf("orbctl list failed: %w", err)
 	}
 
-	return parseOrbctlList(string(out)), nil
+	runners := parseOrbctlList(string(out))
+	o.enrichFromStore(runners)
+	return runners, nil
+}
+
+// enrichFromStore fills in TargetRepo/TargetArch for machines whose names no longer
+// carry the repo (OrbStack machine names must be valid hostnames, so the repo's
+// "owner__repo" token is lossy there). The instance store records the exact values
+// at spawn time.
+func (o *OrbStackDriver) enrichFromStore(runners []state.RunnerInfo) {
+	if o.store == nil {
+		return
+	}
+	byName := make(map[string]state.RunnerInfo)
+	for _, known := range o.store.List() {
+		if known.Name != "" {
+			byName[known.Name] = known
+		}
+	}
+	for i := range runners {
+		known, ok := byName[runners[i].Name]
+		if !ok {
+			continue
+		}
+		if runners[i].TargetRepo == "" {
+			runners[i].TargetRepo = known.TargetRepo
+		}
+		if runners[i].TargetArch == "" {
+			runners[i].TargetArch = known.TargetArch
+		}
+	}
 }
 
 // StopRunner stops and deletes an OrbStack runner machine.
@@ -81,6 +111,11 @@ func parseOrbctlList(output string) []state.RunnerInfo {
 		}
 		name := fields[0]
 		if !strings.HasPrefix(name, "runzero-") && !strings.HasPrefix(name, "local-runner-") {
+			continue
+		}
+		// Golden base images (and their build-time staging VMs) are templates, not
+		// runners: listing them would get them pruned as "finished" runners.
+		if strings.HasPrefix(name, goldenVMBasePrefix) {
 			continue
 		}
 

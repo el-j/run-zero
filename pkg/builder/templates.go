@@ -54,7 +54,13 @@ func FullProvisionScript(arch, runnerVersion, customScript string) string {
 	sb.WriteString(fmt.Sprintf("export ARCH=%q\n", arch))
 	sb.WriteString(DockerEngineSnippet() + "\n")
 	if strings.TrimSpace(customScript) != "" {
+		// Run the toolchain script as its own bash process, exactly like the Dockerfile
+		// does: it is written without `set -e` (nvm's shell functions return non-zero
+		// in normal operation), so it must not inherit this script's errexit.
+		sb.WriteString("cat > /tmp/runzero-provision-toolchain.sh <<'RUNZERO_PROVISION_EOF'\n")
 		sb.WriteString(customScript + "\n")
+		sb.WriteString("RUNZERO_PROVISION_EOF\n")
+		sb.WriteString("bash /tmp/runzero-provision-toolchain.sh \"$ARCH\"\n")
 	}
 	sb.WriteString(RunnerDownloadSnippet(arch, runnerVersion) + "\n")
 	sb.WriteString("echo \"Base image provisioning complete.\"\n")

@@ -60,16 +60,8 @@ func JobScopedRunnerName(repo, arch string, runID, jobID int64, entropy string) 
 	if entropyPart == "" || entropyPart == "unknown" {
 		entropyPart = "rand"
 	}
-	name := fmt.Sprintf("runzero-j%d-r%d-%s-%s-%s", jobID, runID, archToken, repoPart, entropyPart)
-	if len(name) <= 120 {
-		return name
-	}
-	trimmedRepo := repoPart
-	if len(trimmedRepo) > 32 {
-		trimmedRepo = trimmedRepo[:32]
-		trimmedRepo = strings.Trim(trimmedRepo, "-")
-	}
-	return fmt.Sprintf("runzero-j%d-r%d-%s-%s-%s", jobID, runID, archToken, trimmedRepo, entropyPart)
+	prefix := fmt.Sprintf("runzero-j%d-r%d-%s-", jobID, runID, archToken)
+	return prefix + fitRepoPart(repoPart, len(prefix)+1+len(entropyPart)) + "-" + entropyPart
 }
 
 // ManualRunnerName builds a clear manually-started runner name.
@@ -83,14 +75,22 @@ func ManualRunnerName(repo, arch, entropy string) string {
 	if entropyPart == "" || entropyPart == "unknown" {
 		entropyPart = "rand"
 	}
-	name := fmt.Sprintf("runzero-manual-%s-%s-%s", archToken, repoPart, entropyPart)
-	if len(name) <= 120 {
-		return name
+	prefix := fmt.Sprintf("runzero-manual-%s-", archToken)
+	return prefix + fitRepoPart(repoPart, len(prefix)+1+len(entropyPart)) + "-" + entropyPart
+}
+
+// maxRunnerNameLen is GitHub's limit for a self-hosted runner name.
+const maxRunnerNameLen = 64
+
+// fitRepoPart trims the owner/repo token so the whole runner name stays within
+// maxRunnerNameLen, given the length of everything else in the name.
+func fitRepoPart(repoPart string, otherLen int) string {
+	allowed := maxRunnerNameLen - otherLen
+	if allowed < 8 {
+		allowed = 8
 	}
-	trimmedRepo := repoPart
-	if len(trimmedRepo) > 40 {
-		trimmedRepo = trimmedRepo[:40]
-		trimmedRepo = strings.Trim(trimmedRepo, "-")
+	if len(repoPart) <= allowed {
+		return repoPart
 	}
-	return fmt.Sprintf("runzero-manual-%s-%s-%s", archToken, trimmedRepo, entropyPart)
+	return strings.Trim(repoPart[:allowed], "-_.")
 }

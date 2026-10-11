@@ -6,6 +6,7 @@ import (
 	"encoding/hex"
 	"fmt"
 	"strings"
+	"sync/atomic"
 	"time"
 	"unicode"
 
@@ -84,6 +85,7 @@ type Scaler struct {
 	lastDiscovery      time.Time
 	lastBilling        time.Time
 	lastHistoryRefresh time.Time
+	historyRunning     atomic.Bool
 	standbyCursor      int
 }
 
@@ -165,6 +167,17 @@ func (s *Scaler) DiscoverAndSync(ctx context.Context) {
 	}
 }
 
+// isStartingStatus reports whether a runner is still coming up (e.g. an OrbStack VM
+// that is being created/provisioned). Such runners already cover their job; ignoring
+// them makes the next poll cycle spawn a duplicate.
+func isStartingStatus(v string) bool {
+	switch v {
+	case "creating", "provisioning", "starting", "booting", "created":
+		return true
+	}
+	return false
+}
+
 // CollectRunners inspects currently active runners from the driver.
 func (s *Scaler) CollectRunners(ctx context.Context) []state.RunnerInfo {
 	if s.driver == nil {
@@ -180,11 +193,29 @@ func (s *Scaler) CollectRunners(ctx context.Context) []state.RunnerInfo {
 		status := strings.ToLower(r.Status)
 		runState := strings.ToLower(r.State)
 		if strings.Contains(status, "up") || strings.Contains(status, "running") ||
-			runState == "running" || runState == "pending" {
+			runState == "running" || runState == "pending" || isStartingStatus(status) || isStartingStatus(runState) {
 			active = append(active, r)
 		}
 	}
 	return active
+}
+
+// historyRefreshMinInterval throttles the completed-jobs history sweep (one runs
+// call per tracked repo); a dashboard-forced refresh bypasses it.
+const historyRefreshMinInterval = 5 * time.Minute
+
+// refreshCompletedJobsAsync runs the history sweep off the scale loop so a slow
+// (cold-start) sweep over many repos can never delay job detection or spawning.
+// At most one sweep runs at a time, which also serialises access to the
+// throttle fields used by refreshCompletedJobs.
+func (s *Scaler) refreshCompletedJobsAsync(ctx context.Context, repos []string) {
+	if !s.historyRunning.CompareAndSwap(false, true) {
+		return
+	}
+	go func() {
+		defer s.historyRunning.Store(false)
+		s.refreshCompletedJobs(ctx, repos)
+	}()
 }
 
 func (s *Scaler) refreshCompletedJobs(ctx context.Context, repos []string) {
@@ -195,7 +226,7 @@ func (s *Scaler) refreshCompletedJobs(ctx context.Context, repos []string) {
 		s.historyFetcher = github.NewHistoryFetcher(s.ghClient)
 	}
 	forceRefresh := s.state.ConsumeHistoryRefresh()
-	if !forceRefresh && time.Since(s.lastHistoryRefresh) < 30*time.Second && !s.lastHistoryRefresh.IsZero() {
+	if !forceRefresh && time.Since(s.lastHistoryRefresh) < historyRefreshMinInterval && !s.lastHistoryRefresh.IsZero() {
 		return
 	}
 
@@ -438,7 +469,7 @@ func (s *Scaler) ScaleCycle(ctx context.Context) {
 
 	// Reconcile and push state to dashboard
 	reconciled := s.reconciler.Reconcile(allJobs, len(activeRunners), s.cfg.MaxRunners)
-	s.refreshCompletedJobs(ctx, tracked)
+	s.refreshCompletedJobsAsync(ctx, tracked)
 	s.state.UpdateFleet(activeRunners, reconciled)
 }
 
