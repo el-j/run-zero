@@ -59,21 +59,68 @@ func (d *DockerDriver) StopRunner(ctx context.Context, runnerID string) error {
 	for _, target := range d.resolveTargets(ctx, runnerID) {
 		_, _ = d.executor.Run(ctx, "docker", "stop", "-t", "5", target)
 		out, err := d.executor.Run(ctx, "docker", "rm", "-f", target)
+		outStr := strings.TrimSpace(string(out))
 		if err == nil {
+			if strings.Contains(strings.ToLower(outStr), "no such container") {
+				lastErr = fmt.Errorf("no such container")
+				lastOut = outStr
+				continue
+			}
 			removed = true
 			break
 		}
-		lastOut, lastErr = strings.TrimSpace(string(out)), err
+		lastOut, lastErr = outStr, err
 	}
 
 	if !removed {
 		return fmt.Errorf("docker rm failed (%w): %s", lastErr, lastOut)
 	}
 
+	// Clean up any auxiliary sibling containers associated with this workflow run ID
+	runIDToken := extractRunIDToken(runnerID)
+	if d.store != nil {
+		if info, ok := d.store.Get(runnerID); ok && info.RunID != nil && *info.RunID > 0 {
+			runIDToken = fmt.Sprintf("%d", *info.RunID)
+		}
+	}
+	if runIDToken != "" {
+		auxOut, auxErr := d.executor.Run(ctx, "docker", "ps", "-aq", "--filter", "name="+runIDToken)
+		if auxErr == nil {
+			for _, auxID := range strings.Fields(string(auxOut)) {
+				insp, _ := d.executor.Run(ctx, "docker", "inspect", auxID, "--format", "{{.Name}} {{index .Config.Labels \"runzero\"}}")
+				inspStr := string(insp)
+				if !strings.Contains(inspStr, "runzero") && !strings.Contains(inspStr, "local-runner-") {
+					_, _ = d.executor.Run(ctx, "docker", "stop", "-t", "3", auxID)
+					_, _ = d.executor.Run(ctx, "docker", "rm", "-f", auxID)
+				}
+			}
+		}
+	}
+
 	if d.store != nil {
 		d.store.Unregister(runnerID)
 	}
 	return nil
+}
+
+func extractRunIDToken(nameOrID string) string {
+	parts := strings.Split(nameOrID, "-")
+	for _, p := range parts {
+		if strings.HasPrefix(p, "r") && len(p) > 2 {
+			digits := p[1:]
+			allDigits := true
+			for _, r := range digits {
+				if r < '0' || r > '9' {
+					allDigits = false
+					break
+				}
+			}
+			if allDigits {
+				return digits
+			}
+		}
+	}
+	return ""
 }
 
 // RunnerLogs returns the last tail lines of a runner container's output.

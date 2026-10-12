@@ -74,6 +74,14 @@ func TestRouter_SelectDriver(t *testing.T) {
 	if d3.Backend() != "orbstack" {
 		t.Errorf("expected orbstack by label vm, got %s", d3.Backend())
 	}
+	d3b := router.SelectDriver(RunnerSpec{Labels: []string{"self-hosted", "e2e"}})
+	if d3b.Backend() != "orbstack" {
+		t.Errorf("expected orbstack by label e2e, got %s", d3b.Backend())
+	}
+	d3c := router.SelectDriver(RunnerSpec{Labels: []string{"self-hosted", "postgres"}})
+	if d3c.Backend() != "orbstack" {
+		t.Errorf("expected orbstack by label postgres, got %s", d3c.Backend())
+	}
 
 	// 3. Default fallback
 	d4 := router.SelectDriver(RunnerSpec{Labels: []string{"ubuntu-latest"}})

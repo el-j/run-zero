@@ -27,6 +27,7 @@ type RunnerActionPayload struct {
 	Action   string `json:"action"`
 	Repo     string `json:"repo,omitempty"`
 	Arch     string `json:"arch,omitempty"`
+	Backend  string `json:"backend,omitempty"`
 }
 
 func handleRunnerAction(st *state.State, runnerDriver ...driver.RunnerDriver) http.HandlerFunc {
@@ -87,12 +88,19 @@ func handleRunnerActionWithDeps(st *state.State, cfg *config.Config, ghClient *g
 
 			id := randomHex(3)
 			name := driver.ManualRunnerName(targetRepo, targetArch, id)
+			backend := "docker"
+			if payload.Backend != "" {
+				backend = payload.Backend
+			} else if cfg != nil && cfg.RunnerBackend != "" && cfg.RunnerBackend != "auto" {
+				backend = cfg.RunnerBackend
+			}
+
 			spec := driver.RunnerSpec{
 				ID:       id,
 				Name:     name,
 				Repo:     targetRepo,
 				Arch:     targetArch,
-				Backend:  "docker",
+				Backend:  backend,
 				Labels:   []string{"self-hosted", "local", targetArch},
 				Token:    token,
 				CPUs:     3,

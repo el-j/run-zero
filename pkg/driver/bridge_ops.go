@@ -55,6 +55,21 @@ func (b *BridgeDriver) StopRunner(ctx context.Context, runnerID string) error {
 		return err
 	}
 	defer resp.Body.Close()
+
+	if resp.StatusCode >= 400 {
+		var errBody struct {
+			Error string `json:"error"`
+		}
+		_ = json.NewDecoder(resp.Body).Decode(&errBody)
+		if errBody.Error != "" {
+			return fmt.Errorf("bridge stop returned status %d: %s", resp.StatusCode, errBody.Error)
+		}
+		return fmt.Errorf("bridge stop returned status %d", resp.StatusCode)
+	}
+
+	if b.store != nil {
+		b.store.Unregister(runnerID)
+	}
 	return nil
 }
 

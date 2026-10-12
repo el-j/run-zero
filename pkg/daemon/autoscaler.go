@@ -66,6 +66,14 @@ func shouldRouteToVM(job state.QueuedJob, triggers []string) bool {
 			return true
 		}
 	}
+
+	if job.WorkflowName != nil {
+		for _, token := range tokenizeLower(*job.WorkflowName) {
+			if _, ok := triggerSet[token]; ok {
+				return true
+			}
+		}
+	}
 	return false
 }
 

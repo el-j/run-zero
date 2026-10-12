@@ -349,11 +349,39 @@ cleanup() {
   fi
 
   ./config.sh remove --unattended --token "${REMOVE_TOKEN}" 2>/dev/null || true
+
+  # Prune auxiliary sibling containers spawned during this job run (e.g. test databases, mock services)
+  local PRE_EXISTING_FILE="/tmp/pre_existing_containers_${RUNNER_NAME}.txt"
+  if [ -S /var/run/docker.sock ] && command -v docker >/dev/null 2>&1 && [ -f "${PRE_EXISTING_FILE}" ]; then
+    echo "🧹 Checking for auxiliary containers spawned during job run..."
+    local CURRENT_CONTAINERS
+    CURRENT_CONTAINERS=$(docker ps -aq 2>/dev/null || true)
+    for c in ${CURRENT_CONTAINERS}; do
+      if ! grep -Fxq "${c}" "${PRE_EXISTING_FILE}" 2>/dev/null; then
+        local INSPECT
+        INSPECT=$(docker inspect "${c}" --format '{{.Name}} {{.Config.Image}} {{index .Config.Labels "runzero"}}' 2>/dev/null || true)
+        if ! echo "${INSPECT}" | grep -q "local-runner-" && ! echo "${INSPECT}" | grep -q "runzero=true" && ! echo "${INSPECT}" | grep -q "managed-by=local-autoscaler"; then
+          echo "🧹 Cleaning up auxiliary container: ${c} (${INSPECT})"
+          docker stop -t 3 "${c}" 2>/dev/null || true
+          docker rm -f "${c}" 2>/dev/null || true
+        fi
+      fi
+    done
+    rm -f "${PRE_EXISTING_FILE}" 2>/dev/null || true
+  fi
 }
 
 trap 'cleanup; exit 130' INT
 trap 'cleanup; exit 143' TERM
 trap 'cleanup; exit 0' EXIT
+
+# Snapshot existing Docker containers before workflow execution starts so auxiliary
+# containers created by job steps (e.g. Postgres DBs, test services, compose stacks)
+# can be cleaned up on job completion or cancellation.
+PRE_EXISTING_FILE="/tmp/pre_existing_containers_${RUNNER_NAME}.txt"
+if [ -S /var/run/docker.sock ] && command -v docker >/dev/null 2>&1; then
+  docker ps -aq > "${PRE_EXISTING_FILE}" 2>/dev/null || true
+fi
 
 echo "Starting runner ${RUNNER_NAME}..."
 ./run.sh &

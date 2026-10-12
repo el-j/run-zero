@@ -45,7 +45,7 @@ func initDriver(cfg *config.Config, store *driver.InstanceStore) driver.RunnerDr
 	var orbDriver driver.RunnerDriver
 	if bridgeURL := os.Getenv("HOST_VM_BRIDGE_URL"); bridgeURL != "" && bridgeURL != "none" {
 		token := os.Getenv("RUNZERO_BRIDGE_TOKEN")
-		orbDriver = driver.NewBridgeDriver(bridgeURL, "orbstack", token, nil)
+		orbDriver = driver.NewBridgeDriver(bridgeURL, "orbstack", token, nil, store)
 	} else {
 		orbDriver = driver.NewOrbStackDriver(nil, store, "")
 	}

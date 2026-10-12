@@ -18,10 +18,11 @@ type BridgeDriver struct {
 	backend string
 	token   string
 	client  *http.Client
+	store   *InstanceStore
 }
 
 // NewBridgeDriver creates a client that calls the Host VM Bridge server.
-func NewBridgeDriver(baseURL, backend, token string, client *http.Client) *BridgeDriver {
+func NewBridgeDriver(baseURL, backend, token string, client *http.Client, store ...*InstanceStore) *BridgeDriver {
 	if baseURL == "" {
 		baseURL = "http://host.docker.internal:49504"
 	}
@@ -31,11 +32,16 @@ func NewBridgeDriver(baseURL, backend, token string, client *http.Client) *Bridg
 	if client == nil {
 		client = &http.Client{Timeout: 60 * time.Second}
 	}
+	var instStore *InstanceStore
+	if len(store) > 0 {
+		instStore = store[0]
+	}
 	return &BridgeDriver{
 		baseURL: strings.TrimSuffix(baseURL, "/"),
 		backend: strings.ToLower(strings.TrimSpace(backend)),
 		token:   token,
 		client:  client,
+		store:   instStore,
 	}
 }
 
@@ -98,7 +104,7 @@ func (b *BridgeDriver) SpawnRunner(ctx context.Context, spec RunnerSpec) (*state
 	}
 
 	now := time.Now().UTC().Format(time.RFC3339)
-	return &state.RunnerInfo{
+	info := &state.RunnerInfo{
 		ID:         res.RunnerID,
 		Name:       spec.Name,
 		Status:     "running",
@@ -107,5 +113,9 @@ func (b *BridgeDriver) SpawnRunner(ctx context.Context, spec RunnerSpec) (*state
 		TargetArch: spec.Arch,
 		Backend:    b.backend,
 		CreatedAt:  &now,
-	}, nil
+	}
+	if b.store != nil {
+		b.store.Register(*info)
+	}
+	return info, nil
 }

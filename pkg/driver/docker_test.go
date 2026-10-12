@@ -146,3 +146,60 @@ func TestDockerDriver_Errors(t *testing.T) {
 		t.Fatal("expected error on cleanup failure")
 	}
 }
+
+func TestDockerDriver_StopRunner_NoSuchContainer(t *testing.T) {
+	// Docker rm -f outputs 'Error response from daemon: No such container: target' and exits 0.
+	// StopRunner must treat this as not removed so Router can fallback to VM.
+	mock := &mockCmdExecutor{
+		runFunc: func(ctx context.Context, name string, args ...string) ([]byte, error) {
+			if args[0] == "rm" {
+				return []byte("Error response from daemon: No such container: vm-target"), nil
+			}
+			return []byte(""), nil
+		},
+	}
+	d := NewDockerDriver(mock, nil, "", "")
+	err := d.StopRunner(context.Background(), "vm-target")
+	if err == nil {
+		t.Fatal("expected StopRunner to fail when docker rm reports 'No such container'")
+	}
+}
+
+func TestDockerDriver_StopRunner_AuxiliaryContainers(t *testing.T) {
+	var stoppedAux []string
+	mock := &mockCmdExecutor{
+		runFunc: func(ctx context.Context, name string, args ...string) ([]byte, error) {
+			if args[0] == "ps" {
+				for _, a := range args {
+					if strings.Contains(a, "label=runzero.id") {
+						return []byte("runner-cont-123"), nil
+					}
+					if strings.Contains(a, "name=") {
+						return []byte("aux-pg-1234"), nil
+					}
+				}
+				return []byte(""), nil
+			}
+			if args[0] == "inspect" {
+				return []byte("/ci-postgres-38262622534-1"), nil
+			}
+			if args[0] == "rm" {
+				target := args[len(args)-1]
+				if target == "aux-pg-1234" {
+					stoppedAux = append(stoppedAux, target)
+				}
+				return []byte("deleted"), nil
+			}
+			return []byte(""), nil
+		},
+	}
+	d := NewDockerDriver(mock, nil, "", "")
+	runnerID := "runzero-j101-r38262622534-amd64-repo-abc123"
+	err := d.StopRunner(context.Background(), runnerID)
+	if err != nil {
+		t.Fatalf("unexpected stop error: %v", err)
+	}
+	if len(stoppedAux) != 1 || stoppedAux[0] != "aux-pg-1234" {
+		t.Errorf("expected auxiliary container to be pruned, got %v", stoppedAux)
+	}
+}

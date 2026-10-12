@@ -115,3 +115,47 @@ func TestScaler_ScaleCycle(t *testing.T) {
 		t.Errorf("expected 1 busy runner, got %d", snap.BusyRunners)
 	}
 }
+
+func TestShouldRouteToVM(t *testing.T) {
+	triggers := []string{"vm", "browser", "e2e", "postgres", "db", "dind"}
+
+	// 1. Matched by label
+	job1 := state.QueuedJob{
+		Name:   "unit-tests",
+		Labels: []string{"self-hosted", "vm"},
+	}
+	if !shouldRouteToVM(job1, triggers) {
+		t.Errorf("expected job1 to route to VM via label")
+	}
+
+	// 2. Matched by job name
+	job2 := state.QueuedJob{
+		Name:   "Matrix — E2E (mock auth)",
+		Labels: []string{"self-hosted", "local"},
+	}
+	if !shouldRouteToVM(job2, triggers) {
+		t.Errorf("expected job2 to route to VM via job name token e2e")
+	}
+
+	// 3. Matched by workflow name when job name is generic
+	wfName := "E2E"
+	job3 := state.QueuedJob{
+		Name:         "Matrix — CI",
+		WorkflowName: &wfName,
+		Labels:       []string{"self-hosted", "local", "amd64"},
+	}
+	if !shouldRouteToVM(job3, triggers) {
+		t.Errorf("expected job3 to route to VM via workflow name E2E")
+	}
+
+	// 4. Non-matching job
+	wfCI := "Lint & Unit Tests"
+	job4 := state.QueuedJob{
+		Name:         "lint",
+		WorkflowName: &wfCI,
+		Labels:       []string{"self-hosted", "local", "amd64"},
+	}
+	if shouldRouteToVM(job4, triggers) {
+		t.Errorf("expected job4 NOT to route to VM")
+	}
+}

@@ -2,6 +2,7 @@ package driver
 
 import (
 	"context"
+	"fmt"
 	"strings"
 
 	"github.com/el-j/run-zero/pkg/state"
@@ -35,6 +36,17 @@ func (r *Router) Backend() string {
 	return r.defaultMode
 }
 
+func isVMTriggerLabel(label string) bool {
+	l := strings.ToLower(strings.TrimSpace(label))
+	switch l {
+	case "vm", "orb", "orbstack", "linux-vm", "e2e", "browser", "playwright", "cypress",
+		"selenium", "lighthouse", "systemd", "gui", "unconfined", "postgres", "mysql",
+		"redis", "db", "database", "integration", "service", "services", "dind":
+		return true
+	}
+	return false
+}
+
 // SelectDriver chooses the appropriate driver for a given runner spec.
 func (r *Router) SelectDriver(spec RunnerSpec) RunnerDriver {
 	reqBackend := strings.ToLower(strings.TrimSpace(spec.Backend))
@@ -51,8 +63,7 @@ func (r *Router) SelectDriver(spec RunnerSpec) RunnerDriver {
 
 	if r.autoRouteVM && r.vmDriver != nil {
 		for _, lbl := range spec.Labels {
-			l := strings.ToLower(strings.TrimSpace(lbl))
-			if l == "vm" || l == "orb" || l == "orbstack" || l == "linux-vm" {
+			if isVMTriggerLabel(lbl) {
 				return r.vmDriver
 			}
 		}
@@ -71,7 +82,11 @@ func (r *Router) SelectDriver(spec RunnerSpec) RunnerDriver {
 // SpawnRunner delegates execution to the selected driver.
 func (r *Router) SpawnRunner(ctx context.Context, spec RunnerSpec) (*state.RunnerInfo, error) {
 	driver := r.SelectDriver(spec)
-	return driver.SpawnRunner(ctx, spec)
+	info, err := driver.SpawnRunner(ctx, spec)
+	if err == nil && info != nil && r.store != nil {
+		r.store.Register(*info)
+	}
+	return info, err
 }
 
 // ListRunners combines runners discovered across both drivers.
@@ -105,17 +120,34 @@ func (r *Router) StopRunner(ctx context.Context, runnerID string) error {
 				return r.dockerDriver.StopRunner(ctx, runnerID)
 			}
 		}
+		for _, info := range r.store.List() {
+			if info.Name == runnerID {
+				if info.Backend == "orbstack" && r.vmDriver != nil {
+					return r.vmDriver.StopRunner(ctx, runnerID)
+				}
+				if info.Backend == "docker" && r.dockerDriver != nil {
+					return r.dockerDriver.StopRunner(ctx, runnerID)
+				}
+			}
+		}
 	}
 
+	var dErr error
 	if r.dockerDriver != nil {
-		if err := r.dockerDriver.StopRunner(ctx, runnerID); err == nil {
+		if dErr = r.dockerDriver.StopRunner(ctx, runnerID); dErr == nil {
 			return nil
 		}
 	}
 	if r.vmDriver != nil {
-		return r.vmDriver.StopRunner(ctx, runnerID)
+		if vErr := r.vmDriver.StopRunner(ctx, runnerID); vErr == nil {
+			return nil
+		} else if dErr != nil {
+			return fmt.Errorf("docker stop failed (%w); vm stop failed: %v", dErr, vErr)
+		} else {
+			return vErr
+		}
 	}
-	return nil
+	return dErr
 }
 
 // CleanupAll cleans up runners in both Docker and VM drivers.
