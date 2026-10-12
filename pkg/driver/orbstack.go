@@ -207,7 +207,11 @@ func runnerRegistrationScript(name string, spec RunnerSpec) string {
 sudo sed -i -E 's/^(::1[[:space:]]+)localhost[[:space:]]+/\1/' /etc/hosts || true
 cd /home/runner/actions-runner
 ./config.sh --unattended --ephemeral --replace --url %s --token %s --name %s --labels %s --work _work
-setsid nohup ./run.sh > /home/runner/runner.log 2>&1 < /dev/null &
+# The runner is ephemeral: run.sh exits after exactly one job. Power the VM off then so it
+# shows up as "stopped" and the prune pass removes it - otherwise finished VMs stay
+# "running", keep counting against MAX_RUNNERS and eventually deadlock the queue. The 6h
+# cap (GitHub's maximum job length) bounds a VM whose job was taken by another runner.
+setsid nohup sh -c 'timeout 6h ./run.sh; sudo shutdown -h now' > /home/runner/runner.log 2>&1 < /dev/null &
 sleep 1
 `, shellQuote("https://github.com/"+spec.Repo), shellQuote(spec.Token), shellQuote(name), shellQuote(runnerLabels(spec)))
 }

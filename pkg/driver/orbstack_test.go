@@ -323,7 +323,7 @@ func TestOrbStackSpawnRunner_RegistersRunnerAndCleansUpOnFailure(t *testing.T) {
 	if _, err := o.SpawnRunner(context.Background(), spec); err != nil {
 		t.Fatal(err)
 	}
-	if len(scripts) != 1 || !strings.Contains(scripts[0], "--ephemeral") || !strings.Contains(scripts[0], `'TOK'\''EN'`) || !strings.Contains(scripts[0], "/etc/hosts") {
+	if len(scripts) != 1 || !strings.Contains(scripts[0], "--ephemeral") || !strings.Contains(scripts[0], `'TOK'\''EN'`) || !strings.Contains(scripts[0], "/etc/hosts") || !strings.Contains(scripts[0], "shutdown -h now") {
 		t.Fatalf("unexpected registration script: %v", scripts)
 	}
 	scripts, fail = nil, true
