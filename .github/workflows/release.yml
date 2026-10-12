@@ -110,6 +110,22 @@ jobs:
         with:
           go-version: '1.24'
 
+      - name: Set up pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: 22
+
+      - name: Install dependencies & Build UI for single-binary embedding
+        run: |
+          (cd spec && pnpm install)
+          (cd web && pnpm install)
+          make build-spec build-ui
+
       - name: Build Multi-Architecture Binaries
         run: |
           make build-go-multiarch

@@ -18,6 +18,9 @@ reports/mutation/
 node_modules/
 .output
 dist
+!web/dist/
+web/dist/*
+!web/dist/.gitkeep
 website/dist-live/
 website/dist-archive/
 .astro

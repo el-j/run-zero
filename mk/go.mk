@@ -4,12 +4,19 @@ GO_DIRS := pkg cmd
 
 ##@ Go engine
 
+.PHONY: ensure-ui
+ensure-ui:
+	@if [ ! -f web/dist/index.html ]; then \
+		echo "$(CYAN)Building web dashboard UI assets for single-binary embedding...$(RESET)"; \
+		$(MAKE) --no-print-directory build-ui; \
+	fi
+
 .PHONY: build-go
-build-go: ## Compile the engine binary into bin/runzero
+build-go: ensure-ui ## Compile the engine binary into bin/runzero
 	go build -o bin/runzero ./cmd/runzero
 
 .PHONY: build-go-multiarch
-build-go-multiarch: ## Compile static binaries for darwin/linux x arm64/amd64 into bin/
+build-go-multiarch: ensure-ui ## Compile static binaries for darwin/linux x arm64/amd64 into bin/
 	@mkdir -p bin
 	CGO_ENABLED=0 GOOS=darwin GOARCH=arm64 go build -ldflags="-s -w" -o bin/runzero-darwin-arm64 ./cmd/runzero
 	CGO_ENABLED=0 GOOS=darwin GOARCH=amd64 go build -ldflags="-s -w" -o bin/runzero-darwin-amd64 ./cmd/runzero

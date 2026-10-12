@@ -32,8 +32,13 @@ include mk/vm.mk
 install: init-cache spec-install web-install website-install build-spec build-ui build-go install-hooks ## Bootstrap local development environment (deps, build, git hooks)
 	@echo "$(GREEN)Install bootstrap complete. Next: run 'make env' (first time), then 'make start'.$(RESET)"
 
+.PHONY: nice
+nice: fmt build-spec build-ui build-go lint check ## Format, regenerate types, build all assets, lint, test and run all quality gates
+	@echo ""
+	@echo "$(BOLD)$(GREEN)✨ Everything is sparkling clean: formatted, generated, linted, tested, and ready to push!$(RESET)"
+
 .PHONY: check
-check: check-go check-spec check-web check-shell ## Run every quality gate (the same set CI enforces)
+check: check-spec check-web check-go check-shell ## Run every quality gate (the same set CI enforces)
 	@echo "$(GREEN)All quality gates passed.$(RESET)"
 
 .PHONY: lint
