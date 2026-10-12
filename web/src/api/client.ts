@@ -75,7 +75,7 @@ export class RunZeroClient {
   async triggerWorkflowAction(
     repo: string,
     runId: number,
-    action: "cancel" | "rerun" | "rerun-failed"
+    action: "cancel" | "rerun" | "rerun-failed",
   ): Promise<SuccessResponse> {
     const res = await fetch(`${this.baseUrl}/api/actions/workflow`, {
       method: "POST",
@@ -91,12 +91,17 @@ export class RunZeroClient {
 
   async controlRunner(
     action: "start" | "stop" | "drain" | "pause" | "resume",
-    options: { runnerId?: string; repo?: string; arch?: string } = {}
+    options: { runnerId?: string; repo?: string; arch?: string } = {},
   ): Promise<SuccessResponse> {
     const res = await fetch(`${this.baseUrl}/api/actions/runner`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ action, runner_id: options.runnerId, repo: options.repo, arch: options.arch }),
+      body: JSON.stringify({
+        action,
+        runner_id: options.runnerId,
+        repo: options.repo,
+        arch: options.arch,
+      }),
     });
     if (!res.ok) {
       const err = await res.json().catch(() => ({ error: res.statusText }));
@@ -134,7 +139,9 @@ export class RunZeroClient {
     return res.json();
   }
 
-  async purgeCache(options: { category?: string; repo?: string; all?: boolean } = {}): Promise<SuccessResponse> {
+  async purgeCache(
+    options: { category?: string; repo?: string; all?: boolean } = {},
+  ): Promise<SuccessResponse> {
     const res = await fetch(`${this.baseUrl}/api/cache/purge`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },

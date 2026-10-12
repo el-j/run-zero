@@ -4,940 +4,940 @@
  */
 
 export interface paths {
-    "/api/actions/build-image": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /** @description Trigger asynchronous build for golden VMs, container runners, or both */
-        post: operations["Api_triggerImageBuild"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
+  "/api/actions/build-image": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
     };
-    "/api/actions/build-image/cancel": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /** @description Cancel currently in-flight image build job */
-        post: operations["Api_cancelImageBuild"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
+    get?: never;
+    put?: never;
+    /** @description Trigger asynchronous build for golden VMs, container runners, or both */
+    post: operations["Api_triggerImageBuild"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/actions/build-image/cancel": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
     };
-    "/api/actions/repo-priority": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /** @description Update repository priority order and pause states */
-        post: operations["Api_updateRepoPriority"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
+    get?: never;
+    put?: never;
+    /** @description Cancel currently in-flight image build job */
+    post: operations["Api_cancelImageBuild"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/actions/repo-priority": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
     };
-    "/api/actions/runner": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /** @description Manual runner controls: stop a runner, spawn an extra runner, or pause dispatch */
-        post: operations["Api_controlRunner"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
+    get?: never;
+    put?: never;
+    /** @description Update repository priority order and pause states */
+    post: operations["Api_updateRepoPriority"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/actions/runner": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
     };
-    "/api/actions/workflow": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /** @description Cancel, re-run, or re-run failed workflow runs via GitHub API */
-        post: operations["Api_triggerWorkflowAction"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
+    get?: never;
+    put?: never;
+    /** @description Manual runner controls: stop a runner, spawn an extra runner, or pause dispatch */
+    post: operations["Api_controlRunner"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/actions/workflow": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
     };
-    "/api/cache": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** @description Get multi-tier host and package cache usage statistics */
-        get: operations["Api_getCacheStats"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
+    get?: never;
+    put?: never;
+    /** @description Cancel, re-run, or re-run failed workflow runs via GitHub API */
+    post: operations["Api_triggerWorkflowAction"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/cache": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
     };
-    "/api/cache/purge": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /** @description Evict specific cache categories or purge entire host cache */
-        post: operations["Api_purgeCache"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
+    /** @description Get multi-tier host and package cache usage statistics */
+    get: operations["Api_getCacheStats"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/cache/purge": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
     };
-    "/api/fleet": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** @description Get current fleet state, active runners, and queued workflow jobs */
-        get: operations["Api_getFleet"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
+    get?: never;
+    put?: never;
+    /** @description Evict specific cache categories or purge entire host cache */
+    post: operations["Api_purgeCache"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/fleet": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
     };
-    "/api/images": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** @description Inspect infrastructure image readiness for VMs and runner containers */
-        get: operations["Api_getImages"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
+    /** @description Get current fleet state, active runners, and queued workflow jobs */
+    get: operations["Api_getFleet"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/images": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
     };
-    "/api/images/build/{id}": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** @description Get active or specific image build progress */
-        get: operations["Api_getImageBuildProgress"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
+    /** @description Inspect infrastructure image readiness for VMs and runner containers */
+    get: operations["Api_getImages"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/images/build/{id}": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
     };
-    "/api/logs": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** @description Get in-memory daemon circular log lines */
-        get: operations["Api_getLogs"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
+    /** @description Get active or specific image build progress */
+    get: operations["Api_getImageBuildProgress"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/logs": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
     };
-    "/api/settings": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** @description Get live effective system settings and origins */
-        get: operations["Api_getSettings"];
-        put?: never;
-        /** @description Mutate system settings dynamically at runtime without requiring restart */
-        post: operations["Api_updateSettings"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
+    /** @description Get in-memory daemon circular log lines */
+    get: operations["Api_getLogs"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/settings": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
     };
-    "/api/status": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** @description Get current system and autoscaler status (alias of getFleet) */
-        get: operations["Api_getStatus"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
+    /** @description Get live effective system settings and origins */
+    get: operations["Api_getSettings"];
+    put?: never;
+    /** @description Mutate system settings dynamically at runtime without requiring restart */
+    post: operations["Api_updateSettings"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/status": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
     };
-    "/api/stream": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** @description Server-Sent Events real-time event stream */
-        get: operations["Api_streamEvents"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
+    /** @description Get current system and autoscaler status (alias of getFleet) */
+    get: operations["Api_getStatus"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/stream": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
     };
+    /** @description Server-Sent Events real-time event stream */
+    get: operations["Api_streamEvents"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
 }
 export type webhooks = Record<string, never>;
 export interface components {
-    schemas: {
-        /** @description GitHub Actions billing summary */
-        ActionsBilling: {
-            /** Format: int32 */
-            included_minutes?: number;
-            /** Format: int32 */
-            total_minutes_used?: number;
-            /** Format: int32 */
-            total_paid_minutes_used?: number;
-        };
-        /** @description Storage usage for a specific cache category */
-        CacheCategoryUsage: {
-            category: string;
-            /** Format: int64 */
-            bytes: number;
-            human_readable: string;
-        };
-        /** @description Cache purge request */
-        CachePurgeRequest: {
-            category?: string;
-            repo?: string;
-            all?: boolean;
-        };
-        /** @description Overall cache statistics */
-        CacheStats: {
-            /** Format: int64 */
-            total_bytes: number;
-            total_human: string;
-            categories: components["schemas"]["CacheCategoryUsage"][];
-        };
-        /** @description Generic error response */
-        ErrorResponse: {
-            error: string;
-            details?: string;
-        };
-        /** @description Complete snapshot of the fleet, runner slots, and job queues */
-        FleetState: {
-            runners: components["schemas"]["RunnerInfo"][];
-            queued_jobs: components["schemas"]["QueuedJob"][];
-            /** Format: int32 */
-            busy_runners: number;
-            /** Format: int32 */
-            max_runners: number;
-            /** Format: int32 */
-            free_slots: number;
-            repo_priority: string[];
-            paused_repos: string[];
-            /** Format: int32 */
-            rate_limit_remaining?: number;
-            /** Format: int32 */
-            rate_limit_limit?: number;
-            actions_billing?: components["schemas"]["ActionsBilling"];
-        };
-        /** @description Real-time progress of an in-flight image build */
-        ImageBuildProgress: {
-            build_id: string;
-            target: ("all" | "vm" | "container") | string;
-            arch: string;
-            status: ("idle" | "building" | "success" | "failed") | string;
-            /** Format: int32 */
-            progress_pct: number;
-            current_step: string;
-            started_at: string;
-            completed_at?: string;
-            error?: string;
-            log_lines?: string[];
-        };
-        /** @description Request payload to trigger image builds */
-        ImageBuildRequest: {
-            target: ("all" | "vm" | "container") | string;
-            arch?: ("all" | "arm64" | "amd64") | string;
-            force?: boolean;
-        };
-        /** @description Overall status of all required infrastructure images */
-        ImagesStatusResponse: {
-            vm_images: components["schemas"]["InfrastructureImageStatus"][];
-            container_images: components["schemas"]["InfrastructureImageStatus"][];
-            all_ready: boolean;
-            active_build?: components["schemas"]["ImageBuildProgress"] | null;
-        };
-        /** @description Status of a golden base image or runner container */
-        InfrastructureImageStatus: {
-            id: string;
-            name: string;
-            kind: ("orbstack-vm" | "docker-container") | string;
-            arch: ("arm64" | "amd64") | string;
-            exists: boolean;
-            is_stale: boolean;
-            version?: string;
-            /** Format: int64 */
-            size_bytes?: number;
-            size_human?: string;
-            created_at?: string;
-            status: ("ready" | "missing" | "stale" | "building" | "failed") | string;
-        };
-        /** @description Log line entry */
-        LogEntry: {
-            timestamp: string;
-            message: string;
-        };
-        /** @description Logs response payload */
-        LogsResponse: {
-            logs: components["schemas"]["LogEntry"][];
-        };
-        /** @description Information about a queued or running workflow job */
-        QueuedJob: {
-            /** Format: int64 */
-            id: number;
-            /** Format: int64 */
-            run_id: number;
-            name: string;
-            workflow_name?: string;
-            head_branch?: string;
-            /** Format: int32 */
-            run_attempt?: number;
-            status: ("queued" | "in_progress") | string;
-            created_at?: string;
-            started_at?: string;
-            labels: string[];
-            html_url: string;
-            repo: string;
-            /** Format: int32 */
-            queue_position?: number | null;
-            waiting_reason?: string;
-            run_url?: string;
-            runner_name?: string;
-            /** Format: int32 */
-            stages_done?: number;
-            /** Format: int32 */
-            stages_total?: number;
-            /** Format: int32 */
-            steps_completed?: number;
-            /** Format: int32 */
-            steps_total?: number;
-            current_step?: string;
-            /** Format: int32 */
-            progress_pct?: number;
-            steps?: components["schemas"]["StepInfo"][];
-        };
-        /** @description Update payload for repository priority ordering and pause states */
-        RepoPriorityAction: {
-            priority: string[];
-            paused: string[];
-        };
-        /** @description Manual runner control action */
-        RunnerControlAction: {
-            runner_id?: string;
-            /** @enum {string} */
-            action: "start" | "stop" | "drain" | "pause" | "resume";
-            repo?: string;
-            arch?: string;
-        };
-        /** @description Information about an ephemeral runner instance */
-        RunnerInfo: {
-            id: string;
-            name: string;
-            status: string;
-            state: string;
-            target_repo: string;
-            target_arch: string;
-            backend: string;
-            created_at?: string;
-            /** Format: int64 */
-            job_id?: number;
-            /** Format: int64 */
-            run_id?: number;
-            job_url?: string;
-            run_url?: string;
-            job_name?: string;
-            workflow_name?: string;
-            /** Format: int32 */
-            stages_done?: number;
-            /** Format: int32 */
-            stages_total?: number;
-            /** Format: int32 */
-            steps_completed?: number;
-            /** Format: int32 */
-            steps_total?: number;
-            current_step?: string;
-            /** Format: int32 */
-            progress_pct?: number;
-            steps?: components["schemas"]["StepInfo"][];
-        };
-        /** @description One step (stage) of a workflow job */
-        StepInfo: {
-            /** Format: int32 */
-            number: number;
-            name: string;
-            status: string;
-        };
-        /** @description Generic success response */
-        SuccessResponse: {
-            ok: boolean;
-            message?: string;
-        };
-        /** @description Live runtime system configuration */
-        SystemSettings: {
-            access_token_configured?: boolean;
-            access_token?: string;
-            owner?: string;
-            org?: string;
-            auto_discover?: boolean;
-            /** Format: int32 */
-            active_days?: number;
-            runner_backend?: string;
-            auto_route_vm?: boolean;
-            vm_trigger_labels?: string[];
-            docker_network?: string;
-            runner_arch?: string;
-            /** Format: int32 */
-            min_runners?: number;
-            /** Format: int32 */
-            max_runners?: number;
-            /** Format: int32 */
-            runner_cpus?: number;
-            runner_memory?: string;
-            /** Format: int32 */
-            poll_interval?: number;
-            /** Format: int32 */
-            discovery_interval?: number;
-            proxies_enabled?: boolean;
-            cache_enabled?: boolean;
-            host_cache_dir?: string;
-            native_arch_override?: string;
-        };
-        /** @description Workflow run action request (cancel, re-run, or re-run failed) */
-        WorkflowActionRequest: {
-            repo: string;
-            /** Format: int64 */
-            run_id: number;
-            /** @enum {string} */
-            action: "cancel" | "rerun" | "rerun-failed";
-        };
+  schemas: {
+    /** @description GitHub Actions billing summary */
+    ActionsBilling: {
+      /** Format: int32 */
+      included_minutes?: number;
+      /** Format: int32 */
+      total_minutes_used?: number;
+      /** Format: int32 */
+      total_paid_minutes_used?: number;
     };
-    responses: never;
-    parameters: never;
-    requestBodies: never;
-    headers: never;
-    pathItems: never;
+    /** @description Storage usage for a specific cache category */
+    CacheCategoryUsage: {
+      category: string;
+      /** Format: int64 */
+      bytes: number;
+      human_readable: string;
+    };
+    /** @description Cache purge request */
+    CachePurgeRequest: {
+      category?: string;
+      repo?: string;
+      all?: boolean;
+    };
+    /** @description Overall cache statistics */
+    CacheStats: {
+      /** Format: int64 */
+      total_bytes: number;
+      total_human: string;
+      categories: components["schemas"]["CacheCategoryUsage"][];
+    };
+    /** @description Generic error response */
+    ErrorResponse: {
+      error: string;
+      details?: string;
+    };
+    /** @description Complete snapshot of the fleet, runner slots, and job queues */
+    FleetState: {
+      runners: components["schemas"]["RunnerInfo"][];
+      queued_jobs: components["schemas"]["QueuedJob"][];
+      /** Format: int32 */
+      busy_runners: number;
+      /** Format: int32 */
+      max_runners: number;
+      /** Format: int32 */
+      free_slots: number;
+      repo_priority: string[];
+      paused_repos: string[];
+      /** Format: int32 */
+      rate_limit_remaining?: number;
+      /** Format: int32 */
+      rate_limit_limit?: number;
+      actions_billing?: components["schemas"]["ActionsBilling"];
+    };
+    /** @description Real-time progress of an in-flight image build */
+    ImageBuildProgress: {
+      build_id: string;
+      target: ("all" | "vm" | "container") | string;
+      arch: string;
+      status: ("idle" | "building" | "success" | "failed") | string;
+      /** Format: int32 */
+      progress_pct: number;
+      current_step: string;
+      started_at: string;
+      completed_at?: string;
+      error?: string;
+      log_lines?: string[];
+    };
+    /** @description Request payload to trigger image builds */
+    ImageBuildRequest: {
+      target: ("all" | "vm" | "container") | string;
+      arch?: ("all" | "arm64" | "amd64") | string;
+      force?: boolean;
+    };
+    /** @description Overall status of all required infrastructure images */
+    ImagesStatusResponse: {
+      vm_images: components["schemas"]["InfrastructureImageStatus"][];
+      container_images: components["schemas"]["InfrastructureImageStatus"][];
+      all_ready: boolean;
+      active_build?: components["schemas"]["ImageBuildProgress"] | null;
+    };
+    /** @description Status of a golden base image or runner container */
+    InfrastructureImageStatus: {
+      id: string;
+      name: string;
+      kind: ("orbstack-vm" | "docker-container") | string;
+      arch: ("arm64" | "amd64") | string;
+      exists: boolean;
+      is_stale: boolean;
+      version?: string;
+      /** Format: int64 */
+      size_bytes?: number;
+      size_human?: string;
+      created_at?: string;
+      status: ("ready" | "missing" | "stale" | "building" | "failed") | string;
+    };
+    /** @description Log line entry */
+    LogEntry: {
+      timestamp: string;
+      message: string;
+    };
+    /** @description Logs response payload */
+    LogsResponse: {
+      logs: components["schemas"]["LogEntry"][];
+    };
+    /** @description Information about a queued or running workflow job */
+    QueuedJob: {
+      /** Format: int64 */
+      id: number;
+      /** Format: int64 */
+      run_id: number;
+      name: string;
+      workflow_name?: string;
+      head_branch?: string;
+      /** Format: int32 */
+      run_attempt?: number;
+      status: ("queued" | "in_progress") | string;
+      created_at?: string;
+      started_at?: string;
+      labels: string[];
+      html_url: string;
+      repo: string;
+      /** Format: int32 */
+      queue_position?: number | null;
+      waiting_reason?: string;
+      run_url?: string;
+      runner_name?: string;
+      /** Format: int32 */
+      stages_done?: number;
+      /** Format: int32 */
+      stages_total?: number;
+      /** Format: int32 */
+      steps_completed?: number;
+      /** Format: int32 */
+      steps_total?: number;
+      current_step?: string;
+      /** Format: int32 */
+      progress_pct?: number;
+      steps?: components["schemas"]["StepInfo"][];
+    };
+    /** @description Update payload for repository priority ordering and pause states */
+    RepoPriorityAction: {
+      priority: string[];
+      paused: string[];
+    };
+    /** @description Manual runner control action */
+    RunnerControlAction: {
+      runner_id?: string;
+      /** @enum {string} */
+      action: "start" | "stop" | "drain" | "pause" | "resume";
+      repo?: string;
+      arch?: string;
+    };
+    /** @description Information about an ephemeral runner instance */
+    RunnerInfo: {
+      id: string;
+      name: string;
+      status: string;
+      state: string;
+      target_repo: string;
+      target_arch: string;
+      backend: string;
+      created_at?: string;
+      /** Format: int64 */
+      job_id?: number;
+      /** Format: int64 */
+      run_id?: number;
+      job_url?: string;
+      run_url?: string;
+      job_name?: string;
+      workflow_name?: string;
+      /** Format: int32 */
+      stages_done?: number;
+      /** Format: int32 */
+      stages_total?: number;
+      /** Format: int32 */
+      steps_completed?: number;
+      /** Format: int32 */
+      steps_total?: number;
+      current_step?: string;
+      /** Format: int32 */
+      progress_pct?: number;
+      steps?: components["schemas"]["StepInfo"][];
+    };
+    /** @description One step (stage) of a workflow job */
+    StepInfo: {
+      /** Format: int32 */
+      number: number;
+      name: string;
+      status: string;
+    };
+    /** @description Generic success response */
+    SuccessResponse: {
+      ok: boolean;
+      message?: string;
+    };
+    /** @description Live runtime system configuration */
+    SystemSettings: {
+      access_token_configured?: boolean;
+      access_token?: string;
+      owner?: string;
+      org?: string;
+      auto_discover?: boolean;
+      /** Format: int32 */
+      active_days?: number;
+      runner_backend?: string;
+      auto_route_vm?: boolean;
+      vm_trigger_labels?: string[];
+      docker_network?: string;
+      runner_arch?: string;
+      /** Format: int32 */
+      min_runners?: number;
+      /** Format: int32 */
+      max_runners?: number;
+      /** Format: int32 */
+      runner_cpus?: number;
+      runner_memory?: string;
+      /** Format: int32 */
+      poll_interval?: number;
+      /** Format: int32 */
+      discovery_interval?: number;
+      proxies_enabled?: boolean;
+      cache_enabled?: boolean;
+      host_cache_dir?: string;
+      native_arch_override?: string;
+    };
+    /** @description Workflow run action request (cancel, re-run, or re-run failed) */
+    WorkflowActionRequest: {
+      repo: string;
+      /** Format: int64 */
+      run_id: number;
+      /** @enum {string} */
+      action: "cancel" | "rerun" | "rerun-failed";
+    };
+  };
+  responses: never;
+  parameters: never;
+  requestBodies: never;
+  headers: never;
+  pathItems: never;
 }
 export type $defs = Record<string, never>;
 export interface operations {
-    Api_triggerImageBuild: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["ImageBuildRequest"];
-            };
-        };
-        responses: {
-            /** @description The request has succeeded. */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ImageBuildProgress"];
-                };
-            };
-            /** @description An unexpected error response. */
-            default: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
-        };
+  Api_triggerImageBuild: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
     };
-    Api_cancelImageBuild: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description The request has succeeded. */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["SuccessResponse"];
-                };
-            };
-            /** @description An unexpected error response. */
-            default: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
-        };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["ImageBuildRequest"];
+      };
     };
-    Api_updateRepoPriority: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
+    responses: {
+      /** @description The request has succeeded. */
+      200: {
+        headers: {
+          [name: string]: unknown;
         };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["RepoPriorityAction"];
-            };
+        content: {
+          "application/json": components["schemas"]["ImageBuildProgress"];
         };
-        responses: {
-            /** @description The request has succeeded. */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["SuccessResponse"];
-                };
-            };
-            /** @description An unexpected error response. */
-            default: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
+      };
+      /** @description An unexpected error response. */
+      default: {
+        headers: {
+          [name: string]: unknown;
         };
+        content: {
+          "application/json": components["schemas"]["ErrorResponse"];
+        };
+      };
     };
-    Api_controlRunner: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["RunnerControlAction"];
-            };
-        };
-        responses: {
-            /** @description The request has succeeded. */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["SuccessResponse"];
-                };
-            };
-            /** @description An unexpected error response. */
-            default: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
-        };
+  };
+  Api_cancelImageBuild: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
     };
-    Api_triggerWorkflowAction: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
+    requestBody?: never;
+    responses: {
+      /** @description The request has succeeded. */
+      200: {
+        headers: {
+          [name: string]: unknown;
         };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["WorkflowActionRequest"];
-            };
+        content: {
+          "application/json": components["schemas"]["SuccessResponse"];
         };
-        responses: {
-            /** @description The request has succeeded. */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["SuccessResponse"];
-                };
-            };
-            /** @description An unexpected error response. */
-            default: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
+      };
+      /** @description An unexpected error response. */
+      default: {
+        headers: {
+          [name: string]: unknown;
         };
+        content: {
+          "application/json": components["schemas"]["ErrorResponse"];
+        };
+      };
     };
-    Api_getCacheStats: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description The request has succeeded. */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["CacheStats"];
-                };
-            };
-            /** @description An unexpected error response. */
-            default: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
-        };
+  };
+  Api_updateRepoPriority: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
     };
-    Api_purgeCache: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["CachePurgeRequest"];
-            };
-        };
-        responses: {
-            /** @description The request has succeeded. */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["SuccessResponse"];
-                };
-            };
-            /** @description An unexpected error response. */
-            default: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
-        };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["RepoPriorityAction"];
+      };
     };
-    Api_getFleet: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
+    responses: {
+      /** @description The request has succeeded. */
+      200: {
+        headers: {
+          [name: string]: unknown;
         };
-        requestBody?: never;
-        responses: {
-            /** @description The request has succeeded. */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["FleetState"];
-                };
-            };
-            /** @description An unexpected error response. */
-            default: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
+        content: {
+          "application/json": components["schemas"]["SuccessResponse"];
         };
+      };
+      /** @description An unexpected error response. */
+      default: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorResponse"];
+        };
+      };
     };
-    Api_getImages: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description The request has succeeded. */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ImagesStatusResponse"];
-                };
-            };
-            /** @description An unexpected error response. */
-            default: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
-        };
+  };
+  Api_controlRunner: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
     };
-    Api_getImageBuildProgress: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                id: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description The request has succeeded. */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ImageBuildProgress"];
-                };
-            };
-            /** @description An unexpected error response. */
-            default: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
-        };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["RunnerControlAction"];
+      };
     };
-    Api_getLogs: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
+    responses: {
+      /** @description The request has succeeded. */
+      200: {
+        headers: {
+          [name: string]: unknown;
         };
-        requestBody?: never;
-        responses: {
-            /** @description The request has succeeded. */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["LogsResponse"];
-                };
-            };
-            /** @description An unexpected error response. */
-            default: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
+        content: {
+          "application/json": components["schemas"]["SuccessResponse"];
         };
+      };
+      /** @description An unexpected error response. */
+      default: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorResponse"];
+        };
+      };
     };
-    Api_getSettings: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description The request has succeeded. */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["SystemSettings"];
-                };
-            };
-            /** @description An unexpected error response. */
-            default: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
-        };
+  };
+  Api_triggerWorkflowAction: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
     };
-    Api_updateSettings: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["SystemSettings"];
-            };
-        };
-        responses: {
-            /** @description The request has succeeded. */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["SuccessResponse"];
-                };
-            };
-            /** @description An unexpected error response. */
-            default: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
-        };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["WorkflowActionRequest"];
+      };
     };
-    Api_getStatus: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
+    responses: {
+      /** @description The request has succeeded. */
+      200: {
+        headers: {
+          [name: string]: unknown;
         };
-        requestBody?: never;
-        responses: {
-            /** @description The request has succeeded. */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["FleetState"];
-                };
-            };
-            /** @description An unexpected error response. */
-            default: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
+        content: {
+          "application/json": components["schemas"]["SuccessResponse"];
         };
+      };
+      /** @description An unexpected error response. */
+      default: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorResponse"];
+        };
+      };
     };
-    Api_streamEvents: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description The request has succeeded. */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "text/plain": string;
-                };
-            };
-        };
+  };
+  Api_getCacheStats: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
     };
+    requestBody?: never;
+    responses: {
+      /** @description The request has succeeded. */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["CacheStats"];
+        };
+      };
+      /** @description An unexpected error response. */
+      default: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorResponse"];
+        };
+      };
+    };
+  };
+  Api_purgeCache: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["CachePurgeRequest"];
+      };
+    };
+    responses: {
+      /** @description The request has succeeded. */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["SuccessResponse"];
+        };
+      };
+      /** @description An unexpected error response. */
+      default: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorResponse"];
+        };
+      };
+    };
+  };
+  Api_getFleet: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description The request has succeeded. */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["FleetState"];
+        };
+      };
+      /** @description An unexpected error response. */
+      default: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorResponse"];
+        };
+      };
+    };
+  };
+  Api_getImages: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description The request has succeeded. */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ImagesStatusResponse"];
+        };
+      };
+      /** @description An unexpected error response. */
+      default: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorResponse"];
+        };
+      };
+    };
+  };
+  Api_getImageBuildProgress: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description The request has succeeded. */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ImageBuildProgress"];
+        };
+      };
+      /** @description An unexpected error response. */
+      default: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorResponse"];
+        };
+      };
+    };
+  };
+  Api_getLogs: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description The request has succeeded. */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["LogsResponse"];
+        };
+      };
+      /** @description An unexpected error response. */
+      default: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorResponse"];
+        };
+      };
+    };
+  };
+  Api_getSettings: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description The request has succeeded. */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["SystemSettings"];
+        };
+      };
+      /** @description An unexpected error response. */
+      default: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorResponse"];
+        };
+      };
+    };
+  };
+  Api_updateSettings: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["SystemSettings"];
+      };
+    };
+    responses: {
+      /** @description The request has succeeded. */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["SuccessResponse"];
+        };
+      };
+      /** @description An unexpected error response. */
+      default: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorResponse"];
+        };
+      };
+    };
+  };
+  Api_getStatus: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description The request has succeeded. */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["FleetState"];
+        };
+      };
+      /** @description An unexpected error response. */
+      default: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorResponse"];
+        };
+      };
+    };
+  };
+  Api_streamEvents: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description The request has succeeded. */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "text/plain": string;
+        };
+      };
+    };
+  };
 }

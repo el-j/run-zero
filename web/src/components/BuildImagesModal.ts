@@ -1,4 +1,8 @@
-import type { ImagesStatusResponse, ImageBuildProgress, InfrastructureImageStatus } from "../api/client";
+import type {
+  ImagesStatusResponse,
+  ImageBuildProgress,
+  InfrastructureImageStatus,
+} from "../api/client";
 
 export class BuildImagesModal {
   private dialog: HTMLDialogElement | null = null;
@@ -116,7 +120,7 @@ export class BuildImagesModal {
     if (!this.statusGrid) return;
 
     const allImages = [...(data.vm_images || []), ...(data.container_images || [])];
-    const readyCount = allImages.filter(img => img.status === "ready").length;
+    const readyCount = allImages.filter((img) => img.status === "ready").length;
     const totalCount = allImages.length;
 
     // Update Header Badge
@@ -151,17 +155,15 @@ export class BuildImagesModal {
 
   private renderImageCard(img: InfrastructureImageStatus): string {
     const isVm = img.kind === "orbstack-vm";
-    const statusColor = img.status === "ready"
-      ? "var(--accent-emerald, #10b981)"
-      : img.status === "stale"
-      ? "var(--solar, #f59e0b)"
-      : "var(--crimson, #ef4444)";
+    const statusColor =
+      img.status === "ready"
+        ? "var(--accent-emerald, #10b981)"
+        : img.status === "stale"
+          ? "var(--solar, #f59e0b)"
+          : "var(--crimson, #ef4444)";
 
-    const statusBadgeClass = img.status === "ready"
-      ? "tag-emerald"
-      : img.status === "stale"
-      ? "tag-amber"
-      : "tag-crimson";
+    const statusBadgeClass =
+      img.status === "ready" ? "tag-emerald" : img.status === "stale" ? "tag-amber" : "tag-crimson";
 
     const subtitle = isVm
       ? `OrbStack Linux VM • ${img.version ? `Runner v${img.version}` : "Ubuntu Noble base"}`
@@ -185,7 +187,10 @@ export class BuildImagesModal {
     `;
   }
 
-  private async triggerBuild(target: "all" | "vm" | "container", arch: "all" | "arm64" | "amd64"): Promise<void> {
+  private async triggerBuild(
+    target: "all" | "vm" | "container",
+    arch: "all" | "arm64" | "amd64",
+  ): Promise<void> {
     try {
       this.isBuilding = true;
       if (this.progressPanel) this.progressPanel.classList.remove("hidden");

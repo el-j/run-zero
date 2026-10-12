@@ -9,11 +9,11 @@ import (
 
 // Router delegates runner provisioning to Docker or OrbStack VM driver.
 type Router struct {
-	dockerDriver  RunnerDriver
-	vmDriver      RunnerDriver
-	defaultMode   string
-	autoRouteVM   bool
-	store         *InstanceStore
+	dockerDriver RunnerDriver
+	vmDriver     RunnerDriver
+	defaultMode  string
+	autoRouteVM  bool
+	store        *InstanceStore
 }
 
 // NewRouter creates a hybrid backend driver router.

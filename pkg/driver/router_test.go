@@ -9,11 +9,11 @@ import (
 )
 
 type dummyDriver struct {
-	backend    string
-	spawnFunc  func(spec RunnerSpec) (*state.RunnerInfo, error)
-	listFunc   func() ([]state.RunnerInfo, error)
-	stopFunc   func(id string) error
-	cleanFunc  func() error
+	backend   string
+	spawnFunc func(spec RunnerSpec) (*state.RunnerInfo, error)
+	listFunc  func() ([]state.RunnerInfo, error)
+	stopFunc  func(id string) error
+	cleanFunc func() error
 }
 
 func (d *dummyDriver) Backend() string { return d.backend }

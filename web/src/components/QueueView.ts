@@ -52,8 +52,17 @@ export class QueueViewComponent {
     if (this.timer) clearInterval(this.timer);
   }
 
-  private async handleAction(repo: string, runId: number, action: "cancel" | "rerun" | "rerun-failed") {
-    const label = action === "cancel" ? "cancel" : action === "rerun" ? "re-run all jobs for" : "re-run failed jobs for";
+  private async handleAction(
+    repo: string,
+    runId: number,
+    action: "cancel" | "rerun" | "rerun-failed",
+  ) {
+    const label =
+      action === "cancel"
+        ? "cancel"
+        : action === "rerun"
+          ? "re-run all jobs for"
+          : "re-run failed jobs for";
     if (!confirm(`Are you sure you want to ${label} workflow run #${runId} on ${repo}?`)) {
       return;
     }

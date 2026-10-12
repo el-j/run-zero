@@ -60,7 +60,8 @@ export class CachePanelComponent {
     const total = this.stats?.total_human || "0 MB";
 
     const rows = categories
-      .map((cat) => `
+      .map(
+        (cat) => `
         <div class="glass-panel" style="padding: 1rem 1.25rem; display: flex; justify-content: space-between; align-items: center;">
           <div style="display: flex; align-items: center; gap: 0.75rem;">
             <strong class="mono" style="font-size: 0.95rem;">${cat.category}</strong>
@@ -70,7 +71,8 @@ export class CachePanelComponent {
             Purge
           </button>
         </div>
-      `)
+      `,
+      )
       .join("");
 
     this.container.innerHTML = `

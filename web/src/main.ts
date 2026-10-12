@@ -61,7 +61,9 @@ const tabActionsRepos = document.getElementById("tab-actions-repos");
 // View Mode Toggle
 const viewModeCards = document.getElementById("view-mode-cards");
 const viewModeTable = document.getElementById("view-mode-table");
-const selectViewModeSetting = document.getElementById("select-view-mode-setting") as HTMLSelectElement | null;
+const selectViewModeSetting = document.getElementById(
+  "select-view-mode-setting",
+) as HTMLSelectElement | null;
 const runnersCardsView = document.getElementById("runners-cards-view");
 const runnersTableView = document.getElementById("runners-table-view");
 const runnersTableBody = document.getElementById("runners-table-body");
@@ -88,7 +90,9 @@ const queueMaxSlots = document.getElementById("queue-max-slots");
 const queueFreeSlots = document.getElementById("queue-free-slots");
 const queueTotalJobs = document.getElementById("queue-total-jobs");
 const reposCountBadge = document.getElementById("repos-count-badge");
-const runnersSearchInput = document.getElementById("runners-search-input") as HTMLInputElement | null;
+const runnersSearchInput = document.getElementById(
+  "runners-search-input",
+) as HTMLInputElement | null;
 const queueSearchInput = document.getElementById("queue-search-input") as HTMLInputElement | null;
 const jobsSearchInput = document.getElementById("jobs-search-input") as HTMLInputElement | null;
 const repoSearchInput = document.getElementById("repo-search-input") as HTMLInputElement | null;
@@ -110,7 +114,9 @@ const btnTerminalExpandIcon = document.getElementById("btn-terminal-expand-icon"
 const btnTerminalExpandText = document.getElementById("btn-terminal-expand-text");
 const terminalLineCount = document.getElementById("terminal-line-count");
 const workspaceMainColumn = document.getElementById("workspace-main-column") as HTMLElement | null;
-const mainTerminalSplitter = document.getElementById("main-terminal-splitter") as HTMLElement | null;
+const mainTerminalSplitter = document.getElementById(
+  "main-terminal-splitter",
+) as HTMLElement | null;
 const panelTerminal = document.getElementById("panel-terminal") as HTMLElement | null;
 
 const barDockerJobs = document.getElementById("bar-docker-jobs");
@@ -157,14 +163,26 @@ const inputMaxRunners = document.getElementById("input-max-runners") as HTMLInpu
 const inputMinRunners = document.getElementById("input-min-runners") as HTMLInputElement | null;
 const inputRunnerCpus = document.getElementById("input-runner-cpus") as HTMLInputElement | null;
 const inputRunnerMemory = document.getElementById("input-runner-memory") as HTMLInputElement | null;
-const selectRunnerBackend = document.getElementById("select-runner-backend") as HTMLSelectElement | null;
+const selectRunnerBackend = document.getElementById(
+  "select-runner-backend",
+) as HTMLSelectElement | null;
 const selectRunnerArch = document.getElementById("select-runner-arch") as HTMLSelectElement | null;
-const checkboxAutoRouteVm = document.getElementById("checkbox-auto-route-vm") as HTMLInputElement | null;
-const selectNativeOverride = document.getElementById("select-native-override") as HTMLSelectElement | null;
+const checkboxAutoRouteVm = document.getElementById(
+  "checkbox-auto-route-vm",
+) as HTMLInputElement | null;
+const selectNativeOverride = document.getElementById(
+  "select-native-override",
+) as HTMLSelectElement | null;
 const inputPollInterval = document.getElementById("input-poll-interval") as HTMLInputElement | null;
-const inputDiscoveryInterval = document.getElementById("input-discovery-interval") as HTMLInputElement | null;
-const checkboxCacheEnabled = document.getElementById("checkbox-cache-enabled") as HTMLInputElement | null;
-const checkboxProxiesEnabled = document.getElementById("checkbox-proxies-enabled") as HTMLInputElement | null;
+const inputDiscoveryInterval = document.getElementById(
+  "input-discovery-interval",
+) as HTMLInputElement | null;
+const checkboxCacheEnabled = document.getElementById(
+  "checkbox-cache-enabled",
+) as HTMLInputElement | null;
+const checkboxProxiesEnabled = document.getElementById(
+  "checkbox-proxies-enabled",
+) as HTMLInputElement | null;
 const inputCacheDir = document.getElementById("input-cache-dir") as HTMLInputElement | null;
 
 // Application state
@@ -177,7 +195,8 @@ let currentPausedRepos = new Set<string>();
 let currentConcurrency = { active: 0, max: 3, min: 0 };
 let draggedRepo: string | null = null;
 let lastUptimeSeconds = 0;
-let currentViewMode: "cards" | "table" = (localStorage.getItem("runzero_display_mode") as "cards" | "table") || "cards";
+let currentViewMode: "cards" | "table" =
+  (localStorage.getItem("runzero_display_mode") as "cards" | "table") || "cards";
 let currentTab: "runners" | "queue" | "jobs" | "repos" = "runners";
 let terminalExpanded = false;
 let totalLogLines = 0;
@@ -194,7 +213,9 @@ const filterStorageKeys = {
 type SortDirection = "asc" | "desc";
 type SortState<K extends string> = { key: K; dir: SortDirection };
 
-let runnersSort: SortState<"name" | "repo" | "engine" | "status" | "workflow" | "progress" | "uptime"> = {
+let runnersSort: SortState<
+  "name" | "repo" | "engine" | "status" | "workflow" | "progress" | "uptime"
+> = {
   key: "uptime",
   dir: "desc",
 };
@@ -261,8 +282,10 @@ function includesFilter(fields: Array<string | number | undefined | null>, query
 }
 
 function restoreTabFilters() {
-  if (runnersSearchInput) runnersSearchInput.value = localStorage.getItem(filterStorageKeys.runners) || "";
-  if (queueSearchInput) queueSearchInput.value = localStorage.getItem(filterStorageKeys.queue) || "";
+  if (runnersSearchInput)
+    runnersSearchInput.value = localStorage.getItem(filterStorageKeys.runners) || "";
+  if (queueSearchInput)
+    queueSearchInput.value = localStorage.getItem(filterStorageKeys.queue) || "";
   if (jobsSearchInput) jobsSearchInput.value = localStorage.getItem(filterStorageKeys.jobs) || "";
   if (repoSearchInput) repoSearchInput.value = localStorage.getItem(filterStorageKeys.repos) || "";
 }
@@ -486,22 +509,33 @@ function toggleTerminal() {
   terminalExpanded = !terminalExpanded;
   applyTerminalHeight(terminalExpanded ? 320 : 180);
   if (btnTerminalExpandIcon) btnTerminalExpandIcon.textContent = terminalExpanded ? "▼" : "▲";
-  if (btnTerminalExpandText) btnTerminalExpandText.textContent = terminalExpanded ? "COLLAPSE" : "EXPAND";
+  if (btnTerminalExpandText)
+    btnTerminalExpandText.textContent = terminalExpanded ? "COLLAPSE" : "EXPAND";
 }
 
 // Format log entry with high-tech badge styling
 function formatLogMessage(msg: string): string {
   let safe = escapeHtml(msg);
-  safe = safe.replace(/\[(Autoscaler|Reconciler|DockerDriver|OrbStackDriver|WSL2Driver|MultipassDriver|Go Engine)\]/g,
-    '<span class="log-tag tag-cyan">[$1]</span>');
-  safe = safe.replace(/\[(Spawn|ScaleUp|Ready|Started)\]/gi,
-    '<span class="log-tag tag-emerald">[$1]</span>');
-  safe = safe.replace(/\[(ScaleDown|Prune|Terminated|Stopped)\]/gi,
-    '<span class="log-tag tag-amber">[$1]</span>');
-  safe = safe.replace(/\[(Error|Failed|Exception|Timeout|❌)\]/gi,
-    '<span class="log-tag tag-crimson">[$1]</span>');
-  safe = safe.replace(/\[(Bridge|VM|Routing|🚀)\]/gi,
-    '<span class="log-tag tag-purple">[$1]</span>');
+  safe = safe.replace(
+    /\[(Autoscaler|Reconciler|DockerDriver|OrbStackDriver|WSL2Driver|MultipassDriver|Go Engine)\]/g,
+    '<span class="log-tag tag-cyan">[$1]</span>',
+  );
+  safe = safe.replace(
+    /\[(Spawn|ScaleUp|Ready|Started)\]/gi,
+    '<span class="log-tag tag-emerald">[$1]</span>',
+  );
+  safe = safe.replace(
+    /\[(ScaleDown|Prune|Terminated|Stopped)\]/gi,
+    '<span class="log-tag tag-amber">[$1]</span>',
+  );
+  safe = safe.replace(
+    /\[(Error|Failed|Exception|Timeout|❌)\]/gi,
+    '<span class="log-tag tag-crimson">[$1]</span>',
+  );
+  safe = safe.replace(
+    /\[(Bridge|VM|Routing|🚀)\]/gi,
+    '<span class="log-tag tag-purple">[$1]</span>',
+  );
   return safe;
 }
 
@@ -543,13 +577,17 @@ type RunRef = {
 
 function runUrlOf(x: RunRef): string {
   const repo = x.target_repo || x.repo;
-  return x.run_url || (x.run_id && repo ? `https://github.com/${repo}/actions/runs/${x.run_id}` : "");
+  return (
+    x.run_url || (x.run_id && repo ? `https://github.com/${repo}/actions/runs/${x.run_id}` : "")
+  );
 }
 
 function jobUrlOf(x: RunRef): string {
   const repo = x.target_repo || x.repo;
   if (x.job_url) return x.job_url;
-  return x.run_id && x.job_id && repo ? `https://github.com/${repo}/actions/runs/${x.run_id}/job/${x.job_id}` : "";
+  return x.run_id && x.job_id && repo
+    ? `https://github.com/${repo}/actions/runs/${x.run_id}/job/${x.job_id}`
+    : "";
 }
 
 function runLinkHtml(x: RunRef): string {
@@ -580,12 +618,20 @@ function progressHtml(x: RunRef, compact: boolean): string {
   const pct = x.progress_pct ?? 0;
   const done = x.steps_completed ?? steps.filter((s) => s.status === "completed").length;
   const total = x.steps_total ?? steps.length;
-  const stepLabel = total > 0 ? `step ${Math.min(done + 1, total)}/${total}` : `${x.stages_done ?? 0}/${x.stages_total ?? 1} jobs`;
-  const current = x.current_step ? `<div class="current-stage" title="Current stage">▶ ${escapeHtml(x.current_step)}</div>` : "";
+  const stepLabel =
+    total > 0
+      ? `step ${Math.min(done + 1, total)}/${total}`
+      : `${x.stages_done ?? 0}/${x.stages_total ?? 1} jobs`;
+  const current = x.current_step
+    ? `<div class="current-stage" title="Current stage">▶ ${escapeHtml(x.current_step)}</div>`
+    : "";
   const pipeline =
     !compact && steps.length > 0
       ? `<div class="step-pipeline">${steps
-          .map((s) => `<span class="step-chip ${escapeHtml(s.status)}" title="${escapeHtml(s.name)}">${stepIcon(s.status)} ${escapeHtml(s.name)}</span>`)
+          .map(
+            (s) =>
+              `<span class="step-chip ${escapeHtml(s.status)}" title="${escapeHtml(s.name)}">${stepIcon(s.status)} ${escapeHtml(s.name)}</span>`,
+          )
           .join("")}</div>`
       : "";
   return `
@@ -630,7 +676,8 @@ function renderRunners(runners: RunnerInfo[]) {
     else runnersEmptyState.classList.remove("hidden");
     const title = runnersEmptyState.querySelector<HTMLElement>(".empty-title");
     const desc = runnersEmptyState.querySelector<HTMLElement>(".empty-desc");
-    if (title) title.textContent = hasFilter ? "No runners match this filter" : "Fleet is on Standby";
+    if (title)
+      title.textContent = hasFilter ? "No runners match this filter" : "Fleet is on Standby";
     if (desc) {
       desc.textContent = hasFilter
         ? `Try a different filter. Current query: "${runnersFilter}".`
@@ -650,7 +697,9 @@ function renderRunners(runners: RunnerInfo[]) {
   if (runnersGrid) {
     runnersGrid.innerHTML = filteredRunners
       .map((r) => {
-        const isVm = (r.backend || "").toLowerCase().includes("vm") || (r.backend || "").toLowerCase().includes("orb");
+        const isVm =
+          (r.backend || "").toLowerCase().includes("vm") ||
+          (r.backend || "").toLowerCase().includes("orb");
         const engineTagClass = isVm ? "tag-vm" : "tag-docker";
         const engineName = isVm ? (r.backend || "VM").toUpperCase() : "DOCKER";
         const archName = (r.target_arch || "amd64").toUpperCase();
@@ -708,8 +757,12 @@ function renderRunners(runners: RunnerInfo[]) {
 
   // 2. Render Table View
   const sortedRunnersForTable = [...runners].sort((a, b) => {
-    const aIsVm = (a.backend || "").toLowerCase().includes("vm") || (a.backend || "").toLowerCase().includes("orb");
-    const bIsVm = (b.backend || "").toLowerCase().includes("vm") || (b.backend || "").toLowerCase().includes("orb");
+    const aIsVm =
+      (a.backend || "").toLowerCase().includes("vm") ||
+      (a.backend || "").toLowerCase().includes("orb");
+    const bIsVm =
+      (b.backend || "").toLowerCase().includes("vm") ||
+      (b.backend || "").toLowerCase().includes("orb");
     const aEngine = aIsVm ? (a.backend || "VM").toUpperCase() : "DOCKER";
     const bEngine = bIsVm ? (b.backend || "VM").toUpperCase() : "DOCKER";
     const aProgress = a.progress_pct ?? 0;
@@ -746,7 +799,9 @@ function renderRunners(runners: RunnerInfo[]) {
   if (runnersTableBody) {
     runnersTableBody.innerHTML = filteredRunnersForTable
       .map((r) => {
-        const isVm = (r.backend || "").toLowerCase().includes("vm") || (r.backend || "").toLowerCase().includes("orb");
+        const isVm =
+          (r.backend || "").toLowerCase().includes("vm") ||
+          (r.backend || "").toLowerCase().includes("orb");
         const engineName = isVm ? (r.backend || "VM").toUpperCase() : "DOCKER";
         const archName = (r.target_arch || "amd64").toUpperCase();
         const duration = formatDuration(r.created_at);
@@ -773,9 +828,13 @@ function renderRunners(runners: RunnerInfo[]) {
               <span class="badge font-mono" style="color: var(--emerald);">${escapeHtml((r.status || "RUNNING").toUpperCase())}</span>
             </td>
             <td>
-              ${idle ? `<span style="color: var(--text-dim);">Standby / Idle</span>` : `
+              ${
+                idle
+                  ? `<span style="color: var(--text-dim);">Standby / Idle</span>`
+                  : `
                 <div><span class="link-label">RUN</span> ${runLink}${r.workflow_name ? ` <span style="color: var(--text-muted);">${escapeHtml(r.workflow_name)}</span>` : ""}</div>
-                <div><span class="link-label">JOB</span> ${jobLink || "-"}</div>`}
+                <div><span class="link-label">JOB</span> ${jobLink || "-"}</div>`
+              }
             </td>
             <td>${progressBlock || `<span style="color: var(--text-dim);">-</span>`}</td>
             <td>${duration}</td>
@@ -816,7 +875,7 @@ function renderRepos(
   repos: string[],
   queuedJobs: QueuedJob[],
   repoPriority: string[],
-  pausedRepos: Set<string>
+  pausedRepos: Set<string>,
 ) {
   if (tabReposCount) tabReposCount.textContent = String(repos.length);
   if (reposCountBadge) reposCountBadge.textContent = `${repos.length} REPOSITORIES`;
@@ -828,12 +887,15 @@ function renderRepos(
 
   if (repos.length === 0) {
     reposList.innerHTML = '<div class="empty-substate">Discovering active repositories...</div>';
-    if (reposTableBody) reposTableBody.innerHTML = '<tr><td colspan="5" class="empty-substate">Discovering active repositories...</td></tr>';
+    if (reposTableBody)
+      reposTableBody.innerHTML =
+        '<tr><td colspan="5" class="empty-substate">Discovering active repositories...</td></tr>';
     return;
   }
   if (filtered.length === 0) {
     reposList.innerHTML = `<div class="empty-substate">No repositories matching "${escapeHtml(query)}"</div>`;
-    if (reposTableBody) reposTableBody.innerHTML = `<tr><td colspan="5" class="empty-substate">No repositories matching "${escapeHtml(query)}"</td></tr>`;
+    if (reposTableBody)
+      reposTableBody.innerHTML = `<tr><td colspan="5" class="empty-substate">No repositories matching "${escapeHtml(query)}"</td></tr>`;
     return;
   }
 
@@ -986,7 +1048,9 @@ function renderRepos(
     };
     row.ondragend = () => {
       draggedRepo = null;
-      reposList.querySelectorAll(".repo-row").forEach((r) => r.classList.remove("repo-row-dragging", "repo-row-drag-over"));
+      reposList
+        .querySelectorAll(".repo-row")
+        .forEach((r) => r.classList.remove("repo-row-dragging", "repo-row-drag-over"));
     };
     row.ondragover = (e) => {
       e.preventDefault();
@@ -1048,9 +1112,11 @@ function renderCompletedJobs(jobs: CompletedJob[]) {
       <div class="empty-substate empty-queue-clean">
         <div class="clean-check-icon">${noHistory ? "✓" : "⌕"}</div>
         <div class="clean-text font-mono">${noHistory ? "NO COMPLETED JOBS YET" : "NO HISTORY MATCHES FILTER"}</div>
-        <div class="clean-subtext">${noHistory
-          ? "Recent successful and failed GitHub Actions jobs appear here with a quick retry path."
-          : `Try a different history filter. Current query: "${escapeHtml(jobsFilter)}".`}</div>
+        <div class="clean-subtext">${
+          noHistory
+            ? "Recent successful and failed GitHub Actions jobs appear here with a quick retry path."
+            : `Try a different history filter. Current query: "${escapeHtml(jobsFilter)}".`
+        }</div>
       </div>
     `;
     jobsList.innerHTML = emptyHtml;
@@ -1080,7 +1146,9 @@ function renderCompletedJobs(jobs: CompletedJob[]) {
       const headerKind = isSuccess ? "badge-live" : "badge-danger";
       const statusText = isSuccess ? "SUCCESS" : conclusion.toUpperCase() || "FAILED";
       const reason = job.failure_reason || job.failed_step || "No failure reason captured.";
-      const messages = (job.messages || []).map((msg: string) => `<li>${escapeHtml(msg)}</li>`).join("");
+      const messages = (job.messages || [])
+        .map((msg: string) => `<li>${escapeHtml(msg)}</li>`)
+        .join("");
       const runUrl = job.run_url || `https://github.com/${job.repo}/actions/runs/${job.run_id}`;
       const retryBtn = !isSuccess
         ? `<button class="btn btn-xs btn-outline job-rerun-btn font-mono" data-repo="${escapeHtml(job.repo)}" data-run-id="${job.run_id}">↻ Retry failed jobs</button>`
@@ -1166,7 +1234,9 @@ function renderCompletedJobs(jobs: CompletedJob[]) {
         job.workflow_name || "",
         job.head_branch ? `branch: ${job.head_branch}` : "",
         job.run_attempt && job.run_attempt > 1 ? `attempt ${job.run_attempt}` : "",
-      ].filter(Boolean).join(" • ");
+      ]
+        .filter(Boolean)
+        .join(" • ");
 
       return `
         <tr>
@@ -1189,11 +1259,13 @@ function renderCompletedJobs(jobs: CompletedJob[]) {
               <a href="${escapeHtml(job.html_url || runUrl)}" target="_blank" rel="noopener noreferrer" class="btn btn-xs btn-outline font-mono jobs-action-btn">
                 <span class="jobs-action-icon">↗</span><span class="jobs-action-text">GitHub</span>
               </a>
-              ${!isSuccess
-                ? `<button class="btn btn-xs btn-outline job-rerun-btn font-mono jobs-action-btn" data-repo="${escapeHtml(job.repo)}" data-run-id="${job.run_id}">
+              ${
+                !isSuccess
+                  ? `<button class="btn btn-xs btn-outline job-rerun-btn font-mono jobs-action-btn" data-repo="${escapeHtml(job.repo)}" data-run-id="${job.run_id}">
                     <span class="jobs-action-icon">↻</span><span class="jobs-action-text">Retry failed</span>
                   </button>`
-                : ""}
+                  : ""
+              }
             </div>
           </td>
         </tr>
@@ -1284,9 +1356,10 @@ function renderQueue(queuedJobs: QueuedJob[], concurrency: { active: number; max
       queueTableBody.innerHTML = "";
     }
     if (queueTableEmpty && currentViewMode === "table") {
-      queueTableEmpty.textContent = hasJobs && hasFilter
-        ? `No queued jobs matching "${queueFilter}".`
-        : "Queue is clear — no pending workflow jobs.";
+      queueTableEmpty.textContent =
+        hasJobs && hasFilter
+          ? `No queued jobs matching "${queueFilter}".`
+          : "Queue is clear — no pending workflow jobs.";
     }
     return;
   }
@@ -1296,7 +1369,9 @@ function renderQueue(queuedJobs: QueuedJob[], concurrency: { active: number; max
     queueJobsView.innerHTML = filteredQueueJobs
       .map((j) => {
         const isRunning = j.status === "in_progress";
-        const posTag = j.queue_position ? `<span class="priority-rank-badge font-mono" style="margin-right: 0.5rem;">Rank #${j.queue_position}</span>` : "";
+        const posTag = j.queue_position
+          ? `<span class="priority-rank-badge font-mono" style="margin-right: 0.5rem;">Rank #${j.queue_position}</span>`
+          : "";
         const statusBadge = isRunning
           ? '<span class="badge badge-pulse" style="font-size: 11px;">RUNNING</span>'
           : '<span class="badge badge-queued font-mono" style="font-size: 11px;">QUEUED</span>';
@@ -1306,7 +1381,10 @@ function renderQueue(queuedJobs: QueuedJob[], concurrency: { active: number; max
 
         const labels = (j.labels || [])
           .filter((l) => l !== "self-hosted")
-          .map((l) => `<span class="tech-chip ${l === "arm64" ? "solar" : "cyan"} font-mono" style="font-size: 10px;">${escapeHtml(l.toUpperCase())}</span>`)
+          .map(
+            (l) =>
+              `<span class="tech-chip ${l === "arm64" ? "solar" : "cyan"} font-mono" style="font-size: 10px;">${escapeHtml(l.toUpperCase())}</span>`,
+          )
           .join(" ");
 
         let progressBlock = "";
@@ -1386,8 +1464,16 @@ function renderQueue(queuedJobs: QueuedJob[], concurrency: { active: number; max
     const bRepo = `${b.repo || ""} ${b.head_branch || ""}`;
     const aProgress = a.progress_pct ?? 0;
     const bProgress = b.progress_pct ?? 0;
-    const aWait = a.started_at ? new Date(a.started_at).getTime() : (a.created_at ? new Date(a.created_at).getTime() : 0);
-    const bWait = b.started_at ? new Date(b.started_at).getTime() : (b.created_at ? new Date(b.created_at).getTime() : 0);
+    const aWait = a.started_at
+      ? new Date(a.started_at).getTime()
+      : a.created_at
+        ? new Date(a.created_at).getTime()
+        : 0;
+    const bWait = b.started_at
+      ? new Date(b.started_at).getTime()
+      : b.created_at
+        ? new Date(b.created_at).getTime()
+        : 0;
     const map: Record<typeof queueSort.key, [string | number, string | number]> = {
       position: [aPos, bPos],
       status: [aStatus, bStatus],
@@ -1491,9 +1577,20 @@ function renderQueue(queuedJobs: QueuedJob[], concurrency: { active: number; max
 function renderBilling(billing?: FleetState["actions_billing"]) {
   if (!actionsScope || !billing) return;
   actionsScope.textContent = "USER:el-j";
-  if (actionsIncluded) actionsIncluded.textContent = billing.included_minutes ? `${billing.included_minutes.toLocaleString()}m` : "--";
-  if (actionsTotalUsed) actionsTotalUsed.textContent = billing.total_minutes_used !== undefined ? `${billing.total_minutes_used.toLocaleString()}m` : "--";
-  if (actionsPaidUsed) actionsPaidUsed.textContent = billing.total_paid_minutes_used !== undefined ? `${billing.total_paid_minutes_used.toLocaleString()}m` : "--";
+  if (actionsIncluded)
+    actionsIncluded.textContent = billing.included_minutes
+      ? `${billing.included_minutes.toLocaleString()}m`
+      : "--";
+  if (actionsTotalUsed)
+    actionsTotalUsed.textContent =
+      billing.total_minutes_used !== undefined
+        ? `${billing.total_minutes_used.toLocaleString()}m`
+        : "--";
+  if (actionsPaidUsed)
+    actionsPaidUsed.textContent =
+      billing.total_paid_minutes_used !== undefined
+        ? `${billing.total_paid_minutes_used.toLocaleString()}m`
+        : "--";
   if (actionsRemaining) {
     const rem = (billing.included_minutes || 2000) - (billing.total_minutes_used || 0);
     actionsRemaining.textContent = `${Math.max(0, rem).toLocaleString()}m`;
@@ -1601,7 +1698,9 @@ async function saveSettings() {
     auto_route_vm: checkboxAutoRouteVm ? checkboxAutoRouteVm.checked : undefined,
     native_arch_override: selectNativeOverride ? selectNativeOverride.value : undefined,
     poll_interval: inputPollInterval ? parseInt(inputPollInterval.value, 10) : undefined,
-    discovery_interval: inputDiscoveryInterval ? parseInt(inputDiscoveryInterval.value, 10) : undefined,
+    discovery_interval: inputDiscoveryInterval
+      ? parseInt(inputDiscoveryInterval.value, 10)
+      : undefined,
     cache_enabled: checkboxCacheEnabled ? checkboxCacheEnabled.checked : undefined,
     proxies_enabled: checkboxProxiesEnabled ? checkboxProxiesEnabled.checked : undefined,
     host_cache_dir: inputCacheDir ? inputCacheDir.value.trim() : undefined,
@@ -1640,7 +1739,8 @@ function renderState(state: FleetState) {
     statRateMeta.textContent = `used ${tot - rem} • reset ${formatReset((state as any).rate_limit_reset)} • REST Core`;
   }
 
-  const completedJobs = (state as FleetState & { completed_jobs?: CompletedJob[] }).completed_jobs || [];
+  const completedJobs =
+    (state as FleetState & { completed_jobs?: CompletedJob[] }).completed_jobs || [];
   currentCompletedJobs = completedJobs;
   renderCompletedJobs(completedJobs);
 
@@ -1651,7 +1751,8 @@ function renderState(state: FleetState) {
   currentConcurrency = { active: activeCount, max: maxCount, min: minCount };
   if (kpiActiveRunners) kpiActiveRunners.textContent = String(activeCount);
   if (kpiMaxRunners) kpiMaxRunners.textContent = `/ ${maxCount} max`;
-  if (kpiMinRunnersText) kpiMinRunnersText.textContent = `// ${state.free_slots ?? Math.max(0, maxCount - activeCount)} free · ${minCount} standby target`;
+  if (kpiMinRunnersText)
+    kpiMinRunnersText.textContent = `// ${state.free_slots ?? Math.max(0, maxCount - activeCount)} free · ${minCount} standby target`;
   if (kpiRunnerSizing) {
     const cpus = latestSettings?.runner_cpus ?? 3;
     const memory = latestSettings?.runner_memory ?? "4g";
@@ -1680,7 +1781,8 @@ function renderState(state: FleetState) {
 
   // Monitored repos
   currentRepos = state.repo_priority || [];
-  if (kpiReposMonitored) kpiReposMonitored.textContent = `// Across ${currentRepos.length} tracked repo(s)`;
+  if (kpiReposMonitored)
+    kpiReposMonitored.textContent = `// Across ${currentRepos.length} tracked repo(s)`;
   currentRepoPriority = state.repo_priority || [];
   currentPausedRepos = new Set(state.paused_repos || []);
 
@@ -1692,7 +1794,10 @@ function renderState(state: FleetState) {
   if (kpiVmRatio) kpiVmRatio.textContent = `${vmRatio}%`;
   if (kpiRoutingBar) kpiRoutingBar.style.width = `${vmRatio}%`;
   if (kpiRoutingSub) {
-    const routeSummary = vmJobs > 0 || dockerJobs > 0 ? `${vmJobs} VM / ${dockerJobs} container` : "Auto-detect DIND & Services";
+    const routeSummary =
+      vmJobs > 0 || dockerJobs > 0
+        ? `${vmJobs} VM / ${dockerJobs} container`
+        : "Auto-detect DIND & Services";
     kpiRoutingSub.textContent = `// ${routeSummary}`;
   }
   if (kpiRoutingHealth) {
@@ -1750,7 +1855,10 @@ function initHandlers() {
       backdrop?.classList.add("open");
     }
     if (section) {
-      const map: Record<string, string> = { routing: "panel-routing-telemetry", cache: "panel-cache-analytics" };
+      const map: Record<string, string> = {
+        routing: "panel-routing-telemetry",
+        cache: "panel-cache-analytics",
+      };
       const el = document.getElementById(map[section] || "");
       if (el) setTimeout(() => el.scrollIntoView({ behavior: "smooth", block: "start" }), 120);
     }
@@ -1818,7 +1926,10 @@ function initHandlers() {
   if (btnPruneRunners) {
     btnPruneRunners.onclick = async () => {
       try {
-        await fetch("/api/actions/prune", { method: "POST", headers: { "Content-Type": "application/json" } });
+        await fetch("/api/actions/prune", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+        });
         showToast("Triggered fleet runner prune");
         refreshState();
       } catch (err) {
@@ -2033,7 +2144,9 @@ async function startApp() {
     if (res.ok) {
       const data = await res.json();
       if (data.logs && Array.isArray(data.logs)) {
-        data.logs.forEach((l: { message: string; timestamp?: string }) => appendLog(l.message, l.timestamp));
+        data.logs.forEach((l: { message: string; timestamp?: string }) =>
+          appendLog(l.message, l.timestamp),
+        );
       }
     }
   } catch (err) {

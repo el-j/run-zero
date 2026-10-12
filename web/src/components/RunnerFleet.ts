@@ -102,12 +102,13 @@ export class RunnerFleetComponent {
       `
       : "";
 
-    const runnerCards = this.runners.length === 0
-      ? `<div class="glass-panel" style="padding: 1.5rem; text-align: center; color: var(--text-muted); font-size: 0.9rem;">No active ephemeral runners.</div>`
-      : this.runners
-          .map((runner) => {
-            const isVM = runner.backend.includes("vm") || runner.backend.includes("orb");
-            return `
+    const runnerCards =
+      this.runners.length === 0
+        ? `<div class="glass-panel" style="padding: 1.5rem; text-align: center; color: var(--text-muted); font-size: 0.9rem;">No active ephemeral runners.</div>`
+        : this.runners
+            .map((runner) => {
+              const isVM = runner.backend.includes("vm") || runner.backend.includes("orb");
+              return `
               <div class="glass-panel" style="padding: 1rem 1.25rem; display: flex; justify-content: space-between; align-items: center; border-left: 3px solid ${isVM ? "var(--accent-cyan)" : "var(--accent-emerald)"};">
                 <div style="display: flex; flex-direction: column; gap: 0.25rem;">
                   <div style="display: flex; align-items: center; gap: 0.5rem; flex-wrap: wrap;">
@@ -126,8 +127,8 @@ export class RunnerFleetComponent {
                 </button>
               </div>
             `;
-          })
-          .join("");
+            })
+            .join("");
 
     this.container.innerHTML = `
       <section style="margin-bottom: 2rem;">

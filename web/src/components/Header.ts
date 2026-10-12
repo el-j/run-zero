@@ -8,13 +8,15 @@ export class HeaderComponent {
   }
 
   render(state?: FleetState, connected: boolean = true) {
-    const quotaUsed = state?.rate_limit_limit && state?.rate_limit_remaining !== undefined
-      ? `${state.rate_limit_remaining}/${state.rate_limit_limit}`
-      : "—";
+    const quotaUsed =
+      state?.rate_limit_limit && state?.rate_limit_remaining !== undefined
+        ? `${state.rate_limit_remaining}/${state.rate_limit_limit}`
+        : "—";
 
-    const billingMinutes = state?.actions_billing?.total_minutes_used !== undefined
-      ? `${state.actions_billing.total_minutes_used}m`
-      : "—";
+    const billingMinutes =
+      state?.actions_billing?.total_minutes_used !== undefined
+        ? `${state.actions_billing.total_minutes_used}m`
+        : "—";
 
     this.container.innerHTML = `
       <header class="header glass-panel" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.5rem;">
