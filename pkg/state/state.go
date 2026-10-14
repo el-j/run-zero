@@ -1,6 +1,9 @@
 package state
 
-import "sync"
+import (
+	"strings"
+	"sync"
+)
 
 // State maintains the thread-safe global runtime state of the RunZero daemon.
 type State struct {
@@ -59,7 +62,8 @@ func (s *State) GetSnapshot() FleetState {
 	runnersCopy := make([]RunnerInfo, len(s.runners))
 	for i, r := range s.runners {
 		runnersCopy[i] = r
-		if r.Status == "busy" || r.Status == "running" {
+		statusLower := strings.ToLower(r.Status)
+		if r.State == "running" || r.Status == "busy" || r.Status == "running" || strings.HasPrefix(statusLower, "up") {
 			busy++
 		}
 	}
