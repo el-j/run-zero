@@ -148,6 +148,11 @@ services:
     environment:
       - ATHENS_DISK_STORAGE_ROOT=/var/lib/athens
       - ATHENS_STORAGE_TYPE=disk
+      # The image default is GOPROXY=direct, i.e. a `git fetch` from GitHub per cache miss.
+      # For multi-module monorepos (aws-sdk-go-v2) that takes minutes per module and stalls
+      # every CI job that waits on it. Fetch from the upstream proxy instead (~0.1s).
+      - ATHENS_GO_BINARY_ENV_VARS=GOPROXY=https://proxy.golang.org
+      - ATHENS_GOGET_WORKERS=20
     volumes:
       - athens-storage:/var/lib/athens
 
