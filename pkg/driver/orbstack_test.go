@@ -247,6 +247,9 @@ func TestOrbStackDriver_ParseRunzeroJobScopedRunner(t *testing.T) {
 	if r.ID != "063160" {
 		t.Errorf("unexpected id: %s", r.ID)
 	}
+	if r.JobID == nil || *r.JobID != 202 || r.RunID == nil || *r.RunID != 101 {
+		t.Errorf("unexpected job/run: JobID=%v RunID=%v", r.JobID, r.RunID)
+	}
 }
 
 func TestOrbstackMachineName(t *testing.T) {

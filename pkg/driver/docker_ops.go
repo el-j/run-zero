@@ -3,6 +3,7 @@ package driver
 import (
 	"context"
 	"fmt"
+	"strconv"
 	"strings"
 
 	"github.com/el-j/run-zero/pkg/state"
@@ -10,7 +11,7 @@ import (
 
 // ListRunners queries Docker for containers with label runzero=true.
 func (d *DockerDriver) ListRunners(ctx context.Context) ([]state.RunnerInfo, error) {
-	format := "{{.ID}}\t{{.Names}}\t{{.Status}}\t{{.State}}\t{{.Label \"runzero.repo\"}}\t{{.Label \"runzero.id\"}}\t{{.Label \"runzero.created_at\"}}"
+	format := "{{.ID}}\t{{.Names}}\t{{.Status}}\t{{.State}}\t{{.Label \"runzero.repo\"}}\t{{.Label \"runzero.id\"}}\t{{.Label \"runzero.created_at\"}}\t{{.Label \"runzero.arch\"}}\t{{.Label \"runzero.job_id\"}}\t{{.Label \"runzero.run_id\"}}\t{{.Label \"runzero.job\"}}\t{{.Label \"runzero.workflow\"}}"
 	out, err := d.executor.Run(ctx, "docker", "ps", "-a", "--filter", "label=runzero=true", "--format", format)
 	if err != nil {
 		return nil, fmt.Errorf("docker ps failed: %w", err)
@@ -213,14 +214,80 @@ func parseDockerPS(output string) []state.RunnerInfo {
 			createdPtr = &c
 		}
 
+		targetArch := ""
+		if len(parts) >= 8 && strings.TrimSpace(parts[7]) != "" {
+			targetArch = strings.TrimSpace(parts[7])
+		}
+
+		var jobIDPtr *int64
+		if len(parts) >= 9 && strings.TrimSpace(parts[8]) != "" {
+			if parsed, err := strconv.ParseInt(strings.TrimSpace(parts[8]), 10, 64); err == nil {
+				jobIDPtr = &parsed
+			}
+		}
+
+		var runIDPtr *int64
+		if len(parts) >= 10 && strings.TrimSpace(parts[9]) != "" {
+			if parsed, err := strconv.ParseInt(strings.TrimSpace(parts[9]), 10, 64); err == nil {
+				runIDPtr = &parsed
+			}
+		}
+
+		var jobNamePtr *string
+		if len(parts) >= 11 && strings.TrimSpace(parts[10]) != "" {
+			jName := strings.TrimSpace(parts[10])
+			jobNamePtr = &jName
+		}
+
+		var workflowPtr *string
+		if len(parts) >= 12 && strings.TrimSpace(parts[11]) != "" {
+			wName := strings.TrimSpace(parts[11])
+			workflowPtr = &wName
+		}
+
+		name := parts[1]
+		// If metadata is missing from labels, parse from standard container name:
+		// Format: runzero-j<jobID>-r<runID>-<arch>-<owner__repo>-<id>
+		if strings.HasPrefix(name, "runzero-") {
+			trimmed := strings.TrimPrefix(name, "runzero-")
+			tokens := strings.Split(trimmed, "-")
+			if len(tokens) >= 5 && strings.HasPrefix(tokens[0], "j") && strings.HasPrefix(tokens[1], "r") {
+				if jobIDPtr == nil {
+					if parsed, err := strconv.ParseInt(tokens[0][1:], 10, 64); err == nil {
+						jobIDPtr = &parsed
+					}
+				}
+				if runIDPtr == nil {
+					if parsed, err := strconv.ParseInt(tokens[1][1:], 10, 64); err == nil {
+						runIDPtr = &parsed
+					}
+				}
+				if targetArch == "" {
+					targetArch = tokens[2]
+				}
+				if repo == "" {
+					repoPart := strings.Join(tokens[3:len(tokens)-1], "-")
+					repo = parseRepoToken(repoPart)
+				}
+				if id == parts[0] {
+					id = tokens[len(tokens)-1]
+				}
+			}
+		}
+
 		runners = append(runners, state.RunnerInfo{
-			ID:         id,
-			Name:       parts[1],
-			Status:     parts[2],
-			State:      parts[3],
-			TargetRepo: repo,
-			Backend:    "docker",
-			CreatedAt:  createdPtr,
+			ID:           id,
+			Name:         name,
+			Status:       parts[2],
+			State:        parts[3],
+			TargetRepo:   repo,
+			TargetArch:   targetArch,
+			Backend:      "docker",
+			CreatedAt:    createdPtr,
+			JobID:        jobIDPtr,
+			RunID:        runIDPtr,
+			JobName:      jobNamePtr,
+			WorkflowName: workflowPtr,
 		})
 	}
 	return runners

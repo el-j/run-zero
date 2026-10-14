@@ -8,21 +8,24 @@ import (
 
 // RunnerSpec defines configuration for launching an ephemeral runner instance.
 type RunnerSpec struct {
-	ID        string
-	Name      string
-	Repo      string
-	Arch      string
-	Backend   string
-	JobName   string
-	CPUs      int
-	MemoryMB  int
-	Labels    []string
-	Token     string
-	CacheDir  string
-	Mounts    map[string]string
-	Env       map[string]string
-	Network   string
-	ImageName string
+	ID           string
+	Name         string
+	Repo         string
+	Arch         string
+	Backend      string
+	JobName      string
+	JobID        *int64
+	RunID        *int64
+	WorkflowName *string
+	CPUs         int
+	MemoryMB     int
+	Labels       []string
+	Token        string
+	CacheDir     string
+	Mounts       map[string]string
+	Env          map[string]string
+	Network      string
+	ImageName    string
 }
 
 // RunnerDriver abstracts ephemeral runner lifecycle across container and hypervisor backends.

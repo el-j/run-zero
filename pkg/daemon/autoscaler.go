@@ -398,19 +398,22 @@ func (s *Scaler) ScaleCycle(ctx context.Context) {
 				runnerName := driver.JobScopedRunnerName(repo, targetArch, job.RunID, job.ID, id)
 
 				spec := driver.RunnerSpec{
-					ID:       id,
-					Name:     runnerName,
-					Repo:     repo,
-					Arch:     targetArch,
-					Backend:  backend,
-					JobName:  job.Name,
-					CPUs:     cpus,
-					MemoryMB: memMB,
-					Labels:   append([]string{"self-hosted", "local", targetArch}, job.Labels...),
-					Token:    token,
-					CacheDir: s.cfg.HostCacheDir,
-					Mounts:   cacheMounts,
-					Network:  "host",
+					ID:           id,
+					Name:         runnerName,
+					Repo:         repo,
+					Arch:         targetArch,
+					Backend:      backend,
+					JobName:      job.Name,
+					JobID:        &job.ID,
+					RunID:        &job.RunID,
+					WorkflowName: job.WorkflowName,
+					CPUs:         cpus,
+					MemoryMB:     memMB,
+					Labels:       append([]string{"self-hosted", "local", targetArch}, job.Labels...),
+					Token:        token,
+					CacheDir:     s.cfg.HostCacheDir,
+					Mounts:       cacheMounts,
+					Network:      "host",
 				}
 
 				info, err := s.driver.SpawnRunner(ctx, spec)

@@ -206,3 +206,34 @@ func TestDockerDriver_StopRunner_AuxiliaryContainers(t *testing.T) {
 		t.Errorf("expected auxiliary container to be pruned, got %v", stoppedAux)
 	}
 }
+
+func TestDockerDriver_ParseDockerPS_MetadataRecovery(t *testing.T) {
+	// Case 1: All metadata in extended labels
+	line1 := "cid123\trunzero-j1158-r3847-amd64-el-j__landing.in-dc65c5\tUp 5m\trunning\tel-j/landing.inquam-services\tdc65c5\t2026-10-14T11:10:00Z\tamd64\t1158\t3847\tMake Nice\tCI\n"
+	// Case 2: Labels missing or minimal, metadata recovered from container name
+	line2 := "cid456\trunzero-j202-r101-arm64-el-j__herbful-063160\tUp 2m\trunning\t\t\t\n"
+
+	runners := parseDockerPS(line1 + line2)
+	if len(runners) != 2 {
+		t.Fatalf("expected 2 runners, got %d", len(runners))
+	}
+
+	r1 := runners[0]
+	if r1.ID != "dc65c5" || r1.TargetRepo != "el-j/landing.inquam-services" || r1.TargetArch != "amd64" {
+		t.Errorf("r1 unexpected identity: %+v", r1)
+	}
+	if r1.JobID == nil || *r1.JobID != 1158 || r1.RunID == nil || *r1.RunID != 3847 {
+		t.Errorf("r1 unexpected job/run: JobID=%v RunID=%v", r1.JobID, r1.RunID)
+	}
+	if r1.JobName == nil || *r1.JobName != "Make Nice" || r1.WorkflowName == nil || *r1.WorkflowName != "CI" {
+		t.Errorf("r1 unexpected name/workflow: JobName=%v Workflow=%v", r1.JobName, r1.WorkflowName)
+	}
+
+	r2 := runners[1]
+	if r2.ID != "063160" || r2.TargetRepo != "el-j/herbful" || r2.TargetArch != "arm64" {
+		t.Errorf("r2 unexpected identity: %+v", r2)
+	}
+	if r2.JobID == nil || *r2.JobID != 202 || r2.RunID == nil || *r2.RunID != 101 {
+		t.Errorf("r2 unexpected job/run from name: JobID=%v RunID=%v", r2.JobID, r2.RunID)
+	}
+}

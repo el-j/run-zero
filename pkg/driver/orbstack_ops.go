@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log"
+	"strconv"
 	"strings"
 
 	"github.com/el-j/run-zero/pkg/state"
@@ -132,6 +133,8 @@ func parseOrbctlList(output string) []state.RunnerInfo {
 		id := name
 		targetRepo := ""
 		targetArch := ""
+		var jobIDPtr *int64
+		var runIDPtr *int64
 
 		if strings.HasPrefix(name, "runzero-") {
 			trimmed := strings.TrimPrefix(name, "runzero-")
@@ -139,6 +142,12 @@ func parseOrbctlList(output string) []state.RunnerInfo {
 			if len(parts) >= 5 && strings.HasPrefix(parts[0], "j") && strings.HasPrefix(parts[1], "r") {
 				// Expected format: runzero-j<jobID>-r<runID>-<arch>-<owner__repo>-<id>
 				// Example: runzero-j202-r101-amd64-el-j__herbful-063160
+				if jID, err := strconv.ParseInt(parts[0][1:], 10, 64); err == nil {
+					jobIDPtr = &jID
+				}
+				if rID, err := strconv.ParseInt(parts[1][1:], 10, 64); err == nil {
+					runIDPtr = &rID
+				}
 				targetArch = parts[2]
 				id = parts[len(parts)-1]
 				repoPart := strings.Join(parts[3:len(parts)-1], "-")
@@ -179,6 +188,8 @@ func parseOrbctlList(output string) []state.RunnerInfo {
 			TargetRepo: targetRepo,
 			TargetArch: targetArch,
 			Backend:    "orbstack",
+			JobID:      jobIDPtr,
+			RunID:      runIDPtr,
 		})
 	}
 	return runners

@@ -67,12 +67,22 @@ func (d *DockerDriver) SpawnRunner(ctx context.Context, spec RunnerSpec) (*state
 	args = append(args, "--label", fmt.Sprintf("runzero.repo=%s", spec.Repo))
 	args = append(args, "--label", fmt.Sprintf("target-repo=%s", spec.Repo))
 	args = append(args, "--label", fmt.Sprintf("target-arch=%s", spec.Arch))
-	args = append(args, "--label", fmt.Sprintf("com.docker.compose.project=%s", "run-zero"))
+	args = append(args, "--label", fmt.Sprintf("runzero.arch=%s", spec.Arch))
+	args = append(args, "--label", fmt.Sprintf("com.docker.compose.project=%s", "runzero-runners"))
 	args = append(args, "--label", fmt.Sprintf("com.docker.compose.service=%s", name))
 	now := time.Now().UTC().Format(time.RFC3339)
 	args = append(args, "--label", fmt.Sprintf("runzero.created_at=%s", now))
+	if spec.JobID != nil {
+		args = append(args, "--label", fmt.Sprintf("runzero.job_id=%d", *spec.JobID))
+	}
+	if spec.RunID != nil {
+		args = append(args, "--label", fmt.Sprintf("runzero.run_id=%d", *spec.RunID))
+	}
 	if spec.JobName != "" {
 		args = append(args, "--label", fmt.Sprintf("runzero.job=%s", spec.JobName))
+	}
+	if spec.WorkflowName != nil && *spec.WorkflowName != "" {
+		args = append(args, "--label", fmt.Sprintf("runzero.workflow=%s", *spec.WorkflowName))
 	}
 
 	if spec.CPUs > 0 {

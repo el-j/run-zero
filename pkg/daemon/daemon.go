@@ -3,6 +3,8 @@ package daemon
 import (
 	"context"
 	"fmt"
+	"os"
+	"path/filepath"
 	"time"
 
 	"github.com/el-j/run-zero/pkg/api"
@@ -37,7 +39,11 @@ func NewDaemon(cfg *config.Config, version string, distDir, staticDir string) *D
 	st.SetRepoPriority(prio, paused)
 
 	poller := initPoller(cfg, pm, st)
-	instStore := driver.NewInstanceStore("instances.json")
+	stateDir := os.Getenv("RUNZERO_STATE_DIR")
+	if stateDir == "" {
+		stateDir = ".runzero-state"
+	}
+	instStore := driver.NewInstanceStore(filepath.Join(stateDir, "instances.json"))
 	runnerDriver := initDriver(cfg, instStore)
 	ghClient := github.NewClient(cfg.AccessToken, "", nil)
 
