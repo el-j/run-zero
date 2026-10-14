@@ -96,12 +96,22 @@ func (r *Router) ListRunners(ctx context.Context) ([]state.RunnerInfo, error) {
 	if r.dockerDriver != nil {
 		dRunners, err := r.dockerDriver.ListRunners(ctx)
 		if err == nil {
+			for _, dr := range dRunners {
+				if r.store != nil {
+					r.store.Register(dr)
+				}
+			}
 			results = append(results, dRunners...)
 		}
 	}
 	if r.vmDriver != nil {
 		vRunners, err := r.vmDriver.ListRunners(ctx)
 		if err == nil {
+			for _, vr := range vRunners {
+				if r.store != nil {
+					r.store.Register(vr)
+				}
+			}
 			results = append(results, vRunners...)
 		}
 	}
@@ -121,7 +131,7 @@ func (r *Router) StopRunner(ctx context.Context, runnerID string) error {
 			}
 		}
 		for _, info := range r.store.List() {
-			if info.Name == runnerID {
+			if info.Name == runnerID || info.ID == runnerID {
 				if info.Backend == "orbstack" && r.vmDriver != nil {
 					return r.vmDriver.StopRunner(ctx, runnerID)
 				}

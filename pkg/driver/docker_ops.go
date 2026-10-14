@@ -57,15 +57,15 @@ func (d *DockerDriver) StopRunner(ctx context.Context, runnerID string) error {
 	removed := false
 
 	for _, target := range d.resolveTargets(ctx, runnerID) {
+		if _, inspectErr := d.executor.Run(ctx, "docker", "inspect", target); inspectErr != nil {
+			lastErr = inspectErr
+			lastOut = "no such container"
+			continue
+		}
 		_, _ = d.executor.Run(ctx, "docker", "stop", "-t", "5", target)
 		out, err := d.executor.Run(ctx, "docker", "rm", "-f", target)
 		outStr := strings.TrimSpace(string(out))
-		if err == nil {
-			if strings.Contains(strings.ToLower(outStr), "no such container") {
-				lastErr = fmt.Errorf("no such container")
-				lastOut = outStr
-				continue
-			}
+		if err == nil && outStr != "" && !strings.Contains(strings.ToLower(outStr), "no such container") {
 			removed = true
 			break
 		}
