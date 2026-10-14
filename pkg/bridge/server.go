@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"log"
 	"net"
 	"net/http"
 	"os"
@@ -22,6 +23,7 @@ type Server struct {
 	gitSHA       string
 	driverMap    map[string]driver.RunnerDriver
 	httpSrv      *http.Server
+	gb           *builder.GoldenBuilder
 	imgInspector *builder.ImageInspector
 	buildMgr     *builder.BuildManager
 }
@@ -63,6 +65,7 @@ func NewServer(port int, host, token, version, gitSHA string, drivers map[string
 		version:      version,
 		gitSHA:       gitSHA,
 		driverMap:    drivers,
+		gb:           gb,
 		imgInspector: inspector,
 		buildMgr:     mgr,
 	}
@@ -191,6 +194,15 @@ func (s *Server) Run(ctx context.Context) error {
 			return ctx
 		},
 	}
+
+	// Ensure no golden base VM templates are left running on startup
+	go func() {
+		if s.gb != nil {
+			if stopped, err := s.gb.EnsureBaseImagesStopped(context.Background()); err == nil && len(stopped) > 0 {
+				log.Printf("[bridge] Stopped running golden base VM templates on startup: %v", stopped)
+			}
+		}
+	}()
 	errCh := make(chan error, 1)
 	go func() {
 		if err := s.httpSrv.ListenAndServe(); err != nil && err != http.ErrServerClosed {

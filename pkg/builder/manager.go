@@ -280,6 +280,9 @@ func (m *BuildManager) buildVMImage(ctx context.Context, arch string) error {
 	} else {
 		m.appendLog(fmt.Sprintf("[BUILD:VM] Golden base %s is already up to date.", m.gb.BaseImageName(arch)))
 	}
+	if stopped, err := m.gb.EnsureBaseImagesStopped(ctx); err == nil && len(stopped) > 0 {
+		m.appendLog(fmt.Sprintf("[BUILD:VM] Verified golden base VMs are stopped: %v", stopped))
+	}
 	return nil
 }
 

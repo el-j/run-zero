@@ -53,22 +53,28 @@ func TestPromoteStaging(t *testing.T) {
 
 	// Path 1: Rename succeeds
 	renameCalled := false
+	stopBaseCalled := false
 	mockRename := &mockExecutor{
 		runFunc: func(ctx context.Context, name string, args ...string) ([]byte, error) {
 			if name == "orbctl" && len(args) > 0 && args[0] == "rename" {
 				renameCalled = true
 				return []byte("ok"), nil
 			}
+			if name == "orbctl" && len(args) > 1 && args[0] == "stop" && args[1] == "base" {
+				stopBaseCalled = true
+				return []byte("ok"), nil
+			}
 			return []byte("[]"), nil
 		},
 	}
 	b1 := NewGoldenBuilder(Config{}, mockRename)
-	if err := b1.PromoteStaging(ctx, "stage", "base"); err != nil || !renameCalled {
-		t.Fatalf("expected rename success, got: %v", err)
+	if err := b1.PromoteStaging(ctx, "stage", "base"); err != nil || !renameCalled || !stopBaseCalled {
+		t.Fatalf("expected rename success and base stopped, got err=%v rename=%v stop=%v", err, renameCalled, stopBaseCalled)
 	}
 
 	// Path 2: Rename fails, clone succeeds
 	cloneCalled := false
+	stopBaseCloneCalled := false
 	mockClone := &mockExecutor{
 		runFunc: func(ctx context.Context, name string, args ...string) ([]byte, error) {
 			if name == "orbctl" && len(args) > 0 && args[0] == "rename" {
@@ -78,12 +84,16 @@ func TestPromoteStaging(t *testing.T) {
 				cloneCalled = true
 				return []byte("ok"), nil
 			}
+			if name == "orbctl" && len(args) > 1 && args[0] == "stop" && args[1] == "base" {
+				stopBaseCloneCalled = true
+				return []byte("ok"), nil
+			}
 			return []byte("[]"), nil
 		},
 	}
 	b2 := NewGoldenBuilder(Config{}, mockClone)
-	if err := b2.PromoteStaging(ctx, "stage", "base"); err != nil || !cloneCalled {
-		t.Fatalf("expected clone fallback success, got: %v", err)
+	if err := b2.PromoteStaging(ctx, "stage", "base"); err != nil || !cloneCalled || !stopBaseCloneCalled {
+		t.Fatalf("expected clone fallback success and base stopped, got err=%v clone=%v stop=%v", err, cloneCalled, stopBaseCloneCalled)
 	}
 
 	// Path 3: Both fail

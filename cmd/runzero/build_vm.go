@@ -75,5 +75,9 @@ func runBuildVMBase(args []string, stdout, stderr io.Writer) int {
 		}
 	}
 
+	if stopped, err := gb.EnsureBaseImagesStopped(ctx); err == nil && len(stopped) > 0 {
+		fmt.Fprintf(stdout, "Verified base VM templates are stopped: %v\n", stopped)
+	}
+
 	return 0
 }

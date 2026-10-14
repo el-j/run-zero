@@ -59,6 +59,9 @@ func (b *GoldenBuilder) BuildBaseImage(ctx context.Context, arch string) (bool, 
 		return false, err
 	}
 
+	_ = b.StopVM(ctx, baseName)
+	_, _ = b.EnsureBaseImagesStopped(ctx)
+
 	_ = b.WriteStamp(arch)
 	b.EmitEvent(StatusReady, arch, "Build succeeded.")
 	return true, nil

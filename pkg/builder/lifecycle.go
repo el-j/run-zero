@@ -35,6 +35,7 @@ func (b *GoldenBuilder) PromoteStaging(ctx context.Context, stagingName, baseNam
 
 	// Attempt rename
 	if _, err := b.exec.Run(ctx, "orbctl", "rename", stagingName, baseName); err == nil {
+		_ = b.StopVM(ctx, baseName)
 		return nil
 	}
 
@@ -43,6 +44,7 @@ func (b *GoldenBuilder) PromoteStaging(ctx context.Context, stagingName, baseNam
 		return fmt.Errorf("failed promoting staging VM %s to %s: %w", stagingName, baseName, err)
 	}
 	_, _ = b.exec.Run(ctx, "orbctl", "delete", "-f", stagingName)
+	_ = b.StopVM(ctx, baseName)
 	return nil
 }
 
@@ -62,7 +64,7 @@ func (b *GoldenBuilder) EnsureBaseImagesStopped(ctx context.Context) ([]string, 
 
 	var stopped []string
 	for _, vm := range vms {
-		if strings.HasPrefix(vm.Name, BaseImagePrefix) && vm.State == "running" {
+		if strings.HasPrefix(vm.Name, BaseImagePrefix) && vm.State != "stopped" {
 			if err := b.StopVM(ctx, vm.Name); err == nil {
 				stopped = append(stopped, vm.Name)
 			}
