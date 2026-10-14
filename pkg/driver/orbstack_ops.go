@@ -46,6 +46,9 @@ func (o *OrbStackDriver) enrichFromStore(runners []state.RunnerInfo) {
 		if runners[i].TargetArch == "" {
 			runners[i].TargetArch = known.TargetArch
 		}
+		if runners[i].CreatedAt == nil {
+			runners[i].CreatedAt = known.CreatedAt
+		}
 	}
 }
 

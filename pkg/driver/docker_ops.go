@@ -10,13 +10,48 @@ import (
 
 // ListRunners queries Docker for containers with label runzero=true.
 func (d *DockerDriver) ListRunners(ctx context.Context) ([]state.RunnerInfo, error) {
-	format := "{{.ID}}\t{{.Names}}\t{{.Status}}\t{{.State}}\t{{.Label \"runzero.repo\"}}\t{{.Label \"runzero.id\"}}"
+	format := "{{.ID}}\t{{.Names}}\t{{.Status}}\t{{.State}}\t{{.Label \"runzero.repo\"}}\t{{.Label \"runzero.id\"}}\t{{.Label \"runzero.created_at\"}}"
 	out, err := d.executor.Run(ctx, "docker", "ps", "-a", "--filter", "label=runzero=true", "--format", format)
 	if err != nil {
 		return nil, fmt.Errorf("docker ps failed: %w", err)
 	}
 
-	return parseDockerPS(string(out)), nil
+	runners := parseDockerPS(string(out))
+	d.enrichFromStore(runners)
+	return runners, nil
+}
+
+func (d *DockerDriver) enrichFromStore(runners []state.RunnerInfo) {
+	if d.store == nil {
+		return
+	}
+	byName := make(map[string]state.RunnerInfo)
+	for _, known := range d.store.List() {
+		if known.Name != "" {
+			byName[known.Name] = known
+		}
+		if known.ID != "" {
+			byName[known.ID] = known
+		}
+	}
+	for i := range runners {
+		known, ok := byName[runners[i].Name]
+		if !ok {
+			known, ok = byName[runners[i].ID]
+		}
+		if !ok {
+			continue
+		}
+		if runners[i].TargetRepo == "" {
+			runners[i].TargetRepo = known.TargetRepo
+		}
+		if runners[i].TargetArch == "" {
+			runners[i].TargetArch = known.TargetArch
+		}
+		if runners[i].CreatedAt == nil {
+			runners[i].CreatedAt = known.CreatedAt
+		}
+	}
 }
 
 // resolveTargets returns docker container references for a runner ID as reported by
@@ -172,6 +207,11 @@ func parseDockerPS(output string) []state.RunnerInfo {
 		if len(parts) >= 6 && parts[5] != "" {
 			id = parts[5]
 		}
+		var createdPtr *string
+		if len(parts) >= 7 && strings.TrimSpace(parts[6]) != "" {
+			c := strings.TrimSpace(parts[6])
+			createdPtr = &c
+		}
 
 		runners = append(runners, state.RunnerInfo{
 			ID:         id,
@@ -180,6 +220,7 @@ func parseDockerPS(output string) []state.RunnerInfo {
 			State:      parts[3],
 			TargetRepo: repo,
 			Backend:    "docker",
+			CreatedAt:  createdPtr,
 		})
 	}
 	return runners

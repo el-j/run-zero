@@ -69,6 +69,8 @@ func (d *DockerDriver) SpawnRunner(ctx context.Context, spec RunnerSpec) (*state
 	args = append(args, "--label", fmt.Sprintf("target-arch=%s", spec.Arch))
 	args = append(args, "--label", fmt.Sprintf("com.docker.compose.project=%s", "run-zero"))
 	args = append(args, "--label", fmt.Sprintf("com.docker.compose.service=%s", name))
+	now := time.Now().UTC().Format(time.RFC3339)
+	args = append(args, "--label", fmt.Sprintf("runzero.created_at=%s", now))
 	if spec.JobName != "" {
 		args = append(args, "--label", fmt.Sprintf("runzero.job=%s", spec.JobName))
 	}
@@ -129,7 +131,7 @@ func (d *DockerDriver) SpawnRunner(ctx context.Context, spec RunnerSpec) (*state
 		return nil, fmt.Errorf("docker run failed (%w): %s", err, strings.TrimSpace(string(out)))
 	}
 
-	now := time.Now().UTC().Format(time.RFC3339)
+	now = time.Now().UTC().Format(time.RFC3339)
 	info := state.RunnerInfo{
 		ID:         spec.ID,
 		Name:       name,

@@ -278,6 +278,15 @@ func (s *Scaler) ScaleCycle(ctx context.Context) {
 
 	activeRunners := s.CollectRunners(ctx)
 
+	// Reconcile and reap orphaned/idle/stale runners
+	if s.reaper != nil && len(activeRunners) > 0 {
+		reaped := s.reaper.Reconcile(ctx, activeRunners, 0)
+		if len(reaped) > 0 {
+			s.state.AppendLog(fmt.Sprintf("[Autoscaler] 🧹 Reaped %d orphaned/idle runner(s) blocking capacity.", len(reaped)))
+			activeRunners = s.CollectRunners(ctx)
+		}
+	}
+
 	var tracked []string
 	if s.poller != nil {
 		tracked = s.poller.Repos()

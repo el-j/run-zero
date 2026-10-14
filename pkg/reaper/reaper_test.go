@@ -96,3 +96,12 @@ func TestScopes(t *testing.T) {
 		t.Errorf("unexpected org scope")
 	}
 }
+
+func TestReaper_Reconcile_EmptyRunners(t *testing.T) {
+	d := &mockDriver{}
+	r := NewReaper(d, nil, Timeouts{})
+	reaped := r.Reconcile(context.Background(), nil, 0)
+	if len(reaped) != 0 {
+		t.Errorf("expected 0 reaped, got %d", len(reaped))
+	}
+}

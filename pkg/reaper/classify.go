@@ -10,6 +10,10 @@ func Classify(ageSeconds float64, reg *Registration, registryConclusive bool, ti
 		return ActionKeep
 	}
 
+	if reg.Status == "offline" && ageSeconds > float64(timeouts.UnregisteredSeconds) {
+		return ActionReapUnregistered
+	}
+
 	if reg.Busy {
 		if ageSeconds > float64(timeouts.BusySeconds) {
 			return ActionCheckStaleBusy

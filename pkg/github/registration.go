@@ -105,3 +105,18 @@ func (c *Client) ListRunners(ctx context.Context, repo, org string) ([]RunnerReg
 	}
 	return results, nil
 }
+
+// DeleteRunner removes a registered runner from a repository or organization.
+func (c *Client) DeleteRunner(ctx context.Context, repo, org string, runnerID int64) error {
+	var endpoint string
+	if repo != "" {
+		endpoint = fmt.Sprintf("/repos/%s/actions/runners/%d", repo, runnerID)
+	} else if org != "" {
+		endpoint = fmt.Sprintf("/orgs/%s/actions/runners/%d", org, runnerID)
+	} else {
+		return fmt.Errorf("must provide either repo or org to delete runner")
+	}
+
+	_, err := c.DoRequest(ctx, "DELETE", endpoint, nil, nil)
+	return err
+}

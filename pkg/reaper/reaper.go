@@ -2,6 +2,7 @@ package reaper
 
 import (
 	"context"
+	"strings"
 	"time"
 
 	"github.com/el-j/run-zero/pkg/driver"
@@ -26,6 +27,72 @@ func NewReaper(driver driver.RunnerDriver, ghClient *github.Client, timeouts Tim
 		ghClient: ghClient,
 		timeouts: timeouts,
 	}
+}
+
+// Reconcile executes a full reap pass across local active runners.
+// It queries GitHub runner registrations for repos that have active runners,
+// classifies each runner against registration and age timeouts, tears down
+// orphaned/idle/stale runners via driver.StopRunner, and cleans up registrations from GitHub.
+func (r *Reaper) Reconcile(
+	ctx context.Context,
+	localRunners []state.RunnerInfo,
+	standbyCount int,
+) []string {
+	if len(localRunners) == 0 {
+		return nil
+	}
+
+	repoMap := make(map[string]bool)
+	for _, runner := range localRunners {
+		if runner.TargetRepo != "" {
+			repoMap[runner.TargetRepo] = true
+		}
+	}
+
+	registrations := make(map[string]Registration)
+	registryConclusive := false
+
+	if r.ghClient != nil {
+		for repo := range repoMap {
+			regs, err := r.ghClient.ListRunners(ctx, repo, "")
+			if err == nil {
+				registryConclusive = true
+				for _, reg := range regs {
+					registrations[reg.Name] = Registration{
+						ID:     reg.ID,
+						Name:   reg.Name,
+						Status: reg.Status,
+						Busy:   reg.Busy,
+						Scope:  reg.Scope,
+					}
+					// Auto-clean dead offline runzero runners from GitHub
+					if reg.Status == "offline" && strings.HasPrefix(reg.Name, "runzero-") {
+						_ = r.ghClient.DeleteRunner(ctx, repo, "", reg.ID)
+					}
+				}
+			}
+		}
+	}
+
+	nowUnix := float64(time.Now().Unix())
+	reaped := r.ReconcileLocalRunners(ctx, localRunners, registrations, registryConclusive, nowUnix, standbyCount)
+
+	// Clean up GitHub registration for any runner that was reaped
+	if r.ghClient != nil && len(reaped) > 0 {
+		reapedMap := make(map[string]bool)
+		for _, id := range reaped {
+			reapedMap[id] = true
+		}
+		for _, runner := range localRunners {
+			if reapedMap[runner.ID] || reapedMap[runner.Name] {
+				if reg, ok := registrations[runner.Name]; ok {
+					_ = r.ghClient.DeleteRunner(ctx, runner.TargetRepo, "", reg.ID)
+				}
+			}
+		}
+	}
+
+	return reaped
 }
 
 // ReconcileLocalRunners evaluates local runners against GitHub registrations and reaps dead/idle runners.
