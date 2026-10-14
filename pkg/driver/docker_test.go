@@ -81,6 +81,9 @@ func TestDockerDriver_SpawnRunner(t *testing.T) {
 	if !strings.Contains(joined, "custom-img:tag") {
 		t.Errorf("expected custom-img in args, got: %s", joined)
 	}
+	if !strings.Contains(joined, "com.docker.compose.service=runzero-inst-1") {
+		t.Errorf("expected com.docker.compose.service label in args, got: %s", joined)
+	}
 }
 
 func TestDockerDriver_Operations(t *testing.T) {

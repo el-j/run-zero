@@ -13,6 +13,7 @@ type RunnerSpec struct {
 	Repo      string
 	Arch      string
 	Backend   string
+	JobName   string
 	CPUs      int
 	MemoryMB  int
 	Labels    []string

@@ -67,6 +67,11 @@ func (d *DockerDriver) SpawnRunner(ctx context.Context, spec RunnerSpec) (*state
 	args = append(args, "--label", fmt.Sprintf("runzero.repo=%s", spec.Repo))
 	args = append(args, "--label", fmt.Sprintf("target-repo=%s", spec.Repo))
 	args = append(args, "--label", fmt.Sprintf("target-arch=%s", spec.Arch))
+	args = append(args, "--label", fmt.Sprintf("com.docker.compose.project=%s", "run-zero"))
+	args = append(args, "--label", fmt.Sprintf("com.docker.compose.service=%s", name))
+	if spec.JobName != "" {
+		args = append(args, "--label", fmt.Sprintf("runzero.job=%s", spec.JobName))
+	}
 
 	if spec.CPUs > 0 {
 		args = append(args, fmt.Sprintf("--cpus=%d", spec.CPUs))

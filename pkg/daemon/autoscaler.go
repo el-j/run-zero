@@ -394,6 +394,7 @@ func (s *Scaler) ScaleCycle(ctx context.Context) {
 					Repo:     repo,
 					Arch:     targetArch,
 					Backend:  backend,
+					JobName:  job.Name,
 					CPUs:     cpus,
 					MemoryMB: memMB,
 					Labels:   append([]string{"self-hosted", "local", targetArch}, job.Labels...),
