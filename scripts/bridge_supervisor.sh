@@ -112,6 +112,8 @@ stage_bridge() {
     fi
     cp "$REPO_DIR/bin/runzero" "$BRIDGE_HOME/runzero"
     chmod +x "$BRIDGE_HOME/runzero"
+    rm -rf "$BRIDGE_HOME/docker"
+    cp -R "$REPO_DIR/docker" "$BRIDGE_HOME/docker"
 }
 
 render_plist() {

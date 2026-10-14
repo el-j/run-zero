@@ -90,9 +90,9 @@ export class RunZeroClient {
   }
 
   async controlRunner(
-    action: "start" | "stop" | "drain" | "pause" | "resume",
-    options: { runnerId?: string; repo?: string; arch?: string } = {},
-  ): Promise<SuccessResponse> {
+    action: "start" | "stop" | "drain" | "pause" | "resume" | "open-terminal",
+    options: { runnerId?: string; repo?: string; arch?: string; backend?: string } = {},
+  ): Promise<SuccessResponse & { command?: string; terminal_launched?: boolean }> {
     const res = await fetch(`${this.baseUrl}/api/actions/runner`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -101,6 +101,7 @@ export class RunZeroClient {
         runner_id: options.runnerId,
         repo: options.repo,
         arch: options.arch,
+        backend: options.backend,
       }),
     });
     if (!res.ok) {

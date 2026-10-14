@@ -742,8 +742,11 @@ function renderRunners(runners: RunnerInfo[]) {
             ${progressBlock}
             <div class="runner-card-bottom" style="margin-top: 10px;">
               <span class="stat-label">STATUS: <b class="runner-status-val" style="color: var(--emerald);">${escapeHtml((r.status || "RUNNING").toUpperCase())}</b></span>
-              <div style="display: flex; align-items: center; gap: 0.75rem;">
+              <div style="display: flex; align-items: center; gap: 0.5rem;">
                 <span class="runner-duration font-mono">⏱️ ${duration}</span>
+                <button class="btn btn-xs btn-outline terminal-runner-btn" data-runner-id="${escapeHtml(r.id)}" data-runner-name="${escapeHtml(r.name || r.id)}" data-backend="${escapeHtml(r.backend || "")}" title="Open terminal directly connected into runner">
+                  &gt;_ Terminal
+                </button>
                 <button class="btn btn-xs btn-outline stop-runner-btn" data-runner-id="${escapeHtml(r.id)}" data-runner-name="${escapeHtml(r.name || r.id)}" data-job-id="${r.job_id || ""}">
                   Stop
                 </button>
@@ -838,7 +841,10 @@ function renderRunners(runners: RunnerInfo[]) {
             </td>
             <td>${progressBlock || `<span style="color: var(--text-dim);">-</span>`}</td>
             <td>${duration}</td>
-            <td style="text-align: right;">
+            <td style="text-align: right; white-space: nowrap;">
+              <button class="btn btn-xs btn-outline terminal-runner-btn" data-runner-id="${escapeHtml(r.id)}" data-runner-name="${escapeHtml(r.name || r.id)}" data-backend="${escapeHtml(r.backend || "")}" style="margin-right: 4px;" title="Open terminal directly connected into runner">
+                &gt;_ Terminal
+              </button>
               <button class="btn btn-xs btn-outline stop-runner-btn" data-runner-id="${escapeHtml(r.id)}" data-runner-name="${escapeHtml(r.name || r.id)}" data-job-id="${r.job_id || ""}">
                 Stop
               </button>
@@ -865,6 +871,40 @@ function renderRunners(runners: RunnerInfo[]) {
         refreshState();
       } catch (err) {
         showToast(`Failed stopping runner: ${(err as Error).message}`, true);
+      }
+    };
+  });
+
+  // Attach terminal connect handlers across both cards and table
+  document.querySelectorAll<HTMLButtonElement>(".terminal-runner-btn").forEach((btn) => {
+    btn.onclick = async () => {
+      const runnerId = btn.dataset.runnerId!;
+      const runnerName = btn.dataset.runnerName!;
+      const backend = btn.dataset.backend!;
+      const origText = btn.innerHTML;
+      btn.innerHTML = `Launching...`;
+      btn.disabled = true;
+
+      try {
+        const res = await client.controlRunner("open-terminal", {
+          runnerId,
+          backend,
+        });
+        if (res.command) {
+          try {
+            await navigator.clipboard.writeText(res.command);
+          } catch {}
+        }
+        showToast(
+          res.terminal_launched
+            ? `Terminal opened for ${runnerName}!`
+            : `Command copied: ${res.command}`,
+        );
+      } catch (err) {
+        showToast(`Failed opening terminal: ${(err as Error).message}`, true);
+      } finally {
+        btn.innerHTML = origText;
+        btn.disabled = false;
       }
     };
   });

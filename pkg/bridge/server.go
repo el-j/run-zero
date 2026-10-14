@@ -45,9 +45,6 @@ func NewServer(port int, host, token, version, gitSHA string, drivers map[string
 		stateDir = ".runzero-state"
 	}
 	provisionScript := os.Getenv("PROVISION_SCRIPT")
-	if provisionScript == "" {
-		provisionScript = "docker/provision-toolchain.sh"
-	}
 	bCfg := builder.Config{
 		Distro:              "ubuntu:noble",
 		RunnerVersion:       builder.DefaultRunnerVersion,
@@ -141,6 +138,10 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		s.writeJSON(w, http.StatusOK, map[string]string{"status": "cancelled"})
+		return
+	}
+	if path == "/api/actions/open-terminal" && r.Method == http.MethodPost {
+		s.handleOpenTerminal(w, r)
 		return
 	}
 	if strings.HasPrefix(path, "/api/images/build/") && r.Method == http.MethodGet {

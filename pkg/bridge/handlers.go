@@ -2,8 +2,10 @@ package bridge
 
 import (
 	"encoding/json"
+	"fmt"
 	"log"
 	"net/http"
+	"os/exec"
 	"runtime"
 	"strings"
 
@@ -129,4 +131,72 @@ func (s *Server) handlePostDriverCleanup(w http.ResponseWriter, r *http.Request,
 		_ = d.CleanupAll(r.Context())
 	}
 	s.writeJSON(w, http.StatusOK, ActionResponse{Status: "success"})
+}
+
+func (s *Server) handleOpenTerminal(w http.ResponseWriter, r *http.Request) {
+	if !s.checkAuth(r) {
+		s.writeJSON(w, http.StatusUnauthorized, map[string]string{"error": "Unauthorized"})
+		return
+	}
+	var req struct {
+		RunnerID   string `json:"runner_id"`
+		RunnerName string `json:"runner_name"`
+		Backend    string `json:"backend"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		s.writeJSON(w, http.StatusBadRequest, map[string]string{"error": "Invalid JSON: " + err.Error()})
+		return
+	}
+
+	name := strings.TrimSpace(req.RunnerName)
+	if name == "" {
+		name = strings.TrimSpace(req.RunnerID)
+	}
+	if name == "" {
+		s.writeJSON(w, http.StatusBadRequest, map[string]string{"error": "runner_name or runner_id required"})
+		return
+	}
+
+	// Validate name against shell injection
+	for _, c := range name {
+		if !(c >= 'a' && c <= 'z' || c >= 'A' && c <= 'Z' || c >= '0' && c <= '9' || c == '-' || c == '_' || c == '.' || c == ':') {
+			s.writeJSON(w, http.StatusBadRequest, map[string]string{"error": "Invalid runner name characters"})
+			return
+		}
+	}
+
+	backend := req.Backend
+	if backend == "" {
+		if strings.HasPrefix(name, "runzero-j") || strings.HasPrefix(name, "runzero-vm") {
+			backend = "orbstack"
+		} else {
+			backend = "docker"
+		}
+	}
+
+	var cmdStr string
+	if backend == "orbstack" {
+		cmdStr = fmt.Sprintf("orb -m %s -u runner bash", name)
+	} else {
+		cmdStr = fmt.Sprintf("docker exec -it %s bash", name)
+	}
+
+	launched := false
+	if runtime.GOOS == "darwin" {
+		osa := fmt.Sprintf("tell application \"Terminal\"\n\tactivate\n\tdo script \"%s\"\nend tell", strings.ReplaceAll(cmdStr, `"`, `\"`))
+		cmd := exec.CommandContext(r.Context(), "osascript", "-e", osa)
+		if out, err := cmd.CombinedOutput(); err == nil {
+			launched = true
+			log.Printf("[bridge] Launched Terminal window for runner %s: %s", name, strings.TrimSpace(string(out)))
+		} else {
+			log.Printf("[bridge] Failed to launch Terminal via osascript: %v, output: %s", err, string(out))
+		}
+	}
+
+	s.writeJSON(w, http.StatusOK, map[string]interface{}{
+		"success":           launched,
+		"command":           cmdStr,
+		"terminal_launched": launched,
+		"message":           fmt.Sprintf("Terminal command: %s", cmdStr),
+	})
 }

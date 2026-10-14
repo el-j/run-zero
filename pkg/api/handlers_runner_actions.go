@@ -1,11 +1,14 @@
 package api
 
 import (
+	"bytes"
 	"crypto/rand"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"os"
+	"strings"
 	"time"
 
 	"github.com/el-j/run-zero/pkg/config"
@@ -48,10 +51,10 @@ func handleRunnerActionWithDeps(st *state.State, cfg *config.Config, ghClient *g
 		}
 
 		validActions := map[string]bool{
-			"start": true, "stop": true, "drain": true, "pause": true, "resume": true,
+			"start": true, "stop": true, "drain": true, "pause": true, "resume": true, "open-terminal": true,
 		}
 		if !validActions[payload.Action] {
-			writeError(w, http.StatusBadRequest, "Invalid runner action. Must be one of: start, stop, drain, pause, resume")
+			writeError(w, http.StatusBadRequest, "Invalid runner action. Must be one of: start, stop, drain, pause, resume, open-terminal")
 			return
 		}
 
@@ -59,6 +62,80 @@ func handleRunnerActionWithDeps(st *state.State, cfg *config.Config, ghClient *g
 			st.SetAutoscalerStatus("paused")
 		} else if payload.Action == "resume" {
 			st.SetAutoscalerStatus("running")
+		} else if payload.Action == "open-terminal" {
+			var runnerName, backend string
+			if payload.RunnerID != "" {
+				for _, rInfo := range st.GetSnapshot().Runners {
+					if rInfo.ID == payload.RunnerID || rInfo.Name == payload.RunnerID {
+						runnerName = rInfo.Name
+						backend = rInfo.Backend
+						break
+					}
+				}
+			}
+			if runnerName == "" {
+				runnerName = payload.RunnerID
+			}
+			if backend == "" {
+				backend = payload.Backend
+				if backend == "" {
+					if strings.HasPrefix(runnerName, "runzero-j") || strings.HasPrefix(runnerName, "runzero-vm") {
+						backend = "orbstack"
+					} else {
+						backend = "docker"
+					}
+				}
+			}
+
+			var cmdStr string
+			if backend == "orbstack" {
+				cmdStr = fmt.Sprintf("orb -m %s -u runner bash", runnerName)
+			} else {
+				cmdStr = fmt.Sprintf("docker exec -it %s bash", runnerName)
+			}
+
+			terminalLaunched := false
+			bridgeURL := os.Getenv("HOST_VM_BRIDGE_URL")
+			if bridgeURL != "" && bridgeURL != "none" {
+				reqBody, _ := json.Marshal(map[string]string{
+					"runner_id":   payload.RunnerID,
+					"runner_name": runnerName,
+					"backend":     backend,
+				})
+				httpReq, err := http.NewRequestWithContext(r.Context(), http.MethodPost, strings.TrimRight(bridgeURL, "/")+"/api/actions/open-terminal", bytes.NewReader(reqBody))
+				if err == nil {
+					httpReq.Header.Set("Content-Type", "application/json")
+					if token := os.Getenv("RUNZERO_BRIDGE_TOKEN"); token != "" {
+						httpReq.Header.Set("Authorization", "Bearer "+token)
+					}
+					client := &http.Client{Timeout: 5 * time.Second}
+					resp, err := client.Do(httpReq)
+					if err == nil {
+						defer resp.Body.Close()
+						if resp.StatusCode >= 200 && resp.StatusCode < 300 {
+							var bridgeResp struct {
+								TerminalLaunched bool `json:"terminal_launched"`
+							}
+							if err := json.NewDecoder(resp.Body).Decode(&bridgeResp); err == nil {
+								terminalLaunched = bridgeResp.TerminalLaunched
+							}
+						}
+					}
+				}
+			}
+
+			msg := fmt.Sprintf("Terminal opened for %s", runnerName)
+			if !terminalLaunched {
+				msg = fmt.Sprintf("Command copied: %s", cmdStr)
+			}
+			st.AppendLog(fmt.Sprintf("[Go Engine] 💻 Terminal connection for runner %s: %s", runnerName, cmdStr))
+			writeJSON(w, http.StatusOK, map[string]interface{}{
+				"ok":                true,
+				"command":           cmdStr,
+				"terminal_launched": terminalLaunched,
+				"message":           msg,
+			})
+			return
 		}
 
 		if payload.Action == "start" && len(runnerDriver) > 0 && runnerDriver[0] != nil && ghClient != nil {

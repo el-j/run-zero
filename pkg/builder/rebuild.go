@@ -16,7 +16,7 @@ func (b *GoldenBuilder) BuildBaseImage(ctx context.Context, arch string) (bool, 
 			customScript = string(data)
 		}
 	}
-	if customScript == "" {
+	if customScript == "" && docker.ProvisionToolchainScript != "" {
 		customScript = docker.ProvisionToolchainScript
 	}
 	fullScript := FullProvisionScript(arch, b.cfg.RunnerVersion, customScript)

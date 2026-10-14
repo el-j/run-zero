@@ -122,9 +122,14 @@ export class RunnerFleetComponent {
                     ${runner.job_id ? ` • <a href="${runner.job_url || "#"}" target="_blank" class="mono" style="color: var(--accent-cyan); text-decoration: none;">Job #${runner.job_id} ↗</a>` : " • Standby"}
                   </div>
                 </div>
-                <button class="btn btn-secondary stop-runner-btn" data-runner-id="${runner.id}" data-runner-name="${runner.name}" data-job-id="${runner.job_id || ""}" style="padding: 0.35rem 0.75rem; font-size: 0.8rem; border-color: rgba(244,63,94,0.4); color: var(--accent-rose);">
-                  ⏹ Stop Runner
-                </button>
+                <div style="display: flex; gap: 0.5rem; align-items: center;">
+                  <button class="btn btn-secondary terminal-runner-btn" data-runner-id="${runner.id}" data-runner-name="${runner.name}" data-backend="${runner.backend || ""}" style="padding: 0.35rem 0.75rem; font-size: 0.8rem;" title="Open terminal directly inside this runner">
+                    &gt;_ Terminal
+                  </button>
+                  <button class="btn btn-secondary stop-runner-btn" data-runner-id="${runner.id}" data-runner-name="${runner.name}" data-job-id="${runner.job_id || ""}" style="padding: 0.35rem 0.75rem; font-size: 0.8rem; border-color: rgba(244,63,94,0.4); color: var(--accent-rose);">
+                    ⏹ Stop Runner
+                  </button>
+                </div>
               </div>
             `;
             })
@@ -193,6 +198,38 @@ export class RunnerFleetComponent {
         const name = btn.dataset.runnerName!;
         const jobId = btn.dataset.jobId ? parseInt(btn.dataset.jobId, 10) : undefined;
         this.handleStopRunner(id, name, jobId);
+      };
+    });
+
+    this.container.querySelectorAll<HTMLButtonElement>(".terminal-runner-btn").forEach((btn) => {
+      btn.onclick = async () => {
+        const runnerId = btn.dataset.runnerId!;
+        const runnerName = btn.dataset.runnerName!;
+        const backend = btn.dataset.backend!;
+        const origText = btn.innerHTML;
+        btn.innerHTML = "Launching...";
+        btn.disabled = true;
+        try {
+          const res = await client.controlRunner("open-terminal", { runnerId, backend });
+          if (res.command) {
+            try {
+              await navigator.clipboard.writeText(res.command);
+            } catch {}
+          }
+          this.statusMessage = res.terminal_launched
+            ? `✓ Terminal opened for ${runnerName}`
+            : `✓ Command copied: ${res.command}`;
+        } catch (err) {
+          this.statusMessage = `✗ Terminal error: ${(err as Error).message}`;
+        } finally {
+          btn.innerHTML = origText;
+          btn.disabled = false;
+          this.render();
+          setTimeout(() => {
+            this.statusMessage = "";
+            this.render();
+          }, 4000);
+        }
       };
     });
   }

@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"strings"
 	"sync"
 	"time"
@@ -59,10 +60,12 @@ func NewBuildManager(gb *GoldenBuilder, exec driver.CmdExecutor, logHook LogHook
 		}, exec)
 	}
 
+	candidates := []string{"docker", "/workspace/docker", "../docker"}
 	dockerDir := "docker"
-	if _, err := os.Stat("docker/Dockerfile"); err != nil {
-		if _, err := os.Stat("../docker/Dockerfile"); err == nil {
-			dockerDir = "../docker"
+	for _, cand := range candidates {
+		if _, err := os.Stat(filepath.Join(cand, "Dockerfile")); err == nil {
+			dockerDir = cand
+			break
 		}
 	}
 
@@ -258,9 +261,18 @@ func (m *BuildManager) runBuild(ctx context.Context, progress *ImageBuildProgres
 func (m *BuildManager) buildContainerImage(ctx context.Context, arch string) error {
 	tag := fmt.Sprintf("local-github-runner:%s", arch)
 	platform := fmt.Sprintf("linux/%s", arch)
-	m.appendLog(fmt.Sprintf("[BUILD:CONTAINER] Executing docker build -t %s --platform %s %s", tag, platform, m.dockerDir))
+	buildDir := m.dockerDir
+	if _, err := os.Stat(filepath.Join(buildDir, "Dockerfile")); err != nil {
+		for _, cand := range []string{"docker", "/workspace/docker", "../docker"} {
+			if _, err := os.Stat(filepath.Join(cand, "Dockerfile")); err == nil {
+				buildDir = cand
+				break
+			}
+		}
+	}
+	m.appendLog(fmt.Sprintf("[BUILD:CONTAINER] Executing docker build -t %s --platform %s %s", tag, platform, buildDir))
 
-	cmd := exec.CommandContext(ctx, "docker", "build", "--platform", platform, "-t", tag, m.dockerDir)
+	cmd := exec.CommandContext(ctx, "docker", "build", "--platform", platform, "-t", tag, buildDir)
 	return m.streamCommandOutput(cmd, "[DOCKER]")
 }
 
