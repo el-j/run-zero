@@ -2,12 +2,14 @@ package daemon
 
 import (
 	"context"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
 	"time"
 
+	"github.com/el-j/run-zero/pkg/builder"
 	"github.com/el-j/run-zero/pkg/config"
 	"github.com/el-j/run-zero/pkg/driver"
 	"github.com/el-j/run-zero/pkg/github"
@@ -15,13 +17,17 @@ import (
 )
 
 type mockDriver struct {
-	spawned []driver.RunnerSpec
-	runners []state.RunnerInfo
+	spawned  []driver.RunnerSpec
+	runners  []state.RunnerInfo
+	spawnErr error
 }
 
 func (m *mockDriver) Backend() string { return "mock" }
 func (m *mockDriver) SpawnRunner(ctx context.Context, spec driver.RunnerSpec) (*state.RunnerInfo, error) {
 	m.spawned = append(m.spawned, spec)
+	if m.spawnErr != nil {
+		return nil, m.spawnErr
+	}
 	now := time.Now().UTC().Format(time.RFC3339)
 	info := state.RunnerInfo{
 		ID:         spec.ID,
@@ -157,5 +163,63 @@ func TestShouldRouteToVM(t *testing.T) {
 	}
 	if shouldRouteToVM(job4, triggers) {
 		t.Errorf("expected job4 NOT to route to VM")
+	}
+}
+
+type mockImageBuilder struct {
+	requests []builder.ImageBuildRequest
+}
+
+func (b *mockImageBuilder) TriggerBuild(ctx context.Context, req builder.ImageBuildRequest) (*builder.ImageBuildProgress, error) {
+	b.requests = append(b.requests, req)
+	return &builder.ImageBuildProgress{BuildID: "b1"}, nil
+}
+
+// A missing runner image must not turn into a hot loop that burns a GitHub
+// registration token per queued job per cycle: back off, and rebuild the image.
+func TestScaler_SpawnFailureBacksOffAndRebuildsMissingImage(t *testing.T) {
+	var tokenCalls int
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		switch {
+		case strings.Contains(r.URL.Path, "/runs") && strings.Contains(r.URL.RawQuery, "status=queued"):
+			_, _ = w.Write([]byte(`{"total_count": 1, "workflow_runs": [{"id": 101, "name": "CI", "status": "queued", "head_branch": "main"}]}`))
+		case strings.Contains(r.URL.Path, "/jobs"):
+			_, _ = w.Write([]byte(`{"total_count": 2, "jobs": [
+				{"id": 202, "run_id": 101, "name": "a", "status": "queued", "labels": ["self-hosted", "local"]},
+				{"id": 203, "run_id": 101, "name": "b", "status": "queued", "labels": ["self-hosted", "local"]}]}`))
+		case strings.Contains(r.URL.Path, "/registration-token"):
+			tokenCalls++
+			_, _ = w.Write([]byte(`{"token": "t", "expires_at": "2026-10-06T22:00:00Z"}`))
+		default:
+			_, _ = w.Write([]byte(`{}`))
+		}
+	}))
+	defer server.Close()
+
+	cfg := &config.Config{MaxRunners: 3, PollInterval: 10, DiscoveryInterval: 1800, ReposConfig: "el-j/herbful",
+		RunnerArch: "both", RunnerBackend: "auto", ActionsBillingRefreshInterval: 300}
+	st := state.NewState(3, "1.0.0", nil)
+	drv := &mockDriver{spawnErr: fmt.Errorf("%w: local-github-runner:amd64", driver.ErrImageMissing)}
+	gh := github.NewClient("token", server.URL, server.Client())
+	pm, _ := github.NewPriorityManager("", []string{"el-j/herbful"}, nil)
+	rec := github.NewReconciler(pm)
+	poller := github.NewPoller(gh, rec, st, []string{"el-j/herbful"}, 10*time.Second)
+	scaler := NewScaler(cfg, st, drv, gh, pm, rec, poller, nil)
+	ib := &mockImageBuilder{}
+	scaler.SetImageBuilder(ib)
+
+	ctx := context.Background()
+	scaler.ScaleCycle(ctx)
+	scaler.ScaleCycle(ctx)
+
+	if len(drv.spawned) != 1 {
+		t.Fatalf("expected 1 spawn attempt across two cycles, got %d", len(drv.spawned))
+	}
+	if tokenCalls != 1 {
+		t.Fatalf("expected 1 registration token request, got %d", tokenCalls)
+	}
+	if len(ib.requests) != 1 || ib.requests[0].Target != "container" || ib.requests[0].Arch != "amd64" {
+		t.Fatalf("expected one container/amd64 image build, got %+v", ib.requests)
 	}
 }

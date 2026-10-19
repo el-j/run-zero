@@ -2,6 +2,7 @@ package driver
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strings"
 	"testing"
@@ -235,5 +236,18 @@ func TestDockerDriver_ParseDockerPS_MetadataRecovery(t *testing.T) {
 	}
 	if r2.JobID == nil || *r2.JobID != 202 || r2.RunID == nil || *r2.RunID != 101 {
 		t.Errorf("r2 unexpected job/run from name: JobID=%v RunID=%v", r2.JobID, r2.RunID)
+	}
+}
+
+func TestDockerDriver_SpawnRunner_MissingImage(t *testing.T) {
+	mock := &mockCmdExecutor{
+		runFunc: func(ctx context.Context, name string, args ...string) ([]byte, error) {
+			return []byte("Unable to find image 'local-github-runner:amd64' locally\ndocker: Error response from daemon: pull access denied"), fmt.Errorf("exit status 125")
+		},
+	}
+	d := NewDockerDriver(mock, nil, "", "")
+	_, err := d.SpawnRunner(context.Background(), RunnerSpec{ID: "x", Arch: "amd64"})
+	if !errors.Is(err, ErrImageMissing) {
+		t.Fatalf("expected ErrImageMissing, got %v", err)
 	}
 }

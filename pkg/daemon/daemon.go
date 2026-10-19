@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/el-j/run-zero/pkg/api"
+	"github.com/el-j/run-zero/pkg/builder"
 	"github.com/el-j/run-zero/pkg/config"
 	"github.com/el-j/run-zero/pkg/driver"
 	"github.com/el-j/run-zero/pkg/github"
@@ -56,6 +57,7 @@ func NewDaemon(cfg *config.Config, version string, distDir, staticDir string) *D
 	rec := github.NewReconciler(pm)
 	reaperInst := initReaper(runnerDriver, ghClient)
 	scaler := NewScaler(cfg, st, runnerDriver, ghClient, pm, rec, poller, reaperInst)
+	scaler.SetImageBuilder(builder.NewBuildManager(nil, nil, st.AppendLog, nil))
 
 	return &Daemon{
 		cfg:           cfg,

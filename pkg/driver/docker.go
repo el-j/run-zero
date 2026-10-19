@@ -2,12 +2,17 @@ package driver
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strings"
 	"time"
 
 	"github.com/el-j/run-zero/pkg/state"
 )
+
+// ErrImageMissing reports that the runner image is not present locally, so
+// every spawn will fail until it is rebuilt.
+var ErrImageMissing = errors.New("runner image missing")
 
 // DockerDriver manages ephemeral runners running as Docker containers.
 type DockerDriver struct {
@@ -138,7 +143,11 @@ func (d *DockerDriver) SpawnRunner(ctx context.Context, spec RunnerSpec) (*state
 
 	out, err := d.executor.Run(ctx, "docker", args...)
 	if err != nil {
-		return nil, fmt.Errorf("docker run failed (%w): %s", err, strings.TrimSpace(string(out)))
+		msg := strings.TrimSpace(string(out))
+		if strings.Contains(msg, "Unable to find image") || strings.Contains(msg, "No such image") {
+			return nil, fmt.Errorf("%w: %s (docker run: %s)", ErrImageMissing, image, msg)
+		}
+		return nil, fmt.Errorf("docker run failed (%w): %s", err, msg)
 	}
 
 	now = time.Now().UTC().Format(time.RFC3339)

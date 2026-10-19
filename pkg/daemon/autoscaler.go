@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/rand"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"strings"
 	"sync/atomic"
@@ -11,6 +12,7 @@ import (
 	"unicode"
 
 	"github.com/el-j/run-zero/pkg/arch"
+	"github.com/el-j/run-zero/pkg/builder"
 	"github.com/el-j/run-zero/pkg/cache"
 	"github.com/el-j/run-zero/pkg/config"
 	"github.com/el-j/run-zero/pkg/driver"
@@ -95,6 +97,54 @@ type Scaler struct {
 	lastHistoryRefresh time.Time
 	historyRunning     atomic.Bool
 	standbyCursor      int
+	imageBuilder       ImageBuilder
+	spawnBackoff       map[string]spawnBackoff
+}
+
+// ImageBuilder rebuilds runner images; satisfied by *builder.BuildManager.
+type ImageBuilder interface {
+	TriggerBuild(ctx context.Context, req builder.ImageBuildRequest) (*builder.ImageBuildProgress, error)
+}
+
+type spawnBackoff struct {
+	until time.Time
+	delay time.Duration
+}
+
+const (
+	minSpawnBackoff = 30 * time.Second
+	maxSpawnBackoff = 10 * time.Minute
+)
+
+// SetImageBuilder lets the scaler rebuild a missing runner image on its own.
+func (s *Scaler) SetImageBuilder(b ImageBuilder) { s.imageBuilder = b }
+
+// spawnBlocked reports whether spawns for key (backend/arch) are backing off
+// after a failure. Checked before requesting a registration token, so a
+// broken backend does not burn GitHub API quota on every queued job.
+func (s *Scaler) spawnBlocked(key string) bool {
+	b, ok := s.spawnBackoff[key]
+	return ok && time.Now().Before(b.until)
+}
+
+func (s *Scaler) noteSpawnFailure(ctx context.Context, key, arch string, err error) {
+	if s.spawnBackoff == nil {
+		s.spawnBackoff = make(map[string]spawnBackoff)
+	}
+	delay := minSpawnBackoff
+	if prev, ok := s.spawnBackoff[key]; ok {
+		delay = min(prev.delay*2, maxSpawnBackoff)
+	}
+	s.spawnBackoff[key] = spawnBackoff{until: time.Now().Add(delay), delay: delay}
+	s.state.AppendLog(fmt.Sprintf("[Autoscaler] ⏸️ Pausing %s spawns for %s after failure", key, delay))
+
+	if errors.Is(err, driver.ErrImageMissing) && s.imageBuilder != nil {
+		if _, berr := s.imageBuilder.TriggerBuild(ctx, builder.ImageBuildRequest{Target: "container", Arch: arch}); berr != nil {
+			s.state.AppendLog(fmt.Sprintf("[Autoscaler] ⚠️ Could not start rebuild of missing runner image (%s): %v", arch, berr))
+		} else {
+			s.state.AppendLog(fmt.Sprintf("[Autoscaler] 🔨 Runner image for %s is missing; rebuilding it", arch))
+		}
+	}
 }
 
 // NewScaler creates an autoscaler engine.
@@ -370,6 +420,11 @@ func (s *Scaler) ScaleCycle(ctx context.Context) {
 					}
 				}
 
+				spawnKey := backend + "/" + targetArch
+				if s.spawnBlocked(spawnKey) {
+					continue
+				}
+
 				// Resolve Sizing
 				cpus := 3
 				if s.cfg.RunnerCPUs > 0 {
@@ -419,8 +474,10 @@ func (s *Scaler) ScaleCycle(ctx context.Context) {
 				info, err := s.driver.SpawnRunner(ctx, spec)
 				if err != nil {
 					s.state.AppendLog(fmt.Sprintf("[Autoscaler] ❌ Failed to spawn %s runner for %s: %v", backend, repo, err))
+					s.noteSpawnFailure(ctx, spawnKey, targetArch, err)
 					continue
 				}
+				delete(s.spawnBackoff, spawnKey)
 
 				jobID := job.ID
 				runID := job.RunID
