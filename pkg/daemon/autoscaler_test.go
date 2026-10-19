@@ -168,11 +168,20 @@ func TestShouldRouteToVM(t *testing.T) {
 
 type mockImageBuilder struct {
 	requests []builder.ImageBuildRequest
+	status   string // "" (no build), "building", "ready", "failed"
 }
 
 func (b *mockImageBuilder) TriggerBuild(ctx context.Context, req builder.ImageBuildRequest) (*builder.ImageBuildProgress, error) {
 	b.requests = append(b.requests, req)
+	b.status = string(builder.StatusBuilding)
 	return &builder.ImageBuildProgress{BuildID: "b1"}, nil
+}
+
+func (b *mockImageBuilder) GetActiveBuild() *builder.ImageBuildProgress {
+	if b.status == "" {
+		return nil
+	}
+	return &builder.ImageBuildProgress{BuildID: "b1", Status: b.status}
 }
 
 // A missing runner image must not turn into a hot loop that burns a GitHub
@@ -221,5 +230,21 @@ func TestScaler_SpawnFailureBacksOffAndRebuildsMissingImage(t *testing.T) {
 	}
 	if len(ib.requests) != 1 || ib.requests[0].Target != "container" || ib.requests[0].Arch != "amd64" {
 		t.Fatalf("expected one container/amd64 image build, got %+v", ib.requests)
+	}
+
+	// A failed rebuild keeps the pause (no rebuild loop).
+	ib.status = string(builder.StatusFailed)
+	scaler.ScaleCycle(ctx)
+	if len(drv.spawned) != 1 || len(ib.requests) != 1 {
+		t.Fatalf("failed rebuild must keep spawns paused: %d spawns, %d builds", len(drv.spawned), len(ib.requests))
+	}
+
+	// Once a rebuild succeeds, spawning resumes immediately rather than
+	// waiting out the backoff delay.
+	ib.status = string(builder.StatusReady)
+	drv.spawnErr = nil
+	scaler.ScaleCycle(ctx)
+	if len(drv.spawned) < 2 {
+		t.Fatalf("expected spawning to resume after the image rebuild, got %d attempts", len(drv.spawned))
 	}
 }

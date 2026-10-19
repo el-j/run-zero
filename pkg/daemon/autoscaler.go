@@ -104,11 +104,16 @@ type Scaler struct {
 // ImageBuilder rebuilds runner images; satisfied by *builder.BuildManager.
 type ImageBuilder interface {
 	TriggerBuild(ctx context.Context, req builder.ImageBuildRequest) (*builder.ImageBuildProgress, error)
+	GetActiveBuild() *builder.ImageBuildProgress
 }
 
 type spawnBackoff struct {
 	until time.Time
 	delay time.Duration
+	// awaitingImage: the failure was a missing image; lift the pause as soon
+	// as the rebuild succeeds instead of waiting out the delay (a failed
+	// rebuild keeps the pause, so it cannot turn into a rebuild loop).
+	awaitingImage bool
 }
 
 const (
@@ -124,7 +129,16 @@ func (s *Scaler) SetImageBuilder(b ImageBuilder) { s.imageBuilder = b }
 // broken backend does not burn GitHub API quota on every queued job.
 func (s *Scaler) spawnBlocked(key string) bool {
 	b, ok := s.spawnBackoff[key]
-	return ok && time.Now().Before(b.until)
+	if !ok || !time.Now().Before(b.until) {
+		return false
+	}
+	if b.awaitingImage && s.imageBuilder != nil {
+		if active := s.imageBuilder.GetActiveBuild(); active != nil && active.Status == string(builder.StatusReady) {
+			delete(s.spawnBackoff, key)
+			return false
+		}
+	}
+	return true
 }
 
 func (s *Scaler) noteSpawnFailure(ctx context.Context, key, arch string, err error) {
@@ -135,10 +149,14 @@ func (s *Scaler) noteSpawnFailure(ctx context.Context, key, arch string, err err
 	if prev, ok := s.spawnBackoff[key]; ok {
 		delay = min(prev.delay*2, maxSpawnBackoff)
 	}
-	s.spawnBackoff[key] = spawnBackoff{until: time.Now().Add(delay), delay: delay}
+	missing := errors.Is(err, driver.ErrImageMissing) && s.imageBuilder != nil
+	s.spawnBackoff[key] = spawnBackoff{until: time.Now().Add(delay), delay: delay, awaitingImage: missing}
 	s.state.AppendLog(fmt.Sprintf("[Autoscaler] ⏸️ Pausing %s spawns for %s after failure", key, delay))
 
-	if errors.Is(err, driver.ErrImageMissing) && s.imageBuilder != nil {
+	if missing {
+		if active := s.imageBuilder.GetActiveBuild(); active != nil && active.Status == string(builder.StatusBuilding) {
+			return // the rebuild we (or the dashboard) started is still running
+		}
 		if _, berr := s.imageBuilder.TriggerBuild(ctx, builder.ImageBuildRequest{Target: "container", Arch: arch}); berr != nil {
 			s.state.AppendLog(fmt.Sprintf("[Autoscaler] ⚠️ Could not start rebuild of missing runner image (%s): %v", arch, berr))
 		} else {
