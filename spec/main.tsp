@@ -42,6 +42,11 @@ model RunnerInfo {
   current_step?: string;
   progress_pct?: int32;
   steps?: StepInfo[];
+  provider?: "github" | "gitlab" | string;
+  provider_instance?: string;
+  origin?: "local" | "cloud" | "external";
+  is_cloud?: boolean;
+  tags?: string[];
 }
 
 /** One step (stage) of a workflow job */

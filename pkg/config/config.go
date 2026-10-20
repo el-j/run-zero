@@ -77,6 +77,12 @@ func LoadConfig(env EnvLookup) (*Config, error) {
 
 	repoPriority, _ := env.Lookup("REPO_PRIORITY")
 
+	glURL, _ := env.Lookup("GITLAB_URL")
+	glToken, _ := env.Lookup("GITLAB_TOKEN")
+	glGroup, _ := env.Lookup("GITLAB_GROUP")
+	glProjects, _ := env.Lookup("GITLAB_PROJECTS")
+	providersFile, _ := env.Lookup("PROVIDERS_CONFIG")
+
 	return &Config{
 		AccessToken:                   strings.TrimSpace(token),
 		Owner:                         strings.TrimSpace(owner),
@@ -106,5 +112,10 @@ func LoadConfig(env EnvLookup) (*Config, error) {
 		RepoPriority:                  strings.TrimSpace(repoPriority),
 		RunnerCPUs:                    opts.runnerCPUs,
 		RunnerMemory:                  opts.runnerMemory,
+		GitLabURL:                     strings.TrimSpace(glURL),
+		GitLabToken:                   strings.TrimSpace(glToken),
+		GitLabGroup:                   strings.TrimSpace(glGroup),
+		GitLabProjects:                strings.TrimSpace(glProjects),
+		ProvidersConfigFile:           strings.TrimSpace(providersFile),
 	}, nil
 }

@@ -93,6 +93,14 @@ const reposCountBadge = document.getElementById("repos-count-badge");
 const runnersSearchInput = document.getElementById(
   "runners-search-input",
 ) as HTMLInputElement | null;
+const runnersOriginFilterGroup = document.getElementById(
+  "runners-origin-filter-group",
+);
+const runnersProviderSelect = document.getElementById(
+  "runners-provider-select",
+) as HTMLSelectElement | null;
+let currentRunnersOrigin = "all";
+let currentRunnersProvider = "all";
 const queueSearchInput = document.getElementById("queue-search-input") as HTMLInputElement | null;
 const jobsSearchInput = document.getElementById("jobs-search-input") as HTMLInputElement | null;
 const repoSearchInput = document.getElementById("repo-search-input") as HTMLInputElement | null;
@@ -649,9 +657,26 @@ function progressHtml(x: RunRef, compact: boolean): string {
 function renderRunners(runners: RunnerInfo[]) {
   if (tabRunnersCount) tabRunnersCount.textContent = String(runners.length);
   if (runnersCountBadge) runnersCountBadge.textContent = `${runners.length} RUNNING`;
+
+  const allCount = runners.length;
+  const localCount = runners.filter((r) => !r.is_cloud && (r.origin || "local") === "local").length;
+  const cloudCount = runners.filter((r) => r.is_cloud || (r.origin || "") === "cloud").length;
+  const extCount = runners.filter((r) => !r.is_cloud && (r.origin || "") === "external").length;
+
+  if (runnersOriginFilterGroup) {
+    const allBtn = runnersOriginFilterGroup.querySelector<HTMLButtonElement>('[data-origin="all"]');
+    if (allBtn) allBtn.textContent = `All (${allCount})`;
+    const localBtn = runnersOriginFilterGroup.querySelector<HTMLButtonElement>('[data-origin="local"]');
+    if (localBtn) localBtn.textContent = `🖥️ Local (${localCount})`;
+    const cloudBtn = runnersOriginFilterGroup.querySelector<HTMLButtonElement>('[data-origin="cloud"]');
+    if (cloudBtn) cloudBtn.textContent = `☁️ Cloud (${cloudCount})`;
+    const extBtn = runnersOriginFilterGroup.querySelector<HTMLButtonElement>('[data-origin="external"]');
+    if (extBtn) extBtn.textContent = `🌐 External (${extCount})`;
+  }
+
   const runnersFilter = normalizeFilter(runnersSearchInput?.value || "");
-  const filteredRunners = runners.filter((r) =>
-    includesFilter(
+  const filteredRunners = runners.filter((r) => {
+    const matchesText = includesFilter(
       [
         r.name,
         r.id,
@@ -663,13 +688,28 @@ function renderRunners(runners: RunnerInfo[]) {
         r.job_name,
         r.job_id,
         r.run_id,
+        r.provider,
+        r.provider_instance,
       ],
       runnersFilter,
-    ),
-  );
+    );
+    if (!matchesText) return false;
+
+    const origin = r.is_cloud ? "cloud" : (r.origin || "local");
+    if (currentRunnersOrigin !== "all" && origin !== currentRunnersOrigin) {
+      return false;
+    }
+
+    const prov = (r.provider || "github").toLowerCase();
+    if (currentRunnersProvider !== "all" && prov !== currentRunnersProvider) {
+      return false;
+    }
+
+    return true;
+  });
   const hasRunners = runners.length > 0;
   const hasFilteredRunners = filteredRunners.length > 0;
-  const hasFilter = !!runnersFilter;
+  const hasFilter = !!runnersFilter || currentRunnersOrigin !== "all" || currentRunnersProvider !== "all";
 
   if (runnersEmptyState) {
     if (hasFilteredRunners) runnersEmptyState.classList.add("hidden");
@@ -681,7 +721,7 @@ function renderRunners(runners: RunnerInfo[]) {
     if (desc) {
       desc.textContent = hasFilter
         ? `Try a different filter. Current query: "${runnersFilter}".`
-        : "Zero active runner containers or VMs right now. As soon as a GitHub Actions workflow queues, the autoscaler will spawn an ephemeral runner instantaneously.";
+        : "Zero active runner containers or VMs right now. As soon as a workflow queues, the autoscaler will spawn an ephemeral runner instantaneously.";
     }
   }
   if (runnersGrid) {
@@ -701,10 +741,35 @@ function renderRunners(runners: RunnerInfo[]) {
           (r.backend || "").toLowerCase().includes("vm") ||
           (r.backend || "").toLowerCase().includes("orb");
         const engineTagClass = isVm ? "tag-vm" : "tag-docker";
-        const engineName = isVm ? (r.backend || "VM").toUpperCase() : "DOCKER";
+        const engineName = isVm ? (r.backend || "VM").toUpperCase() : (r.backend || "DOCKER").toUpperCase();
         const archName = (r.target_arch || "amd64").toUpperCase();
         const repo = r.target_repo || "Standby Pool";
         const duration = formatDuration(r.created_at);
+
+        const isCloud = r.is_cloud || (r.origin || "") === "cloud";
+        const isExternal = !isCloud && (r.origin || "") === "external";
+        const prov = (r.provider || "github").toLowerCase();
+        const provBadge = prov === "gitlab"
+          ? `<span class="tag-provider font-mono" style="background: rgba(252, 109, 38, 0.15); color: #fc6d26; border: 1px solid rgba(252, 109, 38, 0.3); border-radius: 4px; padding: 1px 6px; font-size: 10px;">GitLab</span>`
+          : `<span class="tag-provider font-mono" style="background: rgba(88, 166, 255, 0.15); color: #58a6ff; border: 1px solid rgba(88, 166, 255, 0.3); border-radius: 4px; padding: 1px 6px; font-size: 10px;">GitHub</span>`;
+
+        const originBadge = isCloud
+          ? `<span class="tag-origin font-mono" style="background: rgba(168, 85, 247, 0.15); color: #c084fc; border: 1px solid rgba(168, 85, 247, 0.3); border-radius: 4px; padding: 1px 6px; font-size: 10px;">☁️ Cloud</span>`
+          : isExternal
+          ? `<span class="tag-origin font-mono" style="background: rgba(245, 158, 11, 0.15); color: #fbbf24; border: 1px solid rgba(245, 158, 11, 0.3); border-radius: 4px; padding: 1px 6px; font-size: 10px;">🌐 External</span>`
+          : `<span class="tag-origin font-mono" style="background: rgba(16, 185, 129, 0.15); color: #34d399; border: 1px solid rgba(16, 185, 129, 0.3); border-radius: 4px; padding: 1px 6px; font-size: 10px;">🖥️ Local</span>`;
+
+        const isLocal = !isCloud && !isExternal;
+        const actionButtons = isLocal
+          ? `
+            <button class="btn btn-xs btn-outline terminal-runner-btn" data-runner-id="${escapeHtml(r.id)}" data-runner-name="${escapeHtml(r.name || r.id)}" data-backend="${escapeHtml(r.backend || "")}" title="Open terminal directly connected into runner">
+              &gt;_ Terminal
+            </button>
+            <button class="btn btn-xs btn-outline stop-runner-btn" data-runner-id="${escapeHtml(r.id)}" data-runner-name="${escapeHtml(r.name || r.id)}" data-job-id="${r.job_id || ""}">
+              Stop
+            </button>
+          `
+          : `<span class="badge badge-neutral font-mono" style="font-size: 10px; opacity: 0.8;">Remote Managed</span>`;
 
         const runLink = runLinkHtml(r);
         const jobLink = jobLinkHtml(r);
@@ -728,7 +793,9 @@ function renderRunners(runners: RunnerInfo[]) {
                 <span class="runner-pulse"></span>
                 <span class="runner-id font-mono">${escapeHtml(r.name || r.id)}</span>
               </div>
-              <div class="runner-badges">
+              <div class="runner-badges" style="display: flex; gap: 4px; align-items: center; flex-wrap: wrap;">
+                ${provBadge}
+                ${originBadge}
                 <span class="tag-engine ${engineTagClass}">${engineName}</span>
                 <span class="tag-arch font-mono">${archName}</span>
               </div>
@@ -744,12 +811,7 @@ function renderRunners(runners: RunnerInfo[]) {
               <span class="stat-label">STATUS: <b class="runner-status-val" style="color: var(--emerald);">${escapeHtml((r.status || "RUNNING").toUpperCase())}</b></span>
               <div style="display: flex; align-items: center; gap: 0.5rem;">
                 <span class="runner-duration font-mono">⏱️ ${duration}</span>
-                <button class="btn btn-xs btn-outline terminal-runner-btn" data-runner-id="${escapeHtml(r.id)}" data-runner-name="${escapeHtml(r.name || r.id)}" data-backend="${escapeHtml(r.backend || "")}" title="Open terminal directly connected into runner">
-                  &gt;_ Terminal
-                </button>
-                <button class="btn btn-xs btn-outline stop-runner-btn" data-runner-id="${escapeHtml(r.id)}" data-runner-name="${escapeHtml(r.name || r.id)}" data-job-id="${r.job_id || ""}">
-                  Stop
-                </button>
+                ${actionButtons}
               </div>
             </div>
           </div>
@@ -814,11 +876,40 @@ function renderRunners(runners: RunnerInfo[]) {
         const progressBlock = progressHtml(r, true);
         const idle = !runLink && !jobLink;
 
+        const isCloud = r.is_cloud || (r.origin || "") === "cloud";
+        const isExternal = !isCloud && (r.origin || "") === "external";
+        const isLocal = !isCloud && !isExternal;
+        const prov = (r.provider || "github").toLowerCase();
+        const provBadge = prov === "gitlab"
+          ? `<span class="tag-provider font-mono" style="background: rgba(252, 109, 38, 0.15); color: #fc6d26; border: 1px solid rgba(252, 109, 38, 0.3); border-radius: 4px; padding: 1px 4px; font-size: 9px; margin-right: 4px;">GitLab</span>`
+          : `<span class="tag-provider font-mono" style="background: rgba(88, 166, 255, 0.15); color: #58a6ff; border: 1px solid rgba(88, 166, 255, 0.3); border-radius: 4px; padding: 1px 4px; font-size: 9px; margin-right: 4px;">GitHub</span>`;
+
+        const originBadge = isCloud
+          ? `<span class="tag-origin font-mono" style="background: rgba(168, 85, 247, 0.15); color: #c084fc; border: 1px solid rgba(168, 85, 247, 0.3); border-radius: 4px; padding: 1px 4px; font-size: 9px;">☁️ Cloud</span>`
+          : isExternal
+          ? `<span class="tag-origin font-mono" style="background: rgba(245, 158, 11, 0.15); color: #fbbf24; border: 1px solid rgba(245, 158, 11, 0.3); border-radius: 4px; padding: 1px 4px; font-size: 9px;">🌐 External</span>`
+          : `<span class="tag-origin font-mono" style="background: rgba(16, 185, 129, 0.15); color: #34d399; border: 1px solid rgba(16, 185, 129, 0.3); border-radius: 4px; padding: 1px 4px; font-size: 9px;">🖥️ Local</span>`;
+
+        const tableActionButtons = isLocal
+          ? `
+            <button class="btn btn-xs btn-outline terminal-runner-btn" data-runner-id="${escapeHtml(r.id)}" data-runner-name="${escapeHtml(r.name || r.id)}" data-backend="${escapeHtml(r.backend || "")}" style="margin-right: 4px;" title="Open terminal directly connected into runner">
+              &gt;_ Terminal
+            </button>
+            <button class="btn btn-xs btn-outline stop-runner-btn" data-runner-id="${escapeHtml(r.id)}" data-runner-name="${escapeHtml(r.name || r.id)}" data-job-id="${r.job_id || ""}">
+              Stop
+            </button>
+          `
+          : `<span class="badge badge-neutral font-mono" style="font-size: 10px; opacity: 0.8;">Remote Managed</span>`;
+
         return `
           <tr>
             <td>
-              <div style="font-weight: 700; color: var(--text-main);">${escapeHtml(r.name || r.id)}</div>
-              <div style="font-size: 10px; color: var(--text-dim);">${escapeHtml(r.id)}</div>
+              <div style="display: flex; align-items: center; gap: 4px;">
+                ${provBadge}
+                ${originBadge}
+                <span style="font-weight: 700; color: var(--text-main); margin-left: 2px;">${escapeHtml(r.name || r.id)}</span>
+              </div>
+              <div style="font-size: 10px; color: var(--text-dim); margin-top: 2px;">${escapeHtml(r.id)}</div>
             </td>
             <td>
               <span style="font-weight: 600;">${escapeHtml(r.target_repo || "Standby")}</span>
@@ -842,12 +933,7 @@ function renderRunners(runners: RunnerInfo[]) {
             <td>${progressBlock || `<span style="color: var(--text-dim);">-</span>`}</td>
             <td>${duration}</td>
             <td style="text-align: right; white-space: nowrap;">
-              <button class="btn btn-xs btn-outline terminal-runner-btn" data-runner-id="${escapeHtml(r.id)}" data-runner-name="${escapeHtml(r.name || r.id)}" data-backend="${escapeHtml(r.backend || "")}" style="margin-right: 4px;" title="Open terminal directly connected into runner">
-                &gt;_ Terminal
-              </button>
-              <button class="btn btn-xs btn-outline stop-runner-btn" data-runner-id="${escapeHtml(r.id)}" data-runner-name="${escapeHtml(r.name || r.id)}" data-job-id="${r.job_id || ""}">
-                Stop
-              </button>
+              ${tableActionButtons}
             </td>
           </tr>
         `;
@@ -2018,6 +2104,22 @@ function initHandlers() {
   if (runnersSearchInput) {
     runnersSearchInput.oninput = () => {
       localStorage.setItem(filterStorageKeys.runners, runnersSearchInput.value);
+      renderRunners(currentRunners);
+    };
+  }
+  if (runnersOriginFilterGroup) {
+    runnersOriginFilterGroup.onclick = (e) => {
+      const btn = (e.target as HTMLElement).closest("button[data-origin]") as HTMLButtonElement | null;
+      if (!btn) return;
+      runnersOriginFilterGroup.querySelectorAll("button").forEach((b) => b.classList.remove("active"));
+      btn.classList.add("active");
+      currentRunnersOrigin = btn.dataset.origin || "all";
+      renderRunners(currentRunners);
+    };
+  }
+  if (runnersProviderSelect) {
+    runnersProviderSelect.onchange = () => {
+      currentRunnersProvider = runnersProviderSelect.value;
       renderRunners(currentRunners);
     };
   }

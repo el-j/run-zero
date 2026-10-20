@@ -17,6 +17,7 @@ import (
 	"github.com/el-j/run-zero/pkg/config"
 	"github.com/el-j/run-zero/pkg/driver"
 	"github.com/el-j/run-zero/pkg/github"
+	"github.com/el-j/run-zero/pkg/provider"
 	"github.com/el-j/run-zero/pkg/reaper"
 	"github.com/el-j/run-zero/pkg/sizing"
 	"github.com/el-j/run-zero/pkg/state"
@@ -98,6 +99,7 @@ type Scaler struct {
 	historyRunning     atomic.Bool
 	standbyCursor      int
 	imageBuilder       ImageBuilder
+	providerMgr        *provider.Manager
 	spawnBackoff       map[string]spawnBackoff
 }
 
@@ -123,6 +125,9 @@ const (
 
 // SetImageBuilder lets the scaler rebuild a missing runner image on its own.
 func (s *Scaler) SetImageBuilder(b ImageBuilder) { s.imageBuilder = b }
+
+// SetProviderManager sets the multi-provider orchestrator manager.
+func (s *Scaler) SetProviderManager(mgr *provider.Manager) { s.providerMgr = mgr }
 
 // spawnBlocked reports whether spawns for key (backend/arch) are backing off
 // after a failure. Checked before requesting a registration token, so a
@@ -566,7 +571,16 @@ func (s *Scaler) ScaleCycle(ctx context.Context) {
 	// Reconcile and push state to dashboard
 	reconciled := s.reconciler.Reconcile(allJobs, len(activeRunners), s.cfg.MaxRunners)
 	s.refreshCompletedJobsAsync(ctx, tracked)
-	s.state.UpdateFleet(activeRunners, reconciled)
+
+	fleetRunners := activeRunners
+	if s.providerMgr != nil {
+		remoteRunners, _ := s.providerMgr.FetchAllRemoteRunners(ctx)
+		if len(remoteRunners) > 0 {
+			fleetRunners = provider.MergeRunners(activeRunners, remoteRunners)
+		}
+	}
+
+	s.state.UpdateFleet(fleetRunners, reconciled)
 }
 
 // Start begins periodic scaling loops until ctx is canceled.

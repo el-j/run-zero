@@ -428,6 +428,12 @@ export interface components {
             /** Format: int32 */
             progress_pct?: number;
             steps?: components["schemas"]["StepInfo"][];
+            provider?: ("github" | "gitlab") | string;
+            provider_instance?: string;
+            /** @enum {string} */
+            origin?: "local" | "cloud" | "external";
+            is_cloud?: boolean;
+            tags?: string[];
         };
         /** @description One step (stage) of a workflow job */
         StepInfo: {

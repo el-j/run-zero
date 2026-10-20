@@ -58,6 +58,11 @@ type RunnerInfo struct {
 	CurrentStep    *string    `json:"current_step,omitempty"`
 	ProgressPct    *int       `json:"progress_pct,omitempty"`
 	Steps          []StepInfo `json:"steps,omitempty"`
+	Provider       *string    `json:"provider,omitempty"`
+	ProviderInst   *string    `json:"provider_instance,omitempty"`
+	Origin         *string    `json:"origin,omitempty"`
+	IsCloud        bool       `json:"is_cloud,omitempty"`
+	Tags           []string   `json:"tags,omitempty"`
 }
 
 // QueuedJob describes a queued or active GitHub Actions workflow job.

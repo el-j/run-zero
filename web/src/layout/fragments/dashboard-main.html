@@ -46,6 +46,22 @@
 
             <!-- Context Actions based on Tab -->
             <div id="tab-actions-runners" class="tab-action-group">
+              <div id="runners-origin-filter-group" class="btn-group font-mono" style="display: inline-flex; gap: 2px;">
+                <button type="button" class="btn-toggle active" data-origin="all" title="Show All Runners">All</button>
+                <button type="button" class="btn-toggle" data-origin="local" title="Show Local Ephemeral Runners (Docker/VM)">🖥️ Local</button>
+                <button type="button" class="btn-toggle" data-origin="cloud" title="Show Cloud-Hosted / Shared Runners">☁️ Cloud</button>
+                <button type="button" class="btn-toggle" data-origin="external" title="Show External Static Runners">🌐 External</button>
+              </div>
+              <select
+                id="runners-provider-select"
+                class="form-input font-mono"
+                style="padding: 2px 8px; font-size: 11px; height: 26px; border-radius: 4px; background: rgba(255,255,255,0.05); color: var(--text-main); border: 1px solid var(--border-subtle);"
+                title="Filter by CI/CD Provider"
+              >
+                <option value="all">All Providers</option>
+                <option value="github">GitHub</option>
+                <option value="gitlab">GitLab</option>
+              </select>
               <input
                 type="text"
                 id="runners-search-input"

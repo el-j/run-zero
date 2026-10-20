@@ -30,4 +30,9 @@ type Config struct {
 	RepoPriority                  string
 	RunnerCPUs                    int
 	RunnerMemory                  string
+	GitLabURL                     string
+	GitLabToken                   string
+	GitLabGroup                   string
+	GitLabProjects                string
+	ProvidersConfigFile           string
 }

@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/el-j/run-zero/pkg/api"
@@ -12,6 +13,8 @@ import (
 	"github.com/el-j/run-zero/pkg/config"
 	"github.com/el-j/run-zero/pkg/driver"
 	"github.com/el-j/run-zero/pkg/github"
+	"github.com/el-j/run-zero/pkg/gitlab"
+	"github.com/el-j/run-zero/pkg/provider"
 	"github.com/el-j/run-zero/pkg/reaper"
 	"github.com/el-j/run-zero/pkg/settings"
 	"github.com/el-j/run-zero/pkg/state"
@@ -58,6 +61,26 @@ func NewDaemon(cfg *config.Config, version string, distDir, staticDir string) *D
 	reaperInst := initReaper(runnerDriver, ghClient)
 	scaler := NewScaler(cfg, st, runnerDriver, ghClient, pm, rec, poller, reaperInst)
 	scaler.SetImageBuilder(builder.NewBuildManager(nil, nil, st.AppendLog, nil))
+
+	providerMgr := provider.NewManager()
+	if cfg.AccessToken != "" {
+		ghAdapter := github.NewProviderAdapter(ghClient, cfg.Owner, cfg.Org, poller.Repos())
+		providerMgr.Register(ghAdapter)
+	}
+	if cfg.GitLabToken != "" {
+		glClient := gitlab.NewClient(cfg.GitLabToken, cfg.GitLabURL, nil)
+		var glProjects []string
+		if cfg.GitLabProjects != "" {
+			for _, p := range strings.Split(cfg.GitLabProjects, ",") {
+				if trimmed := strings.TrimSpace(p); trimmed != "" {
+					glProjects = append(glProjects, trimmed)
+				}
+			}
+		}
+		glAdapter := gitlab.NewProviderAdapter("gitlab", "", glClient, cfg.GitLabGroup, glProjects)
+		providerMgr.Register(glAdapter)
+	}
+	scaler.SetProviderManager(providerMgr)
 
 	return &Daemon{
 		cfg:           cfg,

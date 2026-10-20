@@ -3,6 +3,7 @@ package github
 import (
 	"context"
 	"fmt"
+	"strings"
 
 	"github.com/el-j/run-zero/pkg/state"
 )
@@ -14,11 +15,13 @@ type registrationTokenResponse struct {
 
 // RunnerRegistration represents a runner registered with GitHub Actions API.
 type RunnerRegistration struct {
-	ID     int64  `json:"id"`
-	Name   string `json:"name"`
-	Status string `json:"status"`
-	Busy   bool   `json:"busy"`
-	Scope  string `json:"scope,omitempty"`
+	ID     int64    `json:"id"`
+	Name   string   `json:"name"`
+	OS     string   `json:"os,omitempty"`
+	Status string   `json:"status"`
+	Busy   bool     `json:"busy"`
+	Labels []string `json:"labels,omitempty"`
+	Scope  string   `json:"scope,omitempty"`
 }
 
 type actionsRunnersResponse struct {
@@ -29,6 +32,11 @@ type actionsRunnersResponse struct {
 		OS     string `json:"os"`
 		Status string `json:"status"`
 		Busy   bool   `json:"busy"`
+		Labels []struct {
+			ID   int64  `json:"id"`
+			Name string `json:"name"`
+			Type string `json:"type"`
+		} `json:"labels"`
 	} `json:"runners"`
 }
 
@@ -95,15 +103,89 @@ func (c *Client) ListRunners(ctx context.Context, repo, org string) ([]RunnerReg
 
 	results := make([]RunnerRegistration, len(resp.Runners))
 	for i, r := range resp.Runners {
+		labels := make([]string, len(r.Labels))
+		for j, l := range r.Labels {
+			labels[j] = l.Name
+		}
 		results[i] = RunnerRegistration{
 			ID:     r.ID,
 			Name:   r.Name,
+			OS:     r.OS,
 			Status: r.Status,
 			Busy:   r.Busy,
+			Labels: labels,
 			Scope:  scope,
 		}
 	}
 	return results, nil
+}
+
+// ConvertToRunnerInfo maps a GitHub RunnerRegistration to the unified RunZero RunnerInfo model.
+func (c *Client) ConvertToRunnerInfo(r RunnerRegistration) state.RunnerInfo {
+	providerName := "github"
+	instanceHost := "github.com"
+
+	origin := "external"
+	isCloud := false
+	nameLower := strings.ToLower(r.Name)
+
+	if strings.HasPrefix(nameLower, "runzero-") {
+		origin = "local"
+		isCloud = false
+	} else if strings.Contains(nameLower, "github actions") || strings.Contains(nameLower, "hosted") {
+		origin = "cloud"
+		isCloud = true
+	} else {
+		for _, lbl := range r.Labels {
+			lblLower := strings.ToLower(lbl)
+			if strings.Contains(lblLower, "ubuntu-latest") || strings.Contains(lblLower, "macos-") || strings.Contains(lblLower, "windows-") {
+				origin = "cloud"
+				isCloud = true
+				break
+			}
+		}
+	}
+
+	status := r.Status
+	if r.Busy {
+		status = "busy"
+	}
+
+	stateVal := "active"
+	if status == "offline" {
+		stateVal = "offline"
+	}
+
+	backend := "cloud-hosted"
+	if origin == "local" {
+		backend = "docker"
+	} else if origin == "external" {
+		backend = "github-runner"
+	}
+
+	targetArch := "amd64"
+	for _, lbl := range r.Labels {
+		lblLower := strings.ToLower(lbl)
+		if strings.Contains(lblLower, "arm64") || strings.Contains(lblLower, "aarch64") {
+			targetArch = "arm64"
+			break
+		}
+	}
+
+	return state.RunnerInfo{
+		ID:           fmt.Sprintf("gh-%d", r.ID),
+		Name:         r.Name,
+		Status:       status,
+		State:        stateVal,
+		TargetRepo:   r.Scope,
+		TargetArch:   targetArch,
+		Backend:      backend,
+		Provider:     &providerName,
+		ProviderInst: &instanceHost,
+		Origin:       &origin,
+		IsCloud:      isCloud,
+		Tags:         r.Labels,
+	}
 }
 
 // DeleteRunner removes a registered runner from a repository or organization.

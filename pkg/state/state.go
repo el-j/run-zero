@@ -62,6 +62,9 @@ func (s *State) GetSnapshot() FleetState {
 	runnersCopy := make([]RunnerInfo, len(s.runners))
 	for i, r := range s.runners {
 		runnersCopy[i] = r
+		if r.IsCloud {
+			continue
+		}
 		statusLower := strings.ToLower(r.Status)
 		if r.State == "running" || r.Status == "busy" || r.Status == "running" || strings.HasPrefix(statusLower, "up") {
 			busy++
