@@ -41,10 +41,12 @@ func (o *OrbStackDriver) enrichFromStore(runners []state.RunnerInfo) {
 		if !ok {
 			continue
 		}
-		if runners[i].TargetRepo == "" {
+		// The store holds the exact spawn-time values; the ones parsed from the
+		// machine name are lossy, so the store wins whenever it has a value.
+		if known.TargetRepo != "" {
 			runners[i].TargetRepo = known.TargetRepo
 		}
-		if runners[i].TargetArch == "" {
+		if known.TargetArch != "" {
 			runners[i].TargetArch = known.TargetArch
 		}
 		if runners[i].CreatedAt == nil {

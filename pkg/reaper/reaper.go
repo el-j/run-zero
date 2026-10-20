@@ -50,13 +50,15 @@ func (r *Reaper) Reconcile(
 	}
 
 	registrations := make(map[string]Registration)
-	registryConclusive := false
+	// conclusiveRepos records the repos whose registration listing succeeded. A
+	// runner may only be judged "unregistered" against its own repo's listing.
+	conclusiveRepos := make(map[string]bool)
 
 	if r.ghClient != nil {
 		for repo := range repoMap {
 			regs, err := r.ghClient.ListRunners(ctx, repo, "")
 			if err == nil {
-				registryConclusive = true
+				conclusiveRepos[repo] = true
 				for _, reg := range regs {
 					registrations[reg.Name] = Registration{
 						ID:     reg.ID,
@@ -75,7 +77,7 @@ func (r *Reaper) Reconcile(
 	}
 
 	nowUnix := float64(time.Now().Unix())
-	reaped := r.ReconcileLocalRunners(ctx, localRunners, registrations, registryConclusive, nowUnix, standbyCount)
+	reaped := r.ReconcileLocalRunners(ctx, localRunners, registrations, conclusiveRepos, nowUnix, standbyCount)
 
 	// Clean up GitHub registration for any runner that was reaped
 	if r.ghClient != nil && len(reaped) > 0 {
@@ -96,11 +98,12 @@ func (r *Reaper) Reconcile(
 }
 
 // ReconcileLocalRunners evaluates local runners against GitHub registrations and reaps dead/idle runners.
+// conclusiveRepos lists the repos whose registrations were fetched successfully.
 func (r *Reaper) ReconcileLocalRunners(
 	ctx context.Context,
 	localRunners []state.RunnerInfo,
 	registrations map[string]Registration,
-	registryConclusive bool,
+	conclusiveRepos map[string]bool,
 	nowUnix float64,
 	standbyCount int,
 ) []string {
@@ -121,7 +124,7 @@ func (r *Reaper) ReconcileLocalRunners(
 			regPtr = &reg
 		}
 
-		action := Classify(age, regPtr, registryConclusive, r.timeouts)
+		action := Classify(age, regPtr, conclusiveRepos[runner.TargetRepo], r.timeouts)
 
 		if action == ActionReapIdle && standbyLeft > 0 {
 			standbyLeft--

@@ -350,7 +350,7 @@ func (s *Scaler) ScaleCycle(ctx context.Context) {
 	if s.reaper != nil && len(activeRunners) > 0 {
 		reaped := s.reaper.Reconcile(ctx, activeRunners, 0)
 		if len(reaped) > 0 {
-			s.state.AppendLog(fmt.Sprintf("[Autoscaler] 🧹 Reaped %d orphaned/idle runner(s) blocking capacity.", len(reaped)))
+			s.state.AppendLog(fmt.Sprintf("[Autoscaler] 🧹 Reaped %d orphaned/idle runner(s) blocking capacity: %s", len(reaped), strings.Join(reaped, ", ")))
 			activeRunners = s.CollectRunners(ctx)
 		}
 	}

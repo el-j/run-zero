@@ -75,7 +75,7 @@ func TestReconcileLocalRunners(t *testing.T) {
 	}
 
 	now := float64(2000)
-	reaped := reaper.ReconcileLocalRunners(context.Background(), runners, registrations, true, now, 1)
+	reaped := reaper.ReconcileLocalRunners(context.Background(), runners, registrations, map[string]bool{"": true}, now, 1)
 
 	if len(reaped) != 2 {
 		t.Fatalf("expected 2 reaped runners (r-unreg, r-idle-reap), got %d: %v", len(reaped), reaped)
@@ -103,5 +103,26 @@ func TestReaper_Reconcile_EmptyRunners(t *testing.T) {
 	reaped := r.Reconcile(context.Background(), nil, 0)
 	if len(reaped) != 0 {
 		t.Errorf("expected 0 reaped, got %d", len(reaped))
+	}
+}
+
+// A registry listing only counts for the repo it was fetched from: a runner whose
+// own repo listing failed (or was never fetched) must not be reaped as
+// "unregistered" just because another repo's listing succeeded.
+func TestReconcileLocalRunners_ConclusiveOnlyForListedRepo(t *testing.T) {
+	d := &mockDriver{}
+	reaper := NewReaper(d, nil, Timeouts{})
+
+	created := time.Unix(1000, 0).UTC().Format(time.RFC3339)
+	runners := []state.RunnerInfo{
+		{ID: "r-unlisted", Name: "runzero-a", TargetRepo: "el-j/landing", CreatedAt: &created},
+		{ID: "r-listed", Name: "runzero-b", TargetRepo: "el-j/herbful", CreatedAt: &created},
+	}
+
+	reaped := reaper.ReconcileLocalRunners(context.Background(), runners, map[string]Registration{},
+		map[string]bool{"el-j/herbful": true}, 2000, 0)
+
+	if len(reaped) != 1 || reaped[0] != "r-listed" {
+		t.Fatalf("expected only r-listed reaped, got %v", reaped)
 	}
 }

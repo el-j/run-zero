@@ -345,3 +345,20 @@ func TestParseOrbctlList_SkipsGoldenBaseImages(t *testing.T) {
 		t.Fatalf("want only the job runner, got %+v", got)
 	}
 }
+
+// The repo parsed back from a machine name is lossy ("el-j__landing.in" becomes
+// "el-j-landing-in" in a hostname), so the exact spawn-time values must win.
+func TestOrbStackEnrichFromStore_StoreOverridesLossyParsedRepo(t *testing.T) {
+	store := NewInstanceStore("")
+	name := "runzero-j1-r2-amd64-el-j-landing-in-abc123"
+	store.Register(state.RunnerInfo{ID: name, Name: name, TargetRepo: "el-j/landing.inquam-services", TargetArch: "amd64"})
+	o := &OrbStackDriver{store: store}
+	runners := parseOrbctlList(name + " running ubuntu noble amd64")
+	if runners[0].TargetRepo == "el-j/landing.inquam-services" {
+		t.Fatal("precondition: parsed repo should be lossy")
+	}
+	o.enrichFromStore(runners)
+	if runners[0].TargetRepo != "el-j/landing.inquam-services" {
+		t.Fatalf("store repo did not override parsed value: %+v", runners[0])
+	}
+}
