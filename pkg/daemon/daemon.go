@@ -63,11 +63,27 @@ func NewDaemon(cfg *config.Config, version string, distDir, staticDir string) *D
 	scaler.SetImageBuilder(builder.NewBuildManager(nil, nil, st.AppendLog, nil))
 
 	providerMgr := provider.NewManager()
-	if cfg.AccessToken != "" {
+	if cfg.ProvidersConfigFile != "" {
+		if fileCfg, err := provider.LoadConfigFile(cfg.ProvidersConfigFile); err == nil && len(fileCfg.Providers) > 0 {
+			for _, p := range fileCfg.Providers {
+				switch strings.ToLower(p.Type) {
+				case "gitlab":
+					glClient := gitlab.NewClient(p.Token, p.URL, nil)
+					glAdapter := gitlab.NewProviderAdapter(p.ID, p.Name, glClient, p.Group, p.Projects)
+					providerMgr.Register(glAdapter)
+				case "github":
+					ghProvClient := github.NewClient(p.Token, p.URL, nil)
+					ghAdapter := github.NewProviderAdapter(ghProvClient, p.Owner, p.Org, poller.Repos())
+					providerMgr.Register(ghAdapter)
+				}
+			}
+		}
+	}
+	if _, exists := providerMgr.Get("github"); cfg.AccessToken != "" && !exists {
 		ghAdapter := github.NewProviderAdapter(ghClient, cfg.Owner, cfg.Org, poller.Repos())
 		providerMgr.Register(ghAdapter)
 	}
-	if cfg.GitLabToken != "" {
+	if _, exists := providerMgr.Get("gitlab"); cfg.GitLabToken != "" && !exists {
 		glClient := gitlab.NewClient(cfg.GitLabToken, cfg.GitLabURL, nil)
 		var glProjects []string
 		if cfg.GitLabProjects != "" {

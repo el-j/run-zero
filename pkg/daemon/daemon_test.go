@@ -2,6 +2,8 @@ package daemon
 
 import (
 	"context"
+	"os"
+	"path/filepath"
 	"syscall"
 	"testing"
 	"time"
@@ -119,5 +121,30 @@ func TestDaemon_Signals(t *testing.T) {
 	defer cancel()
 	if ctx == nil {
 		t.Fatal("expected non-nil context from SignalContext")
+	}
+}
+
+func TestDaemon_ProvidersConfig(t *testing.T) {
+	tmpDir := t.TempDir()
+	confPath := filepath.Join(tmpDir, "providers.yaml")
+	_ = os.WriteFile(confPath, []byte(`providers:
+  - id: gitlab-custom
+    type: gitlab
+    url: https://git.eckelmann.de
+    token: test-token
+    group: mygroup
+`), 0644)
+
+	cfg, err := config.LoadConfig(config.MapEnv{
+		"DASHBOARD_ENABLED": "false",
+		"PROVIDERS_CONFIG":  confPath,
+	})
+	if err != nil {
+		t.Fatalf("LoadConfig error: %v", err)
+	}
+
+	d := NewDaemon(cfg, "v1.0.0", "", "")
+	if d == nil {
+		t.Fatal("expected non-nil daemon")
 	}
 }

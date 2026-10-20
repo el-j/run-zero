@@ -41,6 +41,10 @@ services:
       - OWNER=${OWNER:-}
       - REPOS=${REPOS:-${REPO:-}}
       - ORG=${ORG:-}
+      - GITLAB_URL=${GITLAB_URL:-}
+      - GITLAB_TOKEN=${GITLAB_TOKEN:-}
+      - GITLAB_GROUP=${GITLAB_GROUP:-}
+      - GITLAB_PROJECTS=${GITLAB_PROJECTS:-}
       - AUTO_DISCOVER_REPOS=${AUTO_DISCOVER_REPOS:-true}
       - RUNNER_ARCH=${RUNNER_ARCH:-both}
       - MIN_RUNNERS=${MIN_RUNNERS:-0}
