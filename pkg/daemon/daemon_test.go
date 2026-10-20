@@ -26,12 +26,20 @@ func TestDaemon_Lifecycle(t *testing.T) {
 		t.Fatal("expected non-nil daemon components")
 	}
 
+	// Never let shutdown cleanup reach the real drivers: it would delete every
+	// runner VM/container on the host running the tests.
+	mock := &mockDriver{}
+	d.driver = mock
+
 	if err := d.Start(); err != nil {
 		t.Fatalf("Start error: %v", err)
 	}
 
 	if err := d.Stop(); err != nil {
 		t.Fatalf("Stop error: %v", err)
+	}
+	if mock.cleanups != 1 {
+		t.Errorf("expected CleanupAll once on shutdown, got %d", mock.cleanups)
 	}
 
 	if d.State().GetSnapshot().AutoscalerStatus != "stopped" {

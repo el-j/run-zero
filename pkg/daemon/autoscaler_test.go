@@ -20,6 +20,7 @@ type mockDriver struct {
 	spawned  []driver.RunnerSpec
 	runners  []state.RunnerInfo
 	spawnErr error
+	cleanups int
 }
 
 func (m *mockDriver) Backend() string { return "mock" }
@@ -46,7 +47,10 @@ func (m *mockDriver) ListRunners(ctx context.Context) ([]state.RunnerInfo, error
 	return m.runners, nil
 }
 func (m *mockDriver) StopRunner(ctx context.Context, runnerID string) error { return nil }
-func (m *mockDriver) CleanupAll(ctx context.Context) error                  { return nil }
+func (m *mockDriver) CleanupAll(ctx context.Context) error {
+	m.cleanups++
+	return nil
+}
 
 func TestScaler_ScaleCycle(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
