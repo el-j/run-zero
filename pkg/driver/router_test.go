@@ -151,3 +151,39 @@ func TestRouter_Errors(t *testing.T) {
 		t.Fatal("expected cleanup error")
 	}
 }
+
+// loggingDriver is a dummyDriver that can also return a runner's output.
+type loggingDriver struct {
+	dummyDriver
+	logs map[string]string
+}
+
+func (d *loggingDriver) RunnerLogs(ctx context.Context, id string, tail int) (string, error) {
+	if out, ok := d.logs[id]; ok {
+		return out, nil
+	}
+	return "", fmt.Errorf("no such runner %s", id)
+}
+
+// The daemon always prunes through the Router, so the Router must expose its
+// drivers' logs or no finished runner's output is ever retained.
+func TestRouter_PruneFinishedRetainsDockerRunnerLogs(t *testing.T) {
+	docker := &loggingDriver{
+		dummyDriver: dummyDriver{backend: "docker", listFunc: func() ([]state.RunnerInfo, error) {
+			return []state.RunnerInfo{{ID: "c1", Name: "runner-c1", State: "exited", Backend: "docker"}}, nil
+		}},
+		logs: map[string]string{"c1": "Running job: Detect changed workspaces"},
+	}
+	vm := &dummyDriver{backend: "orbstack", listFunc: func() ([]state.RunnerInfo, error) { return nil, nil }}
+	r := NewRouter(docker, vm, "docker", false, NewInstanceStore(""))
+
+	got := map[string]string{}
+	if _, err := PruneFinished(context.Background(), r, func(ri state.RunnerInfo, tail string) {
+		got[ri.Name] = tail
+	}); err != nil {
+		t.Fatalf("PruneFinished: %v", err)
+	}
+	if got["runner-c1"] != "Running job: Detect changed workspaces" {
+		t.Errorf("retained log = %q, want the docker driver's output", got["runner-c1"])
+	}
+}

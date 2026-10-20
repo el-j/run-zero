@@ -160,6 +160,36 @@ func (r *Router) StopRunner(ctx context.Context, runnerID string) error {
 	return dErr
 }
 
+// RunnerLogs returns a runner's recent output from whichever driver owns it, so
+// PruneFinished can retain logs when the daemon runs through the Router. It
+// tries the backend recorded in the store first, then every driver that can
+// return logs.
+func (r *Router) RunnerLogs(ctx context.Context, runnerID string, tail int) (string, error) {
+	var ordered []RunnerDriver
+	if r.store != nil {
+		if info, ok := r.store.Get(runnerID); ok && info.Backend == "orbstack" {
+			ordered = append(ordered, r.vmDriver, r.dockerDriver)
+		}
+	}
+	if ordered == nil {
+		ordered = []RunnerDriver{r.dockerDriver, r.vmDriver}
+	}
+
+	lastErr := fmt.Errorf("no driver can return logs for runner %s", runnerID)
+	for _, d := range ordered {
+		provider, ok := d.(LogProvider)
+		if !ok || d == nil {
+			continue
+		}
+		out, err := provider.RunnerLogs(ctx, runnerID, tail)
+		if err == nil {
+			return out, nil
+		}
+		lastErr = err
+	}
+	return "", lastErr
+}
+
 // CleanupAll cleans up runners in both Docker and VM drivers.
 func (r *Router) CleanupAll(ctx context.Context) error {
 	var firstErr error
