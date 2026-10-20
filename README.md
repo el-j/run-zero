@@ -420,6 +420,11 @@ The Makefile is split per sub-package under [`mk/`](mk/) (`go`, `spec`, `web`, `
 | `DISCOVERY_INTERVAL` | Auto-discovery refresh interval in seconds | `900` |
 | `RATE_LIMIT_REFRESH_INTERVAL` | GitHub API quota refresh interval in seconds | `60` |
 | `ACTIONS_BILLING_REFRESH_INTERVAL` | Actions minutes refresh interval in seconds | `300` |
+| `GITLAB_URL` | Base URL for GitLab API (supports self-hosted instances like `https://git.eckelmann.de`) | `https://gitlab.com` |
+| `GITLAB_TOKEN` | GitLab Personal / Group Access Token with `api` scope | *None* |
+| `GITLAB_GROUP` | GitLab group to discover and monitor runners and queued jobs | *None* |
+| `GITLAB_PROJECTS` | Comma-separated list of GitLab project paths to monitor | *None* |
+| `PROVIDERS_CONFIG` | Optional path to a multi-instance providers YAML file | *None* |
 
 ---
 

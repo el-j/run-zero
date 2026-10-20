@@ -182,6 +182,67 @@
           Polling interval (seconds) for GitHub Actions minutes billing updates.
         </td>
       </tr>
+      <tr>
+        <td>
+          <code>GITLAB_URL</code>
+        </td>
+        <td>
+          <code>https://gitlab.com</code>
+        </td>
+        <td>
+          Base URL for GitLab API. Can be set to any private self-hosted GitLab
+          instance (e.g. <code>https://git.eckelmann.de</code>).
+        </td>
+      </tr>
+      <tr>
+        <td>
+          <code>GITLAB_TOKEN</code>
+        </td>
+        <td>
+          <em>Optional</em>
+        </td>
+        <td>
+          GitLab Personal Access Token, Group Access Token, or Project Access
+          Token with <code>api</code> scope for discovering runners and job
+          queues.
+        </td>
+      </tr>
+      <tr>
+        <td>
+          <code>GITLAB_GROUP</code>
+        </td>
+        <td>
+          <em>Optional</em>
+        </td>
+        <td>
+          GitLab group to discover and monitor runners and pending pipeline
+          jobs.
+        </td>
+      </tr>
+      <tr>
+        <td>
+          <code>GITLAB_PROJECTS</code>
+        </td>
+        <td>
+          <em>Optional</em>
+        </td>
+        <td>
+          Comma-separated list of GitLab project paths to monitor (e.g.{" "}
+          <code>group/project</code>).
+        </td>
+      </tr>
+      <tr>
+        <td>
+          <code>PROVIDERS_CONFIG</code>
+        </td>
+        <td>
+          <em>Optional</em>
+        </td>
+        <td>
+          Path to a multi-instance providers YAML configuration file for
+          enterprise setups.
+        </td>
+      </tr>
     </tbody>
   </table>
 </div>
