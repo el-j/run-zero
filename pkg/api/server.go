@@ -51,6 +51,7 @@ func NewServerWithDeps(
 	mux.HandleFunc("/api/status", handleStatusAndFleet(st))
 	mux.HandleFunc("/api/fleet", handleStatusAndFleet(st))
 	mux.HandleFunc("/api/logs", handleLogs(st))
+	mux.HandleFunc("/api/runner-log", handleRunnerLog(st))
 
 	// Settings & Cache
 	mux.HandleFunc("/api/settings", handleSettings(cfg, st))
