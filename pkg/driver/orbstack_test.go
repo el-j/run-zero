@@ -362,3 +362,24 @@ func TestOrbStackEnrichFromStore_StoreOverridesLossyParsedRepo(t *testing.T) {
 		t.Fatalf("store repo did not override parsed value: %+v", runners[0])
 	}
 }
+
+// A cloned Ubuntu VM starts apt-daily/unattended-upgrades on boot; their
+// apt-get holds the dpkg lock and makes a job's own apt step (e.g.
+// `playwright install --with-deps`) fail with "Could not get lock".
+func TestRunnerRegistrationScript_QuiesceAptBeforeRegistering(t *testing.T) {
+	script := runnerRegistrationScript("vm-1", RunnerSpec{Repo: "org/repo", Token: "tok", Arch: "amd64"})
+	register := strings.Index(script, "./config.sh")
+	for _, want := range []string{
+		"systemctl mask --now apt-daily.timer apt-daily-upgrade.timer",
+		"unattended-upgrades.service",
+		`DPkg::Lock::Timeout "600";`,
+	} {
+		i := strings.Index(script, want)
+		if i < 0 {
+			t.Fatalf("registration script missing %q", want)
+		}
+		if i > register {
+			t.Errorf("%q must run before the runner registers", want)
+		}
+	}
+}

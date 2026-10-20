@@ -205,6 +205,12 @@ func runnerRegistrationScript(name string, spec RunnerSpec) string {
 # e.g. Zitadel's gRPC gateway) hit "connection refused" on [::1]. Drop "localhost"
 # from the ::1 hosts entry; ip6-localhost/ip6-loopback stay.
 sudo sed -i -E 's/^(::1[[:space:]]+)localhost[[:space:]]+/\1/' /etc/hosts || true
+# A freshly booted clone starts apt-daily/unattended-upgrades, whose apt-get holds the
+# dpkg lock and makes a job's own apt step (e.g. playwright install --with-deps) fail
+# with "Could not get lock". Stop them for the VM's one-job life, and have any apt that
+# still collides wait for the lock instead of failing.
+sudo systemctl mask --now apt-daily.timer apt-daily-upgrade.timer apt-daily.service apt-daily-upgrade.service unattended-upgrades.service 2>/dev/null || true
+echo 'DPkg::Lock::Timeout "600";' | sudo tee /etc/apt/apt.conf.d/99runzero-lock-timeout >/dev/null || true
 cd /home/runner/actions-runner
 ./config.sh --unattended --ephemeral --replace --url %s --token %s --name %s --labels %s --work _work
 # The runner is ephemeral: run.sh exits after exactly one job. Power the VM off then so it
