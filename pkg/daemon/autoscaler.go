@@ -369,6 +369,20 @@ func (s *Scaler) ScaleCycle(ctx context.Context) {
 		tracked = prio
 	}
 
+	// Runners listed without a spawn-time record (e.g. OrbStack VMs whose host-side
+	// store entry is gone) carry a repo parsed from their hostname-safe name, such as
+	// "el-j-landing-in". Map it back to the tracked "owner/repo" so capacity counts,
+	// the dashboard and run links use the real repo.
+	for i := range activeRunners {
+		r := &activeRunners[i]
+		if strings.Contains(r.TargetRepo, "/") {
+			continue
+		}
+		if repo := driver.ResolveRepoFromMachineName(r.Name, tracked); repo != "" {
+			r.TargetRepo = repo
+		}
+	}
+
 	var allJobs []state.QueuedJob
 	jobsByRepo := make(map[string][]state.QueuedJob)
 

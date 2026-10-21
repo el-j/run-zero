@@ -40,3 +40,20 @@ func TestRunnerNames_RespectGitHub64CharLimit(t *testing.T) {
 		}
 	}
 }
+
+func TestResolveRepoFromMachineName_RecoversLossyOrbStackRepo(t *testing.T) {
+	repos := []string{"el-j/herbful", "el-j/landing.inquam-services", "el-j/run-zero"}
+	cases := map[string]string{
+		"runzero-j118881070610-r39490761518-amd64-el-j-landing-in-e4efbc":         "el-j/landing.inquam-services",
+		"runzero-j119267842113-r39613374904-amd64-el-j-herbful-516143":            "el-j/herbful",
+		orbstackMachineName(ManualRunnerName("el-j/run-zero", "arm64", "abc123")): "el-j/run-zero",
+	}
+	for name, want := range cases {
+		if got := ResolveRepoFromMachineName(name, repos); got != want {
+			t.Errorf("ResolveRepoFromMachineName(%q) = %q, want %q", name, got, want)
+		}
+	}
+	if got := ResolveRepoFromMachineName("runzero-j1-r2-amd64-other-repo-abc123", repos); got != "" {
+		t.Errorf("expected no match for untracked repo, got %q", got)
+	}
+}

@@ -2,6 +2,7 @@ package driver
 
 import (
 	"fmt"
+	"strconv"
 	"strings"
 )
 
@@ -93,4 +94,36 @@ func fitRepoPart(repoPart string, otherLen int) string {
 		return repoPart
 	}
 	return strings.Trim(repoPart[:allowed], "-_.")
+}
+
+// ResolveRepoFromMachineName maps a runner name whose repo token is lossy (OrbStack
+// machine names must be hostnames, so "el-j__landing.inquam-services" becomes
+// "el-j-landing-in") back to the "owner/repo" in repos whose spawn-time name
+// reproduces it exactly. It returns "" when no repo matches.
+func ResolveRepoFromMachineName(name string, repos []string) string {
+	tokens := strings.Split(strings.TrimPrefix(name, "runzero-"), "-")
+	if len(tokens) < 4 || !strings.HasPrefix(name, "runzero-") {
+		return ""
+	}
+	entropy := tokens[len(tokens)-1]
+	var build func(repo string) string
+	if tokens[0] == "manual" {
+		build = func(repo string) string { return ManualRunnerName(repo, tokens[1], entropy) }
+	} else if len(tokens) >= 5 && strings.HasPrefix(tokens[0], "j") && strings.HasPrefix(tokens[1], "r") {
+		jobID, errJ := strconv.ParseInt(tokens[0][1:], 10, 64)
+		runID, errR := strconv.ParseInt(tokens[1][1:], 10, 64)
+		if errJ != nil || errR != nil {
+			return ""
+		}
+		build = func(repo string) string { return JobScopedRunnerName(repo, tokens[2], runID, jobID, entropy) }
+	} else {
+		return ""
+	}
+	for _, repo := range repos {
+		candidate := build(repo)
+		if candidate == name || orbstackMachineName(candidate) == name {
+			return repo
+		}
+	}
+	return ""
 }
