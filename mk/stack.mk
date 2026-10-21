@@ -7,11 +7,12 @@ build: ## Build the autoscaler and runner container images (arm64 + amd64)
 	@docker compose --profile static build
 
 .PHONY: ensure-images
+# Always run the (cached) build: checking only that the image exists meant a
+# changed docker/start.sh or Dockerfile never reached the runners on restart.
 ensure-images: ## Build runner images that `docker compose up` skips (docker runner image; golden VMs on OrbStack)
 	@for arch in amd64 arm64; do \
-		docker image inspect local-github-runner:$$arch >/dev/null 2>&1 || { \
-			echo "$(CYAN)Building missing runner image local-github-runner:$$arch...$(RESET)"; \
-			docker compose --profile static build github-runner-$$arch || exit 1; }; \
+		echo "$(CYAN)Building runner image local-github-runner:$$arch (cached when unchanged)...$(RESET)"; \
+		docker compose --profile static build github-runner-$$arch || exit 1; \
 	done
 	@if command -v orbctl >/dev/null 2>&1; then $(MAKE) --no-print-directory build-vm-base; fi
 
