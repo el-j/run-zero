@@ -12,9 +12,10 @@ import (
 
 // Reaper enforces idle timeouts, zombie runner pruning, and unregistered runner teardown.
 type Reaper struct {
-	driver   driver.RunnerDriver
-	ghClient *github.Client
-	timeouts Timeouts
+	driver    driver.RunnerDriver
+	ghClient  *github.Client
+	timeouts  Timeouts
+	firstSeen map[string]float64
 }
 
 // NewReaper creates a self-healing reaper instance.
@@ -23,9 +24,10 @@ func NewReaper(driver driver.RunnerDriver, ghClient *github.Client, timeouts Tim
 		timeouts = DefaultTimeouts()
 	}
 	return &Reaper{
-		driver:   driver,
-		ghClient: ghClient,
-		timeouts: timeouts,
+		driver:    driver,
+		ghClient:  ghClient,
+		timeouts:  timeouts,
+		firstSeen: make(map[string]float64),
 	}
 }
 
@@ -118,6 +120,21 @@ func (r *Reaper) ReconcileLocalRunners(
 				age = nowUnix - float64(t.Unix())
 			}
 		}
+		if age <= 0 {
+			if r.firstSeen == nil {
+				r.firstSeen = make(map[string]float64)
+			}
+			key := runner.ID
+			if key == "" {
+				key = runner.Name
+			}
+			seen, ok := r.firstSeen[key]
+			if !ok {
+				seen = nowUnix
+				r.firstSeen[key] = seen
+			}
+			age = nowUnix - seen
+		}
 
 		var regPtr *Registration
 		if reg, ok := registrations[runner.Name]; ok {
@@ -136,6 +153,20 @@ func (r *Reaper) ReconcileLocalRunners(
 				_ = r.driver.StopRunner(ctx, runner.ID)
 			}
 			reapedIDs = append(reapedIDs, runner.ID)
+		}
+	}
+
+	liveKeys := make(map[string]bool, len(localRunners))
+	for _, runner := range localRunners {
+		key := runner.ID
+		if key == "" {
+			key = runner.Name
+		}
+		liveKeys[key] = true
+	}
+	for k := range r.firstSeen {
+		if !liveKeys[k] {
+			delete(r.firstSeen, k)
 		}
 	}
 

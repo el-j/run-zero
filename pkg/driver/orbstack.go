@@ -217,7 +217,7 @@ cd /home/runner/actions-runner
 # shows up as "stopped" and the prune pass removes it - otherwise finished VMs stay
 # "running", keep counting against MAX_RUNNERS and eventually deadlock the queue. The 6h
 # cap (GitHub's maximum job length) bounds a VM whose job was taken by another runner.
-setsid nohup sh -c 'timeout 6h ./run.sh; sudo shutdown -h now' > /home/runner/runner.log 2>&1 < /dev/null &
+setsid nohup sh -c 'timeout 6h ./run.sh || true; sudo shutdown -h now || sudo poweroff || true' > /home/runner/runner.log 2>&1 < /dev/null &
 sleep 1
 `, shellQuote("https://github.com/"+spec.Repo), shellQuote(spec.Token), shellQuote(name), shellQuote(runnerLabels(spec)))
 }

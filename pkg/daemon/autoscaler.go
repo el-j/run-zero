@@ -101,6 +101,7 @@ type Scaler struct {
 	imageBuilder       ImageBuilder
 	providerMgr        *provider.Manager
 	spawnBackoff       map[string]spawnBackoff
+	firstSeen          map[string]time.Time
 }
 
 // ImageBuilder rebuilds runner images; satisfied by *builder.BuildManager.
@@ -193,6 +194,7 @@ func NewScaler(
 		reaper:         rp,
 		archOverride:   override,
 		historyFetcher: github.NewHistoryFetcher(gh),
+		firstSeen:      make(map[string]time.Time),
 	}
 }
 
@@ -351,20 +353,11 @@ func (s *Scaler) ScaleCycle(ctx context.Context) {
 
 	activeRunners := s.CollectRunners(ctx)
 
-	// Reconcile and reap orphaned/idle/stale runners
-	if s.reaper != nil && len(activeRunners) > 0 {
-		reaped := s.reaper.Reconcile(ctx, activeRunners, 0)
-		if len(reaped) > 0 {
-			s.state.AppendLog(fmt.Sprintf("[Autoscaler] 🧹 Reaped %d orphaned/idle runner(s) blocking capacity: %s", len(reaped), strings.Join(reaped, ", ")))
-			activeRunners = s.CollectRunners(ctx)
-		}
-	}
-
 	var tracked []string
 	if s.poller != nil {
 		tracked = s.poller.Repos()
 	}
-	if len(tracked) == 0 {
+	if len(tracked) == 0 && s.priorityMgr != nil {
 		prio, _ := s.priorityMgr.GetState()
 		tracked = prio
 	}
@@ -372,14 +365,36 @@ func (s *Scaler) ScaleCycle(ctx context.Context) {
 	// Runners listed without a spawn-time record (e.g. OrbStack VMs whose host-side
 	// store entry is gone) carry a repo parsed from their hostname-safe name, such as
 	// "el-j-landing-in". Map it back to the tracked "owner/repo" so capacity counts,
-	// the dashboard and run links use the real repo.
+	// reaper, the dashboard and run links use the real repo.
 	for i := range activeRunners {
 		r := &activeRunners[i]
-		if strings.Contains(r.TargetRepo, "/") {
-			continue
+		if !strings.Contains(r.TargetRepo, "/") {
+			if repo := driver.ResolveRepoFromMachineName(r.Name, tracked); repo != "" {
+				r.TargetRepo = repo
+			}
 		}
-		if repo := driver.ResolveRepoFromMachineName(r.Name, tracked); repo != "" {
-			r.TargetRepo = repo
+		if r.CreatedAt == nil {
+			if s.firstSeen == nil {
+				s.firstSeen = make(map[string]time.Time)
+			}
+			seen, ok := s.firstSeen[r.Name]
+			if !ok {
+				seen = time.Now()
+				s.firstSeen[r.Name] = seen
+			}
+			cStr := seen.UTC().Format(time.RFC3339)
+			r.CreatedAt = &cStr
+		}
+	}
+
+	// Prune firstSeen for runners that are no longer active
+	activeNames := make(map[string]bool, len(activeRunners))
+	for _, r := range activeRunners {
+		activeNames[r.Name] = true
+	}
+	for k := range s.firstSeen {
+		if !activeNames[k] {
+			delete(s.firstSeen, k)
 		}
 	}
 
@@ -387,13 +402,96 @@ func (s *Scaler) ScaleCycle(ctx context.Context) {
 	jobsByRepo := make(map[string][]state.QueuedJob)
 
 	for _, repo := range tracked {
-		if s.priorityMgr.IsPaused(repo) {
+		if s.priorityMgr != nil && s.priorityMgr.IsPaused(repo) {
 			continue
 		}
 		jobs, err := s.ghClient.ListActiveJobs(ctx, repo)
 		if err == nil && len(jobs) > 0 {
 			allJobs = append(allJobs, jobs...)
 			jobsByRepo[repo] = jobs
+		}
+	}
+
+	// Clean up runners whose job or workflow run has already completed on GitHub Actions.
+	// In ephemeral single-job runner architectures, a runner whose job or run has finished
+	// is orphaned and must be stopped immediately so it doesn't occupy capacity or linger in the UI.
+	if s.ghClient != nil && s.driver != nil && len(activeRunners) > 0 {
+		var surviving []state.RunnerInfo
+		for _, r := range activeRunners {
+			if r.TargetRepo == "" || (r.JobID == nil && r.RunID == nil) {
+				surviving = append(surviving, r)
+				continue
+			}
+
+			// If the job or run is in allJobs, it is active.
+			isActive := false
+			for _, j := range allJobs {
+				if r.JobID != nil && *r.JobID == j.ID {
+					isActive = true
+					break
+				}
+				if r.RunID != nil && *r.RunID == j.RunID && r.TargetRepo == j.Repo {
+					isActive = true
+					break
+				}
+				if j.RunnerName != nil && *j.RunnerName == r.Name {
+					isActive = true
+					break
+				}
+			}
+			if isActive {
+				surviving = append(surviving, r)
+				continue
+			}
+
+			// Neither the job nor the run is active in allJobs. Query GitHub to verify completion.
+			isCompleted := false
+			var reason string
+
+			if r.JobID != nil {
+				job, err := s.ghClient.GetWorkflowJob(ctx, r.TargetRepo, *r.JobID)
+				if err == nil && job != nil && job.Status == "completed" {
+					isCompleted = true
+					reason = fmt.Sprintf("job #%d is completed (%s)", *r.JobID, job.Conclusion)
+				}
+			}
+
+			if !isCompleted && r.RunID != nil {
+				run, err := s.ghClient.GetWorkflowRun(ctx, r.TargetRepo, *r.RunID)
+				if err == nil && run != nil && run.Status == "completed" {
+					isCompleted = true
+					reason = fmt.Sprintf("workflow run #%d is completed (%s)", *r.RunID, run.Conclusion)
+				}
+			}
+
+			if isCompleted {
+				s.state.AppendLog(fmt.Sprintf("[Autoscaler] 🧹 Reaped finished runner '%s' for %s: %s", r.Name, r.TargetRepo, reason))
+				_ = s.driver.StopRunner(ctx, r.ID)
+				if s.firstSeen != nil {
+					delete(s.firstSeen, r.Name)
+				}
+				continue
+			}
+
+			surviving = append(surviving, r)
+		}
+		activeRunners = surviving
+	}
+
+	// Reconcile and reap orphaned/idle/stale runners
+	if s.reaper != nil && len(activeRunners) > 0 {
+		reaped := s.reaper.Reconcile(ctx, activeRunners, 0)
+		if len(reaped) > 0 {
+			s.state.AppendLog(fmt.Sprintf("[Autoscaler] 🧹 Reaped %d orphaned/idle runner(s) blocking capacity: %s", len(reaped), strings.Join(reaped, ", ")))
+			activeRunners = s.CollectRunners(ctx)
+			for i := range activeRunners {
+				r := &activeRunners[i]
+				if !strings.Contains(r.TargetRepo, "/") {
+					if repo := driver.ResolveRepoFromMachineName(r.Name, tracked); repo != "" {
+						r.TargetRepo = repo
+					}
+				}
+			}
 		}
 	}
 

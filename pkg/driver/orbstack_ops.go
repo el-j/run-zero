@@ -6,6 +6,7 @@ import (
 	"log"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/el-j/run-zero/pkg/state"
 )
@@ -39,6 +40,13 @@ func (o *OrbStackDriver) enrichFromStore(runners []state.RunnerInfo) {
 	for i := range runners {
 		known, ok := byName[runners[i].Name]
 		if !ok {
+			if runners[i].CreatedAt == nil {
+				now := time.Now().UTC().Format(time.RFC3339)
+				runners[i].CreatedAt = &now
+				if o.store != nil {
+					o.store.Register(runners[i])
+				}
+			}
 			continue
 		}
 		// The store holds the exact spawn-time values; the ones parsed from the

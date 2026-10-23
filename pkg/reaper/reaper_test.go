@@ -126,3 +126,26 @@ func TestReconcileLocalRunners_ConclusiveOnlyForListedRepo(t *testing.T) {
 		t.Fatalf("expected only r-listed reaped, got %v", reaped)
 	}
 }
+
+func TestReconcileLocalRunners_FirstSeenFallback(t *testing.T) {
+	d := &mockDriver{}
+	reaper := NewReaper(d, nil, Timeouts{UnregisteredSeconds: 100})
+
+	runners := []state.RunnerInfo{
+		{ID: "r-nocreated", Name: "runzero-nocreated", TargetRepo: "el-j/herbful", CreatedAt: nil},
+	}
+
+	// First cycle at time 1000: firstSeen recorded as 1000 (age 0), kept
+	reaped := reaper.ReconcileLocalRunners(context.Background(), runners, map[string]Registration{},
+		map[string]bool{"el-j/herbful": true}, 1000, 0)
+	if len(reaped) != 0 {
+		t.Fatalf("expected 0 reaped on first cycle, got %v", reaped)
+	}
+
+	// Second cycle at time 1200: age = 200 > 100 (UnregisteredSeconds), reaped
+	reaped = reaper.ReconcileLocalRunners(context.Background(), runners, map[string]Registration{},
+		map[string]bool{"el-j/herbful": true}, 1200, 0)
+	if len(reaped) != 1 || reaped[0] != "r-nocreated" {
+		t.Fatalf("expected r-nocreated reaped on second cycle, got %v", reaped)
+	}
+}

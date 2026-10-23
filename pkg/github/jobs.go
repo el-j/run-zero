@@ -9,10 +9,11 @@ import (
 
 type workflowRunsResponse struct {
 	TotalCount   int           `json:"total_count"`
-	WorkflowRuns []workflowRun `json:"workflow_runs"`
+	WorkflowRuns []WorkflowRun `json:"workflow_runs"`
 }
 
-type workflowRun struct {
+// WorkflowRun represents a GitHub Actions workflow run.
+type WorkflowRun struct {
 	ID           int64   `json:"id"`
 	Name         string  `json:"name"`
 	HeadBranch   string  `json:"head_branch"`
@@ -25,9 +26,11 @@ type workflowRun struct {
 	WorkflowName *string `json:"workflow_name,omitempty"`
 }
 
+type workflowRun = WorkflowRun
+
 type workflowJobsResponse struct {
 	TotalCount int           `json:"total_count"`
-	Jobs       []workflowJob `json:"jobs"`
+	Jobs       []WorkflowJob `json:"jobs"`
 }
 
 type workflowStep struct {
@@ -37,7 +40,8 @@ type workflowStep struct {
 	Number     int     `json:"number"`
 }
 
-type workflowJob struct {
+// WorkflowJob represents a single job within a GitHub Actions workflow run.
+type WorkflowJob struct {
 	ID          int64          `json:"id"`
 	RunID       int64          `json:"run_id"`
 	Name        string         `json:"name"`
@@ -50,6 +54,28 @@ type workflowJob struct {
 	Labels      []string       `json:"labels"`
 	RunnerName  *string        `json:"runner_name,omitempty"`
 	Steps       []workflowStep `json:"steps,omitempty"`
+}
+
+type workflowJob = WorkflowJob
+
+// GetWorkflowRun retrieves a single workflow run by ID.
+func (c *Client) GetWorkflowRun(ctx context.Context, repo string, runID int64) (*WorkflowRun, error) {
+	endpoint := fmt.Sprintf("/repos/%s/actions/runs/%d", repo, runID)
+	var run WorkflowRun
+	if _, err := c.DoRequest(ctx, "GET", endpoint, nil, &run); err != nil {
+		return nil, err
+	}
+	return &run, nil
+}
+
+// GetWorkflowJob retrieves a single workflow job by ID.
+func (c *Client) GetWorkflowJob(ctx context.Context, repo string, jobID int64) (*WorkflowJob, error) {
+	endpoint := fmt.Sprintf("/repos/%s/actions/jobs/%d", repo, jobID)
+	var job WorkflowJob
+	if _, err := c.DoRequest(ctx, "GET", endpoint, nil, &job); err != nil {
+		return nil, err
+	}
+	return &job, nil
 }
 
 // ListActiveJobs finds queued and in-progress workflow jobs in repo, calculating stage & step progress.

@@ -19,6 +19,7 @@ import (
 type mockDriver struct {
 	spawned  []driver.RunnerSpec
 	runners  []state.RunnerInfo
+	stopped  []string
 	spawnErr error
 	cleanups int
 }
@@ -46,7 +47,17 @@ func (m *mockDriver) SpawnRunner(ctx context.Context, spec driver.RunnerSpec) (*
 func (m *mockDriver) ListRunners(ctx context.Context) ([]state.RunnerInfo, error) {
 	return m.runners, nil
 }
-func (m *mockDriver) StopRunner(ctx context.Context, runnerID string) error { return nil }
+func (m *mockDriver) StopRunner(ctx context.Context, runnerID string) error {
+	m.stopped = append(m.stopped, runnerID)
+	var remaining []state.RunnerInfo
+	for _, r := range m.runners {
+		if r.ID != runnerID && r.Name != runnerID {
+			remaining = append(remaining, r)
+		}
+	}
+	m.runners = remaining
+	return nil
+}
 func (m *mockDriver) CleanupAll(ctx context.Context) error {
 	m.cleanups++
 	return nil
@@ -250,5 +261,63 @@ func TestScaler_SpawnFailureBacksOffAndRebuildsMissingImage(t *testing.T) {
 	scaler.ScaleCycle(ctx)
 	if len(drv.spawned) < 2 {
 		t.Fatalf("expected spawning to resume after the image rebuild, got %d attempts", len(drv.spawned))
+	}
+}
+
+func TestScaler_ReapsCompletedJobAndRun(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		switch {
+		case strings.Contains(r.URL.Path, "/runs") && strings.Contains(r.URL.RawQuery, "status="):
+			// No active runs
+			_, _ = w.Write([]byte(`{"total_count": 0, "workflow_runs": []}`))
+		case r.URL.Path == "/repos/el-j/landing.inquam-services/actions/jobs/118881070610":
+			// Completed job
+			_, _ = w.Write([]byte(`{"id": 118881070610, "run_id": 39490761518, "status": "completed", "conclusion": "success"}`))
+		case r.URL.Path == "/repos/el-j/landing.inquam-services/actions/runs/39490761518":
+			// Completed run
+			_, _ = w.Write([]byte(`{"id": 39490761518, "status": "completed", "conclusion": "success"}`))
+		default:
+			w.WriteHeader(http.StatusOK)
+			_, _ = w.Write([]byte(`{}`))
+		}
+	}))
+	defer server.Close()
+
+	cfg := &config.Config{
+		MaxRunners: 3, PollInterval: 10, DiscoveryInterval: 1800,
+		ReposConfig: "el-j/landing.inquam-services", RunnerArch: "both",
+	}
+
+	st := state.NewState(3, "1.0.0", nil)
+	jID := int64(118881070610)
+	rID := int64(39490761518)
+	drv := &mockDriver{
+		runners: []state.RunnerInfo{
+			{
+				ID:         "e4efbc",
+				Name:       "runzero-j118881070610-r39490761518-amd64-el-j-landing-in-e4efbc",
+				Status:     "running",
+				State:      "running",
+				TargetRepo: "el-j-landing-in", // lossy repo from OrbStack machine name
+				Backend:    "orbstack",
+				JobID:      &jID,
+				RunID:      &rID,
+			},
+		},
+	}
+	gh := github.NewClient("token", server.URL, server.Client())
+	pm, _ := github.NewPriorityManager("", []string{"el-j/landing.inquam-services"}, nil)
+	rec := github.NewReconciler(pm)
+	poller := github.NewPoller(gh, rec, st, []string{"el-j/landing.inquam-services"}, 10*time.Second)
+
+	scaler := NewScaler(cfg, st, drv, gh, pm, rec, poller, nil)
+	scaler.ScaleCycle(context.Background())
+
+	if len(drv.stopped) != 1 || drv.stopped[0] != "e4efbc" {
+		t.Fatalf("expected runner e4efbc to be stopped, got %v", drv.stopped)
+	}
+	if len(st.GetSnapshot().Runners) != 0 {
+		t.Fatalf("expected 0 runners in state snapshot, got %d", len(st.GetSnapshot().Runners))
 	}
 }

@@ -72,3 +72,52 @@ func TestClient_ListQueuedJobs_RunFetchError(t *testing.T) {
 		t.Fatal("expected error on 401 unauthorized")
 	}
 }
+
+func TestClient_GetWorkflowRunAndJob(t *testing.T) {
+	runJSON := `{
+		"id": 101,
+		"name": "CI",
+		"head_branch": "main",
+		"status": "completed",
+		"conclusion": "success"
+	}`
+
+	jobJSON := `{
+		"id": 201,
+		"run_id": 101,
+		"name": "build",
+		"status": "completed",
+		"conclusion": "success"
+	}`
+
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		if r.URL.Path == "/repos/owner/repo/actions/runs/101" {
+			_, _ = w.Write([]byte(runJSON))
+			return
+		}
+		if r.URL.Path == "/repos/owner/repo/actions/jobs/201" {
+			_, _ = w.Write([]byte(jobJSON))
+			return
+		}
+		w.WriteHeader(http.StatusNotFound)
+	}))
+	defer ts.Close()
+
+	client := NewClient("test-token", ts.URL, nil)
+	run, err := client.GetWorkflowRun(context.Background(), "owner/repo", 101)
+	if err != nil {
+		t.Fatalf("unexpected error fetching workflow run: %v", err)
+	}
+	if run.ID != 101 || run.Status != "completed" || run.Conclusion != "success" {
+		t.Errorf("unexpected workflow run: %+v", run)
+	}
+
+	job, err := client.GetWorkflowJob(context.Background(), "owner/repo", 201)
+	if err != nil {
+		t.Fatalf("unexpected error fetching workflow job: %v", err)
+	}
+	if job.ID != 201 || job.Status != "completed" || job.Conclusion != "success" {
+		t.Errorf("unexpected workflow job: %+v", job)
+	}
+}
