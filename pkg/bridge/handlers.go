@@ -1,6 +1,7 @@
 package bridge
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"log"
@@ -10,6 +11,14 @@ import (
 	"strings"
 
 	"github.com/el-j/run-zero/pkg/driver"
+)
+
+// Seams for host-specific behavior so handlers can be exercised without a real Terminal.
+var (
+	hostOS       = runtime.GOOS
+	runOsascript = func(ctx context.Context, script string) ([]byte, error) {
+		return exec.CommandContext(ctx, "osascript", "-e", script).CombinedOutput()
+	}
 )
 
 func (s *Server) handleHealth(w http.ResponseWriter, r *http.Request) {
@@ -159,7 +168,7 @@ func (s *Server) handleOpenTerminal(w http.ResponseWriter, r *http.Request) {
 
 	// Validate name against shell injection
 	for _, c := range name {
-		if !(c >= 'a' && c <= 'z' || c >= 'A' && c <= 'Z' || c >= '0' && c <= '9' || c == '-' || c == '_' || c == '.' || c == ':') {
+		if (c < 'a' || c > 'z') && (c < 'A' || c > 'Z') && (c < '0' || c > '9') && c != '-' && c != '_' && c != '.' && c != ':' {
 			s.writeJSON(w, http.StatusBadRequest, map[string]string{"error": "Invalid runner name characters"})
 			return
 		}
@@ -182,10 +191,9 @@ func (s *Server) handleOpenTerminal(w http.ResponseWriter, r *http.Request) {
 	}
 
 	launched := false
-	if runtime.GOOS == "darwin" {
+	if hostOS == "darwin" {
 		osa := fmt.Sprintf("tell application \"Terminal\"\n\tactivate\n\tdo script \"%s\"\nend tell", strings.ReplaceAll(cmdStr, `"`, `\"`))
-		cmd := exec.CommandContext(r.Context(), "osascript", "-e", osa)
-		if out, err := cmd.CombinedOutput(); err == nil {
+		if out, err := runOsascript(r.Context(), osa); err == nil {
 			launched = true
 			log.Printf("[bridge] Launched Terminal window for runner %s: %s", name, strings.TrimSpace(string(out)))
 		} else {

@@ -1,9 +1,12 @@
 package sizing
 
 const (
-	ReserveCPUs      = 1
+	// ReserveCPUs is the CPU count kept free for the host.
+	ReserveCPUs = 1
+	// ReserveMemoryMiB is the memory (MiB) kept free for the host.
 	ReserveMemoryMiB = 2048
-	MinMemoryMiB     = 1024
+	// MinMemoryMiB is the smallest memory (MiB) a runner may be given.
+	MinMemoryMiB = 1024
 )
 
 // HostCapacity represents available CPU cores and physical memory in MiB.

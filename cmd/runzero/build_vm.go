@@ -10,7 +10,11 @@ import (
 
 	"github.com/el-j/run-zero/pkg/builder"
 	"github.com/el-j/run-zero/pkg/daemon"
+	"github.com/el-j/run-zero/pkg/driver"
 )
+
+// goldenExec overrides the command executor used for golden builds (nil = real OS).
+var goldenExec driver.CmdExecutor
 
 func runBuildVMBase(args []string, stdout, stderr io.Writer) int {
 	fs := flag.NewFlagSet("runzero build-vm-base", flag.ContinueOnError)
@@ -35,7 +39,7 @@ func runBuildVMBase(args []string, stdout, stderr io.Writer) int {
 	case "amd64", "x86_64":
 		targetArches = []string{"amd64"}
 	default:
-		fmt.Fprintf(stderr, "Unknown architecture: %s\n", *archFlag)
+		_, _ = fmt.Fprintf(stderr, "Unknown architecture: %s\n", *archFlag)
 		return 1
 	}
 
@@ -48,7 +52,7 @@ func runBuildVMBase(args []string, stdout, stderr io.Writer) int {
 		provisionScript = "docker/provision-toolchain.sh"
 	}
 	if _, err := os.Stat(provisionScript); err != nil {
-		fmt.Fprintf(stderr, "Cannot read toolchain provisioning script %q (run from the repo root or set PROVISION_SCRIPT): %v\n", provisionScript, err)
+		_, _ = fmt.Fprintf(stderr, "Cannot read toolchain provisioning script %q (run from the repo root or set PROVISION_SCRIPT): %v\n", provisionScript, err)
 		return 1
 	}
 
@@ -56,27 +60,27 @@ func runBuildVMBase(args []string, stdout, stderr io.Writer) int {
 		StateDir:            ".runzero-state",
 		ProvisionScriptPath: provisionScript,
 	}
-	gb := builder.NewGoldenBuilder(cfg, nil)
+	gb := builder.NewGoldenBuilder(cfg, goldenExec)
 
 	ctx, cancel := daemon.SignalContext(context.Background())
 	defer cancel()
 
 	for _, arch := range targetArches {
-		fmt.Fprintf(stdout, "Building golden OrbStack VM base image for %s...\n", arch)
+		_, _ = fmt.Fprintf(stdout, "Building golden OrbStack VM base image for %s...\n", arch)
 		built, err := gb.BuildBaseImage(ctx, arch)
 		if err != nil {
-			fmt.Fprintf(stderr, "Failed building base image for %s: %v\n", arch, err)
+			_, _ = fmt.Fprintf(stderr, "Failed building base image for %s: %v\n", arch, err)
 			return 1
 		}
 		if built {
-			fmt.Fprintf(stdout, "Successfully built golden base image: %s\n", gb.BaseImageName(arch))
+			_, _ = fmt.Fprintf(stdout, "Successfully built golden base image: %s\n", gb.BaseImageName(arch))
 		} else {
-			fmt.Fprintf(stdout, "Golden base image %s is already up to date.\n", gb.BaseImageName(arch))
+			_, _ = fmt.Fprintf(stdout, "Golden base image %s is already up to date.\n", gb.BaseImageName(arch))
 		}
 	}
 
 	if stopped, err := gb.EnsureBaseImagesStopped(ctx); err == nil && len(stopped) > 0 {
-		fmt.Fprintf(stdout, "Verified base VM templates are stopped: %v\n", stopped)
+		_, _ = fmt.Fprintf(stdout, "Verified base VM templates are stopped: %v\n", stopped)
 	}
 
 	return 0

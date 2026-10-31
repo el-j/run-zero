@@ -9,6 +9,11 @@ import (
 	"github.com/el-j/run-zero/web"
 )
 
+// embeddedFS is the UI bundle compiled into the binary; tests substitute it.
+var embeddedFS interface {
+	ReadFile(name string) ([]byte, error)
+} = web.DistFS
+
 func handleStatic(distDir string, staticDir string) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		path := r.URL.Path
@@ -64,7 +69,7 @@ func serveIndex(w http.ResponseWriter, distDir, staticDir string) {
 
 	// Fallback to embedded bundle in binary when running in standard standalone mode
 	if isEmbeddedFallbackEligible(distDir) {
-		if data, err := web.DistFS.ReadFile("dist/index.html"); err == nil {
+		if data, err := embeddedFS.ReadFile("dist/index.html"); err == nil {
 			w.Header().Set("Content-Type", "text/html; charset=utf-8")
 			w.WriteHeader(http.StatusOK)
 			_, _ = w.Write(data)
@@ -84,7 +89,7 @@ func serveAsset(w http.ResponseWriter, r *http.Request, distDir, assetRel string
 	data, err := os.ReadFile(full)
 	if err != nil {
 		if isEmbeddedFallbackEligible(distDir) {
-			if embData, embErr := web.DistFS.ReadFile("dist/assets/" + assetRel); embErr == nil {
+			if embData, embErr := embeddedFS.ReadFile("dist/assets/" + assetRel); embErr == nil {
 				data = embData
 			} else {
 				writeError(w, http.StatusNotFound, "Asset not found")
@@ -127,7 +132,7 @@ func serveFont(w http.ResponseWriter, fontName, distDir, staticDir string) {
 	}
 
 	if isEmbeddedFallbackEligible(distDir) {
-		if data, err := web.DistFS.ReadFile("dist/fonts/" + fontName); err == nil {
+		if data, err := embeddedFS.ReadFile("dist/fonts/" + fontName); err == nil {
 			w.Header().Set("Content-Type", "font/woff2")
 			w.WriteHeader(http.StatusOK)
 			_, _ = w.Write(data)
@@ -190,7 +195,7 @@ func serveRootStaticFile(w http.ResponseWriter, path, distDir, staticDir string)
 	}
 
 	if isEmbeddedFallbackEligible(distDir) {
-		if data, err := web.DistFS.ReadFile("dist/" + name); err == nil {
+		if data, err := embeddedFS.ReadFile("dist/" + name); err == nil {
 			w.Header().Set("Content-Type", contentType)
 			w.WriteHeader(http.StatusOK)
 			_, _ = w.Write(data)

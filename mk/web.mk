@@ -24,8 +24,12 @@ lint-web: ## Lint the dashboard with Oxlint
 fmt-web: ## Format the dashboard sources with oxfmt
 	@cd web && pnpm run fmt
 
+.PHONY: test-web
+test-web: ## Run dashboard unit tests with the 100% coverage gate (Vitest)
+	@cd web && pnpm run test
+
 .PHONY: check-web
-check-web: lint-web ## Web gate: Oxlint, typecheck and build the production dashboard
+check-web: lint-web test-web ## Web gate: Oxlint, tests (100% coverage), typecheck and build the production dashboard
 	@cd web && pnpm run build
 
 .PHONY: dashboard

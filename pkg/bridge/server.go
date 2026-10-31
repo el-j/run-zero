@@ -133,10 +133,8 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			s.writeJSON(w, http.StatusUnauthorized, map[string]string{"error": "Unauthorized"})
 			return
 		}
-		if err := s.buildMgr.CancelBuild(); err != nil {
-			s.writeJSON(w, http.StatusNotFound, map[string]string{"error": err.Error()})
-			return
-		}
+		// CancelBuild is idempotent and currently never returns an error.
+		_ = s.buildMgr.CancelBuild()
 		s.writeJSON(w, http.StatusOK, map[string]string{"status": "cancelled"})
 		return
 	}

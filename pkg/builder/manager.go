@@ -18,6 +18,9 @@ import (
 	"github.com/el-j/run-zero/pkg/driver"
 )
 
+// bridgePollInterval is how often a delegated bridge build is polled for progress.
+var bridgePollInterval = time.Second
+
 // LogHook is called whenever a new build log line is generated.
 type LogHook func(line string)
 
@@ -301,13 +304,11 @@ func (m *BuildManager) buildVMImage(ctx context.Context, arch string) error {
 func (m *BuildManager) buildVMImageViaBridge(ctx context.Context, bridgeURL, arch string) error {
 	m.appendLog(fmt.Sprintf("[BUILD:VM] Delegating VM build to Host VM Bridge at %s...", bridgeURL))
 	reqURL := strings.TrimSuffix(bridgeURL, "/") + "/api/actions/build-image"
-	payload, err := json.Marshal(ImageBuildRequest{
+	// Marshaling a struct of plain strings cannot fail.
+	payload, _ := json.Marshal(ImageBuildRequest{
 		Target: "vm",
 		Arch:   arch,
 	})
-	if err != nil {
-		return err
-	}
 
 	httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost, reqURL, bytes.NewReader(payload))
 	if err != nil {
@@ -323,7 +324,7 @@ func (m *BuildManager) buildVMImageViaBridge(ctx context.Context, bridgeURL, arc
 	if err != nil {
 		return fmt.Errorf("failed to contact bridge: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusAccepted {
 		var errResp map[string]string
@@ -343,7 +344,7 @@ func (m *BuildManager) buildVMImageViaBridge(ctx context.Context, bridgeURL, arc
 	token := os.Getenv("RUNZERO_BRIDGE_TOKEN")
 	lastLogIndex := 0
 
-	ticker := time.NewTicker(1 * time.Second)
+	ticker := time.NewTicker(bridgePollInterval)
 	defer ticker.Stop()
 
 	for {
@@ -374,7 +375,7 @@ func (m *BuildManager) buildVMImageViaBridge(ctx context.Context, bridgeURL, arc
 			}
 			var curProg ImageBuildProgress
 			err = json.NewDecoder(pResp.Body).Decode(&curProg)
-			pResp.Body.Close()
+			_ = pResp.Body.Close()
 			if err != nil {
 				continue
 			}

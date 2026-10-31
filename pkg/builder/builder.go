@@ -8,7 +8,6 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
-	"sync"
 	"time"
 
 	"github.com/el-j/run-zero/docker"
@@ -19,7 +18,6 @@ import (
 type GoldenBuilder struct {
 	cfg    Config
 	exec   driver.CmdExecutor
-	mu     sync.RWMutex
 	events chan ImageEvent
 }
 

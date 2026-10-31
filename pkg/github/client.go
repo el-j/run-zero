@@ -14,9 +14,12 @@ import (
 
 // RateLimit holds GitHub API rate limit status.
 type RateLimit struct {
+	// Remaining Number of API requests remaining in the current window.
 	Remaining int
-	Limit     int
-	Reset     time.Time
+	// Limit Maximum number of requests in the current window.
+	Limit int
+	// Reset Time when the current rate-limit window resets.
+	Reset time.Time
 }
 
 // Client interacts with the GitHub REST API.
@@ -127,7 +130,7 @@ func (c *Client) DoRequest(ctx context.Context, method, endpoint string, body io
 	if err != nil {
 		return nil, err
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	c.updateRateLimit(resp.Header)
 

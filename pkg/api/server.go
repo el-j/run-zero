@@ -20,6 +20,26 @@ type Server struct {
 	listener   net.Listener
 	cfg        *config.Config
 	state      *state.State
+	routes     []string
+}
+
+// routeMux is an http.ServeMux that remembers every registered pattern.
+type routeMux struct {
+	*http.ServeMux
+	patterns []string
+}
+
+func newRouteMux() *routeMux { return &routeMux{ServeMux: http.NewServeMux()} }
+
+// HandleFunc registers handler for pattern and records the pattern.
+func (m *routeMux) HandleFunc(pattern string, handler func(http.ResponseWriter, *http.Request)) {
+	m.patterns = append(m.patterns, pattern)
+	m.ServeMux.HandleFunc(pattern, handler)
+}
+
+// Routes returns every URL pattern registered on the server's mux.
+func (s *Server) Routes() []string {
+	return append([]string(nil), s.routes...)
 }
 
 // NewServer configures an HTTP control plane matching the TypeSpec specification.
@@ -45,7 +65,7 @@ func NewServerWithDeps(
 	ghClient *github.Client,
 	runnerDriver driver.RunnerDriver,
 ) *Server {
-	mux := http.NewServeMux()
+	mux := newRouteMux()
 
 	// Fleet & logs
 	mux.HandleFunc("/api/status", handleStatusAndFleet(st))
@@ -103,6 +123,7 @@ func NewServerWithDeps(
 		httpServer: srv,
 		cfg:        cfg,
 		state:      st,
+		routes:     mux.patterns,
 	}
 }
 

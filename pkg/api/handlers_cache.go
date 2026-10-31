@@ -9,6 +9,7 @@ import (
 	"github.com/el-j/run-zero/pkg/state"
 )
 
+// CachePurgePayload is the JSON body accepted by POST /api/cache/purge.
 type CachePurgePayload struct {
 	Category string `json:"category,omitempty"`
 	Repo     string `json:"repo,omitempty"`

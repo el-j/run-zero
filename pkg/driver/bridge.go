@@ -61,10 +61,8 @@ func (b *BridgeDriver) SpawnRunner(ctx context.Context, spec RunnerSpec) (*state
 		"name":         spec.Name,
 		"extra_env":    spec.Env,
 	}
-	body, err := json.Marshal(payload)
-	if err != nil {
-		return nil, err
-	}
+	// The payload holds only strings and a string map, so marshaling cannot fail.
+	body, _ := json.Marshal(payload)
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, url, bytes.NewReader(body))
 	if err != nil {
@@ -79,7 +77,7 @@ func (b *BridgeDriver) SpawnRunner(ctx context.Context, spec RunnerSpec) (*state
 	if err != nil {
 		return nil, err
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusOK {
 		var errBody struct {

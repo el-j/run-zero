@@ -13,7 +13,7 @@ func TestInstanceStore_Lifecycle(t *testing.T) {
 	if err != nil {
 		t.Fatalf("temp dir error: %v", err)
 	}
-	defer os.RemoveAll(tmpDir)
+	defer func() { _ = os.RemoveAll(tmpDir) }()
 
 	filePath := filepath.Join(tmpDir, "sub", "instances.json")
 	store := NewInstanceStore(filePath)
@@ -81,7 +81,7 @@ func TestInstanceStore_EmptyPathAndMalformed(t *testing.T) {
 	}
 
 	tmpFile, _ := os.CreateTemp("", "bad-inst-*.json")
-	defer os.Remove(tmpFile.Name())
+	defer func() { _ = os.Remove(tmpFile.Name()) }()
 	_, _ = tmpFile.WriteString("bad json")
 	_ = tmpFile.Close()
 

@@ -4,6 +4,8 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+
+	"github.com/el-j/run-zero/pkg/state"
 )
 
 func TestPriorityManager_Lifecycle(t *testing.T) {
@@ -11,7 +13,7 @@ func TestPriorityManager_Lifecycle(t *testing.T) {
 	if err != nil {
 		t.Fatalf("failed creating temp dir: %v", err)
 	}
-	defer os.RemoveAll(tmpDir)
+	defer func() { _ = os.RemoveAll(tmpDir) }()
 
 	filePath := filepath.Join(tmpDir, "sub", "repo_priority.json")
 	pm, err := NewPriorityManager(filePath, []string{"repo-a", "repo-b"}, []string{"repo-paused"})
@@ -69,12 +71,20 @@ func TestPriorityManager_EmptyFileAndMalformed(t *testing.T) {
 	}
 
 	tmpFile, _ := os.CreateTemp("", "bad-prio-*.json")
-	defer os.Remove(tmpFile.Name())
+	defer func() { _ = os.Remove(tmpFile.Name()) }()
 	_, _ = tmpFile.WriteString("not json")
 	_ = tmpFile.Close()
 
 	pmBad, _ := NewPriorityManager(tmpFile.Name(), nil, nil)
 	if err := pmBad.Load(); err == nil {
 		t.Fatal("expected error on malformed JSON")
+	}
+}
+
+func TestPriorityOrderingAmongPrioritizedRepositories(t *testing.T) {
+	pm, _ := NewPriorityManager("", []string{"first", "second"}, nil)
+	jobs := NewReconciler(pm).Reconcile([]state.QueuedJob{{ID: 1, Repo: "second"}, {ID: 2, Repo: "first"}}, 0, 2)
+	if len(jobs) != 2 || jobs[0].Repo != "first" || jobs[1].Repo != "second" {
+		t.Fatalf("order=%+v", jobs)
 	}
 }

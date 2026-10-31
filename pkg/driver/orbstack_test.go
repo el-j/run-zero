@@ -261,7 +261,7 @@ func TestOrbstackMachineName(t *testing.T) {
 		t.Fatalf("entropy suffix lost: %s", long)
 	}
 	for _, r := range long {
-		if !(r >= 'a' && r <= 'z') && !(r >= '0' && r <= '9') && r != '-' {
+		if (r < 'a' || r > 'z') && (r < '0' || r > '9') && r != '-' {
 			t.Fatalf("invalid char %q in %s", r, long)
 		}
 	}

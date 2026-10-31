@@ -29,10 +29,12 @@ func NewProviderAdapter(client *Client, owner, org string, repos []string) *Prov
 	}
 }
 
+// ID returns the stable GitHub provider identifier.
 func (a *ProviderAdapter) ID() string {
 	return "github"
 }
 
+// Name returns the display name for this GitHub provider.
 func (a *ProviderAdapter) Name() string {
 	if a.org != "" {
 		return fmt.Sprintf("GitHub (%s)", a.org)
@@ -43,14 +45,17 @@ func (a *ProviderAdapter) Name() string {
 	return "GitHub"
 }
 
+// Type returns the GitHub provider family.
 func (a *ProviderAdapter) Type() provider.ProviderType {
 	return provider.TypeGitHub
 }
 
+// BaseURL returns the configured GitHub API root.
 func (a *ProviderAdapter) BaseURL() string {
 	return a.client.baseURL
 }
 
+// FetchRemoteRunners lists GitHub runners visible in the configured organization or repositories.
 func (a *ProviderAdapter) FetchRemoteRunners(ctx context.Context) ([]state.RunnerInfo, error) {
 	// First query org-level runners if configured
 	if a.org != "" {
@@ -82,6 +87,7 @@ func (a *ProviderAdapter) FetchRemoteRunners(ctx context.Context) ([]state.Runne
 	return allRunners, nil
 }
 
+// FetchQueuedJobs collects queued jobs from the configured repositories.
 func (a *ProviderAdapter) FetchQueuedJobs(ctx context.Context) ([]state.QueuedJob, error) {
 	var allJobs []state.QueuedJob
 	for _, repo := range a.repos {
@@ -94,6 +100,7 @@ func (a *ProviderAdapter) FetchQueuedJobs(ctx context.Context) ([]state.QueuedJo
 	return allJobs, nil
 }
 
+// AcquireRegistrationToken requests a short-lived runner token for the selected scope.
 func (a *ProviderAdapter) AcquireRegistrationToken(ctx context.Context, scope string) (string, time.Time, error) {
 	token, err := a.client.CreateRegistrationToken(ctx, scope, a.org)
 	if err != nil {
@@ -102,6 +109,7 @@ func (a *ProviderAdapter) AcquireRegistrationToken(ctx context.Context, scope st
 	return token, time.Now().Add(time.Hour), nil
 }
 
+// DeregisterRunner removes a runner registration by its GitHub runner ID.
 func (a *ProviderAdapter) DeregisterRunner(ctx context.Context, runnerID string) error {
 	cleanID := strings.TrimPrefix(runnerID, "gh-")
 	id, err := strconv.ParseInt(cleanID, 10, 64)

@@ -1,5 +1,6 @@
 import { client, type RunnerInfo } from "../api/client";
 
+/** Active runner list with stop/terminal actions, autoscaler pause toggle and a manual spawn form. */
 export class RunnerFleetComponent {
   private container: HTMLElement;
   private runners: RunnerInfo[] = [];
@@ -7,16 +8,30 @@ export class RunnerFleetComponent {
   private showSpawnForm: boolean = false;
   private statusMessage: string = "";
 
+  /** @param container - Element the fleet is rendered into. */
   constructor(container: HTMLElement) {
     this.container = container;
   }
 
+  /**
+   * Replaces the displayed runners and re-renders.
+   *
+   * @param runners - Active runners.
+   * @param autoscalerStatus - `"paused"` or `"running"`; controls the spawning toggle label.
+   */
   setRunners(runners: RunnerInfo[], autoscalerStatus: string = "running") {
     this.runners = runners;
     this.autoscalerStatus = autoscalerStatus;
     this.render();
   }
 
+  /**
+   * Stops a runner after confirmation and shows a transient status message.
+   *
+   * @param runnerId - Runner id.
+   * @param name - Runner name, for messages.
+   * @param jobId - Running job id; adds a failure warning to the confirmation.
+   */
   private async handleStopRunner(runnerId: string, name: string, jobId?: number) {
     const warning = jobId
       ? `Runner '${name}' is actively executing Job #${jobId}. Stopping it will cause the CI job to fail.\n\nAre you sure you want to stop this runner?`
@@ -41,6 +56,7 @@ export class RunnerFleetComponent {
     }, 4000);
   }
 
+  /** Pauses or resumes autoscaler spawning and shows a transient status message. */
   private async handleToggleSpawning() {
     const isPaused = this.autoscalerStatus === "paused";
     const nextAction = isPaused ? "resume" : "pause";
@@ -60,6 +76,12 @@ export class RunnerFleetComponent {
     }, 4000);
   }
 
+  /**
+   * Starts a runner for a repository; alerts when the repository is blank.
+   *
+   * @param repo - Target repository (`owner/repo`).
+   * @param arch - Target architecture.
+   */
   private async handleManualSpawn(repo: string, arch: string) {
     if (!repo.trim()) {
       alert("Please provide a repository (e.g. org/repo).");
@@ -81,6 +103,7 @@ export class RunnerFleetComponent {
     }, 4000);
   }
 
+  /** Renders the runner list, spawn form and controls, and binds all of their handlers. */
   render() {
     const isPaused = this.autoscalerStatus === "paused";
 
@@ -123,7 +146,7 @@ export class RunnerFleetComponent {
                   </div>
                 </div>
                 <div style="display: flex; gap: 0.5rem; align-items: center;">
-                  <button class="btn btn-secondary terminal-runner-btn" data-runner-id="${runner.id}" data-runner-name="${runner.name}" data-backend="${runner.backend || ""}" style="padding: 0.35rem 0.75rem; font-size: 0.8rem;" title="Open terminal directly inside this runner">
+                  <button class="btn btn-secondary terminal-runner-btn" data-runner-id="${runner.id}" data-runner-name="${runner.name}" data-backend="${runner.backend}" style="padding: 0.35rem 0.75rem; font-size: 0.8rem;" title="Open terminal directly inside this runner">
                     &gt;_ Terminal
                   </button>
                   <button class="btn btn-secondary stop-runner-btn" data-runner-id="${runner.id}" data-runner-name="${runner.name}" data-job-id="${runner.job_id || ""}" style="padding: 0.35rem 0.75rem; font-size: 0.8rem; border-color: rgba(244,63,94,0.4); color: var(--accent-rose);">
@@ -160,18 +183,14 @@ export class RunnerFleetComponent {
       </section>
     `;
 
-    const toggleBtn = this.container.querySelector<HTMLButtonElement>("#toggle-spawning-btn");
-    if (toggleBtn) {
-      toggleBtn.onclick = () => this.handleToggleSpawning();
-    }
+    const toggleBtn = this.container.querySelector<HTMLButtonElement>("#toggle-spawning-btn")!;
+    toggleBtn.onclick = () => this.handleToggleSpawning();
 
-    const openSpawnBtn = this.container.querySelector<HTMLButtonElement>("#open-spawn-form-btn");
-    if (openSpawnBtn) {
-      openSpawnBtn.onclick = () => {
-        this.showSpawnForm = !this.showSpawnForm;
-        this.render();
-      };
-    }
+    const openSpawnBtn = this.container.querySelector<HTMLButtonElement>("#open-spawn-form-btn")!;
+    openSpawnBtn.onclick = () => {
+      this.showSpawnForm = !this.showSpawnForm;
+      this.render();
+    };
 
     const cancelSpawnBtn = this.container.querySelector<HTMLButtonElement>("#manual-spawn-cancel");
     if (cancelSpawnBtn) {
@@ -184,11 +203,9 @@ export class RunnerFleetComponent {
     const submitSpawnBtn = this.container.querySelector<HTMLButtonElement>("#manual-spawn-submit");
     if (submitSpawnBtn) {
       submitSpawnBtn.onclick = () => {
-        const repoInput = this.container.querySelector<HTMLInputElement>("#manual-repo-input");
-        const archSelect = this.container.querySelector<HTMLSelectElement>("#manual-arch-select");
-        if (repoInput && archSelect) {
-          this.handleManualSpawn(repoInput.value, archSelect.value);
-        }
+        const repoInput = this.container.querySelector<HTMLInputElement>("#manual-repo-input")!;
+        const archSelect = this.container.querySelector<HTMLSelectElement>("#manual-arch-select")!;
+        this.handleManualSpawn(repoInput.value, archSelect.value);
       };
     }
 

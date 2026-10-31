@@ -12,10 +12,8 @@ func (s *InstanceStore) saveLocked() error {
 	if s.filePath == "" {
 		return nil
 	}
-	data, err := json.MarshalIndent(s.instances, "", "  ")
-	if err != nil {
-		return err
-	}
+	// RunnerInfo contains only JSON-safe fields, so marshaling cannot fail.
+	data, _ := json.MarshalIndent(s.instances, "", "  ")
 	tmp := s.filePath + ".tmp"
 	if err := os.MkdirAll(filepath.Dir(s.filePath), 0755); err != nil && filepath.Dir(s.filePath) != "." {
 		return err

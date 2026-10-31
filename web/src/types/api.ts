@@ -38,6 +38,40 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/actions/clean-cache": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** @description Legacy cache clean action */
+        post: operations["Api_cleanCache"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/actions/prune": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** @description Remove finished runners, retaining their log tails */
+        post: operations["Api_pruneRunners"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/actions/repo-priority": {
         parameters: {
             query?: never;
@@ -123,6 +157,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/events": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** @description Server-Sent Events real-time event stream (alias of /stream) */
+        get: operations["Api_streamEventsAlias"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/fleet": {
         parameters: {
             query?: never;
@@ -183,6 +234,23 @@ export interface paths {
         };
         /** @description Get in-memory daemon circular log lines */
         get: operations["Api_getLogs"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/runner-log": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** @description Get the log tail retained from a runner after its container/VM was removed */
+        get: operations["Api_getRunnerLog"];
         put?: never;
         post?: never;
         delete?: never;
@@ -276,6 +344,15 @@ export interface components {
             total_human: string;
             categories: components["schemas"]["CacheCategoryUsage"][];
         };
+        /** @description Legacy clean-cache request */
+        CleanCacheRequest: {
+            category?: string;
+        };
+        /** @description Legacy clean-cache response */
+        CleanCacheResponse: {
+            status: string;
+            cleared: string[];
+        };
         /** @description Generic error response */
         ErrorResponse: {
             error: string;
@@ -349,6 +426,13 @@ export interface components {
         /** @description Logs response payload */
         LogsResponse: {
             logs: components["schemas"]["LogEntry"][];
+        };
+        /** @description Result of pruning finished runners */
+        PruneResponse: {
+            ok: boolean;
+            message: string;
+            /** Format: int32 */
+            pruned: number;
         };
         /** @description Information about a queued or running workflow job */
         QueuedJob: {
@@ -434,6 +518,11 @@ export interface components {
             origin?: "local" | "cloud" | "external";
             is_cloud?: boolean;
             tags?: string[];
+        };
+        /** @description Retained log tail of a runner that has already been removed */
+        RunnerLogResponse: {
+            name: string;
+            log: string;
         };
         /** @description One step (stage) of a workflow job */
         StepInfo: {
@@ -543,6 +632,68 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["SuccessResponse"];
+                };
+            };
+            /** @description An unexpected error response. */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    Api_cleanCache: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CleanCacheRequest"];
+            };
+        };
+        responses: {
+            /** @description The request has succeeded. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CleanCacheResponse"];
+                };
+            };
+            /** @description An unexpected error response. */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    Api_pruneRunners: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The request has succeeded. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PruneResponse"];
                 };
             };
             /** @description An unexpected error response. */
@@ -717,6 +868,26 @@ export interface operations {
             };
         };
     };
+    Api_streamEventsAlias: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The request has succeeded. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "text/plain": string;
+                };
+            };
+        };
+    };
     Api_getFleet: {
         parameters: {
             query?: never;
@@ -822,6 +993,37 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["LogsResponse"];
+                };
+            };
+            /** @description An unexpected error response. */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    Api_getRunnerLog: {
+        parameters: {
+            query: {
+                name: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The request has succeeded. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RunnerLogResponse"];
                 };
             };
             /** @description An unexpected error response. */

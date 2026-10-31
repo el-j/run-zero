@@ -9,11 +9,13 @@ import (
 	"github.com/el-j/run-zero/pkg/state"
 )
 
+// RepoPriorityPayload is the JSON body of POST /api/actions/repo-priority.
 type RepoPriorityPayload struct {
 	Priority []string `json:"priority"`
 	Paused   []string `json:"paused"`
 }
 
+// WorkflowActionPayload is the JSON body of POST /api/actions/workflow.
 type WorkflowActionPayload struct {
 	Repo   string `json:"repo"`
 	RunID  int64  `json:"run_id"`

@@ -51,7 +51,7 @@ func FullProvisionScript(arch, runnerVersion, customScript string) string {
 	var sb strings.Builder
 	sb.WriteString("exec > /home/runner/provision.log 2>&1\n")
 	sb.WriteString("set -e\n")
-	sb.WriteString(fmt.Sprintf("export ARCH=%q\n", arch))
+	fmt.Fprintf(&sb, "export ARCH=%q\n", arch)
 	sb.WriteString(DockerEngineSnippet() + "\n")
 	if strings.TrimSpace(customScript) != "" {
 		// Run the toolchain script as its own bash process, exactly like the Dockerfile

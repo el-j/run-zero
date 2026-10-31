@@ -4,6 +4,7 @@ import type {
   InfrastructureImageStatus,
 } from "../api/client";
 
+/** Infrastructure image status dialog with build, cancel and live progress tracking. */
 export class BuildImagesModal {
   private dialog: HTMLDialogElement | null = null;
   private statusGrid: HTMLElement | null = null;
@@ -17,12 +18,14 @@ export class BuildImagesModal {
   private isBuilding = false;
   private pollTimer: number | null = null;
 
+  /** Binds to the existing DOM and loads the initial image status. */
   constructor() {
     this.initElements();
     this.bindEvents();
     this.refresh();
   }
 
+  /** Looks up the modal and header badge elements. */
   private initElements(): void {
     this.dialog = document.getElementById("images-modal") as HTMLDialogElement | null;
     this.statusGrid = document.getElementById("images-status-grid");
@@ -35,6 +38,7 @@ export class BuildImagesModal {
     this.headerIcon = document.getElementById("badge-images-icon");
   }
 
+  /** Wires the open/close/build/cancel buttons that exist in the DOM. */
   private bindEvents(): void {
     const btnOpen = document.getElementById("btn-open-images");
     if (btnOpen) {
@@ -72,6 +76,7 @@ export class BuildImagesModal {
     }
   }
 
+  /** Opens the dialog (if closed) and refreshes image status. */
   public open(): void {
     if (this.dialog && !this.dialog.open) {
       this.dialog.showModal();
@@ -79,12 +84,14 @@ export class BuildImagesModal {
     }
   }
 
+  /** Closes the dialog if open. */
   public close(): void {
     if (this.dialog && this.dialog.open) {
       this.dialog.close();
     }
   }
 
+  /** Fetches image status, renders it and resumes or finalises build tracking. */
   public async refresh(): Promise<void> {
     try {
       const res = await fetch("/api/images");
@@ -106,6 +113,11 @@ export class BuildImagesModal {
     }
   }
 
+  /**
+   * Applies a pushed (SSE) build progress event; polls while building, otherwise refreshes.
+   *
+   * @param p - Build progress snapshot.
+   */
   public handleProgressEvent(p: ImageBuildProgress): void {
     this.updateBuildProgress(p);
     if (p.status === "building") {
@@ -116,6 +128,11 @@ export class BuildImagesModal {
     }
   }
 
+  /**
+   * Renders the image status grid and the header ready-count badge.
+   *
+   * @param data - Image status response.
+   */
   private renderStatus(data: ImagesStatusResponse): void {
     if (!this.statusGrid) return;
 
@@ -153,6 +170,12 @@ export class BuildImagesModal {
     this.statusGrid.innerHTML = html;
   }
 
+  /**
+   * Builds the HTML card for one image.
+   *
+   * @param img - Image status.
+   * @returns Card markup.
+   */
   private renderImageCard(img: InfrastructureImageStatus): string {
     const isVm = img.kind === "orbstack-vm";
     const statusColor =
@@ -187,6 +210,12 @@ export class BuildImagesModal {
     `;
   }
 
+  /**
+   * Starts an image build and begins polling its progress; alerts on failure.
+   *
+   * @param target - Which images to build.
+   * @param arch - Architecture to build for.
+   */
   private async triggerBuild(
     target: "all" | "vm" | "container",
     arch: "all" | "arm64" | "amd64",
@@ -218,6 +247,7 @@ export class BuildImagesModal {
     }
   }
 
+  /** Requests cancellation of the active image build. */
   private async cancelBuild(): Promise<void> {
     try {
       await fetch("/api/actions/build-image/cancel", { method: "POST" });
@@ -227,6 +257,11 @@ export class BuildImagesModal {
     }
   }
 
+  /**
+   * Shows build progress (step, percentage, bar, log) and tracks whether a build is running.
+   *
+   * @param p - Build progress snapshot.
+   */
   private updateBuildProgress(p: ImageBuildProgress): void {
     if (!this.progressPanel) return;
 
@@ -252,6 +287,7 @@ export class BuildImagesModal {
     }
   }
 
+  /** Polls the active build every 1.5s until it finishes, then refreshes image status. */
   private startPolling(): void {
     if (this.pollTimer) return;
     this.pollTimer = window.setInterval(async () => {
@@ -271,6 +307,7 @@ export class BuildImagesModal {
     }, 1500);
   }
 
+  /** Stops the build poll timer, if running. */
   private stopPolling(): void {
     if (this.pollTimer) {
       clearInterval(this.pollTimer);

@@ -10,24 +10,38 @@ import (
 
 // GitLabJob represents a CI job in GitLab CI/CD.
 type GitLabJob struct {
-	ID        int64          `json:"id"`
-	Status    string         `json:"status"` // pending, running, success, failed, canceled
-	Stage     string         `json:"stage"`
-	Name      string         `json:"name"`
-	Ref       string         `json:"ref"`
-	CreatedAt *string        `json:"created_at,omitempty"`
-	StartedAt *string        `json:"started_at,omitempty"`
-	TagList   []string       `json:"tag_list"`
-	WebURL    string         `json:"web_url"`
-	Pipeline  GitLabPipeline `json:"pipeline"`
+	// ID Unique GitLab job or pipeline identifier.
+	ID int64 `json:"id"`
+	// Status Current pipeline or job status.
+	Status string `json:"status"` // pending, running, success, failed, canceled
+	// Stage Pipeline stage containing the job.
+	Stage string `json:"stage"`
+	// Name Job name.
+	Name string `json:"name"`
+	// Ref Branch or tag used by the pipeline.
+	Ref string `json:"ref"`
+	// CreatedAt RFC3339 timestamp when the job was created.
+	CreatedAt *string `json:"created_at,omitempty"`
+	// StartedAt RFC3339 timestamp when the job started.
+	StartedAt *string `json:"started_at,omitempty"`
+	// TagList Runner tags requested by the job.
+	TagList []string `json:"tag_list"`
+	// WebURL Browser URL for the job.
+	WebURL string `json:"web_url"`
+	// Pipeline Pipeline metadata associated with this job.
+	Pipeline GitLabPipeline `json:"pipeline"`
 }
 
 // GitLabPipeline represents pipeline metadata associated with a job.
 type GitLabPipeline struct {
-	ID        int64  `json:"id"`
-	ProjectID int64  `json:"project_id"`
-	Ref       string `json:"ref"`
-	Status    string `json:"status"`
+	// ID Unique GitLab job or pipeline identifier.
+	ID int64 `json:"id"`
+	// ProjectID GitLab project identifier.
+	ProjectID int64 `json:"project_id"`
+	// Ref Branch or tag used by the pipeline.
+	Ref string `json:"ref"`
+	// Status Current pipeline or job status.
+	Status string `json:"status"`
 }
 
 // ListProjectPendingJobs fetches all pending jobs for a specific project.

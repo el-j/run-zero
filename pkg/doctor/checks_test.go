@@ -131,3 +131,27 @@ func TestCheckHostCache(t *testing.T) {
 		t.Fatalf("expected ok, got: %+v", resVal)
 	}
 }
+
+func TestCheckDefaultExecutorsAndRunAllGitHub(t *testing.T) {
+	_ = CheckDocker(context.Background(), nil)
+	_ = CheckOrbStack(context.Background(), nil)
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(`{"login":"x"}`))
+	}))
+	defer srv.Close()
+	res := RunAll(context.Background(), Options{
+		Exec:     &mockExecutor{},
+		GHClient: github.NewClient("t", srv.URL, srv.Client()),
+	})
+	found := false
+	for _, r := range res {
+		if strings.Contains(strings.ToLower(r.Name), "github") {
+			found = true
+		}
+	}
+	if !found {
+		t.Errorf("expected github check in %v", res)
+	}
+}

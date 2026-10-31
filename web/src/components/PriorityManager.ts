@@ -1,22 +1,39 @@
 import { client } from "../api/client";
 
+/** Editable repository dispatch-priority list with pause/resume and reordering. */
 export class PriorityManagerComponent {
   private container: HTMLElement;
   private priority: string[] = [];
   private paused: Set<string> = new Set();
   private onUpdate?: () => void;
 
+  /**
+   * @param container - Element the list is rendered into.
+   * @param onUpdate - Called after a change has been saved successfully.
+   */
   constructor(container: HTMLElement, onUpdate?: () => void) {
     this.container = container;
     this.onUpdate = onUpdate;
   }
 
+  /**
+   * Replaces the displayed priority order and paused set, then re-renders.
+   *
+   * @param priority - Repositories in dispatch order.
+   * @param paused - Repositories that are paused.
+   */
   setState(priority: string[], paused: string[]) {
     this.priority = [...priority];
     this.paused = new Set(paused);
     this.render();
   }
 
+  /**
+   * Swaps a repository with its neighbour and saves; out-of-range moves are ignored.
+   *
+   * @param index - Current position.
+   * @param direction - -1 to move up, 1 to move down.
+   */
   private async move(index: number, direction: -1 | 1) {
     const target = index + direction;
     if (target < 0 || target >= this.priority.length) return;
@@ -27,6 +44,7 @@ export class PriorityManagerComponent {
     await this.persist();
   }
 
+  /** Toggles a repository's paused state and saves. */
   private async togglePause(repo: string) {
     if (this.paused.has(repo)) {
       this.paused.delete(repo);
@@ -37,6 +55,7 @@ export class PriorityManagerComponent {
     await this.persist();
   }
 
+  /** Saves the priority and paused set, notifying `onUpdate`; failures are logged. */
   private async persist() {
     try {
       await client.updateRepoPriority(this.priority, Array.from(this.paused));
@@ -46,6 +65,7 @@ export class PriorityManagerComponent {
     }
   }
 
+  /** Renders the list (empty when no repositories) and binds the move and pause buttons. */
   render() {
     if (this.priority.length === 0) {
       this.container.innerHTML = "";

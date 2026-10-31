@@ -39,22 +39,27 @@ func NewProviderAdapter(id, name string, client *Client, group string, projects 
 	}
 }
 
+// ID returns the configured GitLab provider identifier.
 func (a *ProviderAdapter) ID() string {
 	return a.id
 }
 
+// Name returns the configured GitLab provider display name.
 func (a *ProviderAdapter) Name() string {
 	return a.name
 }
 
+// Type returns the GitLab provider family.
 func (a *ProviderAdapter) Type() provider.ProviderType {
 	return provider.TypeGitLab
 }
 
+// BaseURL returns the configured GitLab API root.
 func (a *ProviderAdapter) BaseURL() string {
 	return a.client.baseURL
 }
 
+// FetchRemoteRunners lists runners accessible to the configured group or instance.
 func (a *ProviderAdapter) FetchRemoteRunners(ctx context.Context) ([]state.RunnerInfo, error) {
 	if a.group != "" {
 		runners, err := a.client.ListGroupRunners(ctx, a.group)
@@ -79,6 +84,7 @@ func (a *ProviderAdapter) FetchRemoteRunners(ctx context.Context) ([]state.Runne
 	return res, nil
 }
 
+// FetchQueuedJobs collects pending jobs from the configured projects.
 func (a *ProviderAdapter) FetchQueuedJobs(ctx context.Context) ([]state.QueuedJob, error) {
 	var allJobs []state.QueuedJob
 	for _, proj := range a.projects {
@@ -93,6 +99,7 @@ func (a *ProviderAdapter) FetchQueuedJobs(ctx context.Context) ([]state.QueuedJo
 	return allJobs, nil
 }
 
+// AcquireRegistrationToken returns the configured GitLab access token and its local expiry.
 func (a *ProviderAdapter) AcquireRegistrationToken(ctx context.Context, scope string) (string, time.Time, error) {
 	// Returns authentication token or group token
 	if a.client.token != "" {
@@ -101,6 +108,7 @@ func (a *ProviderAdapter) AcquireRegistrationToken(ctx context.Context, scope st
 	return "", time.Time{}, fmt.Errorf("no gitlab token configured for registration")
 }
 
+// DeregisterRunner deletes a runner registration by its GitLab ID.
 func (a *ProviderAdapter) DeregisterRunner(ctx context.Context, runnerID string) error {
 	// In GitLab, ephemeral runners self-unregister or are removed via DELETE /runners/:id
 	endpoint := fmt.Sprintf("/runners/%s", runnerID)

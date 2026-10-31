@@ -1,6 +1,7 @@
 package api
 
 import (
+	"context"
 	"encoding/json"
 	"net/http"
 	"strings"
@@ -8,7 +9,20 @@ import (
 	"github.com/el-j/run-zero/pkg/builder"
 )
 
-func handleGetImages(inspector *builder.ImageInspector, buildMgr *builder.BuildManager) http.HandlerFunc {
+// imageInspector reports the state of runner images; satisfied by *builder.ImageInspector.
+type imageInspector interface {
+	Inspect(ctx context.Context) builder.ImagesStatusResponse
+}
+
+// buildController drives image builds; satisfied by *builder.BuildManager.
+type buildController interface {
+	GetActiveBuild() *builder.ImageBuildProgress
+	GetBuildByID(id string) (*builder.ImageBuildProgress, bool)
+	TriggerBuild(ctx context.Context, req builder.ImageBuildRequest) (*builder.ImageBuildProgress, error)
+	CancelBuild() error
+}
+
+func handleGetImages(inspector imageInspector, buildMgr buildController) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodGet {
 			writeError(w, http.StatusMethodNotAllowed, "Method not allowed")
@@ -23,7 +37,7 @@ func handleGetImages(inspector *builder.ImageInspector, buildMgr *builder.BuildM
 	}
 }
 
-func handleTriggerBuild(buildMgr *builder.BuildManager) http.HandlerFunc {
+func handleTriggerBuild(buildMgr buildController) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodPost {
 			writeError(w, http.StatusMethodNotAllowed, "Method not allowed")
@@ -46,7 +60,7 @@ func handleTriggerBuild(buildMgr *builder.BuildManager) http.HandlerFunc {
 	}
 }
 
-func handleCancelBuild(buildMgr *builder.BuildManager) http.HandlerFunc {
+func handleCancelBuild(buildMgr buildController) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodPost {
 			writeError(w, http.StatusMethodNotAllowed, "Method not allowed")
@@ -65,7 +79,7 @@ func handleCancelBuild(buildMgr *builder.BuildManager) http.HandlerFunc {
 	}
 }
 
-func handleGetBuildProgress(buildMgr *builder.BuildManager) http.HandlerFunc {
+func handleGetBuildProgress(buildMgr buildController) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodGet {
 			writeError(w, http.StatusMethodNotAllowed, "Method not allowed")

@@ -2,6 +2,7 @@ import ambientAndHeaderHtml from "./fragments/ambient-and-header.html?raw";
 import dashboardMainHtml from "./fragments/dashboard-main.html?raw";
 import dialogsAndToastHtml from "./fragments/dialogs-and-toast.html?raw";
 
+/** Renders the dashboard HTML shell into `document.body` once; later calls are no-ops. */
 export function renderDashboardShell() {
   if (document.body.dataset.shellRendered === "true") return;
   document.body.classList.add("theme-dark");

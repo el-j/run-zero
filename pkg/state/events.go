@@ -7,7 +7,9 @@ import (
 
 // Event represents a Server-Sent Event message.
 type Event struct {
-	Type string      `json:"type"`
+	// Type Event type delivered to subscribers.
+	Type string `json:"type"`
+	// Data Event payload serialized for clients.
 	Data interface{} `json:"data"`
 }
 

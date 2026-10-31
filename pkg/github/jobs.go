@@ -14,15 +14,25 @@ type workflowRunsResponse struct {
 
 // WorkflowRun represents a GitHub Actions workflow run.
 type WorkflowRun struct {
-	ID           int64   `json:"id"`
-	Name         string  `json:"name"`
-	HeadBranch   string  `json:"head_branch"`
-	Status       string  `json:"status"`
-	Conclusion   string  `json:"conclusion"`
-	HTMLURL      string  `json:"html_url"`
-	RunAttempt   int     `json:"run_attempt"`
-	CreatedAt    string  `json:"created_at"`
-	UpdatedAt    string  `json:"updated_at"`
+	// ID Unique workflow run or job identifier.
+	ID int64 `json:"id"`
+	// Name Workflow or job name.
+	Name string `json:"name"`
+	// HeadBranch Branch associated with the workflow run.
+	HeadBranch string `json:"head_branch"`
+	// Status Current workflow run or job status.
+	Status string `json:"status"`
+	// Conclusion Final workflow run or job result.
+	Conclusion string `json:"conclusion"`
+	// HTMLURL Browser URL for the workflow object.
+	HTMLURL string `json:"html_url"`
+	// RunAttempt Attempt number for this workflow run.
+	RunAttempt int `json:"run_attempt"`
+	// CreatedAt RFC3339 timestamp when the run or job was created.
+	CreatedAt string `json:"created_at"`
+	// UpdatedAt RFC3339 timestamp when the workflow run was last updated.
+	UpdatedAt string `json:"updated_at"`
+	// WorkflowName Display name of the workflow.
 	WorkflowName *string `json:"workflow_name,omitempty"`
 }
 
@@ -42,18 +52,30 @@ type workflowStep struct {
 
 // WorkflowJob represents a single job within a GitHub Actions workflow run.
 type WorkflowJob struct {
-	ID          int64          `json:"id"`
-	RunID       int64          `json:"run_id"`
-	Name        string         `json:"name"`
-	Status      string         `json:"status"`
-	Conclusion  string         `json:"conclusion"`
-	CreatedAt   string         `json:"created_at"`
-	StartedAt   *string        `json:"started_at,omitempty"`
-	CompletedAt *string        `json:"completed_at,omitempty"`
-	HTMLURL     string         `json:"html_url"`
-	Labels      []string       `json:"labels"`
-	RunnerName  *string        `json:"runner_name,omitempty"`
-	Steps       []workflowStep `json:"steps,omitempty"`
+	// ID Unique workflow run or job identifier.
+	ID int64 `json:"id"`
+	// RunID Identifier of the workflow run containing the job.
+	RunID int64 `json:"run_id"`
+	// Name Workflow or job name.
+	Name string `json:"name"`
+	// Status Current workflow run or job status.
+	Status string `json:"status"`
+	// Conclusion Final workflow run or job result.
+	Conclusion string `json:"conclusion"`
+	// CreatedAt RFC3339 timestamp when the run or job was created.
+	CreatedAt string `json:"created_at"`
+	// StartedAt RFC3339 timestamp when the job started.
+	StartedAt *string `json:"started_at,omitempty"`
+	// CompletedAt RFC3339 timestamp when the job completed.
+	CompletedAt *string `json:"completed_at,omitempty"`
+	// HTMLURL Browser URL for the workflow object.
+	HTMLURL string `json:"html_url"`
+	// Labels Runner labels required by the job.
+	Labels []string `json:"labels"`
+	// RunnerName Name of the runner executing the job.
+	RunnerName *string `json:"runner_name,omitempty"`
+	// Steps Workflow steps included in the job.
+	Steps []workflowStep `json:"steps,omitempty"`
 }
 
 type workflowJob = WorkflowJob

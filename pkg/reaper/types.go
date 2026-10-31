@@ -4,10 +4,14 @@ package reaper
 type Action string
 
 const (
-	ActionKeep             Action = "keep"
+	// ActionKeep leaves the runner untouched.
+	ActionKeep Action = "keep"
+	// ActionReapUnregistered removes a runner that never registered.
 	ActionReapUnregistered Action = "reap-unregistered"
-	ActionReapIdle         Action = "reap-idle"
-	ActionCheckStaleBusy   Action = "check-stale-busy"
+	// ActionReapIdle removes an idle runner that is no longer needed.
+	ActionReapIdle Action = "reap-idle"
+	// ActionCheckStaleBusy flags a busy runner that may be stuck.
+	ActionCheckStaleBusy Action = "check-stale-busy"
 )
 
 // Timeouts defines thresholds in seconds for runner expiration and reaping.

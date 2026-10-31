@@ -11,6 +11,7 @@ type ConfigError struct {
 	Message string
 }
 
+// Error implements the error interface.
 func (e *ConfigError) Error() string {
 	return e.Message
 }

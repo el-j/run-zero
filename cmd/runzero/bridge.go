@@ -53,7 +53,7 @@ func runBridge(args []string, stdout, stderr io.Writer) int {
 	}
 	store := driver.NewInstanceStore(storePath)
 	if err := store.Load(); err != nil {
-		fmt.Fprintf(stderr, "[Bridge] could not load %s: %v\n", storePath, err)
+		_, _ = fmt.Fprintf(stderr, "[Bridge] could not load %s: %v\n", storePath, err)
 	}
 	orbDriver := driver.NewOrbStackDriver(nil, store, "")
 	dockerDriver := driver.NewDockerDriver(nil, store, "", "")
@@ -67,9 +67,9 @@ func runBridge(args []string, stdout, stderr io.Writer) int {
 	ctx, cancel := daemon.SignalContext(context.Background())
 	defer cancel()
 
-	fmt.Fprintf(stdout, "Starting Host VM Bridge on http://%s:%d (runzero v%s)...\n", *host, *port, Version)
+	_, _ = fmt.Fprintf(stdout, "Starting Host VM Bridge on http://%s:%d (runzero v%s)...\n", *host, *port, Version)
 	if err := srv.Run(ctx); err != nil {
-		fmt.Fprintf(stderr, "[Bridge Error] %v\n", err)
+		_, _ = fmt.Fprintf(stderr, "[Bridge Error] %v\n", err)
 		return 1
 	}
 	return 0

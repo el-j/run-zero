@@ -14,7 +14,7 @@ func TestSettingsManager_LifecycleAndApply(t *testing.T) {
 	if err != nil {
 		t.Fatalf("failed temp dir: %v", err)
 	}
-	defer os.RemoveAll(tmpDir)
+	defer func() { _ = os.RemoveAll(tmpDir) }()
 
 	envPath := filepath.Join(tmpDir, ".env")
 	initialContent := "# System configuration\nMAX_RUNNERS=4\nPOLL_INTERVAL=10\n"
@@ -101,5 +101,34 @@ func TestSettingsManager_ValidationErrors(t *testing.T) {
 func TestUpdateDotEnv_Empty(t *testing.T) {
 	if err := UpdateDotEnv("", nil); err != nil {
 		t.Errorf("expected nil on empty path")
+	}
+}
+
+func TestUpdateDotEnv_PreservesOthersAndErrors(t *testing.T) {
+	dir := t.TempDir()
+	p := filepath.Join(dir, ".env")
+	if err := os.WriteFile(p, []byte("A=1\nB=2\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := UpdateDotEnv(p, map[string]string{"A": "9"}); err != nil {
+		t.Fatal(err)
+	}
+	data, _ := os.ReadFile(p)
+	if string(data) != "A=9\nB=2\n" {
+		t.Errorf("got %q", data)
+	}
+
+	// parent path is a regular file -> MkdirAll fails
+	if err := UpdateDotEnv(filepath.Join(p, "sub", ".env"), map[string]string{"A": "1"}); err == nil {
+		t.Error("expected mkdir error")
+	}
+
+	// tmp path is a directory -> WriteFile fails
+	p2 := filepath.Join(dir, "x.env")
+	if err := os.Mkdir(p2+".tmp", 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := UpdateDotEnv(p2, map[string]string{"A": "1"}); err == nil {
+		t.Error("expected write error")
 	}
 }

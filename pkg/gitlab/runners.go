@@ -11,17 +11,28 @@ import (
 
 // GitLabRunner represents a runner entry returned by GitLab API v4.
 type GitLabRunner struct {
-	ID          int64    `json:"id"`
-	Description string   `json:"description"`
-	Active      bool     `json:"active"`
-	Paused      bool     `json:"paused"`
-	IsShared    bool     `json:"is_shared"`
-	RunnerType  string   `json:"runner_type"` // instance_type, group_type, project_type
-	Name        string   `json:"name"`
-	Online      bool     `json:"online"`
-	Status      string   `json:"status"` // online, offline, paused, not_connected
-	TagList     []string `json:"tag_list"`
-	IPAddress   string   `json:"ip_address,omitempty"`
+	// ID Unique GitLab runner identifier.
+	ID int64 `json:"id"`
+	// Description Configured runner description.
+	Description string `json:"description"`
+	// Active Whether the runner is enabled.
+	Active bool `json:"active"`
+	// Paused Whether the runner is paused.
+	Paused bool `json:"paused"`
+	// IsShared Whether the runner is shared across projects.
+	IsShared bool `json:"is_shared"`
+	// RunnerType GitLab runner scope type.
+	RunnerType string `json:"runner_type"` // instance_type, group_type, project_type
+	// Name Runner name reported by GitLab.
+	Name string `json:"name"`
+	// Online Whether the runner is currently online.
+	Online bool `json:"online"`
+	// Status Current GitLab runner status.
+	Status string `json:"status"` // online, offline, paused, not_connected
+	// TagList Tags assigned to the runner.
+	TagList []string `json:"tag_list"`
+	// IPAddress IP address reported for the runner.
+	IPAddress string `json:"ip_address,omitempty"`
 }
 
 // ListRunners retrieves all runners accessible to the token (instance-wide or all user runners).
@@ -95,9 +106,10 @@ func (c *Client) ConvertToRunnerInfo(r GitLabRunner) state.RunnerInfo {
 	}
 
 	backend := "cloud-hosted"
-	if origin == "local" {
+	switch origin {
+	case "local":
 		backend = "docker"
-	} else if origin == "external" {
+	case "external":
 		backend = "gitlab-runner"
 	}
 

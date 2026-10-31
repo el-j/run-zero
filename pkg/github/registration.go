@@ -15,13 +15,20 @@ type registrationTokenResponse struct {
 
 // RunnerRegistration represents a runner registered with GitHub Actions API.
 type RunnerRegistration struct {
-	ID     int64    `json:"id"`
-	Name   string   `json:"name"`
-	OS     string   `json:"os,omitempty"`
-	Status string   `json:"status"`
-	Busy   bool     `json:"busy"`
+	// ID Unique registered runner identifier.
+	ID int64 `json:"id"`
+	// Name Registered runner name.
+	Name string `json:"name"`
+	// OS Operating system reported by the runner.
+	OS string `json:"os,omitempty"`
+	// Status Current registration status.
+	Status string `json:"status"`
+	// Busy Whether the runner is executing a job.
+	Busy bool `json:"busy"`
+	// Labels Labels assigned to the runner.
 	Labels []string `json:"labels,omitempty"`
-	Scope  string   `json:"scope,omitempty"`
+	// Scope Repository or organization scope of the registration.
+	Scope string `json:"scope,omitempty"`
 }
 
 type actionsRunnersResponse struct {
@@ -157,9 +164,10 @@ func (c *Client) ConvertToRunnerInfo(r RunnerRegistration) state.RunnerInfo {
 	}
 
 	backend := "cloud-hosted"
-	if origin == "local" {
+	switch origin {
+	case "local":
 		backend = "docker"
-	} else if origin == "external" {
+	case "external":
 		backend = "github-runner"
 	}
 

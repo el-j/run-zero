@@ -7,7 +7,6 @@ import (
 	"io"
 	"net/http"
 	"strings"
-	"sync"
 	"time"
 )
 
@@ -16,7 +15,6 @@ type Client struct {
 	baseURL    string
 	token      string
 	httpClient *http.Client
-	mu         sync.RWMutex
 }
 
 // NewClient creates an authenticated GitLab API client.
@@ -67,7 +65,7 @@ func (c *Client) DoRequest(ctx context.Context, method, endpoint string, body io
 	if err != nil {
 		return nil, fmt.Errorf("http request failed: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode >= 400 {
 		respBytes, _ := io.ReadAll(resp.Body)

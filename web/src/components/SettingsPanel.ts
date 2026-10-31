@@ -1,15 +1,18 @@
 import { client, type SystemSettings } from "../api/client";
 
+/** Form for inspecting and live-editing daemon runtime settings. */
 export class SettingsPanelComponent {
   private container: HTMLElement;
   private settings?: SystemSettings;
   private loading = false;
   private statusMessage = "";
 
+  /** @param container - Element the panel is rendered into. */
   constructor(container: HTMLElement) {
     this.container = container;
   }
 
+  /** Fetches settings from the API and renders them (a loading state first, an error message on failure). */
   async load() {
     this.loading = true;
     this.render();
@@ -23,6 +26,11 @@ export class SettingsPanelComponent {
     }
   }
 
+  /**
+   * Builds a settings payload from the form, submits it, then reloads.
+   *
+   * @param formData - Submitted settings form; a blank token field keeps the current token.
+   */
   private async save(formData: FormData) {
     const payload: SystemSettings = {
       max_runners: parseInt(formData.get("max_runners") as string, 10),
@@ -57,6 +65,7 @@ export class SettingsPanelComponent {
     }
   }
 
+  /** Renders the loading state or the settings form, and binds submit. */
   render() {
     if (this.loading) {
       this.container.innerHTML = `
@@ -217,12 +226,10 @@ export class SettingsPanelComponent {
       </section>
     `;
 
-    const form = this.container.querySelector<HTMLFormElement>("#settings-form");
-    if (form) {
-      form.onsubmit = (e) => {
-        e.preventDefault();
-        this.save(new FormData(form));
-      };
-    }
+    const form = this.container.querySelector<HTMLFormElement>("#settings-form")!;
+    form.onsubmit = (e) => {
+      e.preventDefault();
+      this.save(new FormData(form));
+    };
   }
 }

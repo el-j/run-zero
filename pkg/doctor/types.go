@@ -4,9 +4,13 @@ package doctor
 type Status string
 
 const (
-	StatusOK   Status = "ok"
+	// StatusOK means the check passed.
+	StatusOK Status = "ok"
+	// StatusWarn means the check passed with a caveat.
 	StatusWarn Status = "warn"
+	// StatusFail means the check failed.
 	StatusFail Status = "fail"
+	// StatusSkip means the check was not applicable.
 	StatusSkip Status = "skip"
 )
 

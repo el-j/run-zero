@@ -10,19 +10,29 @@ import (
 
 // ProviderConfig represents configuration for a single CI provider instance.
 type ProviderConfig struct {
-	ID       string   `json:"id" yaml:"id"`
-	Type     string   `json:"type" yaml:"type"` // "github", "gitlab"
-	Name     string   `json:"name" yaml:"name"`
-	URL      string   `json:"url" yaml:"url"`
-	Token    string   `json:"token" yaml:"token"`
-	Owner    string   `json:"owner" yaml:"owner"`
-	Org      string   `json:"org" yaml:"org"`
-	Group    string   `json:"group" yaml:"group"`
+	// ID Unique identifier for this provider configuration.
+	ID string `json:"id" yaml:"id"`
+	// Type Provider family, such as github or gitlab.
+	Type string `json:"type" yaml:"type"` // "github", "gitlab"
+	// Name Human-readable provider instance name.
+	Name string `json:"name" yaml:"name"`
+	// URL Provider API base URL.
+	URL string `json:"url" yaml:"url"`
+	// Token Authentication token for the provider.
+	Token string `json:"token" yaml:"token"`
+	// Owner GitHub account owner used for repository discovery.
+	Owner string `json:"owner" yaml:"owner"`
+	// Org GitHub organization or GitLab group scope.
+	Org string `json:"org" yaml:"org"`
+	// Group GitLab group identifier.
+	Group string `json:"group" yaml:"group"`
+	// Projects GitLab project paths monitored by this provider.
 	Projects []string `json:"projects" yaml:"projects"`
 }
 
 // ConfigFile holds the root list of configured CI providers.
 type ConfigFile struct {
+	// Providers Configured CI provider instances.
 	Providers []ProviderConfig `json:"providers" yaml:"providers"`
 }
 

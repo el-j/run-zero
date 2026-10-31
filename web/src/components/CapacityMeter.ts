@@ -1,12 +1,19 @@
 import type { FleetState } from "../api/client";
 
+/** Slot capacity gauge showing busy/max runners and free slots. */
 export class CapacityMeterComponent {
   private container: HTMLElement;
 
+  /** @param container - Element the meter is rendered into. */
   constructor(container: HTMLElement) {
     this.container = container;
   }
 
+  /**
+   * Renders the meter.
+   *
+   * @param state - Latest fleet snapshot; defaults to 0 busy of 3 max when absent.
+   */
   render(state?: FleetState) {
     const busy = state?.busy_runners ?? 0;
     const max = state?.max_runners ?? 3;

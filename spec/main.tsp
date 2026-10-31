@@ -188,6 +188,30 @@ model LogsResponse {
   logs: LogEntry[];
 }
 
+/** Retained log tail of a runner that has already been removed */
+model RunnerLogResponse {
+  name: string;
+  log: string;
+}
+
+/** Result of pruning finished runners */
+model PruneResponse {
+  ok: boolean;
+  message: string;
+  pruned: int32;
+}
+
+/** Legacy clean-cache request */
+model CleanCacheRequest {
+  category?: string;
+}
+
+/** Legacy clean-cache response */
+model CleanCacheResponse {
+  status: string;
+  cleared: string[];
+}
+
 /** Generic error response */
 @error
 model ErrorResponse {
@@ -260,10 +284,30 @@ namespace Api {
   @route("/logs")
   op getLogs(): LogsResponse | ErrorResponse;
 
+  /** Get the log tail retained from a runner after its container/VM was removed */
+  @get
+  @route("/runner-log")
+  op getRunnerLog(@query name: string): RunnerLogResponse | ErrorResponse;
+
   /** Server-Sent Events real-time event stream */
   @get
   @route("/stream")
   op streamEvents(): string;
+
+  /** Server-Sent Events real-time event stream (alias of /stream) */
+  @get
+  @route("/events")
+  op streamEventsAlias(): string;
+
+  /** Remove finished runners, retaining their log tails */
+  @post
+  @route("/actions/prune")
+  op pruneRunners(): PruneResponse | ErrorResponse;
+
+  /** Legacy cache clean action */
+  @post
+  @route("/actions/clean-cache")
+  op cleanCache(@body payload: CleanCacheRequest): CleanCacheResponse | ErrorResponse;
 
   /** Update repository priority order and pause states */
   @post

@@ -2,6 +2,7 @@ package api
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"net/http"
 	"testing"
@@ -11,7 +12,7 @@ import (
 
 func TestImagesEndpoints(t *testing.T) {
 	srv, _, _, _, _ := setupTestServer(t)
-	defer func() { _ = srv.Shutdown(nil) }()
+	defer func() { _ = srv.Shutdown(context.Background()) }()
 
 	baseURL := "http://" + srv.Addr()
 
@@ -20,7 +21,7 @@ func TestImagesEndpoints(t *testing.T) {
 	if err != nil {
 		t.Fatalf("failed to GET /api/images: %v", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("expected 200 OK from /api/images, got %d", resp.StatusCode)
@@ -47,7 +48,7 @@ func TestImagesEndpoints(t *testing.T) {
 	if err != nil {
 		t.Fatalf("failed to POST /api/actions/build-image: %v", err)
 	}
-	defer postResp.Body.Close()
+	defer func() { _ = postResp.Body.Close() }()
 
 	if postResp.StatusCode != http.StatusAccepted {
 		t.Fatalf("expected 202 Accepted, got %d", postResp.StatusCode)
@@ -66,7 +67,7 @@ func TestImagesEndpoints(t *testing.T) {
 	if err != nil {
 		t.Fatalf("failed to GET /api/images/build/{id}: %v", err)
 	}
-	defer getProgResp.Body.Close()
+	defer func() { _ = getProgResp.Body.Close() }()
 
 	if getProgResp.StatusCode != http.StatusOK {
 		t.Errorf("expected 200 OK from get build progress, got %d", getProgResp.StatusCode)
@@ -77,7 +78,7 @@ func TestImagesEndpoints(t *testing.T) {
 	if err != nil {
 		t.Fatalf("failed to POST cancel: %v", err)
 	}
-	defer cancelResp.Body.Close()
+	defer func() { _ = cancelResp.Body.Close() }()
 
 	if cancelResp.StatusCode != http.StatusOK {
 		t.Errorf("expected 200 OK from cancel, got %d", cancelResp.StatusCode)

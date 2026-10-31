@@ -7,7 +7,9 @@ import (
 )
 
 const (
+	// ModeOff disables emulation of non-native architectures.
 	ModeOff = "off"
+	// ModeAll allows emulation for every label.
 	ModeAll = "all"
 )
 

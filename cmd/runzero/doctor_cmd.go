@@ -50,7 +50,7 @@ func runDoctor(args []string, stdout, stderr io.Writer) int {
 
 	results := doctor.RunAll(ctx, opts)
 	report := doctor.FormatReport(results)
-	fmt.Fprint(stdout, report)
+	_, _ = fmt.Fprint(stdout, report)
 
 	if doctor.HasFailures(results) {
 		return 1

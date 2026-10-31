@@ -25,7 +25,7 @@ func (b *BridgeDriver) ListRunners(ctx context.Context) ([]state.RunnerInfo, err
 	if err != nil {
 		return nil, err
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	var res struct {
 		Runners []state.RunnerInfo `json:"runners"`
@@ -54,7 +54,7 @@ func (b *BridgeDriver) StopRunner(ctx context.Context, runnerID string) error {
 	if err != nil {
 		return err
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode >= 400 {
 		var errBody struct {
@@ -87,6 +87,6 @@ func (b *BridgeDriver) CleanupAll(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	return nil
 }

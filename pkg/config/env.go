@@ -80,6 +80,6 @@ func LoadDotEnvFile(filename string) (MapEnv, error) {
 		}
 		return nil, err
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 	return ParseDotEnv(f)
 }

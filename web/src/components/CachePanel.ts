@@ -1,15 +1,18 @@
 import { client, type CacheStats } from "../api/client";
 
+/** Host cache control panel with per-category and full purge actions. */
 export class CachePanelComponent {
   private container: HTMLElement;
   private stats?: CacheStats;
   private loading = false;
   private statusMessage = "";
 
+  /** @param container - Element the panel is rendered into. */
   constructor(container: HTMLElement) {
     this.container = container;
   }
 
+  /** Fetches cache statistics, showing a loading state meanwhile; failures become a status message. */
   async load() {
     this.loading = true;
     this.render();
@@ -23,6 +26,12 @@ export class CachePanelComponent {
     }
   }
 
+  /**
+   * Purges one category or the whole cache after confirmation, then reloads the stats.
+   *
+   * @param category - Category to purge.
+   * @param all - Purge everything instead of a single category.
+   */
   private async purge(category?: string, all?: boolean) {
     const label = all ? "entire host cache" : `category '${category}'`;
     if (!confirm(`Are you sure you want to purge the ${label}?`)) return;
@@ -39,6 +48,7 @@ export class CachePanelComponent {
     }
   }
 
+  /** Renders the loading state or the category list, and binds the purge buttons. */
   render() {
     if (this.loading) {
       this.container.innerHTML = `
@@ -101,9 +111,7 @@ export class CachePanelComponent {
       };
     });
 
-    const purgeAll = this.container.querySelector<HTMLButtonElement>("#purge-all-btn");
-    if (purgeAll) {
-      purgeAll.onclick = () => this.purge(undefined, true);
-    }
+    const purgeAll = this.container.querySelector<HTMLButtonElement>("#purge-all-btn")!;
+    purgeAll.onclick = () => this.purge(undefined, true);
   }
 }

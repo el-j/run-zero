@@ -9,6 +9,7 @@ import (
 	"github.com/el-j/run-zero/pkg/state"
 )
 
+// SettingsPayload is the JSON body of POST /api/settings; nil fields are left unchanged.
 type SettingsPayload struct {
 	AccessTokenConfigured *bool   `json:"access_token_configured,omitempty"`
 	AccessToken           *string `json:"access_token,omitempty"`

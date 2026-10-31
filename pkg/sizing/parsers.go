@@ -52,9 +52,6 @@ func ParseCPUs(value string) *int {
 	if float64(c) < f {
 		c++
 	}
-	if c < 1 {
-		c = 1
-	}
 	return &c
 }
 

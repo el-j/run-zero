@@ -1,12 +1,20 @@
 import type { FleetState } from "../api/client";
 
+/** Top banner showing connection state, API quota and billing minutes. */
 export class HeaderComponent {
   private container: HTMLElement;
 
+  /** @param container - Element the header is rendered into. */
   constructor(container: HTMLElement) {
     this.container = container;
   }
 
+  /**
+   * Renders the header.
+   *
+   * @param state - Latest fleet snapshot; quota and billing show "—" when absent.
+   * @param connected - Whether the live stream is connected (affects the status dot).
+   */
   render(state?: FleetState, connected: boolean = true) {
     const quotaUsed =
       state?.rate_limit_limit && state?.rate_limit_remaining !== undefined

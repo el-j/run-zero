@@ -56,8 +56,8 @@ func FormatReport(results []CheckResult) string {
 	okCount, warnCount, failCount := 0, 0, 0
 
 	for _, r := range results {
-		sb.WriteString(fmt.Sprintf("%s [%s] %s: %s\n",
-			Symbol(r.Status), strings.ToUpper(string(r.Status)), r.Name, r.Detail))
+		fmt.Fprintf(&sb, "%s [%s] %s: %s\n",
+			Symbol(r.Status), strings.ToUpper(string(r.Status)), r.Name, r.Detail)
 		switch r.Status {
 		case StatusOK:
 			okCount++
@@ -69,8 +69,8 @@ func FormatReport(results []CheckResult) string {
 	}
 
 	sb.WriteString("----------------------------------\n")
-	sb.WriteString(fmt.Sprintf("Summary: %d passed, %d warnings, %d failures\n",
-		okCount, warnCount, failCount))
+	fmt.Fprintf(&sb, "Summary: %d passed, %d warnings, %d failures\n",
+		okCount, warnCount, failCount)
 	return sb.String()
 }
 

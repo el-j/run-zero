@@ -7,9 +7,12 @@ import (
 )
 
 const (
-	PnpmStorePath          = "/home/runner/.local/share/pnpm/store"
+	// PnpmStorePath is the pnpm store location inside the runner.
+	PnpmStorePath = "/home/runner/.local/share/pnpm/store"
+	// PlaywrightBrowsersPath is the Playwright browser cache inside the runner.
 	PlaywrightBrowsersPath = "/home/runner/.cache/ms-playwright"
-	ToolCachePath          = "/opt/hostedtoolcache"
+	// ToolCachePath is the hosted tool cache inside the runner.
+	ToolCachePath = "/opt/hostedtoolcache"
 )
 
 // SanitizeScope cleans scope strings for safe directory naming.

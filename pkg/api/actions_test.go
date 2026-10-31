@@ -100,7 +100,7 @@ func TestServer_SSEStreaming(t *testing.T) {
 	if err != nil || resp.StatusCode != http.StatusOK {
 		t.Fatalf("failed to connect SSE stream: %v", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	buf := make([]byte, 1024)
 	n, err := resp.Body.Read(buf)

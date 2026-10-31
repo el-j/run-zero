@@ -1,5 +1,11 @@
 import { client, type QueuedJob } from "../api/client";
 
+/**
+ * Formats the time elapsed since an ISO timestamp as `Xm Ys` / `Ys`.
+ *
+ * @param isoTime - ISO timestamp.
+ * @returns The elapsed time, or an empty string when missing or invalid.
+ */
 function formatDuration(isoTime?: string): string {
   if (!isoTime) return "";
   const created = new Date(isoTime).getTime();
@@ -12,22 +18,30 @@ function formatDuration(isoTime?: string): string {
   return `${m}m ${s}s`;
 }
 
+/** Live list of queued and running workflow jobs with elapsed-time ticker and run controls. */
 export class QueueViewComponent {
   private container: HTMLElement;
   private jobs: QueuedJob[] = [];
   private timer: number | null = null;
   private statusBanner: string = "";
 
+  /** @param container - Element the queue is rendered into. */
   constructor(container: HTMLElement) {
     this.container = container;
   }
 
+  /**
+   * Replaces the displayed jobs, re-renders and (re)starts the elapsed-time ticker.
+   *
+   * @param jobs - Queued and running jobs.
+   */
   setJobs(jobs: QueuedJob[]) {
     this.jobs = jobs;
     this.render();
     this.startTicker();
   }
 
+  /** Starts the one-second ticker, replacing any running one. */
   private startTicker() {
     if (this.timer) clearInterval(this.timer);
     this.timer = window.setInterval(() => {
@@ -35,6 +49,7 @@ export class QueueViewComponent {
     }, 1000);
   }
 
+    /** Refreshes the "running/waiting Xs" labels in place without re-rendering. */
   private updateElapsedTimes() {
     const timeElements = this.container.querySelectorAll<HTMLElement>("[data-created-at]");
     timeElements.forEach((el) => {
@@ -48,10 +63,18 @@ export class QueueViewComponent {
     });
   }
 
+  /** Stops the elapsed-time ticker. */
   destroy() {
     if (this.timer) clearInterval(this.timer);
   }
 
+  /**
+   * Cancels or re-runs a workflow run after confirmation and shows a transient status banner.
+   *
+   * @param repo - Repository of the run.
+   * @param runId - Workflow run id.
+   * @param action - Action to trigger.
+   */
   private async handleAction(
     repo: string,
     runId: number,
@@ -82,6 +105,7 @@ export class QueueViewComponent {
     }, 4000);
   }
 
+  /** Renders the empty state or the job cards, and binds the run action buttons. */
   render() {
     if (this.jobs.length === 0) {
       this.container.innerHTML = `

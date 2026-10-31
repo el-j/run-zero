@@ -56,3 +56,11 @@ func TestClient_TriggerWorkflowAction_ServerError(t *testing.T) {
 		t.Fatal("expected error on 502 bad gateway")
 	}
 }
+
+func TestRerunJobRequestFailure(t *testing.T) {
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { w.WriteHeader(http.StatusBadGateway) }))
+	defer ts.Close()
+	if err := NewClient("", ts.URL, ts.Client()).RerunJob(context.Background(), "o/r", 7); err == nil {
+		t.Fatal("expected request error")
+	}
+}

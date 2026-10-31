@@ -86,3 +86,11 @@ func TestReconciler_FreeSlotsClamp(t *testing.T) {
 		t.Errorf("expected runner capacity reached reason when free slots is 0")
 	}
 }
+
+func TestReconcilerClampsNegativeFreeSlots(t *testing.T) {
+	pm, _ := NewPriorityManager("", nil, nil)
+	jobs := NewReconciler(pm).Reconcile([]state.QueuedJob{{ID: 1, Repo: "repo"}}, 5, 2)
+	if len(jobs) != 1 || jobs[0].QueuePosition == nil || *jobs[0].QueuePosition != 1 || jobs[0].WaitingReason == nil {
+		t.Fatalf("jobs=%+v", jobs)
+	}
+}

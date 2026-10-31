@@ -196,7 +196,7 @@ func (ins *ImageInspector) fetchVMsFromBridge(ctx context.Context, bridgeURL str
 	if err != nil {
 		return nil
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode != http.StatusOK {
 		return nil
 	}

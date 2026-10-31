@@ -55,10 +55,7 @@ func (pm *PriorityManager) Save() error {
 		return nil
 	}
 
-	data, err := json.MarshalIndent(schema, "", "  ")
-	if err != nil {
-		return err
-	}
+	data, _ := json.MarshalIndent(schema, "", "  ")
 
 	tmpFile := filePath + ".tmp"
 	if err := os.MkdirAll(filepath.Dir(filePath), 0755); err != nil && filepath.Dir(filePath) != "." {

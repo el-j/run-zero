@@ -91,3 +91,15 @@ func TestPoller_PollOnceAndStart(t *testing.T) {
 		t.Fatal("poller failed to stop on context cancel")
 	}
 }
+
+func TestPollerPollOnceCanceledContext(t *testing.T) {
+	pm, _ := NewPriorityManager("", nil, nil)
+	st := state.NewState(3, "v", nil)
+	p := NewPoller(NewClient("", "http://127.0.0.1:1", nil), NewReconciler(pm), st, []string{"a", "b"}, time.Second)
+	p.concurrency = 0
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	if err := p.PollOnce(ctx); err != nil {
+		t.Fatalf("canceled poll should finish cleanly: %v", err)
+	}
+}

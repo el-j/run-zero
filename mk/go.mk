@@ -29,12 +29,16 @@ test: ## Run Go unit tests
 	go test ./...
 
 .PHONY: check-go
-check-go: lint-go ## Go gates: go vet + go test with race detector and coverage
-	go test -race -cover ./...
+check-go: lint-go ## Go gates: lint + go test with race detector and a 100% coverage floor
+	go test -race -count=1 -coverprofile=coverage.out ./...
+	@go tool cover -func=coverage.out | awk '$$3+0<100 {print; bad=1} END {exit bad}' || (echo "Coverage below 100%"; exit 1)
+	@rm -f coverage.out
 
 .PHONY: lint-go
-lint-go: ## Run go vet
+lint-go: ## Run go vet, staticcheck and golangci-lint
 	go vet ./...
+	staticcheck ./...
+	golangci-lint run ./...
 
 .PHONY: fmt-go
 fmt-go: ## Format Go sources (gofmt -s)

@@ -15,10 +15,14 @@ const (
 type ImageStatus string
 
 const (
-	StatusReady    ImageStatus = "ready"
+	// StatusReady means the image is built and current.
+	StatusReady ImageStatus = "ready"
+	// StatusBuilding means a build is in progress.
 	StatusBuilding ImageStatus = "building"
-	StatusStale    ImageStatus = "stale"
-	StatusFailed   ImageStatus = "failed"
+	// StatusStale means the image exists but is out of date.
+	StatusStale ImageStatus = "stale"
+	// StatusFailed means the last build failed.
+	StatusFailed ImageStatus = "failed"
 )
 
 // ImageEvent records image lifecycle progress for operator dashboards.

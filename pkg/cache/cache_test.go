@@ -11,7 +11,7 @@ func TestCache_InitDirsAndMounts(t *testing.T) {
 	if err != nil {
 		t.Fatalf("failed temp dir: %v", err)
 	}
-	defer os.RemoveAll(tmpDir)
+	defer func() { _ = os.RemoveAll(tmpDir) }()
 
 	mounts := InitCacheDirs(tmpDir, "arm64", true, "my-org/my-repo")
 	if len(mounts) == 0 {
@@ -51,7 +51,7 @@ func TestCache_StatsAndFormatBytes(t *testing.T) {
 	if err != nil {
 		t.Fatalf("failed temp dir: %v", err)
 	}
-	defer os.RemoveAll(tmpDir)
+	defer func() { _ = os.RemoveAll(tmpDir) }()
 
 	sub := filepath.Join(tmpDir, "npm")
 	_ = os.MkdirAll(sub, 0755)
@@ -77,7 +77,7 @@ func TestCache_Purge(t *testing.T) {
 	if err != nil {
 		t.Fatalf("failed temp dir: %v", err)
 	}
-	defer os.RemoveAll(tmpDir)
+	defer func() { _ = os.RemoveAll(tmpDir) }()
 
 	npmDir := filepath.Join(tmpDir, "npm")
 	_ = os.MkdirAll(npmDir, 0755)

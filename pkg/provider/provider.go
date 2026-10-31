@@ -11,17 +11,23 @@ import (
 type ProviderType string
 
 const (
+	// TypeGitHub identifies the GitHub Actions provider.
 	TypeGitHub ProviderType = "github"
+	// TypeGitLab identifies the GitLab CI provider.
 	TypeGitLab ProviderType = "gitlab"
-	TypeGitea  ProviderType = "gitea"
+	// TypeGitea identifies the Gitea Actions provider.
+	TypeGitea ProviderType = "gitea"
 )
 
 // RunnerOrigin categorizes the execution scope of a runner.
 type RunnerOrigin string
 
 const (
+	// OriginLocalEphemeral identifies an on-demand local runner.
 	OriginLocalEphemeral RunnerOrigin = "local"
-	OriginCloudHosted    RunnerOrigin = "cloud"
+	// OriginCloudHosted identifies a provider-hosted runner.
+	OriginCloudHosted RunnerOrigin = "cloud"
+	// OriginExternalStatic identifies a separately managed runner.
 	OriginExternalStatic RunnerOrigin = "external"
 )
 
