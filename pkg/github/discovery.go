@@ -28,18 +28,7 @@ func (c *Client) DiscoverRepositories(
 ) ([]string, error) {
 	// If explicit repos configured, use them
 	if strings.TrimSpace(reposConfig) != "" {
-		parts := strings.Split(reposConfig, ",")
-		seen := make(map[string]bool)
-		var result []string
-		for _, p := range parts {
-			clean := strings.TrimSpace(p)
-			if clean != "" && !seen[clean] {
-				seen[clean] = true
-				result = append(result, clean)
-			}
-		}
-		sort.Strings(result)
-		return result, nil
+		return parseRepoList(reposConfig), nil
 	}
 
 	if !autoDiscover || c.token == "" {
@@ -50,16 +39,7 @@ func (c *Client) DiscoverRepositories(
 	if target == "" {
 		target = strings.TrimSpace(owner)
 	}
-
-	endpoint := "/user/repos?affiliation=owner&sort=pushed&direction=desc"
-	if target != "" {
-		var acc userAccountResponse
-		if _, err := c.DoRequest(ctx, "GET", "/users/"+target, nil, &acc); err == nil {
-			if strings.EqualFold(acc.Type, "Organization") {
-				endpoint = fmt.Sprintf("/orgs/%s/repos?type=all&sort=pushed&direction=desc", target)
-			}
-		}
-	}
+	endpoint := c.reposEndpoint(ctx, target)
 
 	if activeDays <= 0 {
 		activeDays = 60
@@ -68,9 +48,7 @@ func (c *Client) DiscoverRepositories(
 
 	seen := make(map[string]bool)
 	var repos []string
-
-	page := 1
-	for {
+	for page := 1; ; page++ {
 		pageEndpoint := fmt.Sprintf("%s&per_page=100&page=%d", endpoint, page)
 		var items []repositoryItem
 		if _, err := c.DoRequest(ctx, "GET", pageEndpoint, nil, &items); err != nil {
@@ -80,40 +58,62 @@ func (c *Client) DiscoverRepositories(
 			return nil, fmt.Errorf("failed discovering repositories on page %d: %w", page, err)
 		}
 
-		if len(items) == 0 {
+		var reachedCutoff bool
+		repos, reachedCutoff = appendRecentRepos(repos, seen, items, target, cutoff)
+		if reachedCutoff || len(items) < 100 {
 			break
 		}
-
-		stopPagination := false
-		for _, item := range items {
-			if item.Archived {
-				continue
-			}
-
-			if target != "" && !strings.HasPrefix(strings.ToLower(item.FullName), strings.ToLower(target)+"/") {
-				continue
-			}
-
-			if item.PushedAt != nil && *item.PushedAt != "" {
-				t, err := time.Parse(time.RFC3339, *item.PushedAt)
-				if err == nil && t.Before(cutoff) {
-					stopPagination = true
-					break
-				}
-			}
-
-			if !seen[item.FullName] {
-				seen[item.FullName] = true
-				repos = append(repos, item.FullName)
-			}
-		}
-
-		if stopPagination || len(items) < 100 {
-			break
-		}
-		page++
 	}
 
 	sort.Strings(repos)
 	return repos, nil
+}
+
+// parseRepoList turns a comma-separated repo list into a sorted, de-duplicated slice.
+func parseRepoList(reposConfig string) []string {
+	seen := make(map[string]bool)
+	var result []string
+	for _, p := range strings.Split(reposConfig, ",") {
+		clean := strings.TrimSpace(p)
+		if clean != "" && !seen[clean] {
+			seen[clean] = true
+			result = append(result, clean)
+		}
+	}
+	sort.Strings(result)
+	return result
+}
+
+// reposEndpoint lists an organization's repos when target is one, and the
+// authenticated user's own repos otherwise.
+func (c *Client) reposEndpoint(ctx context.Context, target string) string {
+	if target != "" {
+		var acc userAccountResponse
+		if _, err := c.DoRequest(ctx, "GET", "/users/"+target, nil, &acc); err == nil && strings.EqualFold(acc.Type, "Organization") {
+			return fmt.Sprintf("/orgs/%s/repos?type=all&sort=pushed&direction=desc", target)
+		}
+	}
+	return "/user/repos?affiliation=owner&sort=pushed&direction=desc"
+}
+
+// appendRecentRepos adds the unarchived repos of one page (sorted by last push)
+// owned by target. It reports true once it reaches a repo pushed before cutoff,
+// since every later repo is older.
+func appendRecentRepos(repos []string, seen map[string]bool, items []repositoryItem, target string, cutoff time.Time) ([]string, bool) {
+	prefix := strings.ToLower(target) + "/"
+	for _, item := range items {
+		if item.Archived || (target != "" && !strings.HasPrefix(strings.ToLower(item.FullName), prefix)) {
+			continue
+		}
+		if item.PushedAt != nil && *item.PushedAt != "" {
+			if t, err := time.Parse(time.RFC3339, *item.PushedAt); err == nil && t.Before(cutoff) {
+				return repos, true
+			}
+		}
+		if !seen[item.FullName] {
+			seen[item.FullName] = true
+			repos = append(repos, item.FullName)
+		}
+	}
+	return repos, false
 }

@@ -192,7 +192,17 @@ func (h *HistoryFetcher) annotationMessages(ctx context.Context, repo string, jo
 // Diagnose turns a finished job's conclusion and step results into a short,
 // human-readable explanation. It returns the offending step name when known.
 func Diagnose(j workflowJob) (failedStep *string, reason string) {
-	var culprit *workflowStep
+	culprit := culpritStep(j)
+	if culprit != nil {
+		name := culprit.Name
+		failedStep = &name
+	}
+	return failedStep, diagnosisReason(j.Conclusion, culprit, ranAnyStep(j))
+}
+
+// culpritStep returns the first failed step, or the first step whose conclusion
+// matches the job's non-success conclusion (the running step on a timeout).
+func culpritStep(j workflowJob) *workflowStep {
 	wantConclusion := j.Conclusion
 	if wantConclusion == "timed_out" {
 		wantConclusion = "cancelled" // GitHub marks the running step as cancelled on timeout
@@ -203,57 +213,50 @@ func Diagnose(j workflowJob) (failedStep *string, reason string) {
 			c = *j.Steps[i].Conclusion
 		}
 		if c == "failure" || (c == wantConclusion && c != "success") {
-			culprit = &j.Steps[i]
-			break
+			return &j.Steps[i]
 		}
 	}
+	return nil
+}
 
-	ranAnyStep := false
+func ranAnyStep(j workflowJob) bool {
 	for _, s := range j.Steps {
 		if s.Status != "queued" && s.Status != "pending" {
-			ranAnyStep = true
-			break
+			return true
 		}
 	}
+	return false
+}
 
-	if culprit != nil {
-		name := culprit.Name
-		failedStep = &name
-	}
-
-	switch j.Conclusion {
+func diagnosisReason(conclusion string, culprit *workflowStep, ranAny bool) string {
+	switch conclusion {
 	case "failure":
 		switch {
 		case culprit != nil:
-			reason = fmt.Sprintf("Step %d “%s” failed.", culprit.Number, culprit.Name)
-		case !ranAnyStep:
-			reason = "Job failed before any step ran — likely a runner or setup problem (runner crashed, image/registration error). Check the local runner log."
-		default:
-			reason = "Job failed, but GitHub reported no failing step."
+			return fmt.Sprintf("Step %d “%s” failed.", culprit.Number, culprit.Name)
+		case !ranAny:
+			return "Job failed before any step ran — likely a runner or setup problem (runner crashed, image/registration error). Check the local runner log."
 		}
+		return "Job failed, but GitHub reported no failing step."
 	case "timed_out":
 		if culprit != nil {
-			reason = fmt.Sprintf("Timed out while running step %d “%s”.", culprit.Number, culprit.Name)
-		} else {
-			reason = "Job exceeded its time limit."
+			return fmt.Sprintf("Timed out while running step %d “%s”.", culprit.Number, culprit.Name)
 		}
+		return "Job exceeded its time limit."
 	case "cancelled":
 		switch {
 		case culprit != nil:
-			reason = fmt.Sprintf("Cancelled while running step %d “%s”.", culprit.Number, culprit.Name)
-		case !ranAnyStep:
-			reason = "Cancelled before any step started (e.g. runner was removed or run cancelled while queued)."
-		default:
-			reason = "Cancelled."
+			return fmt.Sprintf("Cancelled while running step %d “%s”.", culprit.Number, culprit.Name)
+		case !ranAny:
+			return "Cancelled before any step started (e.g. runner was removed or run cancelled while queued)."
 		}
+		return "Cancelled."
 	case "startup_failure":
-		reason = "Workflow failed to start (invalid workflow file or missing permissions)."
+		return "Workflow failed to start (invalid workflow file or missing permissions)."
 	case "action_required":
-		reason = "Waiting for manual approval."
-	default:
-		reason = fmt.Sprintf("Finished with conclusion “%s”.", j.Conclusion)
+		return "Waiting for manual approval."
 	}
-	return failedStep, reason
+	return fmt.Sprintf("Finished with conclusion “%s”.", conclusion)
 }
 
 func isSelfHosted(labels []string) bool {
