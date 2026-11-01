@@ -44,59 +44,78 @@ func (r *Reaper) Reconcile(
 		return nil
 	}
 
+	registrations, conclusiveRepos := r.fetchRegistrations(ctx, localRunners)
+	nowUnix := float64(time.Now().Unix())
+	reaped := r.ReconcileLocalRunners(ctx, localRunners, registrations, conclusiveRepos, nowUnix, standbyCount)
+	r.deleteReapedRegistrations(ctx, localRunners, registrations, reaped)
+	return reaped
+}
+
+// fetchRegistrations lists GitHub runner registrations (by runner name) for
+// every repo with a local runner, deleting dead offline runzero registrations on
+// the way. conclusiveRepos records the repos whose listing succeeded: a runner
+// may only be judged "unregistered" against its own repo's listing.
+func (r *Reaper) fetchRegistrations(
+	ctx context.Context,
+	localRunners []state.RunnerInfo,
+) (registrations map[string]Registration, conclusiveRepos map[string]bool) {
+	registrations = make(map[string]Registration)
+	conclusiveRepos = make(map[string]bool)
+	if r.ghClient == nil {
+		return registrations, conclusiveRepos
+	}
+
 	repoMap := make(map[string]bool)
 	for _, runner := range localRunners {
 		if runner.TargetRepo != "" {
 			repoMap[runner.TargetRepo] = true
 		}
 	}
-
-	registrations := make(map[string]Registration)
-	// conclusiveRepos records the repos whose registration listing succeeded. A
-	// runner may only be judged "unregistered" against its own repo's listing.
-	conclusiveRepos := make(map[string]bool)
-
-	if r.ghClient != nil {
-		for repo := range repoMap {
-			regs, err := r.ghClient.ListRunners(ctx, repo, "")
-			if err == nil {
-				conclusiveRepos[repo] = true
-				for _, reg := range regs {
-					registrations[reg.Name] = Registration{
-						ID:     reg.ID,
-						Name:   reg.Name,
-						Status: reg.Status,
-						Busy:   reg.Busy,
-						Scope:  reg.Scope,
-					}
-					// Auto-clean dead offline runzero runners from GitHub
-					if reg.Status == "offline" && strings.HasPrefix(reg.Name, "runzero-") {
-						_ = r.ghClient.DeleteRunner(ctx, repo, "", reg.ID)
-					}
-				}
+	for repo := range repoMap {
+		regs, err := r.ghClient.ListRunners(ctx, repo, "")
+		if err != nil {
+			continue
+		}
+		conclusiveRepos[repo] = true
+		for _, reg := range regs {
+			registrations[reg.Name] = Registration{
+				ID:     reg.ID,
+				Name:   reg.Name,
+				Status: reg.Status,
+				Busy:   reg.Busy,
+				Scope:  reg.Scope,
+			}
+			// Auto-clean dead offline runzero runners from GitHub
+			if reg.Status == "offline" && strings.HasPrefix(reg.Name, "runzero-") {
+				_ = r.ghClient.DeleteRunner(ctx, repo, "", reg.ID)
 			}
 		}
 	}
+	return registrations, conclusiveRepos
+}
 
-	nowUnix := float64(time.Now().Unix())
-	reaped := r.ReconcileLocalRunners(ctx, localRunners, registrations, conclusiveRepos, nowUnix, standbyCount)
-
-	// Clean up GitHub registration for any runner that was reaped
-	if r.ghClient != nil && len(reaped) > 0 {
-		reapedMap := make(map[string]bool)
-		for _, id := range reaped {
-			reapedMap[id] = true
+// deleteReapedRegistrations removes the GitHub registration of every reaped runner.
+func (r *Reaper) deleteReapedRegistrations(
+	ctx context.Context,
+	localRunners []state.RunnerInfo,
+	registrations map[string]Registration,
+	reaped []string,
+) {
+	if r.ghClient == nil || len(reaped) == 0 {
+		return
+	}
+	reapedMap := make(map[string]bool)
+	for _, id := range reaped {
+		reapedMap[id] = true
+	}
+	for _, runner := range localRunners {
+		if !reapedMap[runner.ID] && !reapedMap[runner.Name] {
+			continue
 		}
-		for _, runner := range localRunners {
-			if reapedMap[runner.ID] || reapedMap[runner.Name] {
-				if reg, ok := registrations[runner.Name]; ok {
-					_ = r.ghClient.DeleteRunner(ctx, runner.TargetRepo, "", reg.ID)
-				}
-			}
+		if reg, ok := registrations[runner.Name]; ok {
+			_ = r.ghClient.DeleteRunner(ctx, runner.TargetRepo, "", reg.ID)
 		}
 	}
-
-	return reaped
 }
 
 // ReconcileLocalRunners evaluates local runners against GitHub registrations and reaps dead/idle runners.
@@ -113,35 +132,12 @@ func (r *Reaper) ReconcileLocalRunners(
 	var reapedIDs []string
 
 	for _, runner := range localRunners {
-		var age float64
-		if runner.CreatedAt != nil {
-			t, err := time.Parse(time.RFC3339, *runner.CreatedAt)
-			if err == nil {
-				age = nowUnix - float64(t.Unix())
-			}
-		}
-		if age <= 0 {
-			if r.firstSeen == nil {
-				r.firstSeen = make(map[string]float64)
-			}
-			key := runner.ID
-			if key == "" {
-				key = runner.Name
-			}
-			seen, ok := r.firstSeen[key]
-			if !ok {
-				seen = nowUnix
-				r.firstSeen[key] = seen
-			}
-			age = nowUnix - seen
-		}
-
 		var regPtr *Registration
 		if reg, ok := registrations[runner.Name]; ok {
 			regPtr = &reg
 		}
 
-		action := Classify(age, regPtr, conclusiveRepos[runner.TargetRepo], r.timeouts)
+		action := Classify(r.runnerAge(runner, nowUnix), regPtr, conclusiveRepos[runner.TargetRepo], r.timeouts)
 
 		if action == ActionReapIdle && standbyLeft > 0 {
 			standbyLeft--
@@ -156,19 +152,48 @@ func (r *Reaper) ReconcileLocalRunners(
 		}
 	}
 
+	r.forgetGoneRunners(localRunners)
+	return reapedIDs
+}
+
+// runnerAge returns seconds since the runner was created, or since this reaper
+// first saw it when the creation time is unknown.
+func (r *Reaper) runnerAge(runner state.RunnerInfo, nowUnix float64) float64 {
+	if runner.CreatedAt != nil {
+		if t, err := time.Parse(time.RFC3339, *runner.CreatedAt); err == nil {
+			if age := nowUnix - float64(t.Unix()); age > 0 {
+				return age
+			}
+		}
+	}
+	if r.firstSeen == nil {
+		r.firstSeen = make(map[string]float64)
+	}
+	key := runnerKey(runner)
+	seen, ok := r.firstSeen[key]
+	if !ok {
+		seen = nowUnix
+		r.firstSeen[key] = seen
+	}
+	return nowUnix - seen
+}
+
+// forgetGoneRunners drops first-seen times of runners that no longer exist.
+func (r *Reaper) forgetGoneRunners(localRunners []state.RunnerInfo) {
 	liveKeys := make(map[string]bool, len(localRunners))
 	for _, runner := range localRunners {
-		key := runner.ID
-		if key == "" {
-			key = runner.Name
-		}
-		liveKeys[key] = true
+		liveKeys[runnerKey(runner)] = true
 	}
 	for k := range r.firstSeen {
 		if !liveKeys[k] {
 			delete(r.firstSeen, k)
 		}
 	}
+}
 
-	return reapedIDs
+func runnerKey(runner state.RunnerInfo) string {
+	if runner.ID == "" {
+		return runner.Name
+	}
+	return runner.ID
 }

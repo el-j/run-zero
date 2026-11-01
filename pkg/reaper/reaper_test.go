@@ -149,3 +149,14 @@ func TestReconcileLocalRunners_FirstSeenFallback(t *testing.T) {
 		t.Fatalf("expected r-nocreated reaped on second cycle, got %v", reaped)
 	}
 }
+
+// Without a GitHub client no repo listing is conclusive, so the reaper must not
+// tear down a runner it cannot confirm is unregistered.
+func TestReconcile_WithoutGitHubClientReapsNothing(t *testing.T) {
+	created := time.Unix(1000, 0).UTC().Format(time.RFC3339)
+	runners := []state.RunnerInfo{{ID: "r1", Name: "runzero-a", TargetRepo: "el-j/herbful", CreatedAt: &created}}
+
+	if got := NewReaper(&mockDriver{}, nil, Timeouts{}).Reconcile(context.Background(), runners, 0); len(got) != 0 {
+		t.Fatalf("expected nothing reaped without a GitHub client, got %v", got)
+	}
+}
