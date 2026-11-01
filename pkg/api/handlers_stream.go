@@ -13,6 +13,10 @@ func handleSSEStream(st *state.State, heartbeatInterval time.Duration) http.Hand
 	}
 
 	return func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet {
+			writeError(w, http.StatusMethodNotAllowed, "Method not allowed")
+			return
+		}
 		flusher, ok := w.(http.Flusher)
 		if !ok {
 			writeError(w, http.StatusInternalServerError, "Streaming unsupported")
