@@ -33,5 +33,14 @@ export default defineConfig({
       reuseExistingServer: !process.env.CI,
       timeout: 90000,
     },
+    {
+      // Real control plane + autoscaler against a fake GitHub API, serving its own
+      // dashboard build (journeys.spec.js). Needs Go.
+      command:
+        "pnpm --dir ../web exec vite build --outDir ../test/e2e/.dist --emptyOutDir && cd .. && E2E_DIST_DIR=test/e2e/.dist go run -tags e2e ./test/e2e/harness",
+      port: 49515,
+      reuseExistingServer: !process.env.CI,
+      timeout: 180000,
+    },
   ],
 });

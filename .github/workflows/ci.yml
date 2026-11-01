@@ -110,6 +110,13 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v7
 
+      # journeys.spec.js runs the real control plane via `go run -tags e2e ./test/e2e/harness`.
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.24'
+          cache: true
+
       - name: Set up pnpm
         uses: pnpm/action-setup@v4
         with:

@@ -33,3 +33,6 @@ bin/
 *instances.json
 *repo_priority.json
 .runzero-state/
+
+# e2e harness dashboard build (website/playwright.config.js)
+test/e2e/.dist/
