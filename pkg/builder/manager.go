@@ -179,63 +179,11 @@ func (m *BuildManager) CancelBuild() error {
 }
 
 func (m *BuildManager) runBuild(ctx context.Context, progress *ImageBuildProgress, req ImageBuildRequest) {
-	defer func() {
-		m.mu.Lock()
-		if m.cancelFunc != nil {
-			m.cancelFunc = nil
-		}
-		if progress.Status == string(StatusBuilding) {
-			progress.Status = string(StatusReady)
-			progress.ProgressPct = 100
-			progress.CompletedAt = time.Now().UTC().Format(time.RFC3339)
-			progress.CurrentStep = "All target images built successfully."
-		}
-		m.mu.Unlock()
-
-		if m.progressHook != nil {
-			m.progressHook(*progress)
-		}
-	}()
+	defer m.finishBuild(progress)
 
 	m.appendLog(fmt.Sprintf("[BUILD] Starting build job %s (target: %s, arch: %s)", progress.BuildID, progress.Target, progress.Arch))
 
-	targets := make([]struct {
-		kind string
-		arch string
-	}, 0)
-
-	// Determine Docker targets
-	if progress.Target == "all" || progress.Target == "container" {
-		if progress.Arch == "all" || progress.Arch == "both" || progress.Arch == "arm64" {
-			targets = append(targets, struct {
-				kind string
-				arch string
-			}{"container", "arm64"})
-		}
-		if progress.Arch == "all" || progress.Arch == "both" || progress.Arch == "amd64" {
-			targets = append(targets, struct {
-				kind string
-				arch string
-			}{"container", "amd64"})
-		}
-	}
-
-	// Determine VM targets
-	if progress.Target == "all" || progress.Target == "vm" {
-		if progress.Arch == "all" || progress.Arch == "both" || progress.Arch == "arm64" {
-			targets = append(targets, struct {
-				kind string
-				arch string
-			}{"vm", "arm64"})
-		}
-		if progress.Arch == "all" || progress.Arch == "both" || progress.Arch == "amd64" {
-			targets = append(targets, struct {
-				kind string
-				arch string
-			}{"vm", "amd64"})
-		}
-	}
-
+	targets := buildTargets(progress.Target, progress.Arch)
 	totalSteps := len(targets)
 	for i, t := range targets {
 		if ctx.Err() != nil {
@@ -259,6 +207,53 @@ func (m *BuildManager) runBuild(ctx context.Context, progress *ImageBuildProgres
 			return
 		}
 	}
+}
+
+// finishBuild marks a build that is still running as ready, clears the cancel
+// hook and publishes the final progress.
+func (m *BuildManager) finishBuild(progress *ImageBuildProgress) {
+	m.mu.Lock()
+	if m.cancelFunc != nil {
+		m.cancelFunc = nil
+	}
+	if progress.Status == string(StatusBuilding) {
+		progress.Status = string(StatusReady)
+		progress.ProgressPct = 100
+		progress.CompletedAt = time.Now().UTC().Format(time.RFC3339)
+		progress.CurrentStep = "All target images built successfully."
+	}
+	m.mu.Unlock()
+
+	if m.progressHook != nil {
+		m.progressHook(*progress)
+	}
+}
+
+type buildTarget struct {
+	kind string
+	arch string
+}
+
+// buildTargets expands a request's target ("all", "container", "vm") and arch
+// ("all", "both", "arm64", "amd64") into the images to build: containers first,
+// arm64 before amd64.
+func buildTargets(target, arch string) []buildTarget {
+	var archs []string
+	for _, a := range []string{"arm64", "amd64"} {
+		if arch == "all" || arch == "both" || arch == a {
+			archs = append(archs, a)
+		}
+	}
+	targets := make([]buildTarget, 0, 4)
+	for _, kind := range []string{"container", "vm"} {
+		if target != "all" && target != kind {
+			continue
+		}
+		for _, a := range archs {
+			targets = append(targets, buildTarget{kind: kind, arch: a})
+		}
+	}
+	return targets
 }
 
 func (m *BuildManager) buildContainerImage(ctx context.Context, arch string) error {
@@ -303,26 +298,64 @@ func (m *BuildManager) buildVMImage(ctx context.Context, arch string) error {
 
 func (m *BuildManager) buildVMImageViaBridge(ctx context.Context, bridgeURL, arch string) error {
 	m.appendLog(fmt.Sprintf("[BUILD:VM] Delegating VM build to Host VM Bridge at %s...", bridgeURL))
-	reqURL := strings.TrimSuffix(bridgeURL, "/") + "/api/actions/build-image"
+	base := strings.TrimSuffix(bridgeURL, "/")
+	token := os.Getenv("RUNZERO_BRIDGE_TOKEN")
+	client := &http.Client{Timeout: 30 * time.Second}
+
+	buildID, err := startBridgeBuild(ctx, client, base, token, arch)
+	if err != nil {
+		return err
+	}
+
+	pollURL := fmt.Sprintf("%s/api/images/build/%s", base, buildID)
+	lastLogIndex := 0
+	ticker := time.NewTicker(bridgePollInterval)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-ctx.Done():
+			cancelBridgeBuild(client, base, token, buildID)
+			return ctx.Err()
+		case <-ticker.C:
+			prog, ok := fetchBridgeProgress(ctx, client, pollURL, token)
+			if !ok {
+				continue
+			}
+			lastLogIndex = m.mirrorBridgeProgress(prog, lastLogIndex)
+			if prog.Status == string(StatusReady) {
+				return nil
+			}
+			if prog.Status == string(StatusFailed) {
+				if prog.Error != "" {
+					return fmt.Errorf("%s", prog.Error)
+				}
+				return fmt.Errorf("bridge build failed")
+			}
+		}
+	}
+}
+
+// startBridgeBuild asks the host bridge to build the VM image for arch and
+// returns the bridge's build ID.
+func startBridgeBuild(ctx context.Context, client *http.Client, base, token, arch string) (string, error) {
 	// Marshaling a struct of plain strings cannot fail.
 	payload, _ := json.Marshal(ImageBuildRequest{
 		Target: "vm",
 		Arch:   arch,
 	})
-
-	httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost, reqURL, bytes.NewReader(payload))
+	httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost, base+"/api/actions/build-image", bytes.NewReader(payload))
 	if err != nil {
-		return err
+		return "", err
 	}
 	httpReq.Header.Set("Content-Type", "application/json")
-	if token := os.Getenv("RUNZERO_BRIDGE_TOKEN"); token != "" {
+	if token != "" {
 		httpReq.Header.Set("Authorization", "Bearer "+token)
 	}
 
-	client := &http.Client{Timeout: 30 * time.Second}
 	resp, err := client.Do(httpReq)
 	if err != nil {
-		return fmt.Errorf("failed to contact bridge: %w", err)
+		return "", fmt.Errorf("failed to contact bridge: %w", err)
 	}
 	defer func() { _ = resp.Body.Close() }()
 
@@ -330,82 +363,69 @@ func (m *BuildManager) buildVMImageViaBridge(ctx context.Context, bridgeURL, arc
 		var errResp map[string]string
 		_ = json.NewDecoder(resp.Body).Decode(&errResp)
 		if msg, ok := errResp["error"]; ok {
-			return fmt.Errorf("bridge build error: %s", msg)
+			return "", fmt.Errorf("bridge build error: %s", msg)
 		}
-		return fmt.Errorf("bridge returned HTTP %d", resp.StatusCode)
+		return "", fmt.Errorf("bridge returned HTTP %d", resp.StatusCode)
 	}
 
 	var initProg ImageBuildProgress
 	if err := json.NewDecoder(resp.Body).Decode(&initProg); err != nil {
-		return fmt.Errorf("failed to parse bridge response: %w", err)
+		return "", fmt.Errorf("failed to parse bridge response: %w", err)
 	}
+	return initProg.BuildID, nil
+}
 
-	pollURL := fmt.Sprintf("%s/api/images/build/%s", strings.TrimSuffix(bridgeURL, "/"), initProg.BuildID)
-	token := os.Getenv("RUNZERO_BRIDGE_TOKEN")
-	lastLogIndex := 0
-
-	ticker := time.NewTicker(bridgePollInterval)
-	defer ticker.Stop()
-
-	for {
-		select {
-		case <-ctx.Done():
-			cancelURL := strings.TrimSuffix(bridgeURL, "/") + "/api/actions/build-image/cancel"
-			cPayload, _ := json.Marshal(map[string]string{"build_id": initProg.BuildID})
-			cReq, _ := http.NewRequest(http.MethodPost, cancelURL, bytes.NewReader(cPayload))
-			if cReq != nil {
-				cReq.Header.Set("Content-Type", "application/json")
-				if token != "" {
-					cReq.Header.Set("Authorization", "Bearer "+token)
-				}
-				_, _ = client.Do(cReq)
-			}
-			return ctx.Err()
-		case <-ticker.C:
-			pReq, err := http.NewRequestWithContext(ctx, http.MethodGet, pollURL, nil)
-			if err != nil {
-				continue
-			}
-			if token != "" {
-				pReq.Header.Set("Authorization", "Bearer "+token)
-			}
-			pResp, err := client.Do(pReq)
-			if err != nil {
-				continue
-			}
-			var curProg ImageBuildProgress
-			err = json.NewDecoder(pResp.Body).Decode(&curProg)
-			_ = pResp.Body.Close()
-			if err != nil {
-				continue
-			}
-
-			if len(curProg.LogLines) > lastLogIndex {
-				for _, line := range curProg.LogLines[lastLogIndex:] {
-					m.appendLog(line)
-				}
-				lastLogIndex = len(curProg.LogLines)
-			}
-
-			if curProg.CurrentStep != "" {
-				m.mu.Lock()
-				if m.activeBuild != nil {
-					m.activeBuild.CurrentStep = curProg.CurrentStep
-				}
-				m.mu.Unlock()
-			}
-
-			if curProg.Status == string(StatusReady) {
-				return nil
-			}
-			if curProg.Status == string(StatusFailed) {
-				if curProg.Error != "" {
-					return fmt.Errorf("%s", curProg.Error)
-				}
-				return fmt.Errorf("bridge build failed")
-			}
+// cancelBridgeBuild asks the bridge to cancel buildID (best effort; the
+// caller's context is already done, so it is not used).
+func cancelBridgeBuild(client *http.Client, base, token, buildID string) {
+	cPayload, _ := json.Marshal(map[string]string{"build_id": buildID})
+	cReq, _ := http.NewRequest(http.MethodPost, base+"/api/actions/build-image/cancel", bytes.NewReader(cPayload))
+	if cReq != nil {
+		cReq.Header.Set("Content-Type", "application/json")
+		if token != "" {
+			cReq.Header.Set("Authorization", "Bearer "+token)
 		}
+		_, _ = client.Do(cReq)
 	}
+}
+
+// fetchBridgeProgress polls the bridge build once; ok is false when the poll
+// failed and should simply be retried.
+func fetchBridgeProgress(ctx context.Context, client *http.Client, pollURL, token string) (ImageBuildProgress, bool) {
+	var prog ImageBuildProgress
+	pReq, err := http.NewRequestWithContext(ctx, http.MethodGet, pollURL, nil)
+	if err != nil {
+		return prog, false
+	}
+	if token != "" {
+		pReq.Header.Set("Authorization", "Bearer "+token)
+	}
+	pResp, err := client.Do(pReq)
+	if err != nil {
+		return prog, false
+	}
+	err = json.NewDecoder(pResp.Body).Decode(&prog)
+	_ = pResp.Body.Close()
+	return prog, err == nil
+}
+
+// mirrorBridgeProgress copies new bridge log lines and the current step into the
+// local build, returning the new log offset.
+func (m *BuildManager) mirrorBridgeProgress(prog ImageBuildProgress, lastLogIndex int) int {
+	if len(prog.LogLines) > lastLogIndex {
+		for _, line := range prog.LogLines[lastLogIndex:] {
+			m.appendLog(line)
+		}
+		lastLogIndex = len(prog.LogLines)
+	}
+	if prog.CurrentStep != "" {
+		m.mu.Lock()
+		if m.activeBuild != nil {
+			m.activeBuild.CurrentStep = prog.CurrentStep
+		}
+		m.mu.Unlock()
+	}
+	return lastLogIndex
 }
 
 func (m *BuildManager) streamCommandOutput(cmd *exec.Cmd, prefix string) error {
