@@ -116,34 +116,41 @@ func (c *Client) DoRequest(ctx context.Context, method, endpoint string, body io
 
 	c.updateRateLimit(resp.Header)
 
+	return resp, c.decodeResponse(resp, url, cacheable, out)
+}
+
+// decodeResponse decodes a GitHub response into out: a 304 is served from the
+// ETag cache, a non-2xx status becomes an error, and a fresh cacheable body is
+// stored under its ETag.
+func (c *Client) decodeResponse(resp *http.Response, url string, cacheable bool, out interface{}) error {
 	if cacheable && resp.StatusCode == http.StatusNotModified {
 		if cached, ok := c.cachedETag(url); ok {
 			if err := json.Unmarshal(cached.body, out); err != nil {
-				return resp, fmt.Errorf("failed decoding cached response: %w", err)
+				return fmt.Errorf("failed decoding cached response: %w", err)
 			}
-			return resp, nil
+			return nil
 		}
 	}
 
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		respBody, _ := io.ReadAll(resp.Body)
-		return resp, fmt.Errorf("github api error (%d): %s", resp.StatusCode, string(respBody))
+		return fmt.Errorf("github api error (%d): %s", resp.StatusCode, string(respBody))
 	}
 
 	if out == nil {
-		return resp, nil
+		return nil
 	}
 	raw, err := io.ReadAll(resp.Body)
 	if err != nil {
-		return resp, fmt.Errorf("failed reading response: %w", err)
+		return fmt.Errorf("failed reading response: %w", err)
 	}
 	if err := json.Unmarshal(raw, out); err != nil {
-		return resp, fmt.Errorf("failed decoding response: %w", err)
+		return fmt.Errorf("failed decoding response: %w", err)
 	}
 	if etag := resp.Header.Get("ETag"); cacheable && etag != "" {
 		c.storeETag(url, cachedResponse{etag: etag, body: raw})
 	}
-	return resp, nil
+	return nil
 }
 
 // newRequest builds a GitHub API request with auth and version headers, and a
