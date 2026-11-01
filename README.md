@@ -407,24 +407,37 @@ The Makefile is split per sub-package under [`mk/`](mk/) (`go`, `spec`, `web`, `
 | `OWNER` | GitHub username to auto-discover all owned repos | *None* |
 | `REPOS` | Comma-separated list of target repos (`owner/repo`) | *None* |
 | `ORG` | Organization mode: runners register at org scope and serve queued jobs from the org's active repos | *None* |
-| `RUNNER_BACKEND` | Execution driver (`auto`, `docker`, `orbstack-vm`, `wsl2`, `multipass`) | `auto` |
+| `RUNNER_BACKEND` | Execution driver (`auto`, `docker`, `orbstack-vm`); `wsl2` and `multipass` are accepted but have no driver yet ([U-01](TRACEABILITY.md#advertised-but-not-implemented)) | `auto` |
 | `AUTO_ROUTE_VM` | Automatically route browser/systemd/e2e jobs to VMs | `true` |
 | `AUTO_DISCOVER_REPOS` | Automatically discover and monitor all user repos | `true` |
 | `ACTIVE_REPO_DAYS` | Only monitor repos pushed in the last N days | `60` |
 | `RUNNER_ARCH` | Runner architectures to spawn (`arm64`, `amd64`, or `both`) | `both` |
 | `PROXIES_ENABLED` | Enable apt-cacher, Verdaccio & Athens proxy registries for runners | `true` |
 | `CACHE_ENABLED` | Enable persistent package/tool caching across runners | `true` |
-| `MIN_RUNNERS` | Warm standby pool topped up after queued jobs are served (org scope in ORG mode, else round-robin across tracked repos; capped by `MAX_RUNNERS`; exempt from idle reaping) | `0` |
+| `MIN_RUNNERS` | **Not yet applied** ([U-03](TRACEABILITY.md#advertised-but-not-implemented)). Intended: warm standby pool topped up after queued jobs are served (org scope in ORG mode, else round-robin across tracked repos; capped by `MAX_RUNNERS`; exempt from idle reaping) | `0` |
 | `MAX_RUNNERS` | Maximum concurrent runner instances | `4` |
 | `POLL_INTERVAL` | Queue check interval in seconds | `10` |
 | `DISCOVERY_INTERVAL` | Auto-discovery refresh interval in seconds | `900` |
-| `RATE_LIMIT_REFRESH_INTERVAL` | GitHub API quota refresh interval in seconds | `60` |
+| `RATE_LIMIT_REFRESH_INTERVAL` | Parsed but not yet applied; the quota is read from every API response ([U-06](TRACEABILITY.md#settings-with-no-effect)) | `60` |
 | `ACTIONS_BILLING_REFRESH_INTERVAL` | Actions minutes refresh interval in seconds | `300` |
 | `GITLAB_URL` | Base URL for GitLab API (supports self-hosted instances like `https://git.eckelmann.de`) | `https://gitlab.com` |
 | `GITLAB_TOKEN` | GitLab Personal / Group Access Token with `api` scope | *None* |
 | `GITLAB_GROUP` | GitLab group to discover and monitor runners and queued jobs | *None* |
 | `GITLAB_PROJECTS` | Comma-separated list of GitLab project paths to monitor | *None* |
 | `PROVIDERS_CONFIG` | Optional path to a multi-instance providers YAML file | *None* |
+| `GITHUB_TOKEN` | Fallback for `ACCESS_TOKEN` when that is unset | *None* |
+| `REPO` | Fallback for `REPOS` when that is unset | *None* |
+| `REPO_PRIORITY` | Comma-separated repos to serve first, in order | *None* |
+| `VM_TRIGGER_LABELS` | Job labels that route a job to a VM runner when `AUTO_ROUTE_VM` is on | `vm,browser,e2e,lighthouse,systemd,gui,unconfined,postgres,mysql,redis,db,database,integration,service,services,dind` |
+| `NATIVE_ARCH_OVERRIDE` | On an ARM64 host, run AMD64 jobs as native ARM64 instead of emulating them (jobs with an emulation label still emulate): `off`, `all`, or comma-separated repos | `off` |
+| `RUNNER_CPUS` | CPUs per runner (`0` = default of 3) | `0` |
+| `RUNNER_MEMORY` | Memory per runner, e.g. `8g` or `4096m` (empty = 4096 MiB) | *None* |
+| `HOST_CACHE_DIR` | Host directory for persistent per-runner package caches (caching is off when empty) | *None* |
+| `CLEANUP_RUNNERS_ON_SHUTDOWN` | Stop and remove all runners when the daemon exits | `false` |
+| `RUNNER_BUSY_TIMEOUT_SECONDS` | Parsed but not yet applied; busy runners are reaped after 7200 s ([U-07](TRACEABILITY.md#settings-with-no-effect)) | `7200` |
+| `DASHBOARD_ENABLED` | Serve the dashboard and control-plane API | `true` |
+| `DASHBOARD_HOST` | Dashboard listen address | `127.0.0.1` |
+| `DASHBOARD_PORT` | Dashboard listen port | `49505` |
 
 ---
 
