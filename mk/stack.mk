@@ -89,7 +89,7 @@ status: bridge-status ## Show autoscaler, bridge, proxies and active runners (co
 	@docker ps --filter "label=managed-by=local-autoscaler" --format "table {{.ID}}\t{{.Names}}\t{{.Status}}\t{{.Labels}}"
 	@echo ""
 	@echo "$(BOLD)$(CYAN)=== Active Ephemeral Runner VMs ===$(RESET)"
-	@orbctl list 2>/dev/null | grep -i runzero-vm || echo "  (none)"
+	@orbctl list 2>/dev/null | grep '^runzero-' | grep -v '^runzero-vm-base-' || echo "  (none)"
 	@echo ""
 
 .PHONY: ps

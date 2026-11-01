@@ -34,7 +34,7 @@ vm-list: ## List OrbStack Linux VMs
 
 .PHONY: vm-clean
 vm-clean: ## Delete orphaned ephemeral RunZero VMs (keeps golden base images)
-	@for vm in $$(orbctl list -q 2>/dev/null | grep '^runzero-vm-' | grep -v '^runzero-vm-base-'); do \
+	@for vm in $$(orbctl list -q 2>/dev/null | grep '^runzero-' | grep -v '^runzero-vm-base-'); do \
 		echo "Deleting $$vm..."; \
 		orbctl delete -f $$vm || true; \
 	done
@@ -42,7 +42,7 @@ vm-clean: ## Delete orphaned ephemeral RunZero VMs (keeps golden base images)
 
 .PHONY: vm-clean-all
 vm-clean-all: ## Delete ALL RunZero VMs including golden base images
-	@for vm in $$(orbctl list -q 2>/dev/null | grep '^runzero-vm-'); do \
+	@for vm in $$(orbctl list -q 2>/dev/null | grep '^runzero-'); do \
 		echo "Deleting $$vm..."; \
 		orbctl delete -f $$vm || true; \
 	done

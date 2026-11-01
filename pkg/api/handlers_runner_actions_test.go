@@ -42,6 +42,7 @@ func TestHandlePrune_PrunesFinishedRunners(t *testing.T) {
 		},
 		logs: map[string]string{"runner-a": "failure-tail"},
 	}
+	st.UpdateFleet(drv.runners, nil)
 
 	req := httptest.NewRequest(http.MethodPost, "/api/actions/prune", nil)
 	rec := httptest.NewRecorder()
@@ -55,6 +56,9 @@ func TestHandlePrune_PrunesFinishedRunners(t *testing.T) {
 	}
 	if logTail, ok := st.GetRunnerLog("runner-a"); !ok || logTail != "failure-tail" {
 		t.Fatalf("expected retained runner log for runner-a, got ok=%v log=%q", ok, logTail)
+	}
+	if remaining := st.GetSnapshot().Runners; len(remaining) != 1 || remaining[0].ID != "runner-b" {
+		t.Fatalf("expected runner-a to be removed from state runners, got %+v", remaining)
 	}
 
 	var body map[string]any

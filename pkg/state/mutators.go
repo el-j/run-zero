@@ -86,3 +86,45 @@ func (s *State) SetActionsBilling(billing *ActionsBilling) {
 
 	s.broker.Broadcast(Event{Type: "state", Data: s.GetSnapshot()})
 }
+
+// RemoveRunner removes a single runner by ID or Name and broadcasts state.
+func (s *State) RemoveRunner(idOrName string) {
+	if idOrName == "" {
+		return
+	}
+	s.mu.Lock()
+	filtered := make([]RunnerInfo, 0, len(s.runners))
+	for _, r := range s.runners {
+		if r.ID != idOrName && r.Name != idOrName {
+			filtered = append(filtered, r)
+		}
+	}
+	s.runners = filtered
+	s.mu.Unlock()
+
+	s.broker.Broadcast(Event{Type: "state", Data: s.GetSnapshot()})
+}
+
+// RemoveRunners removes multiple runners by ID or Name and broadcasts state.
+func (s *State) RemoveRunners(idOrNames []string) {
+	if len(idOrNames) == 0 {
+		return
+	}
+	lookup := make(map[string]bool, len(idOrNames))
+	for _, id := range idOrNames {
+		if id != "" {
+			lookup[id] = true
+		}
+	}
+	s.mu.Lock()
+	filtered := make([]RunnerInfo, 0, len(s.runners))
+	for _, r := range s.runners {
+		if !lookup[r.ID] && !lookup[r.Name] {
+			filtered = append(filtered, r)
+		}
+	}
+	s.runners = filtered
+	s.mu.Unlock()
+
+	s.broker.Broadcast(Event{Type: "state", Data: s.GetSnapshot()})
+}

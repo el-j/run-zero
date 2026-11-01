@@ -91,3 +91,42 @@ func TestState_LogsAndRingBuffer(t *testing.T) {
 		t.Errorf("unexpected logs ring order: %+v", logs)
 	}
 }
+
+func TestState_RemoveRunners(t *testing.T) {
+	st := NewState(4, "v1.0.0", nil)
+	r1 := RunnerInfo{ID: "r-1", Name: "runner-1", Status: "running"}
+	r2 := RunnerInfo{ID: "r-2", Name: "runner-2", Status: "running"}
+	r3 := RunnerInfo{ID: "r-3", Name: "runner-3", Status: "running"}
+	r4 := RunnerInfo{ID: "r-4", Name: "runner-4", Status: "running"}
+	st.UpdateFleet([]RunnerInfo{r1, r2, r3, r4}, nil)
+
+	// Remove single by ID
+	st.RemoveRunner("r-1")
+	if len(st.GetSnapshot().Runners) != 3 {
+		t.Fatalf("expected 3 runners after removing r-1, got %d", len(st.GetSnapshot().Runners))
+	}
+
+	// Remove single by empty string (no-op)
+	st.RemoveRunner("")
+	if len(st.GetSnapshot().Runners) != 3 {
+		t.Fatalf("expected 3 runners, got %d", len(st.GetSnapshot().Runners))
+	}
+
+	// Remove single by Name
+	st.RemoveRunner("runner-2")
+	if len(st.GetSnapshot().Runners) != 2 {
+		t.Fatalf("expected 2 runners after removing runner-2, got %d", len(st.GetSnapshot().Runners))
+	}
+
+	// RemoveRunners with empty list (no-op)
+	st.RemoveRunners(nil)
+	if len(st.GetSnapshot().Runners) != 2 {
+		t.Fatalf("expected 2 runners, got %d", len(st.GetSnapshot().Runners))
+	}
+
+	// Remove multiple
+	st.RemoveRunners([]string{"", "r-3"})
+	if len(st.GetSnapshot().Runners) != 1 || st.GetSnapshot().Runners[0].ID != "r-4" {
+		t.Fatalf("expected 1 runner (r-4) after removing r-3, got %d", len(st.GetSnapshot().Runners))
+	}
+}

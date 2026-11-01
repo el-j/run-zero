@@ -146,7 +146,9 @@ func (r *Reaper) ReconcileLocalRunners(
 
 		if action == ActionReapUnregistered || action == ActionReapIdle || action == ActionCheckStaleBusy {
 			if r.driver != nil {
-				_ = r.driver.StopRunner(ctx, runner.ID)
+				if err := r.driver.StopRunner(ctx, runner.ID); err != nil && runner.Name != "" && runner.Name != runner.ID {
+					_ = r.driver.StopRunner(ctx, runner.Name)
+				}
 			}
 			reapedIDs = append(reapedIDs, runner.ID)
 		}

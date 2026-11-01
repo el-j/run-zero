@@ -130,7 +130,17 @@ func (s *Server) handlePostDriverStop(w http.ResponseWriter, r *http.Request, dr
 }
 
 func (s *Server) handlePostDriverPrune(w http.ResponseWriter, r *http.Request, driverName string) {
-	s.writeJSON(w, http.StatusOK, ActionResponse{Status: "success", Pruned: 0})
+	d := s.resolveDriver(driverName)
+	if d == nil {
+		s.writeJSON(w, http.StatusBadRequest, ActionResponse{Status: "error", Error: "unknown driver"})
+		return
+	}
+	removed, err := driver.PruneFinished(r.Context(), d, nil)
+	if err != nil {
+		s.writeJSON(w, http.StatusInternalServerError, ActionResponse{Status: "error", Error: err.Error()})
+		return
+	}
+	s.writeJSON(w, http.StatusOK, ActionResponse{Status: "success", Pruned: len(removed)})
 }
 
 func (s *Server) handlePostDriverCleanup(w http.ResponseWriter, r *http.Request, driverName string) {

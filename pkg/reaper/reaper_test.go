@@ -2,6 +2,7 @@ package reaper
 
 import (
 	"context"
+	"fmt"
 	"testing"
 	"time"
 
@@ -11,10 +12,14 @@ import (
 
 type mockDriver struct {
 	driver.RunnerDriver
-	stopped []string
+	stopped  []string
+	stopFunc func(string) error
 }
 
 func (m *mockDriver) StopRunner(ctx context.Context, id string) error {
+	if m.stopFunc != nil {
+		return m.stopFunc(id)
+	}
 	m.stopped = append(m.stopped, id)
 	return nil
 }
@@ -158,5 +163,28 @@ func TestReconcile_WithoutGitHubClientReapsNothing(t *testing.T) {
 
 	if got := NewReaper(&mockDriver{}, nil, Timeouts{}).Reconcile(context.Background(), runners, 0); len(got) != 0 {
 		t.Fatalf("expected nothing reaped without a GitHub client, got %v", got)
+	}
+}
+
+func TestReconcileLocalRunners_StopsWithNameFallback(t *testing.T) {
+	var stopCalls []string
+	drv := &mockDriver{
+		stopFunc: func(id string) error {
+			stopCalls = append(stopCalls, id)
+			if id == "r-id" {
+				return fmt.Errorf("fail")
+			}
+			return nil
+		},
+	}
+	r := NewReaper(drv, nil, Timeouts{IdleSeconds: 600, UnregisteredSeconds: 10})
+	created := time.Unix(1000, 0).UTC().Format(time.RFC3339)
+	runners := []state.RunnerInfo{{ID: "r-id", Name: "runner-name", TargetRepo: "o/r", CreatedAt: &created}}
+	reaped := r.ReconcileLocalRunners(context.Background(), runners, map[string]Registration{}, map[string]bool{"o/r": true}, 1050, 0)
+	if len(reaped) != 1 || reaped[0] != "r-id" {
+		t.Fatalf("expected r-id reaped, got %v", reaped)
+	}
+	if len(stopCalls) != 2 || stopCalls[0] != "r-id" || stopCalls[1] != "runner-name" {
+		t.Fatalf("expected stop by id and fallback by name, got %v", stopCalls)
 	}
 }

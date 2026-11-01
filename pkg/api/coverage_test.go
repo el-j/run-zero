@@ -212,6 +212,7 @@ type actDriver struct {
 	listErr  error
 	spawnErr error
 	spawned  []driver.RunnerSpec
+	stopFunc func(string) error
 }
 
 func (d *actDriver) Backend() string { return "mock" }
@@ -223,8 +224,13 @@ func (d *actDriver) SpawnRunner(_ context.Context, s driver.RunnerSpec) (*state.
 	return &state.RunnerInfo{ID: s.ID, Name: s.Name}, nil
 }
 func (d *actDriver) ListRunners(context.Context) ([]state.RunnerInfo, error) { return nil, d.listErr }
-func (d *actDriver) StopRunner(context.Context, string) error                { return d.stopErr }
-func (d *actDriver) CleanupAll(context.Context) error                        { return nil }
+func (d *actDriver) StopRunner(_ context.Context, id string) error {
+	if d.stopFunc != nil {
+		return d.stopFunc(id)
+	}
+	return d.stopErr
+}
+func (d *actDriver) CleanupAll(context.Context) error { return nil }
 
 func fakeGitHub(t *testing.T, status int, body string) *github.Client {
 	t.Helper()
@@ -269,6 +275,22 @@ func TestRunnerAction_Stop(t *testing.T) {
 	expectCode(t, do(h, http.MethodPost, "/", `{"action":"stop"}`), http.StatusOK)
 	d.stopErr = errors.New("nope")
 	expectCode(t, do(h, http.MethodPost, "/", `{"action":"stop","runner_id":"r1"}`), http.StatusInternalServerError)
+
+	// Fallback to name when ID fails
+	st.UpdateFleet([]state.RunnerInfo{{ID: "r1", Name: "vm-r1"}}, nil)
+	d.stopFunc = func(target string) error {
+		if target == "r1" {
+			return errors.New("id failed")
+		}
+		if target == "vm-r1" {
+			return nil
+		}
+		return errors.New("unexpected")
+	}
+	expectCode(t, do(h, http.MethodPost, "/", `{"action":"stop","runner_id":"r1"}`), http.StatusOK)
+	if len(st.GetSnapshot().Runners) != 0 {
+		t.Fatalf("expected runner to be removed from state, got %d", len(st.GetSnapshot().Runners))
+	}
 }
 
 func TestRunnerAction_Start(t *testing.T) {

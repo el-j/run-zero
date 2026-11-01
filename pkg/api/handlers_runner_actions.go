@@ -2,6 +2,7 @@ package api
 
 import (
 	"bytes"
+	"context"
 	"crypto/rand"
 	"encoding/hex"
 	"encoding/json"
@@ -87,11 +88,12 @@ func handleRunnerActionWithDeps(st *state.State, cfg *config.Config, ghClient *g
 			respondManualStart(st, cfg, ghClient, rd, w, r, payload)
 			return
 		case payload.Action == "stop" && rd != nil && payload.RunnerID != "":
-			if err := rd.StopRunner(r.Context(), payload.RunnerID); err != nil {
+			if err := stopRunnerWithFallback(r.Context(), rd, st, payload.RunnerID); err != nil {
 				st.AppendLog(fmt.Sprintf("[Go Engine] ❌ Failed to stop runner %s: %v", payload.RunnerID, err))
 				writeError(w, http.StatusInternalServerError, fmt.Sprintf("Failed to stop runner: %v", err))
 				return
 			}
+			st.RemoveRunner(payload.RunnerID)
 		}
 
 		st.AppendLog(fmt.Sprintf("[Go Engine] 🏃 Runner control action: %s", payload.Action))
@@ -100,6 +102,23 @@ func handleRunnerActionWithDeps(st *state.State, cfg *config.Config, ghClient *g
 			"message": fmt.Sprintf("Runner action '%s' executed", payload.Action),
 		})
 	}
+}
+
+func stopRunnerWithFallback(ctx context.Context, rd driver.RunnerDriver, st *state.State, id string) error {
+	err := rd.StopRunner(ctx, id)
+	if err == nil {
+		return nil
+	}
+	if st != nil {
+		for _, rInfo := range st.GetSnapshot().Runners {
+			if (rInfo.ID == id || rInfo.Name == id) && rInfo.Name != id && rInfo.Name != "" {
+				if ferr := rd.StopRunner(ctx, rInfo.Name); ferr == nil {
+					return nil
+				}
+			}
+		}
+	}
+	return err
 }
 
 // resolveTerminalTarget finds the runner name and backend for an open-terminal request.
@@ -280,6 +299,13 @@ func handlePrune(st *state.State, runnerDriver ...driver.RunnerDriver) http.Hand
 				return
 			}
 			pruned = len(removed)
+			if pruned > 0 {
+				ids := make([]string, 0, len(removed)*2)
+				for _, rem := range removed {
+					ids = append(ids, rem.ID, rem.Name)
+				}
+				st.RemoveRunners(ids)
+			}
 		}
 
 		st.AppendLog(fmt.Sprintf("[Go Engine] ✂️ Triggered fleet runner prune. Removed %d finished runner(s).", pruned))

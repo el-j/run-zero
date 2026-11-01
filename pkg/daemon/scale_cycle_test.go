@@ -883,3 +883,140 @@ func TestResolveJobArch_WithoutOverride(t *testing.T) {
 		t.Fatalf("got %s", got)
 	}
 }
+
+func TestJobMatchesRunner_DistinguishesDifferentJobsInSameRun(t *testing.T) {
+	runnerName := "runzero-j101-r202-amd64-o__r-abc"
+	jobID := int64(101)
+	otherJobID := int64(999)
+	runID := int64(202)
+
+	r := &state.RunnerInfo{
+		ID:         "abc",
+		Name:       runnerName,
+		JobID:      &jobID,
+		RunID:      &runID,
+		TargetRepo: "o/r",
+	}
+
+	// 1. Matches by RunnerName
+	if !jobMatchesRunner(state.QueuedJob{RunnerName: &runnerName}, r) {
+		t.Fatal("expected match by runner name")
+	}
+
+	// 2. Matches by exact JobID
+	if !jobMatchesRunner(state.QueuedJob{ID: 101, RunID: 202, Repo: "o/r"}, r) {
+		t.Fatal("expected match by job ID")
+	}
+
+	// 3. MUST NOT match different JobID in same RunID when runner has JobID
+	if jobMatchesRunner(state.QueuedJob{ID: otherJobID, RunID: 202, Repo: "o/r"}, r) {
+		t.Fatal("must not match different job in the same run when JobID is set")
+	}
+
+	// 4. When runner has no JobID, fallback matches by RunID
+	rNoJobID := &state.RunnerInfo{
+		ID:         "abc",
+		Name:       runnerName,
+		RunID:      &runID,
+		TargetRepo: "o/r",
+	}
+	if !jobMatchesRunner(state.QueuedJob{ID: 101, RunID: 202, Repo: "o/r"}, rNoJobID) {
+		t.Fatal("expected match by run ID when runner JobID is nil")
+	}
+	if jobMatchesRunner(state.QueuedJob{ID: 101, RunID: 999, Repo: "o/r"}, rNoJobID) {
+		t.Fatal("must not match different run ID when runner JobID is nil")
+	}
+}
+
+func TestScaleUp_DoesNotSpawnDuplicateRunnerForAlreadyCoveredJob(t *testing.T) {
+	_, gh := newFakeGH(t, map[string]string{
+		"/repos/o/r/actions/runners/registration-token": `{"token":"tok","expires_at":"2030-01-01T00:00:00Z"}`,
+	})
+	jobID := int64(101)
+	runID := int64(202)
+	activeRunner := state.RunnerInfo{
+		ID:         "abc",
+		Name:       "runzero-j101-r202-amd64-o__r-abc",
+		JobID:      &jobID,
+		RunID:      &runID,
+		TargetRepo: "o/r",
+	}
+	drv := &mockDriver{}
+	s, _ := newTestScaler(t, baseCfg("o/r"), gh, drv, nil, "o/r")
+	s.cfg.MaxRunners = 5
+
+	queued := []state.QueuedJob{
+		{ID: 101, RunID: 202, Repo: "o/r", Status: "queued"},
+		{ID: 102, RunID: 202, Repo: "o/r", Status: "queued"},
+	}
+	jobsByRepo := map[string][]state.QueuedJob{"o/r": queued}
+
+	surviving := s.scaleUp(context.Background(), []state.RunnerInfo{activeRunner}, []string{"o/r"}, jobsByRepo)
+	if len(surviving) != 2 || len(drv.spawned) != 1 {
+		t.Fatalf("expected 1 new runner spawned (for job 102), surviving: %d spawned: %d", len(surviving), len(drv.spawned))
+	}
+}
+
+func TestRunnerServingJob(t *testing.T) {
+	jobID := int64(101)
+	active := []state.RunnerInfo{{ID: "r1", JobID: &jobID, TargetRepo: "o/r"}}
+	if !runnerServingJob(active, state.QueuedJob{ID: 101, Repo: "o/r"}) {
+		t.Fatal("expected match")
+	}
+	if runnerServingJob(active, state.QueuedJob{ID: 999, Repo: "o/r"}) {
+		t.Fatal("expected no match")
+	}
+}
+
+func TestRunnerStillNeeded_StopsWithNameFallbackWhenIDStopFails(t *testing.T) {
+	var stopCalls []string
+	stub := &stopFallbackDriver{
+		onStop: func(id string) error {
+			stopCalls = append(stopCalls, id)
+			if id == "r-id" {
+				return fmt.Errorf("fail id")
+			}
+			return nil
+		},
+	}
+	_, gh := newFakeGH(t, map[string]string{
+		"/repos/o/r/actions/jobs/101": `{"id":101,"status":"completed","conclusion":"success"}`,
+	})
+	s := &Scaler{
+		driver:   stub,
+		ghClient: gh,
+		state:    state.NewState(4, "v1", nil),
+	}
+
+	jobID := int64(101)
+	r := state.RunnerInfo{
+		ID:         "r-id",
+		Name:       "runner-full-name",
+		JobID:      &jobID,
+		TargetRepo: "o/r",
+	}
+
+	stillNeeded := s.runnerStillNeeded(context.Background(), r, nil)
+	if stillNeeded {
+		t.Fatal("expected runner to be not needed")
+	}
+	if len(stopCalls) != 2 || stopCalls[0] != "r-id" || stopCalls[1] != "runner-full-name" {
+		t.Fatalf("expected fallback stop by name, got %v", stopCalls)
+	}
+}
+
+type stopFallbackDriver struct {
+	onStop func(string) error
+}
+
+func (d *stopFallbackDriver) Backend() string { return "mock" }
+func (d *stopFallbackDriver) SpawnRunner(context.Context, driver.RunnerSpec) (*state.RunnerInfo, error) {
+	return nil, nil
+}
+func (d *stopFallbackDriver) ListRunners(context.Context) ([]state.RunnerInfo, error) {
+	return nil, nil
+}
+func (d *stopFallbackDriver) StopRunner(_ context.Context, id string) error {
+	return d.onStop(id)
+}
+func (d *stopFallbackDriver) CleanupAll(context.Context) error { return nil }

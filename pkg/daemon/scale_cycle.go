@@ -137,7 +137,7 @@ func jobMatchesRunner(j state.QueuedJob, r *state.RunnerInfo) bool {
 	if r.JobID != nil && *r.JobID == j.ID {
 		return true
 	}
-	return r.RunID != nil && *r.RunID == j.RunID && r.TargetRepo == j.Repo
+	return r.JobID == nil && r.RunID != nil && *r.RunID == j.RunID && r.TargetRepo == j.Repo
 }
 
 // completionReason asks GitHub whether the runner's job or run has finished.
@@ -188,7 +188,9 @@ func (s *Scaler) runnerStillNeeded(ctx context.Context, r state.RunnerInfo, allJ
 		return true
 	}
 	s.state.AppendLog(fmt.Sprintf("[Autoscaler] 🧹 Reaped finished runner '%s' for %s: %s", r.Name, r.TargetRepo, reason))
-	_ = s.driver.StopRunner(ctx, r.ID)
+	if err := s.driver.StopRunner(ctx, r.ID); err != nil && r.Name != "" && r.Name != r.ID {
+		_ = s.driver.StopRunner(ctx, r.Name)
+	}
 	if s.firstSeen != nil {
 		delete(s.firstSeen, r.Name)
 	}
@@ -208,6 +210,16 @@ func (s *Scaler) reapStaleRunners(ctx context.Context, active []state.RunnerInfo
 	active = s.CollectRunners(ctx)
 	resolveRunnerRepos(active, tracked)
 	return active
+}
+
+// runnerServingJob reports whether an active runner is already assigned to job.
+func runnerServingJob(active []state.RunnerInfo, job state.QueuedJob) bool {
+	for i := range active {
+		if jobMatchesRunner(job, &active[i]) {
+			return true
+		}
+	}
+	return false
 }
 
 // scaleUp spawns runners for queued jobs not yet covered, by repo priority, up to MaxRunners.
@@ -237,6 +249,9 @@ func (s *Scaler) scaleUp(ctx context.Context, active []state.RunnerInfo, tracked
 		for _, job := range queued {
 			if len(active) >= s.cfg.MaxRunners || uncovered <= 0 {
 				break
+			}
+			if runnerServingJob(active, job) {
+				continue
 			}
 			info := s.spawnForJob(ctx, repo, job)
 			if info == nil {
