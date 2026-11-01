@@ -9,82 +9,83 @@ import (
 )
 
 func validateAndApplySettings(cfg *config.Config, st *state.State, p *SettingsPayload) (map[string]string, error) {
-	effectiveMax := cfg.MaxRunners
-	if p.MaxRunners != nil {
-		if *p.MaxRunners < 1 {
-			return nil, fmt.Errorf("max_runners must be >= 1")
-		}
-		effectiveMax = *p.MaxRunners
-	}
-	if p.MinRunners != nil {
-		if *p.MinRunners < 0 {
-			return nil, fmt.Errorf("min_runners must be >= 0")
-		}
-		if *p.MinRunners > effectiveMax {
-			return nil, fmt.Errorf("min_runners cannot exceed max_runners")
-		}
-	}
-	if p.PollInterval != nil && (*p.PollInterval < 1 || *p.PollInterval > 3600) {
-		return nil, fmt.Errorf("poll_interval must be between 1 and 3600")
+	if err := validateSettings(cfg.MaxRunners, p); err != nil {
+		return nil, err
 	}
 
 	u := make(map[string]string)
 	if p.MaxRunners != nil {
-		cfg.MaxRunners = *p.MaxRunners
 		st.SetMaxRunners(*p.MaxRunners)
-		u["MAX_RUNNERS"] = strconv.Itoa(*p.MaxRunners)
+	}
+	applyInt(u, "MAX_RUNNERS", &cfg.MaxRunners, p.MaxRunners)
+	applyInt(u, "MIN_RUNNERS", &cfg.MinRunners, p.MinRunners)
+	if p.RunnerCPUs != nil && *p.RunnerCPUs >= 1 {
+		applyInt(u, "RUNNER_CPUS", &cfg.RunnerCPUs, p.RunnerCPUs)
+	}
+	applyString(u, "RUNNER_MEMORY", &cfg.RunnerMemory, nonEmpty(p.RunnerMemory))
+	applyInt(u, "POLL_INTERVAL", &cfg.PollInterval, p.PollInterval)
+	applyBool(u, "AUTO_DISCOVER_REPOS", &cfg.AutoDiscover, p.AutoDiscover)
+	applyBool(u, "AUTO_ROUTE_VM", &cfg.AutoRouteVM, p.AutoRouteVM)
+	applyBool(u, "PROXIES_ENABLED", &cfg.ProxiesEnabled, p.ProxiesEnabled)
+	applyBool(u, "CACHE_ENABLED", &cfg.CacheEnabled, p.CacheEnabled)
+	applyString(u, "RUNNER_BACKEND", &cfg.RunnerBackend, p.RunnerBackend)
+	applyString(u, "RUNNER_ARCH", &cfg.RunnerArch, p.RunnerArch)
+	applyString(u, "NATIVE_ARCH_OVERRIDE", &cfg.NativeArchOverride, p.NativeArchOverride)
+	applyString(u, "HOST_CACHE_DIR", &cfg.HostCacheDir, p.HostCacheDir)
+	applyString(u, "ACCESS_TOKEN", &cfg.AccessToken, nonEmpty(p.AccessToken))
+	return u, nil
+}
+
+// validateSettings checks the payload's runner bounds against the current
+// maxRunners (or the new one, when the payload changes it).
+func validateSettings(maxRunners int, p *SettingsPayload) error {
+	if p.MaxRunners != nil {
+		if *p.MaxRunners < 1 {
+			return fmt.Errorf("max_runners must be >= 1")
+		}
+		maxRunners = *p.MaxRunners
 	}
 	if p.MinRunners != nil {
-		cfg.MinRunners = *p.MinRunners
-		u["MIN_RUNNERS"] = strconv.Itoa(*p.MinRunners)
+		if *p.MinRunners < 0 {
+			return fmt.Errorf("min_runners must be >= 0")
+		}
+		if *p.MinRunners > maxRunners {
+			return fmt.Errorf("min_runners cannot exceed max_runners")
+		}
 	}
-	if p.RunnerCPUs != nil && *p.RunnerCPUs >= 1 {
-		cfg.RunnerCPUs = *p.RunnerCPUs
-		u["RUNNER_CPUS"] = strconv.Itoa(*p.RunnerCPUs)
+	if p.PollInterval != nil && (*p.PollInterval < 1 || *p.PollInterval > 3600) {
+		return fmt.Errorf("poll_interval must be between 1 and 3600")
 	}
-	if p.RunnerMemory != nil && *p.RunnerMemory != "" {
-		cfg.RunnerMemory = *p.RunnerMemory
-		u["RUNNER_MEMORY"] = *p.RunnerMemory
+	return nil
+}
+
+// applyInt, applyBool and applyString set *dst and record the .env update when
+// the payload carries a value (v != nil).
+func applyInt(u map[string]string, key string, dst, v *int) {
+	if v != nil {
+		*dst = *v
+		u[key] = strconv.Itoa(*v)
 	}
-	if p.PollInterval != nil {
-		cfg.PollInterval = *p.PollInterval
-		u["POLL_INTERVAL"] = strconv.Itoa(*p.PollInterval)
+}
+
+func applyBool(u map[string]string, key string, dst, v *bool) {
+	if v != nil {
+		*dst = *v
+		u[key] = strconv.FormatBool(*v)
 	}
-	if p.AutoDiscover != nil {
-		cfg.AutoDiscover = *p.AutoDiscover
-		u["AUTO_DISCOVER_REPOS"] = strconv.FormatBool(*p.AutoDiscover)
+}
+
+func applyString(u map[string]string, key string, dst, v *string) {
+	if v != nil {
+		*dst = *v
+		u[key] = *v
 	}
-	if p.AutoRouteVM != nil {
-		cfg.AutoRouteVM = *p.AutoRouteVM
-		u["AUTO_ROUTE_VM"] = strconv.FormatBool(*p.AutoRouteVM)
+}
+
+// nonEmpty treats an empty string as "not provided".
+func nonEmpty(v *string) *string {
+	if v == nil || *v == "" {
+		return nil
 	}
-	if p.ProxiesEnabled != nil {
-		cfg.ProxiesEnabled = *p.ProxiesEnabled
-		u["PROXIES_ENABLED"] = strconv.FormatBool(*p.ProxiesEnabled)
-	}
-	if p.CacheEnabled != nil {
-		cfg.CacheEnabled = *p.CacheEnabled
-		u["CACHE_ENABLED"] = strconv.FormatBool(*p.CacheEnabled)
-	}
-	if p.RunnerBackend != nil {
-		cfg.RunnerBackend = *p.RunnerBackend
-		u["RUNNER_BACKEND"] = *p.RunnerBackend
-	}
-	if p.RunnerArch != nil {
-		cfg.RunnerArch = *p.RunnerArch
-		u["RUNNER_ARCH"] = *p.RunnerArch
-	}
-	if p.NativeArchOverride != nil {
-		cfg.NativeArchOverride = *p.NativeArchOverride
-		u["NATIVE_ARCH_OVERRIDE"] = *p.NativeArchOverride
-	}
-	if p.HostCacheDir != nil {
-		cfg.HostCacheDir = *p.HostCacheDir
-		u["HOST_CACHE_DIR"] = *p.HostCacheDir
-	}
-	if p.AccessToken != nil && *p.AccessToken != "" {
-		cfg.AccessToken = *p.AccessToken
-		u["ACCESS_TOKEN"] = *p.AccessToken
-	}
-	return u, nil
+	return v
 }

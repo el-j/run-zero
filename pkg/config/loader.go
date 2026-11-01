@@ -31,24 +31,7 @@ func loadRunnerOptions(env EnvLookup) (*runnerOptions, error) {
 	if err != nil {
 		return nil, err
 	}
-	rawVMTriggerLabels, _ := env.Lookup("VM_TRIGGER_LABELS")
-	defaultVMTriggerLabels := "vm,browser,e2e,lighthouse,systemd,gui,unconfined,postgres,mysql,redis,db,database,integration,service,services,dind"
-	if strings.TrimSpace(rawVMTriggerLabels) == "" {
-		rawVMTriggerLabels = defaultVMTriggerLabels
-	}
-	vmTriggerLabels := make([]string, 0)
-	seen := make(map[string]struct{})
-	for _, part := range strings.Split(rawVMTriggerLabels, ",") {
-		token := strings.ToLower(strings.TrimSpace(part))
-		if token == "" {
-			continue
-		}
-		if _, exists := seen[token]; exists {
-			continue
-		}
-		seen[token] = struct{}{}
-		vmTriggerLabels = append(vmTriggerLabels, token)
-	}
+	vmTriggerLabels := parseVMTriggerLabels(env)
 	arch, err := parseArch(env, "RUNNER_ARCH", "both")
 	if err != nil {
 		return nil, err
@@ -104,4 +87,31 @@ func loadRunnerOptions(env EnvLookup) (*runnerOptions, error) {
 		runnerCPUs:         runnerCPUs,
 		runnerMemory:       strings.TrimSpace(runnerMemory),
 	}, nil
+}
+
+// defaultVMTriggerLabels are the job labels that route a job to a VM runner when
+// VM_TRIGGER_LABELS is unset.
+const defaultVMTriggerLabels = "vm,browser,e2e,lighthouse,systemd,gui,unconfined,postgres,mysql,redis,db,database,integration,service,services,dind"
+
+// parseVMTriggerLabels returns VM_TRIGGER_LABELS (or the defaults) lower-cased
+// and de-duplicated, in order.
+func parseVMTriggerLabels(env EnvLookup) []string {
+	raw, _ := env.Lookup("VM_TRIGGER_LABELS")
+	if strings.TrimSpace(raw) == "" {
+		raw = defaultVMTriggerLabels
+	}
+	labels := make([]string, 0)
+	seen := make(map[string]struct{})
+	for _, part := range strings.Split(raw, ",") {
+		token := strings.ToLower(strings.TrimSpace(part))
+		if token == "" {
+			continue
+		}
+		if _, exists := seen[token]; exists {
+			continue
+		}
+		seen[token] = struct{}{}
+		labels = append(labels, token)
+	}
+	return labels
 }
