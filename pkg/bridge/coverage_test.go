@@ -105,6 +105,8 @@ func TestDriverHandlerErrors(t *testing.T) {
 		{"POST", "/api/drivers/docker/destroy", `{"runner_id":"abc"}`, 500},
 		{"POST", "/api/drivers/nope/cleanup", "", 200},
 		{"GET", "/api/drivers/orbstack", "", 404},
+		{"GET", "/api/drivers/orbstack/spawn", "", 404},
+		{"POST", "/api/drivers/orbstack/unknown", "", 404},
 		{"GET", "/unknown", "", 404},
 	}
 	for _, c := range cases {

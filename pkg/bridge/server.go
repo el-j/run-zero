@@ -97,90 +97,96 @@ func (s *Server) checkAuth(r *http.Request) bool {
 // ServeHTTP handles requests according to VM bridge specification.
 func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	path := strings.TrimSuffix(r.URL.Path, "/")
-	if path == "" || path == "/health" || path == "/api/health" {
+	get, post := r.Method == http.MethodGet, r.Method == http.MethodPost
+	switch {
+	case path == "" || path == "/health" || path == "/api/health":
 		s.handleHealth(w, r)
-		return
-	}
-	if path == "/api/status" {
+	case path == "/api/status":
 		s.handleStatus(w, r)
-		return
-	}
-
-	if path == "/api/images" && r.Method == http.MethodGet {
+	case path == "/api/images" && get:
 		s.writeJSON(w, http.StatusOK, s.imgInspector.Inspect(r.Context()))
-		return
-	}
-	if path == "/api/actions/build-image" && r.Method == http.MethodPost {
-		if !s.checkAuth(r) {
-			s.writeJSON(w, http.StatusUnauthorized, map[string]string{"error": "Unauthorized"})
-			return
-		}
-		var req builder.ImageBuildRequest
-		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-			s.writeJSON(w, http.StatusBadRequest, map[string]string{"error": "Invalid JSON: " + err.Error()})
-			return
-		}
-		prog, err := s.buildMgr.TriggerBuild(r.Context(), req)
-		if err != nil {
-			s.writeJSON(w, http.StatusConflict, map[string]string{"error": err.Error()})
-			return
-		}
-		s.writeJSON(w, http.StatusAccepted, prog)
-		return
-	}
-	if path == "/api/actions/build-image/cancel" && r.Method == http.MethodPost {
-		if !s.checkAuth(r) {
-			s.writeJSON(w, http.StatusUnauthorized, map[string]string{"error": "Unauthorized"})
-			return
-		}
-		// CancelBuild is idempotent and currently never returns an error.
-		_ = s.buildMgr.CancelBuild()
-		s.writeJSON(w, http.StatusOK, map[string]string{"status": "cancelled"})
-		return
-	}
-	if path == "/api/actions/open-terminal" && r.Method == http.MethodPost {
+	case path == "/api/actions/build-image" && post:
+		s.handleTriggerBuild(w, r)
+	case path == "/api/actions/build-image/cancel" && post:
+		s.handleCancelBuild(w, r)
+	case path == "/api/actions/open-terminal" && post:
 		s.handleOpenTerminal(w, r)
-		return
+	case strings.HasPrefix(path, "/api/images/build/") && get:
+		s.handleGetBuild(w, strings.TrimPrefix(path, "/api/images/build/"))
+	case strings.HasPrefix(path, "/api/drivers/") && !s.checkAuth(r):
+		s.writeUnauthorized(w)
+	case strings.HasPrefix(path, "/api/drivers/") && s.routeDriverAction(w, r, strings.TrimPrefix(path, "/api/drivers/")):
+	default:
+		s.writeJSON(w, http.StatusNotFound, map[string]string{"error": "Endpoint not found: " + path})
 	}
-	if strings.HasPrefix(path, "/api/images/build/") && r.Method == http.MethodGet {
-		id := strings.TrimPrefix(path, "/api/images/build/")
-		prog, ok := s.buildMgr.GetBuildByID(id)
-		if !ok {
-			s.writeJSON(w, http.StatusNotFound, map[string]string{"error": "Build not found"})
-			return
-		}
-		s.writeJSON(w, http.StatusOK, prog)
-		return
-	}
+}
 
-	if strings.HasPrefix(path, "/api/drivers/") {
-		if !s.checkAuth(r) {
-			s.writeJSON(w, http.StatusUnauthorized, map[string]string{"error": "Unauthorized"})
-			return
-		}
-		parts := strings.Split(strings.TrimPrefix(path, "/api/drivers/"), "/")
-		if len(parts) >= 2 {
-			driverName, action := parts[0], parts[1]
-			switch {
-			case r.Method == http.MethodGet && action == "runners":
-				s.handleGetDriverRunners(w, r, driverName)
-				return
-			case r.Method == http.MethodPost && action == "spawn":
-				s.handlePostDriverSpawn(w, r, driverName)
-				return
-			case r.Method == http.MethodPost && (action == "stop" || action == "destroy"):
-				s.handlePostDriverStop(w, r, driverName)
-				return
-			case r.Method == http.MethodPost && action == "prune":
-				s.handlePostDriverPrune(w, r, driverName)
-				return
-			case r.Method == http.MethodPost && action == "cleanup":
-				s.handlePostDriverCleanup(w, r, driverName)
-				return
-			}
-		}
+func (s *Server) writeUnauthorized(w http.ResponseWriter) {
+	s.writeJSON(w, http.StatusUnauthorized, map[string]string{"error": "Unauthorized"})
+}
+
+func (s *Server) handleTriggerBuild(w http.ResponseWriter, r *http.Request) {
+	if !s.checkAuth(r) {
+		s.writeUnauthorized(w)
+		return
 	}
-	s.writeJSON(w, http.StatusNotFound, map[string]string{"error": "Endpoint not found: " + path})
+	var req builder.ImageBuildRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		s.writeJSON(w, http.StatusBadRequest, map[string]string{"error": "Invalid JSON: " + err.Error()})
+		return
+	}
+	prog, err := s.buildMgr.TriggerBuild(r.Context(), req)
+	if err != nil {
+		s.writeJSON(w, http.StatusConflict, map[string]string{"error": err.Error()})
+		return
+	}
+	s.writeJSON(w, http.StatusAccepted, prog)
+}
+
+func (s *Server) handleCancelBuild(w http.ResponseWriter, r *http.Request) {
+	if !s.checkAuth(r) {
+		s.writeUnauthorized(w)
+		return
+	}
+	// CancelBuild is idempotent and currently never returns an error.
+	_ = s.buildMgr.CancelBuild()
+	s.writeJSON(w, http.StatusOK, map[string]string{"status": "cancelled"})
+}
+
+func (s *Server) handleGetBuild(w http.ResponseWriter, id string) {
+	prog, ok := s.buildMgr.GetBuildByID(id)
+	if !ok {
+		s.writeJSON(w, http.StatusNotFound, map[string]string{"error": "Build not found"})
+		return
+	}
+	s.writeJSON(w, http.StatusOK, prog)
+}
+
+// routeDriverAction dispatches an authenticated /api/drivers/{driver}/{action}
+// request. It returns false when no handler matches.
+func (s *Server) routeDriverAction(w http.ResponseWriter, r *http.Request, rest string) bool {
+	parts := strings.Split(rest, "/")
+	if len(parts) < 2 {
+		return false
+	}
+	driverName, action := parts[0], parts[1]
+	switch {
+	case r.Method == http.MethodGet && action == "runners":
+		s.handleGetDriverRunners(w, r, driverName)
+	case r.Method != http.MethodPost:
+		return false
+	case action == "spawn":
+		s.handlePostDriverSpawn(w, r, driverName)
+	case action == "stop" || action == "destroy":
+		s.handlePostDriverStop(w, r, driverName)
+	case action == "prune":
+		s.handlePostDriverPrune(w, r, driverName)
+	case action == "cleanup":
+		s.handlePostDriverCleanup(w, r, driverName)
+	default:
+		return false
+	}
+	return true
 }
 
 // Run listens and serves incoming bridge requests until ctx is done.

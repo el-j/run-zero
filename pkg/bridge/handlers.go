@@ -165,46 +165,56 @@ func (s *Server) handleOpenTerminal(w http.ResponseWriter, r *http.Request) {
 		s.writeJSON(w, http.StatusBadRequest, map[string]string{"error": "runner_name or runner_id required"})
 		return
 	}
-
 	// Validate name against shell injection
-	for _, c := range name {
-		if (c < 'a' || c > 'z') && (c < 'A' || c > 'Z') && (c < '0' || c > '9') && c != '-' && c != '_' && c != '.' && c != ':' {
-			s.writeJSON(w, http.StatusBadRequest, map[string]string{"error": "Invalid runner name characters"})
-			return
-		}
+	if !isSafeRunnerName(name) {
+		s.writeJSON(w, http.StatusBadRequest, map[string]string{"error": "Invalid runner name characters"})
+		return
 	}
 
-	backend := req.Backend
-	if backend == "" {
-		if strings.HasPrefix(name, "runzero-j") || strings.HasPrefix(name, "runzero-vm") {
-			backend = "orbstack"
-		} else {
-			backend = "docker"
-		}
-	}
-
-	var cmdStr string
-	if backend == "orbstack" {
-		cmdStr = fmt.Sprintf("orb -m %s -u runner bash", name)
-	} else {
-		cmdStr = fmt.Sprintf("docker exec -it %s bash", name)
-	}
-
-	launched := false
-	if hostOS == "darwin" {
-		osa := fmt.Sprintf("tell application \"Terminal\"\n\tactivate\n\tdo script \"%s\"\nend tell", strings.ReplaceAll(cmdStr, `"`, `\"`))
-		if out, err := runOsascript(r.Context(), osa); err == nil {
-			launched = true
-			log.Printf("[bridge] Launched Terminal window for runner %s: %s", name, strings.TrimSpace(string(out)))
-		} else {
-			log.Printf("[bridge] Failed to launch Terminal via osascript: %v, output: %s", err, string(out))
-		}
-	}
-
+	cmdStr := terminalCommand(name, req.Backend)
+	launched := hostOS == "darwin" && launchTerminal(r.Context(), name, cmdStr)
 	s.writeJSON(w, http.StatusOK, map[string]interface{}{
 		"success":           launched,
 		"command":           cmdStr,
 		"terminal_launched": launched,
 		"message":           fmt.Sprintf("Terminal command: %s", cmdStr),
 	})
+}
+
+// isSafeRunnerName reports whether name only uses characters that are safe to
+// embed in a shell command.
+func isSafeRunnerName(name string) bool {
+	for _, c := range name {
+		if (c < 'a' || c > 'z') && (c < 'A' || c > 'Z') && (c < '0' || c > '9') && c != '-' && c != '_' && c != '.' && c != ':' {
+			return false
+		}
+	}
+	return true
+}
+
+// terminalCommand returns the shell command that attaches to a runner. With no
+// backend given, VM runner names imply orbstack and anything else docker.
+func terminalCommand(name, backend string) string {
+	if backend == "" {
+		backend = "docker"
+		if strings.HasPrefix(name, "runzero-j") || strings.HasPrefix(name, "runzero-vm") {
+			backend = "orbstack"
+		}
+	}
+	if backend == "orbstack" {
+		return fmt.Sprintf("orb -m %s -u runner bash", name)
+	}
+	return fmt.Sprintf("docker exec -it %s bash", name)
+}
+
+// launchTerminal opens a macOS Terminal window running cmdStr.
+func launchTerminal(ctx context.Context, name, cmdStr string) bool {
+	osa := fmt.Sprintf("tell application \"Terminal\"\n\tactivate\n\tdo script \"%s\"\nend tell", strings.ReplaceAll(cmdStr, `"`, `\"`))
+	out, err := runOsascript(ctx, osa)
+	if err != nil {
+		log.Printf("[bridge] Failed to launch Terminal via osascript: %v, output: %s", err, string(out))
+		return false
+	}
+	log.Printf("[bridge] Launched Terminal window for runner %s: %s", name, strings.TrimSpace(string(out)))
+	return true
 }
