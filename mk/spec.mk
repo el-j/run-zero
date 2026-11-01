@@ -12,6 +12,9 @@ build-spec: ## Compile the TypeSpec schema and generate TypeScript types
 	@cd spec && pnpm run all
 	@echo "$(GREEN)TypeSpec compilation complete.$(RESET)"
 
+SPEC_GENERATED := web/src/types/api.ts
+
 .PHONY: check-spec
-check-spec: ## TypeSpec gate: compile API spec and regenerate TypeScript types
+check-spec: ## TypeSpec gate: compile API spec, regenerate TypeScript types, fail if the committed types were stale
 	@cd spec && pnpm run all
+	@git diff --quiet -- $(SPEC_GENERATED) || (echo "Generated API types were stale and have been regenerated; commit:"; git diff --stat -- $(SPEC_GENERATED); exit 1)
