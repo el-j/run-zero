@@ -50,6 +50,35 @@ func parseRepoToken(token string) string {
 	return token
 }
 
+// jobScopedName holds the fields encoded in a job-scoped runner name.
+type jobScopedName struct {
+	jobID, runID   *int64
+	arch, repo, id string
+}
+
+// parseJobScopedName decodes runzero-j<jobID>-r<runID>-<arch>-<owner__repo>-<id>.
+func parseJobScopedName(name string) (jobScopedName, bool) {
+	trimmed, ok := strings.CutPrefix(name, "runzero-")
+	tokens := strings.Split(trimmed, "-")
+	if !ok || len(tokens) < 5 || !strings.HasPrefix(tokens[0], "j") || !strings.HasPrefix(tokens[1], "r") {
+		return jobScopedName{}, false
+	}
+	return jobScopedName{
+		jobID: parseIDPtr(tokens[0][1:]),
+		runID: parseIDPtr(tokens[1][1:]),
+		arch:  tokens[2],
+		repo:  parseRepoToken(strings.Join(tokens[3:len(tokens)-1], "-")),
+		id:    tokens[len(tokens)-1],
+	}, true
+}
+
+func parseIDPtr(s string) *int64 {
+	if v, err := strconv.ParseInt(s, 10, 64); err == nil {
+		return &v
+	}
+	return nil
+}
+
 // JobScopedRunnerName builds a deterministic, job-correlated runner name.
 func JobScopedRunnerName(repo, arch string, runID, jobID int64, entropy string) string {
 	archToken := sanitizeNamePart(arch)

@@ -187,3 +187,18 @@ func TestRouter_PruneFinishedRetainsDockerRunnerLogs(t *testing.T) {
 		t.Errorf("retained log = %q, want the docker driver's output", got["runner-c1"])
 	}
 }
+
+func TestRouter_StopRunnerFallsBackWhenRecordedBackendHasNoDriver(t *testing.T) {
+	var stoppedBy string
+	docker := &dummyDriver{backend: "docker", stopFunc: func(id string) error { stoppedBy = "docker"; return nil }}
+	store := NewInstanceStore("")
+	store.Register(state.RunnerInfo{ID: "r-vm", Name: "vm-name", Backend: "orbstack"})
+
+	router := NewRouter(docker, nil, "auto", false, store)
+	if err := router.StopRunner(context.Background(), "vm-name"); err != nil {
+		t.Fatalf("unexpected stop error: %v", err)
+	}
+	if stoppedBy != "docker" {
+		t.Fatalf("expected fallback to the docker driver, got %q", stoppedBy)
+	}
+}

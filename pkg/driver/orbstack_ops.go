@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"log"
-	"strconv"
 	"strings"
 	"time"
 
@@ -117,90 +116,73 @@ func (o *OrbStackDriver) CleanupAll(ctx context.Context) error {
 }
 
 func parseOrbctlList(output string) []state.RunnerInfo {
-	lines := strings.Split(strings.TrimSpace(output), "\n")
 	var runners []state.RunnerInfo
-
-	for _, line := range lines {
+	for _, line := range strings.Split(strings.TrimSpace(output), "\n") {
 		fields := strings.Fields(strings.TrimSpace(line))
-		if len(fields) == 0 {
+		if len(fields) == 0 || !isRunnerMachine(fields[0]) {
 			continue
 		}
-		name := fields[0]
-		if !strings.HasPrefix(name, "runzero-") && !strings.HasPrefix(name, "local-runner-") {
-			continue
-		}
-		// Golden base images (and their build-time staging VMs) are templates, not
-		// runners: listing them would get them pruned as "finished" runners.
-		if strings.HasPrefix(name, goldenVMBasePrefix) {
-			continue
-		}
-
 		status := "running"
 		if len(fields) >= 2 {
 			status = fields[1]
 		}
-
-		id := name
-		targetRepo := ""
-		targetArch := ""
-		var jobIDPtr *int64
-		var runIDPtr *int64
-
-		if strings.HasPrefix(name, "runzero-") {
-			trimmed := strings.TrimPrefix(name, "runzero-")
-			parts := strings.Split(trimmed, "-")
-			if len(parts) >= 5 && strings.HasPrefix(parts[0], "j") && strings.HasPrefix(parts[1], "r") {
-				// Expected format: runzero-j<jobID>-r<runID>-<arch>-<owner__repo>-<id>
-				// Example: runzero-j202-r101-amd64-el-j__herbful-063160
-				if jID, err := strconv.ParseInt(parts[0][1:], 10, 64); err == nil {
-					jobIDPtr = &jID
-				}
-				if rID, err := strconv.ParseInt(parts[1][1:], 10, 64); err == nil {
-					runIDPtr = &rID
-				}
-				targetArch = parts[2]
-				id = parts[len(parts)-1]
-				repoPart := strings.Join(parts[3:len(parts)-1], "-")
-				targetRepo = parseRepoToken(repoPart)
-			} else if len(parts) >= 4 && parts[0] == "manual" {
-				// Expected format: runzero-manual-<arch>-<owner__repo>-<id>
-				targetArch = parts[1]
-				id = parts[len(parts)-1]
-				repoPart := strings.Join(parts[2:len(parts)-1], "-")
-				targetRepo = parseRepoToken(repoPart)
-			} else {
-				id = trimmed
-			}
-		} else if strings.HasPrefix(name, "local-runner-") {
-			// Expected format: local-runner-[arch]-[owner]-[repo]-[id]
-			// e.g. local-runner-amd64-el-j-herbful-063160
-			trimmed := strings.TrimPrefix(name, "local-runner-")
-			parts := strings.Split(trimmed, "-")
-			if len(parts) >= 3 {
-				targetArch = parts[0]
-				id = parts[len(parts)-1]
-				repoPart := strings.Join(parts[1:len(parts)-1], "-")
-				if strings.HasPrefix(repoPart, "el-j-") {
-					targetRepo = "el-j/" + strings.TrimPrefix(repoPart, "el-j-")
-				} else if idx := strings.Index(repoPart, "-"); idx != -1 {
-					targetRepo = repoPart[:idx] + "/" + repoPart[idx+1:]
-				} else {
-					targetRepo = repoPart
-				}
-			}
-		}
-
-		runners = append(runners, state.RunnerInfo{
-			ID:         id,
-			Name:       name,
-			Status:     status,
-			State:      status,
-			TargetRepo: targetRepo,
-			TargetArch: targetArch,
-			Backend:    "orbstack",
-			JobID:      jobIDPtr,
-			RunID:      runIDPtr,
-		})
+		r := orbstackRunnerFromName(fields[0])
+		r.Status = status
+		r.State = status
+		runners = append(runners, r)
 	}
 	return runners
+}
+
+// isRunnerMachine reports whether an OrbStack machine is a runner. Golden base
+// images (and their build-time staging VMs) are templates, not runners: listing
+// them would get them pruned as "finished" runners.
+func isRunnerMachine(name string) bool {
+	if strings.HasPrefix(name, goldenVMBasePrefix) {
+		return false
+	}
+	return strings.HasPrefix(name, "runzero-") || strings.HasPrefix(name, "local-runner-")
+}
+
+// orbstackRunnerFromName decodes the ID, repo, arch and job/run IDs carried in a
+// runner machine name.
+func orbstackRunnerFromName(name string) state.RunnerInfo {
+	r := state.RunnerInfo{ID: name, Name: name, Backend: "orbstack"}
+	if n, ok := parseJobScopedName(name); ok {
+		// Expected format: runzero-j<jobID>-r<runID>-<arch>-<owner__repo>-<id>
+		// Example: runzero-j202-r101-amd64-el-j__herbful-063160
+		r.ID, r.TargetRepo, r.TargetArch, r.JobID, r.RunID = n.id, n.repo, n.arch, n.jobID, n.runID
+		return r
+	}
+	if trimmed, ok := strings.CutPrefix(name, "runzero-"); ok {
+		parts := strings.Split(trimmed, "-")
+		r.ID = trimmed
+		if len(parts) >= 4 && parts[0] == "manual" {
+			// Expected format: runzero-manual-<arch>-<owner__repo>-<id>
+			r.TargetArch = parts[1]
+			r.ID = parts[len(parts)-1]
+			r.TargetRepo = parseRepoToken(strings.Join(parts[2:len(parts)-1], "-"))
+		}
+		return r
+	}
+	// Expected format: local-runner-[arch]-[owner]-[repo]-[id]
+	// e.g. local-runner-amd64-el-j-herbful-063160
+	parts := strings.Split(strings.TrimPrefix(name, "local-runner-"), "-")
+	if len(parts) >= 3 {
+		r.TargetArch = parts[0]
+		r.ID = parts[len(parts)-1]
+		r.TargetRepo = legacyRepoFromName(strings.Join(parts[1:len(parts)-1], "-"))
+	}
+	return r
+}
+
+// legacyRepoFromName guesses owner/repo from a dash-joined legacy name token.
+func legacyRepoFromName(repoPart string) string {
+	if strings.HasPrefix(repoPart, "el-j-") {
+		return "el-j/" + strings.TrimPrefix(repoPart, "el-j-")
+	}
+	if idx := strings.Index(repoPart, "-"); idx != -1 {
+		return repoPart[:idx] + "/" + repoPart[idx+1:]
+	}
+	return repoPart
 }

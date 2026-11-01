@@ -121,25 +121,8 @@ func (r *Router) ListRunners(ctx context.Context) ([]state.RunnerInfo, error) {
 
 // StopRunner attempts stopping the runner in the corresponding driver.
 func (r *Router) StopRunner(ctx context.Context, runnerID string) error {
-	if r.store != nil {
-		if info, ok := r.store.Get(runnerID); ok {
-			if info.Backend == "orbstack" && r.vmDriver != nil {
-				return r.vmDriver.StopRunner(ctx, runnerID)
-			}
-			if info.Backend == "docker" && r.dockerDriver != nil {
-				return r.dockerDriver.StopRunner(ctx, runnerID)
-			}
-		}
-		for _, info := range r.store.List() {
-			if info.Name == runnerID || info.ID == runnerID {
-				if info.Backend == "orbstack" && r.vmDriver != nil {
-					return r.vmDriver.StopRunner(ctx, runnerID)
-				}
-				if info.Backend == "docker" && r.dockerDriver != nil {
-					return r.dockerDriver.StopRunner(ctx, runnerID)
-				}
-			}
-		}
+	if owner := r.ownerFromStore(runnerID); owner != nil {
+		return owner.StopRunner(ctx, runnerID)
 	}
 
 	var dErr error
@@ -204,4 +187,36 @@ func (r *Router) CleanupAll(ctx context.Context) error {
 		}
 	}
 	return firstErr
+}
+
+// ownerFromStore returns the driver recorded for runnerID (matched by store key,
+// then by name or ID), or nil when the store does not know it.
+func (r *Router) ownerFromStore(runnerID string) RunnerDriver {
+	if r.store == nil {
+		return nil
+	}
+	if info, ok := r.store.Get(runnerID); ok {
+		if d := r.driverFor(info.Backend); d != nil {
+			return d
+		}
+	}
+	for _, info := range r.store.List() {
+		if info.Name != runnerID && info.ID != runnerID {
+			continue
+		}
+		if d := r.driverFor(info.Backend); d != nil {
+			return d
+		}
+	}
+	return nil
+}
+
+func (r *Router) driverFor(backend string) RunnerDriver {
+	switch {
+	case backend == "orbstack" && r.vmDriver != nil:
+		return r.vmDriver
+	case backend == "docker" && r.dockerDriver != nil:
+		return r.dockerDriver
+	}
+	return nil
 }

@@ -49,96 +49,17 @@ func (d *DockerDriver) SpawnRunner(ctx context.Context, spec RunnerSpec) (*state
 	if name == "" {
 		name = fmt.Sprintf("runzero-%s", spec.ID)
 	}
-
-	image := spec.ImageName
-	if image == "" {
-		if spec.Arch != "" {
-			image = fmt.Sprintf("local-github-runner:%s", spec.Arch)
-		} else {
-			image = d.defaultImage
-		}
-	}
-
+	image := d.imageFor(spec)
 	args := []string{"run", "-d", "--name", name}
 	if spec.Arch != "" {
 		args = append(args, "--platform", fmt.Sprintf("linux/%s", spec.Arch))
 	}
-	args = append(args, "--cap-add", "SYS_ADMIN")
-	args = append(args, "-v", "/var/run/docker.sock:/var/run/docker.sock")
-	args = append(args, "--label", "runzero=true")
-	args = append(args, "--label", "managed-by=local-autoscaler")
-	args = append(args, "--label", "backend=docker")
-	args = append(args, "--label", fmt.Sprintf("runzero.id=%s", spec.ID))
-	args = append(args, "--label", fmt.Sprintf("runzero.repo=%s", spec.Repo))
-	args = append(args, "--label", fmt.Sprintf("target-repo=%s", spec.Repo))
-	args = append(args, "--label", fmt.Sprintf("target-arch=%s", spec.Arch))
-	args = append(args, "--label", fmt.Sprintf("runzero.arch=%s", spec.Arch))
-	args = append(args, "--label", fmt.Sprintf("com.docker.compose.project=%s", "runzero-runners"))
-	args = append(args, "--label", fmt.Sprintf("com.docker.compose.service=%s", name))
-	now := time.Now().UTC().Format(time.RFC3339)
-	args = append(args, "--label", fmt.Sprintf("runzero.created_at=%s", now))
-	if spec.JobID != nil {
-		args = append(args, "--label", fmt.Sprintf("runzero.job_id=%d", *spec.JobID))
-	}
-	if spec.RunID != nil {
-		args = append(args, "--label", fmt.Sprintf("runzero.run_id=%d", *spec.RunID))
-	}
-	if spec.JobName != "" {
-		args = append(args, "--label", fmt.Sprintf("runzero.job=%s", spec.JobName))
-	}
-	if spec.WorkflowName != nil && *spec.WorkflowName != "" {
-		args = append(args, "--label", fmt.Sprintf("runzero.workflow=%s", *spec.WorkflowName))
-	}
-
-	if spec.CPUs > 0 {
-		args = append(args, fmt.Sprintf("--cpus=%d", spec.CPUs))
-	}
-	if spec.MemoryMB > 0 {
-		args = append(args, fmt.Sprintf("-m=%dm", spec.MemoryMB))
-	}
-
-	net := spec.Network
-	if net == "" {
-		net = d.defaultNet
-	}
-	if net != "" {
-		args = append(args, "--network", net)
-	}
-
-	if spec.CacheDir != "" {
-		args = append(args, "-v", fmt.Sprintf("%s:/cache:rw", spec.CacheDir))
-	}
-	for hostP, contP := range spec.Mounts {
-		args = append(args, "-v", fmt.Sprintf("%s:%s:rw", hostP, contP))
-	}
-
-	envMap := make(map[string]string)
-	for k, v := range spec.Env {
-		envMap[k] = v
-	}
-	if spec.Token != "" && envMap["RUNNER_TOKEN"] == "" {
-		envMap["RUNNER_TOKEN"] = spec.Token
-	}
-	if envMap["RUNNER_NAME"] == "" {
-		envMap["RUNNER_NAME"] = name
-	}
-	if spec.Repo != "" && envMap["REPO"] == "" {
-		envMap["REPO"] = spec.Repo
-	}
-	if len(spec.Labels) > 0 && envMap["RUNNER_LABELS"] == "" {
-		envMap["RUNNER_LABELS"] = strings.Join(spec.Labels, ",")
-	}
-	if envMap["EPHEMERAL"] == "" {
-		envMap["EPHEMERAL"] = "true"
-	}
-	if envMap["RUNNER_WORKDIR"] == "" {
-		envMap["RUNNER_WORKDIR"] = "_work"
-	}
-
-	for k, v := range envMap {
+	args = append(args, "--cap-add", "SYS_ADMIN", "-v", "/var/run/docker.sock:/var/run/docker.sock")
+	args = append(args, runnerLabelArgs(spec, name)...)
+	args = append(args, d.resourceArgs(spec)...)
+	for k, v := range runnerEnv(spec, name) {
 		args = append(args, "-e", fmt.Sprintf("%s=%s", k, v))
 	}
-
 	args = append(args, image)
 
 	out, err := d.executor.Run(ctx, "docker", args...)
@@ -150,7 +71,7 @@ func (d *DockerDriver) SpawnRunner(ctx context.Context, spec RunnerSpec) (*state
 		return nil, fmt.Errorf("docker run failed (%w): %s", err, msg)
 	}
 
-	now = time.Now().UTC().Format(time.RFC3339)
+	now := time.Now().UTC().Format(time.RFC3339)
 	info := state.RunnerInfo{
 		ID:         spec.ID,
 		Name:       name,
@@ -167,4 +88,97 @@ func (d *DockerDriver) SpawnRunner(ctx context.Context, spec RunnerSpec) (*state
 	}
 
 	return &info, nil
+}
+
+// imageFor picks the runner image: the spec's, else the per-arch local image,
+// else the driver default.
+func (d *DockerDriver) imageFor(spec RunnerSpec) string {
+	if spec.ImageName != "" {
+		return spec.ImageName
+	}
+	if spec.Arch != "" {
+		return fmt.Sprintf("local-github-runner:%s", spec.Arch)
+	}
+	return d.defaultImage
+}
+
+// runnerLabelArgs returns the --label flags that let ListRunners recover a
+// container's metadata.
+func runnerLabelArgs(spec RunnerSpec, name string) []string {
+	labels := []string{
+		"runzero=true",
+		"managed-by=local-autoscaler",
+		"backend=docker",
+		fmt.Sprintf("runzero.id=%s", spec.ID),
+		fmt.Sprintf("runzero.repo=%s", spec.Repo),
+		fmt.Sprintf("target-repo=%s", spec.Repo),
+		fmt.Sprintf("target-arch=%s", spec.Arch),
+		fmt.Sprintf("runzero.arch=%s", spec.Arch),
+		fmt.Sprintf("com.docker.compose.project=%s", "runzero-runners"),
+		fmt.Sprintf("com.docker.compose.service=%s", name),
+		fmt.Sprintf("runzero.created_at=%s", time.Now().UTC().Format(time.RFC3339)),
+	}
+	if spec.JobID != nil {
+		labels = append(labels, fmt.Sprintf("runzero.job_id=%d", *spec.JobID))
+	}
+	if spec.RunID != nil {
+		labels = append(labels, fmt.Sprintf("runzero.run_id=%d", *spec.RunID))
+	}
+	if spec.JobName != "" {
+		labels = append(labels, fmt.Sprintf("runzero.job=%s", spec.JobName))
+	}
+	if spec.WorkflowName != nil && *spec.WorkflowName != "" {
+		labels = append(labels, fmt.Sprintf("runzero.workflow=%s", *spec.WorkflowName))
+	}
+	args := make([]string, 0, 2*len(labels))
+	for _, l := range labels {
+		args = append(args, "--label", l)
+	}
+	return args
+}
+
+// resourceArgs returns the CPU, memory, network and volume flags for a runner.
+func (d *DockerDriver) resourceArgs(spec RunnerSpec) []string {
+	var args []string
+	if spec.CPUs > 0 {
+		args = append(args, fmt.Sprintf("--cpus=%d", spec.CPUs))
+	}
+	if spec.MemoryMB > 0 {
+		args = append(args, fmt.Sprintf("-m=%dm", spec.MemoryMB))
+	}
+	net := spec.Network
+	if net == "" {
+		net = d.defaultNet
+	}
+	if net != "" {
+		args = append(args, "--network", net)
+	}
+	if spec.CacheDir != "" {
+		args = append(args, "-v", fmt.Sprintf("%s:/cache:rw", spec.CacheDir))
+	}
+	for hostP, contP := range spec.Mounts {
+		args = append(args, "-v", fmt.Sprintf("%s:%s:rw", hostP, contP))
+	}
+	return args
+}
+
+// runnerEnv merges spec.Env with the defaults the runner entrypoint needs;
+// values already present in spec.Env win.
+func runnerEnv(spec RunnerSpec, name string) map[string]string {
+	env := make(map[string]string, len(spec.Env)+6)
+	for k, v := range spec.Env {
+		env[k] = v
+	}
+	setDefault := func(k, v string) {
+		if v != "" && env[k] == "" {
+			env[k] = v
+		}
+	}
+	setDefault("RUNNER_TOKEN", spec.Token)
+	setDefault("RUNNER_NAME", name)
+	setDefault("REPO", spec.Repo)
+	setDefault("RUNNER_LABELS", strings.Join(spec.Labels, ","))
+	setDefault("EPHEMERAL", "true")
+	setDefault("RUNNER_WORKDIR", "_work")
+	return env
 }

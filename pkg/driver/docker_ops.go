@@ -3,7 +3,6 @@ package driver
 import (
 	"context"
 	"fmt"
-	"strconv"
 	"strings"
 
 	"github.com/el-j/run-zero/pkg/state"
@@ -192,103 +191,79 @@ func (d *DockerDriver) CleanupAll(ctx context.Context) error {
 }
 
 func parseDockerPS(output string) []state.RunnerInfo {
-	lines := strings.Split(strings.TrimSpace(output), "\n")
 	var runners []state.RunnerInfo
-
-	for _, line := range lines {
+	for _, line := range strings.Split(strings.TrimSpace(output), "\n") {
 		parts := strings.Split(strings.TrimSpace(line), "\t")
 		if len(parts) < 4 || parts[0] == "" {
 			continue
 		}
-		repo := ""
-		if len(parts) >= 5 {
-			repo = parts[4]
-		}
-		id := parts[0]
-		if len(parts) >= 6 && parts[5] != "" {
-			id = parts[5]
-		}
-		var createdPtr *string
-		if len(parts) >= 7 && strings.TrimSpace(parts[6]) != "" {
-			c := strings.TrimSpace(parts[6])
-			createdPtr = &c
-		}
-
-		targetArch := ""
-		if len(parts) >= 8 && strings.TrimSpace(parts[7]) != "" {
-			targetArch = strings.TrimSpace(parts[7])
-		}
-
-		var jobIDPtr *int64
-		if len(parts) >= 9 && strings.TrimSpace(parts[8]) != "" {
-			if parsed, err := strconv.ParseInt(strings.TrimSpace(parts[8]), 10, 64); err == nil {
-				jobIDPtr = &parsed
-			}
-		}
-
-		var runIDPtr *int64
-		if len(parts) >= 10 && strings.TrimSpace(parts[9]) != "" {
-			if parsed, err := strconv.ParseInt(strings.TrimSpace(parts[9]), 10, 64); err == nil {
-				runIDPtr = &parsed
-			}
-		}
-
-		var jobNamePtr *string
-		if len(parts) >= 11 && strings.TrimSpace(parts[10]) != "" {
-			jName := strings.TrimSpace(parts[10])
-			jobNamePtr = &jName
-		}
-
-		var workflowPtr *string
-		if len(parts) >= 12 && strings.TrimSpace(parts[11]) != "" {
-			wName := strings.TrimSpace(parts[11])
-			workflowPtr = &wName
-		}
-
-		name := parts[1]
-		// If metadata is missing from labels, parse from standard container name:
-		// Format: runzero-j<jobID>-r<runID>-<arch>-<owner__repo>-<id>
-		if strings.HasPrefix(name, "runzero-") {
-			trimmed := strings.TrimPrefix(name, "runzero-")
-			tokens := strings.Split(trimmed, "-")
-			if len(tokens) >= 5 && strings.HasPrefix(tokens[0], "j") && strings.HasPrefix(tokens[1], "r") {
-				if jobIDPtr == nil {
-					if parsed, err := strconv.ParseInt(tokens[0][1:], 10, 64); err == nil {
-						jobIDPtr = &parsed
-					}
-				}
-				if runIDPtr == nil {
-					if parsed, err := strconv.ParseInt(tokens[1][1:], 10, 64); err == nil {
-						runIDPtr = &parsed
-					}
-				}
-				if targetArch == "" {
-					targetArch = tokens[2]
-				}
-				if repo == "" {
-					repoPart := strings.Join(tokens[3:len(tokens)-1], "-")
-					repo = parseRepoToken(repoPart)
-				}
-				if id == parts[0] {
-					id = tokens[len(tokens)-1]
-				}
-			}
-		}
-
-		runners = append(runners, state.RunnerInfo{
-			ID:           id,
-			Name:         name,
-			Status:       parts[2],
-			State:        parts[3],
-			TargetRepo:   repo,
-			TargetArch:   targetArch,
-			Backend:      "docker",
-			CreatedAt:    createdPtr,
-			JobID:        jobIDPtr,
-			RunID:        runIDPtr,
-			JobName:      jobNamePtr,
-			WorkflowName: workflowPtr,
-		})
+		runners = append(runners, parseDockerPSRow(parts))
 	}
 	return runners
+}
+
+// parseDockerPSRow maps one tab-separated `docker ps` row (ID, name, status,
+// state, then the runzero.* labels) onto a RunnerInfo.
+func parseDockerPSRow(parts []string) state.RunnerInfo {
+	r := state.RunnerInfo{
+		ID:           parts[0],
+		Name:         parts[1],
+		Status:       parts[2],
+		State:        parts[3],
+		TargetArch:   psField(parts, 7),
+		Backend:      "docker",
+		CreatedAt:    optionalString(psField(parts, 6)),
+		JobID:        parseIDPtr(psField(parts, 8)),
+		RunID:        parseIDPtr(psField(parts, 9)),
+		JobName:      optionalString(psField(parts, 10)),
+		WorkflowName: optionalString(psField(parts, 11)),
+	}
+	if len(parts) >= 5 {
+		r.TargetRepo = parts[4]
+	}
+	if len(parts) >= 6 && parts[5] != "" {
+		r.ID = parts[5]
+	}
+	fillFromRunnerName(&r, parts[0])
+	return r
+}
+
+// fillFromRunnerName fills metadata missing from the container labels using the
+// job-scoped container name. containerID is the ID column, which is replaced by
+// the name's entropy suffix when no runzero.id label was set.
+func fillFromRunnerName(r *state.RunnerInfo, containerID string) {
+	n, ok := parseJobScopedName(r.Name)
+	if !ok {
+		return
+	}
+	if r.JobID == nil {
+		r.JobID = n.jobID
+	}
+	if r.RunID == nil {
+		r.RunID = n.runID
+	}
+	if r.TargetArch == "" {
+		r.TargetArch = n.arch
+	}
+	if r.TargetRepo == "" {
+		r.TargetRepo = n.repo
+	}
+	if r.ID == containerID {
+		r.ID = n.id
+	}
+}
+
+// psField returns the trimmed column i, or "" when the row is shorter.
+func psField(parts []string, i int) string {
+	if len(parts) > i {
+		return strings.TrimSpace(parts[i])
+	}
+	return ""
+}
+
+func optionalString(s string) *string {
+	if s == "" {
+		return nil
+	}
+	return &s
 }
