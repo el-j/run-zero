@@ -11,7 +11,8 @@
 // (default 49599); the dashboard listens on E2E_DASHBOARD_PORT (default 49515).
 //
 //	POST /__e2e/fail   the queued job fails; its runner exits and job history
-//	                   is refreshed now instead of on its 5-minute timer
+//	                   is refreshed now instead of after the daemon's 30 s
+//	                   finished-runner floor
 //	POST /__e2e/reset  back to a single queued job
 //	GET  /__e2e/calls  write calls the daemon made to GitHub
 package main

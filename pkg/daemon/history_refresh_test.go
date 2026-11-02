@@ -45,3 +45,31 @@ func TestRefreshCompletedJobs_BypassesThrottleWhenHistoryDirty(t *testing.T) {
 		t.Fatalf("expected dirty refresh to call API once, got %d", got)
 	}
 }
+
+func TestHistoryRefreshDue(t *testing.T) {
+	st := state.NewState(3, "test", nil)
+	s := &Scaler{state: st}
+
+	if !s.historyRefreshDue() {
+		t.Fatal("first sweep must run")
+	}
+
+	s.lastHistoryRefresh = time.Now()
+	s.runnersFinished.Store(true)
+	if s.historyRefreshDue() {
+		t.Fatal("a finished runner must not trigger a sweep within finishedRefreshMinInterval")
+	}
+
+	s.lastHistoryRefresh = time.Now().Add(-finishedRefreshMinInterval)
+	if !s.historyRefreshDue() || s.runnersFinished.Load() {
+		t.Fatal("a finished runner must trigger a sweep after finishedRefreshMinInterval and be cleared")
+	}
+	if s.historyRefreshDue() {
+		t.Fatal("without a new signal the sweep waits for historyRefreshMinInterval")
+	}
+
+	s.lastHistoryRefresh = time.Now().Add(-historyRefreshMinInterval)
+	if !s.historyRefreshDue() {
+		t.Fatal("the periodic sweep must run after historyRefreshMinInterval")
+	}
+}

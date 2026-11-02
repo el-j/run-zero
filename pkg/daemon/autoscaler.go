@@ -100,10 +100,13 @@ type Scaler struct {
 	standbyCursor      int
 	lastHistoryRefresh time.Time
 	historyRunning     atomic.Bool
-	imageBuilder       ImageBuilder
-	providerMgr        *provider.Manager
-	spawnBackoff       map[string]spawnBackoff
-	firstSeen          map[string]time.Time
+	// runnersFinished is set when a runner's job ended, so the finished job
+	// shows up in history without waiting for the 5-minute sweep.
+	runnersFinished atomic.Bool
+	imageBuilder    ImageBuilder
+	providerMgr     *provider.Manager
+	spawnBackoff    map[string]spawnBackoff
+	firstSeen       map[string]time.Time
 }
 
 // ImageBuilder rebuilds runner images; satisfied by *builder.BuildManager.
@@ -295,6 +298,10 @@ func (s *Scaler) CollectRunners(ctx context.Context) []state.RunnerInfo {
 // call per tracked repo); a dashboard-forced refresh bypasses it.
 const historyRefreshMinInterval = 5 * time.Minute
 
+// finishedRefreshMinInterval spaces out the history refreshes triggered by
+// finishing runners, so a busy fleet does not sweep history every cycle.
+const finishedRefreshMinInterval = 30 * time.Second
+
 // refreshCompletedJobsAsync runs the history sweep off the scale loop so a slow
 // (cold-start) sweep over many repos can never delay job detection or spawning.
 // At most one sweep runs at a time, which also serialises access to the
@@ -316,8 +323,7 @@ func (s *Scaler) refreshCompletedJobs(ctx context.Context, repos []string) {
 	if s.historyFetcher == nil {
 		s.historyFetcher = github.NewHistoryFetcher(s.ghClient)
 	}
-	forceRefresh := s.state.ConsumeHistoryRefresh()
-	if !forceRefresh && time.Since(s.lastHistoryRefresh) < historyRefreshMinInterval && !s.lastHistoryRefresh.IsZero() {
+	if !s.historyRefreshDue() {
 		return
 	}
 
@@ -338,6 +344,23 @@ func (s *Scaler) refreshCompletedJobs(ctx context.Context, repos []string) {
 	}
 	s.state.SetCompletedJobs(all)
 	s.lastHistoryRefresh = time.Now()
+}
+
+// historyRefreshDue reports whether job history should be fetched now: on a
+// dashboard request (retry/rerun), when runners finished and the last sweep is
+// over finishedRefreshMinInterval old, or every historyRefreshMinInterval.
+func (s *Scaler) historyRefreshDue() bool {
+	if s.state.ConsumeHistoryRefresh() || s.lastHistoryRefresh.IsZero() {
+		s.runnersFinished.Store(false)
+		return true
+	}
+	since := time.Since(s.lastHistoryRefresh)
+	if since >= historyRefreshMinInterval ||
+		(since >= finishedRefreshMinInterval && s.runnersFinished.Load()) {
+		s.runnersFinished.Store(false)
+		return true
+	}
+	return false
 }
 
 // Start begins periodic scaling loops until ctx is canceled.

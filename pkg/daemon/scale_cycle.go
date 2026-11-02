@@ -52,6 +52,7 @@ func (s *Scaler) pruneFinishedRunners(ctx context.Context) {
 		s.state.AppendLog(fmt.Sprintf("[Autoscaler] ⚠️ Failed to prune finished runners: %v", err))
 	}
 	if len(removed) > 0 {
+		s.runnersFinished.Store(true)
 		s.state.AppendLog(fmt.Sprintf("[Autoscaler] 🧹 Pruned %d finished runner container(s)/VM(s) from old jobs.", len(removed)))
 	}
 }
@@ -189,6 +190,7 @@ func (s *Scaler) runnerStillNeeded(ctx context.Context, r state.RunnerInfo, allJ
 		return true
 	}
 	s.state.AppendLog(fmt.Sprintf("[Autoscaler] 🧹 Reaped finished runner '%s' for %s: %s", r.Name, r.TargetRepo, reason))
+	s.runnersFinished.Store(true)
 	if err := s.driver.StopRunner(ctx, r.ID); err != nil && r.Name != "" && r.Name != r.ID {
 		_ = s.driver.StopRunner(ctx, r.Name)
 	}
