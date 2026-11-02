@@ -296,8 +296,10 @@ func (s *Scaler) resolveJobBackend(job state.QueuedJob) string {
 	return "docker"
 }
 
-// resolveSizing returns the CPU and memory (MiB) for a new runner.
-func (s *Scaler) resolveSizing() (cpus, memMB int) {
+// resolveSizing returns the CPU and memory (MiB) for a new runner: sizes a job
+// requests through its labels (e.g. "4cpu-8gb", "large", "highmem") win over
+// RUNNER_CPUS / RUNNER_MEMORY, which win over the 3 CPU / 4096 MiB default.
+func (s *Scaler) resolveSizing(labels []string) (cpus, memMB int) {
 	cpus, memMB = 3, 4096
 	if s.cfg.RunnerCPUs > 0 {
 		cpus = s.cfg.RunnerCPUs
@@ -306,6 +308,13 @@ func (s *Scaler) resolveSizing() (cpus, memMB int) {
 		if m := sizing.ParseMemoryMiB(s.cfg.RunnerMemory); m != nil {
 			memMB = *m
 		}
+	}
+	labelCPUs, labelMem := sizing.ParseLabelSizing(labels)
+	if labelCPUs != nil {
+		cpus = *labelCPUs
+	}
+	if labelMem != nil {
+		memMB = *labelMem
 	}
 	return cpus, memMB
 }
@@ -320,7 +329,7 @@ func (s *Scaler) spawnForJob(ctx context.Context, repo string, job state.QueuedJ
 		return nil
 	}
 
-	cpus, memMB := s.resolveSizing()
+	cpus, memMB := s.resolveSizing(job.Labels)
 	scope := fmt.Sprintf("%s_%s", repo, job.Name)
 	cacheMounts := cache.InitCacheDirs(s.cfg.HostCacheDir, targetArch, s.cfg.CacheEnabled, scope)
 

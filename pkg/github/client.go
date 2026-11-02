@@ -67,6 +67,44 @@ func (c *Client) RateLimit() RateLimit {
 	return c.rateLimit
 }
 
+// RefreshRateLimit reads the core quota from GitHub's /rate_limit endpoint.
+// That endpoint does not count against the quota, so it bypasses the
+// exhausted-quota guard in DoRequest and can see an early reset.
+func (c *Client) RefreshRateLimit(ctx context.Context) error {
+	req, err := c.newRequest(ctx, http.MethodGet, c.baseURL+"/rate_limit", nil, false)
+	if err != nil {
+		return err
+	}
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = resp.Body.Close() }()
+	if resp.StatusCode != http.StatusOK {
+		return fmt.Errorf("github rate_limit returned HTTP %d", resp.StatusCode)
+	}
+	var body struct {
+		Resources struct {
+			Core struct {
+				Limit     int   `json:"limit"`
+				Remaining int   `json:"remaining"`
+				Reset     int64 `json:"reset"`
+			} `json:"core"`
+		} `json:"resources"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&body); err != nil {
+		return fmt.Errorf("failed decoding rate_limit: %w", err)
+	}
+	core := body.Resources.Core
+	if core.Limit <= 0 {
+		return fmt.Errorf("github rate_limit response has no core quota")
+	}
+	c.mu.Lock()
+	c.rateLimit = RateLimit{Remaining: core.Remaining, Limit: core.Limit, Reset: time.Unix(core.Reset, 0).UTC()}
+	c.mu.Unlock()
+	return nil
+}
+
 func (c *Client) updateRateLimit(header http.Header) {
 	remStr := header.Get("X-RateLimit-Remaining")
 	limStr := header.Get("X-RateLimit-Limit")

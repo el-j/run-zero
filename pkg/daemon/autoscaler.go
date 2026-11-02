@@ -96,6 +96,7 @@ type Scaler struct {
 	historyFetcher     *github.HistoryFetcher
 	lastDiscovery      time.Time
 	lastBilling        time.Time
+	lastRateLimit      time.Time
 	lastHistoryRefresh time.Time
 	historyRunning     atomic.Bool
 	imageBuilder       ImageBuilder
@@ -232,7 +233,13 @@ func (s *Scaler) DiscoverAndSync(ctx context.Context) {
 		}
 	}
 
-	// Refresh Rate Limit
+	// Refresh Rate Limit: every response updates it from headers; the explicit
+	// refresh also catches an early reset while requests are held back.
+	if time.Since(s.lastRateLimit) >= time.Duration(s.cfg.RateLimitRefreshInterval)*time.Second {
+		if err := s.ghClient.RefreshRateLimit(ctx); err == nil {
+			s.lastRateLimit = time.Now()
+		}
+	}
 	rl := s.ghClient.RateLimit()
 	if rl.Limit > 0 {
 		rem := rl.Remaining

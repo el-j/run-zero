@@ -28,14 +28,14 @@ Claimed in: **R** = `README.md`, **W** = website (`website/src`), **E** = `E2E_T
 | F-09 | Golden VM base images, cloned per job (`build-vm-base`) | R, W | `pkg/builder/builder.go`, `pkg/builder/lifecycle.go`, `cmd/runzero/build_vm.go` | `pkg/builder/builder_test.go`, `pkg/builder/lifecycle_test.go` | ✅ |
 | F-10 | Runner image builds from the dashboard, including rebuild of a missing image | W | `pkg/builder/manager.go`, `pkg/builder/rebuild.go`, `pkg/api/handlers_images.go` | `pkg/builder/manager_test.go`, `pkg/builder/rebuild_test.go`, `pkg/api/handlers_images_test.go` | ✅ |
 | F-11 | Native ARM64 with AMD64 emulation; per-repo native-arch override (`NATIVE_ARCH_OVERRIDE`) | R, W | `pkg/arch/override.go`, `pkg/daemon/scale_cycle.go` | `pkg/arch/override_test.go` | ✅ |
-| F-12 | Runner CPU and memory sizing (`RUNNER_CPUS`, `RUNNER_MEMORY`) | W | `pkg/sizing/parsers.go`, `pkg/daemon/scale_cycle.go` | `pkg/sizing/sizing_test.go` | ✅ |
+| F-12 | Runner CPU and memory sizing (`RUNNER_CPUS`, `RUNNER_MEMORY`, or job labels such as `4cpu-8gb`) | R, W | `pkg/sizing/parsers.go`, `pkg/sizing/label_sizing.go`, `pkg/daemon/scale_cycle.go` | `pkg/sizing/sizing_test.go`, `pkg/daemon/scale_cycle_test.go` | ✅ |
 | F-13 | Persistent per-runner package caches (`CACHE_ENABLED`, `HOST_CACHE_DIR`) | R, W | `pkg/cache/manager.go` | `pkg/cache/cache_test.go` | ✅ |
 | F-14 | Cache size stats and purge from the dashboard | W | `pkg/cache/stats.go`, `pkg/cache/purge.go`, `pkg/api/handlers_cache.go` | `pkg/cache/cache_test.go`, `pkg/api/cache_test.go` | ✅ |
 | F-15 | Local proxy registries (apt-cacher-ng, Verdaccio, Athens, Docker mirror, devpi, kellnr) | R, W | `docker-compose.yml`, `docker/start.sh` | — (manual `make cache-smoke`) | ⚠️ no automated test |
-| F-16 | Reaping of idle, unregistered and stale-busy runners | R, W | `pkg/reaper/reaper.go`, `pkg/reaper/classify.go` | `pkg/reaper/reaper_test.go`, `pkg/reaper/cov_classify_test.go` | ✅ |
+| F-16 | Reaping of idle, unregistered and stale-busy runners (`RUNNER_BUSY_TIMEOUT_SECONDS`) | R, W | `pkg/reaper/reaper.go`, `pkg/reaper/classify.go`, `pkg/daemon/init.go` | `pkg/reaper/reaper_test.go`, `pkg/reaper/cov_classify_test.go`, `pkg/daemon/scale_cycle_test.go` | ✅ |
 | F-17 | Zombie healing: cancel jobs orphaned on dead runners | R, W | — | — | ❌ see U-02 |
 | F-18 | Warm standby pool (`MIN_RUNNERS`) | R | — | — | ❌ see U-03 |
-| F-19 | GitHub API rate-limit protection (ETag caching, stop when the quota is exhausted) | R, W | `pkg/github/client.go` | `pkg/github/client_etag_test.go`, `pkg/github/client_test.go` | ⚠️ "dynamic pacing" is not implemented; see U-04 |
+| F-19 | GitHub API rate-limit protection (ETag caching, quota refresh every `RATE_LIMIT_REFRESH_INTERVAL`, stop when the quota is exhausted) | R, W | `pkg/github/client.go`, `pkg/daemon/autoscaler.go` | `pkg/github/client_etag_test.go`, `pkg/github/client_test.go`, `pkg/daemon/scale_cycle_test.go` | ⚠️ "dynamic pacing" is not implemented; see U-04 |
 | F-20 | Real-time dashboard over server-sent events | R, W | `pkg/api/handlers_stream.go`, `pkg/state/events.go`, `web/src/stream.ts` | `pkg/state/broker_test.go`, `web/src/stream.test.ts` | ✅ |
 | F-21 | Completed-job history with failure diagnosis and annotations | R, E | `pkg/github/history.go`, `pkg/state/history.go` | `pkg/github/history_test.go`, `pkg/daemon/history_refresh_test.go`, `website/e2e/journeys.spec.js` | ✅ |
 | F-22 | Retry, rerun and cancel workflow runs from the dashboard | R, E | `pkg/github/workflow.go`, `pkg/api/handlers_workflow_actions.go` | `pkg/github/workflow_test.go`, `pkg/api/handlers_workflow_actions_test.go`, `website/e2e/journeys.spec.js` | ✅ |
@@ -73,20 +73,12 @@ Claimed in: **R** = `README.md`, **W** = website (`website/src`), **E** = `E2E_T
 
 ### Settings with no effect
 
-- **U-06 `RATE_LIMIT_REFRESH_INTERVAL`** is parsed (`pkg/config/config.go`) but
-  never used; the quota is read from every API response instead.
-- **U-07 `RUNNER_BUSY_TIMEOUT_SECONDS`** is parsed (`pkg/config/loader.go`) but
-  never used; the reaper's busy timeout is fixed at 7200 s by
-  `reaper.DefaultTimeouts` (`pkg/reaper/types.go`).
 - **U-03** (`MIN_RUNNERS`) above.
 
 ### Code that no feature reaches
 
 - **U-08 `pkg/parity`** (VM vs container toolchain parity) is imported by no
   binary; `pkg/inspector` is imported only by `pkg/parity`.
-- **U-09 Label-based sizing** (`ParseLabelSizing` in
-  `pkg/sizing/label_sizing.go`, for job labels such as `4cpu-8gb`) is never
-  called and not documented.
 
 ### Settings missing from the website's environment reference
 
@@ -97,3 +89,5 @@ The README configuration table lists every setting (enforced by
 `DASHBOARD_PORT`, `DISCOVERY_INTERVAL`, `GITHUB_TOKEN`, `HOST_CACHE_DIR`,
 `MIN_RUNNERS`, `ORG`, `POLL_INTERVAL`, `REPO`, `REPOS`, `REPO_PRIORITY`,
 `RUNNER_BUSY_TIMEOUT_SECONDS` and `VM_TRIGGER_LABELS` (**U-10**).
+
+_Resolved: U-06 `RATE_LIMIT_REFRESH_INTERVAL` and U-07 `RUNNER_BUSY_TIMEOUT_SECONDS` are applied; U-09 label-based sizing is wired into spawning (F-12)._

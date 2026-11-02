@@ -52,8 +52,17 @@ func initDriver(cfg *config.Config, store *driver.InstanceStore) driver.RunnerDr
 	return driver.NewRouter(dockerDriver, orbDriver, cfg.RunnerBackend, cfg.AutoRouteVM, store)
 }
 
-func initReaper(d driver.RunnerDriver, gh *github.Client) *reaper.Reaper {
-	return reaper.NewReaper(d, gh, reaper.DefaultTimeouts())
+func initReaper(cfg *config.Config, d driver.RunnerDriver, gh *github.Client) *reaper.Reaper {
+	return reaper.NewReaper(d, gh, reaperTimeouts(cfg))
+}
+
+// reaperTimeouts applies RUNNER_BUSY_TIMEOUT_SECONDS to the default reaper timeouts.
+func reaperTimeouts(cfg *config.Config) reaper.Timeouts {
+	t := reaper.DefaultTimeouts()
+	if cfg.BusyTimeoutSeconds > 0 {
+		t.BusySeconds = cfg.BusyTimeoutSeconds
+	}
+	return t
 }
 
 func initSettings(cfg *config.Config) *settings.Manager {

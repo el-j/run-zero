@@ -418,7 +418,7 @@ The Makefile is split per sub-package under [`mk/`](mk/) (`go`, `spec`, `web`, `
 | `MAX_RUNNERS` | Maximum concurrent runner instances | `4` |
 | `POLL_INTERVAL` | Queue check interval in seconds | `10` |
 | `DISCOVERY_INTERVAL` | Auto-discovery refresh interval in seconds | `900` |
-| `RATE_LIMIT_REFRESH_INTERVAL` | Parsed but not yet applied; the quota is read from every API response ([U-06](TRACEABILITY.md#settings-with-no-effect)) | `60` |
+| `RATE_LIMIT_REFRESH_INTERVAL` | How often (seconds) to re-read the GitHub API quota from `/rate_limit`, which costs no quota; every API response also updates it | `60` |
 | `ACTIONS_BILLING_REFRESH_INTERVAL` | Actions minutes refresh interval in seconds | `300` |
 | `GITLAB_URL` | Base URL for GitLab API (supports self-hosted instances like `https://git.eckelmann.de`) | `https://gitlab.com` |
 | `GITLAB_TOKEN` | GitLab Personal / Group Access Token with `api` scope | *None* |
@@ -430,11 +430,11 @@ The Makefile is split per sub-package under [`mk/`](mk/) (`go`, `spec`, `web`, `
 | `REPO_PRIORITY` | Comma-separated repos to serve first, in order | *None* |
 | `VM_TRIGGER_LABELS` | Job labels that route a job to a VM runner when `AUTO_ROUTE_VM` is on | `vm,browser,e2e,lighthouse,systemd,gui,unconfined,postgres,mysql,redis,db,database,integration,service,services,dind` |
 | `NATIVE_ARCH_OVERRIDE` | On an ARM64 host, run AMD64 jobs as native ARM64 instead of emulating them (jobs with an emulation label still emulate): `off`, `all`, or comma-separated repos | `off` |
-| `RUNNER_CPUS` | CPUs per runner (`0` = default of 3) | `0` |
-| `RUNNER_MEMORY` | Memory per runner, e.g. `8g` or `4096m` (empty = 4096 MiB) | *None* |
+| `RUNNER_CPUS` | CPUs per runner (`0` = default of 3); job labels such as `4cpu-8gb`, `small`, `medium`, `large`, `xlarge` override it | `0` |
+| `RUNNER_MEMORY` | Memory per runner, e.g. `8g` or `4096m` (empty = 4096 MiB); job labels such as `4cpu-8gb` or `highmem` override it | *None* |
 | `HOST_CACHE_DIR` | Host directory for persistent per-runner package caches (caching is off when empty) | *None* |
 | `CLEANUP_RUNNERS_ON_SHUTDOWN` | Stop and remove all runners when the daemon exits | `false` |
-| `RUNNER_BUSY_TIMEOUT_SECONDS` | Parsed but not yet applied; busy runners are reaped after 7200 s ([U-07](TRACEABILITY.md#settings-with-no-effect)) | `7200` |
+| `RUNNER_BUSY_TIMEOUT_SECONDS` | Reap a runner GitHub has reported busy for longer than this (stuck job) | `7200` |
 | `DASHBOARD_ENABLED` | Serve the dashboard and control-plane API | `true` |
 | `DASHBOARD_HOST` | Dashboard listen address | `127.0.0.1` |
 | `DASHBOARD_PORT` | Dashboard listen port | `49505` |

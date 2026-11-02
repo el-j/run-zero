@@ -672,6 +672,24 @@ func TestDiscoverAndSync(t *testing.T) {
 		}
 	})
 
+	t.Run("refreshes the rate limit on its interval", func(t *testing.T) {
+		f, gh := newFakeGH(t, map[string]string{
+			"/rate_limit": `{"resources":{"core":{"limit":5000,"remaining":1234,"reset":1900000000}}}`,
+		})
+		cfg := baseCfg("o/a")
+		cfg.RateLimitRefreshInterval = 3600
+		s, st := newTestScaler(t, cfg, gh, nil, nil, "o/a")
+
+		s.DiscoverAndSync(context.Background())
+		if rl := st.GetSnapshot().RateLimitRemaining; rl == nil || *rl != 1234 {
+			t.Fatalf("expected refreshed quota 1234, got %v", rl)
+		}
+		s.DiscoverAndSync(context.Background())
+		if n := f.hit("GET /rate_limit"); n != 1 {
+			t.Fatalf("rate limit refresh should be throttled, got %d requests", n)
+		}
+	})
+
 	t.Run("discovery without poller", func(t *testing.T) {
 		_, gh := newFakeGH(t, nil)
 		s, _ := newTestScaler(t, baseCfg("o/a"), gh, nil, nil, "o/a")
@@ -1020,3 +1038,29 @@ func (d *stopFallbackDriver) StopRunner(_ context.Context, id string) error {
 	return d.onStop(id)
 }
 func (d *stopFallbackDriver) CleanupAll(context.Context) error { return nil }
+
+func TestResolveSizing_LabelsOverrideConfig(t *testing.T) {
+	s := &Scaler{cfg: &config.Config{RunnerCPUs: 2, RunnerMemory: "6g"}}
+	cases := []struct {
+		labels      []string
+		cpus, memMB int
+	}{
+		{nil, 2, 6144},
+		{[]string{"self-hosted", "4cpu-8gb"}, 4, 8192},
+		{[]string{"highmem"}, 2, 32768},
+	}
+	for _, c := range cases {
+		if cpus, mem := s.resolveSizing(c.labels); cpus != c.cpus || mem != c.memMB {
+			t.Errorf("resolveSizing(%v) = %d CPU / %d MiB, want %d / %d", c.labels, cpus, mem, c.cpus, c.memMB)
+		}
+	}
+}
+
+func TestReaperTimeouts_AppliesBusyTimeout(t *testing.T) {
+	if got := reaperTimeouts(&config.Config{BusyTimeoutSeconds: 900}).BusySeconds; got != 900 {
+		t.Errorf("BusySeconds = %d, want 900", got)
+	}
+	if got := reaperTimeouts(&config.Config{}).BusySeconds; got != reaper.DefaultTimeouts().BusySeconds {
+		t.Errorf("BusySeconds without config = %d, want default", got)
+	}
+}

@@ -96,3 +96,49 @@ func TestClient_DoRequest_DecodeError(t *testing.T) {
 		t.Fatal("expected error decoding bad json")
 	}
 }
+
+func TestClient_RefreshRateLimit(t *testing.T) {
+	body, code := `{"resources":{"core":{"limit":5000,"remaining":42,"reset":1900000000}}}`, http.StatusOK
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/rate_limit" {
+			t.Errorf("unexpected path %s", r.URL.Path)
+		}
+		w.WriteHeader(code)
+		_, _ = w.Write([]byte(body))
+	}))
+	defer ts.Close()
+	c := NewClient("tok", ts.URL, ts.Client())
+
+	// An exhausted quota must not stop the refresh itself.
+	c.rateLimit = RateLimit{Limit: 5000, Remaining: 0, Reset: time.Now().Add(time.Hour)}
+	if err := c.RefreshRateLimit(context.Background()); err != nil {
+		t.Fatalf("refresh: %v", err)
+	}
+	if rl := c.RateLimit(); rl.Remaining != 42 || rl.Limit != 5000 || rl.Reset.Unix() != 1900000000 {
+		t.Fatalf("unexpected rate limit %+v", rl)
+	}
+
+	for name, tc := range map[string]struct {
+		body string
+		code int
+	}{
+		"http error":    {`{}`, http.StatusInternalServerError},
+		"bad json":      {`{`, http.StatusOK},
+		"no core quota": {`{}`, http.StatusOK},
+	} {
+		body, code = tc.body, tc.code
+		if err := c.RefreshRateLimit(context.Background()); err == nil {
+			t.Errorf("%s: expected error", name)
+		}
+	}
+	if c.RateLimit().Remaining != 42 {
+		t.Error("failed refreshes must keep the last good quota")
+	}
+
+	if err := NewClient("tok", "http://127.0.0.1:1", nil).RefreshRateLimit(context.Background()); err == nil {
+		t.Error("expected connection error")
+	}
+	if err := NewClient("tok", "://bad", nil).RefreshRateLimit(context.Background()); err == nil {
+		t.Error("expected request build error")
+	}
+}
