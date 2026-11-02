@@ -29,6 +29,10 @@ func TestNewDaemon_RegistersProvidersFromTokens(t *testing.T) {
 	if d.Scaler() == nil {
 		t.Fatal("expected scaler")
 	}
+	d.Reaper().Logf("[Reaper] zombie %d", 42)
+	if !hasLog(d.State(), "[Reaper] zombie 42") {
+		t.Error("expected reaper messages in the daemon log")
+	}
 	mgr := d.Scaler().providerMgr
 	if _, ok := mgr.Get("github"); !ok {
 		t.Error("expected github provider from ACCESS_TOKEN")

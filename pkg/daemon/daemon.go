@@ -59,6 +59,7 @@ func NewDaemon(cfg *config.Config, version string, distDir, staticDir string) *D
 
 	rec := github.NewReconciler(pm)
 	reaperInst := initReaper(cfg, runnerDriver, ghClient)
+	reaperInst.Logf = func(format string, args ...any) { st.AppendLog(fmt.Sprintf(format, args...)) }
 	scaler := NewScaler(cfg, st, runnerDriver, ghClient, pm, rec, poller, reaperInst)
 	scaler.SetImageBuilder(builder.NewBuildManager(nil, nil, st.AppendLog, nil))
 

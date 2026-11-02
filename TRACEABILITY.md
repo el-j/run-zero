@@ -33,7 +33,7 @@ Claimed in: **R** = `README.md`, **W** = website (`website/src`), **E** = `E2E_T
 | F-14 | Cache size stats and purge from the dashboard | W | `pkg/cache/stats.go`, `pkg/cache/purge.go`, `pkg/api/handlers_cache.go` | `pkg/cache/cache_test.go`, `pkg/api/cache_test.go` | ✅ |
 | F-15 | Local proxy registries (apt-cacher-ng, Verdaccio, Athens, Docker mirror, devpi, kellnr) | R, W | `docker-compose.yml`, `docker/start.sh` | — (manual `make cache-smoke`) | ⚠️ no automated test |
 | F-16 | Reaping of idle, unregistered and stale-busy runners (`RUNNER_BUSY_TIMEOUT_SECONDS`) | R, W | `pkg/reaper/reaper.go`, `pkg/reaper/classify.go`, `pkg/daemon/init.go` | `pkg/reaper/reaper_test.go`, `pkg/reaper/cov_classify_test.go`, `pkg/daemon/scale_cycle_test.go` | ✅ |
-| F-17 | Zombie healing: cancel jobs orphaned on dead runners | R, W | — | — | ❌ see U-02 |
+| F-17 | Zombie healing: cancel jobs orphaned on runners GitHub reports offline but busy, then delete the registration | R, W | `pkg/reaper/reaper.go` | `pkg/reaper/zombie_test.go` | ✅ |
 | F-18 | Warm standby pool (`MIN_RUNNERS`) | R | `pkg/daemon/standby.go`, `pkg/daemon/scale_cycle.go` | `pkg/daemon/standby_test.go` | ✅ |
 | F-19 | Adaptive GitHub API rate limiting: ETag caching, quota refresh every `RATE_LIMIT_REFRESH_INTERVAL`, polling slowed 2×/4×/8× as the quota drops below 50/20/10%, hard stop when exhausted | R, W | `pkg/github/client.go`, `pkg/daemon/autoscaler.go`, `pkg/daemon/pacing.go` | `pkg/github/client_etag_test.go`, `pkg/github/client_test.go`, `pkg/daemon/pacing_test.go` | ✅ |
 | F-20 | Real-time dashboard over server-sent events | R, W | `pkg/api/handlers_stream.go`, `pkg/state/events.go`, `web/src/stream.ts` | `pkg/state/broker_test.go`, `web/src/stream.test.ts` | ✅ |
@@ -58,9 +58,6 @@ Claimed in: **R** = `README.md`, **W** = website (`website/src`), **E** = `E2E_T
   (`pkg/config/validation.go`), but the Go engine has no driver for them:
   `pkg/daemon/init.go` only builds Docker and OrbStack drivers, so these values
   silently fall back to the router's default.
-- **U-02 Zombie job cancellation** (F-17). The README and website say orphaned
-  jobs on dead runners are cancelled. The reaper (`pkg/reaper/reaper.go`)
-  stops local runners and deletes offline registrations; it never cancels a job.
 - **U-05 Mutation testing** (F-31). The website claims 100% mutation testing;
   `MUTATION_TESTING.md` describes `make check` and `make e2e` only, and no
   mutation tool runs.
@@ -80,4 +77,4 @@ The README configuration table lists every setting (enforced by
 `MIN_RUNNERS`, `ORG`, `POLL_INTERVAL`, `REPO`, `REPOS`, `REPO_PRIORITY`,
 `RUNNER_BUSY_TIMEOUT_SECONDS` and `VM_TRIGGER_LABELS` (**U-10**).
 
-_Resolved: U-06 `RATE_LIMIT_REFRESH_INTERVAL` and U-07 `RUNNER_BUSY_TIMEOUT_SECONDS` are applied; U-09 label-based sizing is wired into spawning (F-12); U-03 the `MIN_RUNNERS` standby pool is implemented (F-18); U-04 polling is paced by the API quota (F-19)._
+_Resolved: U-06 `RATE_LIMIT_REFRESH_INTERVAL` and U-07 `RUNNER_BUSY_TIMEOUT_SECONDS` are applied; U-09 label-based sizing is wired into spawning (F-12); U-03 the `MIN_RUNNERS` standby pool is implemented (F-18); U-04 polling is paced by the API quota (F-19); U-02 jobs orphaned on zombie runners are cancelled (F-17)._

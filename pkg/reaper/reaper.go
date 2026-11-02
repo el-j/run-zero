@@ -16,6 +16,8 @@ type Reaper struct {
 	ghClient  *github.Client
 	timeouts  Timeouts
 	firstSeen map[string]float64
+	// Logf, when set, receives notable actions such as cancelled zombie jobs.
+	Logf func(format string, args ...any)
 }
 
 // NewReaper creates a self-healing reaper instance.
@@ -85,13 +87,45 @@ func (r *Reaper) fetchRegistrations(
 				Busy:   reg.Busy,
 				Scope:  reg.Scope,
 			}
-			// Auto-clean dead offline runzero runners from GitHub
+			// Auto-clean dead offline runzero runners from GitHub. A zombie (offline
+			// but still busy) holds an orphaned job, and GitHub refuses to delete a
+			// busy runner, so its job is cancelled first.
 			if reg.Status == "offline" && strings.HasPrefix(reg.Name, "runzero-") {
+				if reg.Busy {
+					r.cancelOrphanedJobs(ctx, repo, reg.Name)
+				}
 				_ = r.ghClient.DeleteRunner(ctx, repo, "", reg.ID)
 			}
 		}
 	}
 	return registrations, conclusiveRepos
+}
+
+// cancelOrphanedJobs cancels the workflow runs whose in-progress jobs are held
+// by runnerName, a runner GitHub reports offline but still busy.
+func (r *Reaper) cancelOrphanedJobs(ctx context.Context, repo, runnerName string) {
+	jobs, err := r.ghClient.ListActiveJobs(ctx, repo)
+	if err != nil {
+		return
+	}
+	cancelled := map[int64]bool{}
+	for _, j := range jobs {
+		if j.Status != "in_progress" || j.RunnerName == nil || *j.RunnerName != runnerName || cancelled[j.RunID] {
+			continue
+		}
+		cancelled[j.RunID] = true
+		if err := r.ghClient.TriggerWorkflowAction(ctx, repo, j.RunID, "cancel"); err != nil {
+			r.logf("[Reaper] ⚠️ Could not cancel run #%d orphaned on dead runner %s (%s): %v", j.RunID, runnerName, repo, err)
+			continue
+		}
+		r.logf("[Reaper] 🧟 Cancelled run #%d: job %q was orphaned on dead runner %s (%s)", j.RunID, j.Name, runnerName, repo)
+	}
+}
+
+func (r *Reaper) logf(format string, args ...any) {
+	if r.Logf != nil {
+		r.Logf(format, args...)
+	}
 }
 
 // deleteReapedRegistrations removes the GitHub registration of every reaped runner.
