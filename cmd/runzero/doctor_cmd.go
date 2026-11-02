@@ -13,6 +13,9 @@ import (
 	"github.com/el-j/run-zero/pkg/github"
 )
 
+// doctorExec overrides the command executor used by doctor checks (nil = real OS).
+var doctorExec driver.CmdExecutor
+
 func runDoctor(args []string, stdout, stderr io.Writer) int {
 	fs := flag.NewFlagSet("runzero doctor", flag.ContinueOnError)
 	fs.SetOutput(stderr)
@@ -33,8 +36,9 @@ func runDoctor(args []string, stdout, stderr io.Writer) int {
 		cfg, _ = config.LoadConfig(env)
 	}
 
-	opts := doctor.Options{
-		Exec: &driver.OSExecutor{},
+	opts := doctor.Options{Exec: doctorExec}
+	if opts.Exec == nil {
+		opts.Exec = &driver.OSExecutor{}
 	}
 
 	if cfg != nil {

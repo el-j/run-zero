@@ -67,6 +67,21 @@ func TestRunDoctor_ConfigPaths(t *testing.T) {
 	}
 }
 
+// With a healthy (fake) Docker daemon and nothing else configured, doctor
+// reports no failures and exits 0, independent of the host it runs on.
+func TestRunDoctor_HealthyHostExitsZero(t *testing.T) {
+	old := doctorExec
+	defer func() { doctorExec = old }()
+	doctorExec = &fakeExec{fn: func(string, ...string) ([]byte, error) { return []byte("27.0.0"), nil }}
+
+	env := filepath.Join(t.TempDir(), ".env")
+	_ = os.WriteFile(env, []byte("PROXIES_ENABLED=false\nCACHE_ENABLED=false\n"), 0o644)
+	var o, e bytes.Buffer
+	if code := runDoctor([]string{"-config", env, "-timeout", "2s"}, &o, &e); code != 0 {
+		t.Fatalf("code %d: %s", code, o.String())
+	}
+}
+
 func TestRunDoctor_FailsOnHostCacheMissing(t *testing.T) {
 	dir := t.TempDir()
 	env := filepath.Join(dir, ".env")
