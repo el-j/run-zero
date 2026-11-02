@@ -98,6 +98,7 @@ type Scaler struct {
 	lastBilling        time.Time
 	lastRateLimit      time.Time
 	standbyCursor      int
+	pacing             bool // polling is currently slowed by a low API quota
 	lastHistoryRefresh time.Time
 	historyRunning     atomic.Bool
 	// runnersFinished is set when a runner's job ended, so the finished job
@@ -365,22 +366,12 @@ func (s *Scaler) historyRefreshDue() bool {
 
 // Start begins periodic scaling loops until ctx is canceled.
 func (s *Scaler) Start(ctx context.Context) {
-	s.ScaleCycle(ctx)
-
-	interval := time.Duration(s.cfg.PollInterval) * time.Second
-	if interval <= 0 {
-		interval = 10 * time.Second
-	}
-
-	ticker := time.NewTicker(interval)
-	defer ticker.Stop()
-
 	for {
+		s.ScaleCycle(ctx)
 		select {
 		case <-ctx.Done():
 			return
-		case <-ticker.C:
-			s.ScaleCycle(ctx)
+		case <-time.After(s.nextCycleDelay()):
 		}
 	}
 }
