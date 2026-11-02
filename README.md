@@ -414,7 +414,7 @@ The Makefile is split per sub-package under [`mk/`](mk/) (`go`, `spec`, `web`, `
 | `RUNNER_ARCH` | Runner architectures to spawn (`arm64`, `amd64`, or `both`) | `both` |
 | `PROXIES_ENABLED` | Enable apt-cacher, Verdaccio & Athens proxy registries for runners | `true` |
 | `CACHE_ENABLED` | Enable persistent package/tool caching across runners | `true` |
-| `MIN_RUNNERS` | **Not yet applied** ([U-03](TRACEABILITY.md#advertised-but-not-implemented)). Intended: warm standby pool topped up after queued jobs are served (org scope in ORG mode, else round-robin across tracked repos; capped by `MAX_RUNNERS`; exempt from idle reaping) | `0` |
+| `MIN_RUNNERS` | Warm standby pool: idle runners kept ready after queued jobs are served (org scope in ORG mode, else round-robin across tracked repos by priority; capped by `MAX_RUNNERS`; exempt from idle reaping) | `0` |
 | `MAX_RUNNERS` | Maximum concurrent runner instances | `4` |
 | `POLL_INTERVAL` | Queue check interval in seconds | `10` |
 | `DISCOVERY_INTERVAL` | Auto-discovery refresh interval in seconds | `900` |

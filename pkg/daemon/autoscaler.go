@@ -97,6 +97,7 @@ type Scaler struct {
 	lastDiscovery      time.Time
 	lastBilling        time.Time
 	lastRateLimit      time.Time
+	standbyCursor      int
 	lastHistoryRefresh time.Time
 	historyRunning     atomic.Bool
 	imageBuilder       ImageBuilder

@@ -32,6 +32,7 @@ func (s *Scaler) ScaleCycle(ctx context.Context) {
 	activeRunners = s.reapCompletedRunners(ctx, activeRunners, allJobs)
 	activeRunners = s.reapStaleRunners(ctx, activeRunners, tracked)
 	activeRunners = s.scaleUp(ctx, activeRunners, tracked, jobsByRepo)
+	activeRunners = s.topUpStandby(ctx, activeRunners, tracked)
 	enrichRunners(activeRunners, allJobs)
 	s.publishFleet(ctx, activeRunners, allJobs, tracked)
 }
@@ -202,7 +203,8 @@ func (s *Scaler) reapStaleRunners(ctx context.Context, active []state.RunnerInfo
 	if s.reaper == nil || len(active) == 0 {
 		return active
 	}
-	reaped := s.reaper.Reconcile(ctx, active, 0)
+	// Up to MIN_RUNNERS idle runners are the standby pool, exempt from idle reaping.
+	reaped := s.reaper.Reconcile(ctx, active, s.cfg.MinRunners)
 	if len(reaped) == 0 {
 		return active
 	}
@@ -322,16 +324,29 @@ func (s *Scaler) resolveSizing(labels []string) (cpus, memMB int) {
 // spawnForJob provisions a runner for one queued job; nil means nothing was
 // spawned (backing off, token failure or spawn failure).
 func (s *Scaler) spawnForJob(ctx context.Context, repo string, job state.QueuedJob) *state.RunnerInfo {
-	targetArch := s.resolveJobArch(job, repo)
-	backend := s.resolveJobBackend(job)
+	info := s.spawnRunner(ctx, repo, &job)
+	if info == nil {
+		return nil
+	}
+	applyJob(info, job)
+	runURL := fmt.Sprintf("https://github.com/%s/actions/runs/%d", repo, job.RunID)
+	info.RunURL = &runURL
+	return info
+}
+
+// spawnRunner provisions a runner for repo: job-scoped when job is non-nil,
+// otherwise an idle standby runner that takes the repo's next job.
+func (s *Scaler) spawnRunner(ctx context.Context, repo string, job *state.QueuedJob) *state.RunnerInfo {
+	forJob := state.QueuedJob{}
+	if job != nil {
+		forJob = *job
+	}
+	targetArch := s.resolveJobArch(forJob, repo)
+	backend := s.resolveJobBackend(forJob)
 	spawnKey := backend + "/" + targetArch
 	if s.spawnBlocked(spawnKey) {
 		return nil
 	}
-
-	cpus, memMB := s.resolveSizing(job.Labels)
-	scope := fmt.Sprintf("%s_%s", repo, job.Name)
-	cacheMounts := cache.InitCacheDirs(s.cfg.HostCacheDir, targetArch, s.cfg.CacheEnabled, scope)
 
 	token, err := s.ghClient.CreateRegistrationToken(ctx, repo, s.cfg.Org)
 	if err != nil {
@@ -339,27 +354,8 @@ func (s *Scaler) spawnForJob(ctx context.Context, repo string, job state.QueuedJ
 		return nil
 	}
 
-	id := randomHex(3)
-	runnerName := driver.JobScopedRunnerName(repo, targetArch, job.RunID, job.ID, id)
-	spec := driver.RunnerSpec{
-		ID:           id,
-		Name:         runnerName,
-		Repo:         repo,
-		Arch:         targetArch,
-		Backend:      backend,
-		JobName:      job.Name,
-		JobID:        &job.ID,
-		RunID:        &job.RunID,
-		WorkflowName: job.WorkflowName,
-		CPUs:         cpus,
-		MemoryMB:     memMB,
-		Labels:       append([]string{"self-hosted", "local", targetArch}, job.Labels...),
-		Token:        token,
-		CacheDir:     s.cfg.HostCacheDir,
-		Mounts:       cacheMounts,
-		Network:      "host",
-	}
-
+	spec := s.runnerSpec(repo, targetArch, backend, job)
+	spec.Token = token
 	info, err := s.driver.SpawnRunner(ctx, spec)
 	if err != nil {
 		s.state.AppendLog(fmt.Sprintf("[Autoscaler] ❌ Failed to spawn %s runner for %s: %v", backend, repo, err))
@@ -368,11 +364,40 @@ func (s *Scaler) spawnForJob(ctx context.Context, repo string, job state.QueuedJ
 	}
 	delete(s.spawnBackoff, spawnKey)
 
-	applyJob(info, job)
-	runURL := fmt.Sprintf("https://github.com/%s/actions/runs/%d", repo, job.RunID)
-	info.RunURL = &runURL
-	s.state.AppendLog(fmt.Sprintf("[Autoscaler] 🚀 Spawned %s runner '%s' for %s (%s, %s)", backend, runnerName, repo, job.Name, targetArch))
+	purpose := "standby"
+	if job != nil {
+		purpose = job.Name
+	}
+	s.state.AppendLog(fmt.Sprintf("[Autoscaler] 🚀 Spawned %s runner '%s' for %s (%s, %s)", backend, spec.Name, repo, purpose, targetArch))
 	return info
+}
+
+// runnerSpec describes a new runner (without its registration token).
+func (s *Scaler) runnerSpec(repo, targetArch, backend string, job *state.QueuedJob) driver.RunnerSpec {
+	id := randomHex(3)
+	spec := driver.RunnerSpec{
+		ID:       id,
+		Name:     driver.ManualRunnerName(repo, targetArch, id),
+		Repo:     repo,
+		Arch:     targetArch,
+		Backend:  backend,
+		Labels:   []string{"self-hosted", "local", targetArch},
+		CacheDir: s.cfg.HostCacheDir,
+		Network:  "host",
+	}
+	scope := repo + "_standby"
+	if job != nil {
+		spec.Name = driver.JobScopedRunnerName(repo, targetArch, job.RunID, job.ID, id)
+		spec.JobName = job.Name
+		spec.JobID = &job.ID
+		spec.RunID = &job.RunID
+		spec.WorkflowName = job.WorkflowName
+		spec.Labels = append(spec.Labels, job.Labels...)
+		scope = fmt.Sprintf("%s_%s", repo, job.Name)
+	}
+	spec.CPUs, spec.MemoryMB = s.resolveSizing(spec.Labels)
+	spec.Mounts = cache.InitCacheDirs(s.cfg.HostCacheDir, targetArch, s.cfg.CacheEnabled, scope)
+	return spec
 }
 
 // applyJob copies a job's identity and progress onto the runner serving it.
