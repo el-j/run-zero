@@ -8,9 +8,7 @@ func (s *State) AppendLog(message string) {
 		Message:   message,
 	}
 	s.logs = append(s.logs, entry)
-	if len(s.logs) > s.maxLogs {
-		s.logs = s.logs[len(s.logs)-s.maxLogs:]
-	}
+	s.logs = s.logs[max(len(s.logs)-s.maxLogs, 0):]
 	s.mu.Unlock()
 
 	s.broker.Broadcast(Event{Type: "log", Data: entry})

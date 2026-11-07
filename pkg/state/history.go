@@ -6,7 +6,7 @@ const (
 	// maxRunnerLogs bounds how many local runner log tails are retained.
 	maxRunnerLogs = 100
 	// maxRunnerLogBytes bounds the size of a single retained log tail.
-	maxRunnerLogBytes = 16 * 1024
+	maxRunnerLogBytes = 16384 // 16 KiB
 )
 
 func derefStr(s *string) string {
@@ -20,9 +20,7 @@ func derefStr(s *string) string {
 // UpdateFleet broadcast carries it to SSE clients.
 func (s *State) SetCompletedJobs(jobs []CompletedJob) {
 	s.mu.Lock()
-	if len(jobs) > MaxCompletedJobs {
-		jobs = jobs[:MaxCompletedJobs]
-	}
+	jobs = jobs[:min(len(jobs), MaxCompletedJobs)]
 	s.completedJobs = make([]CompletedJob, len(jobs))
 	copy(s.completedJobs, jobs)
 	s.mu.Unlock()
@@ -34,9 +32,7 @@ func (s *State) SetRunnerLog(runnerName, log string) {
 	if runnerName == "" || log == "" {
 		return
 	}
-	if len(log) > maxRunnerLogBytes {
-		log = log[len(log)-maxRunnerLogBytes:]
-	}
+	log = log[max(len(log)-maxRunnerLogBytes, 0):]
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if _, exists := s.runnerLogs[runnerName]; !exists {

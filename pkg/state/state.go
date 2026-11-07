@@ -71,10 +71,7 @@ func (s *State) GetSnapshot() FleetState {
 		}
 	}
 
-	free := s.maxRunners - busy
-	if free < 0 {
-		free = 0
-	}
+	free := max(s.maxRunners-busy, 0)
 
 	jobsCopy := make([]QueuedJob, len(s.queuedJobs))
 	copy(jobsCopy, s.queuedJobs)

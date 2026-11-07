@@ -1,0 +1,33 @@
+name: Mutation Testing
+
+# Mutation testing re-runs each package's tests once per mutant, so it is far
+# too slow for every push: it runs weekly and on demand, and fails when any
+# package's test efficacy drops below the threshold in mk/go.mk.
+on:
+  schedule:
+    - cron: '0 4 * * 1'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  mutate-go:
+    name: Go mutation testing (gremlins)
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v7
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.24'
+          cache: true
+
+      - name: Install gremlins
+        run: go install github.com/go-gremlins/gremlins/cmd/gremlins@v0.5.0
+
+      - name: Mutation-test every Go package
+        run: make mutate
