@@ -196,10 +196,9 @@ func (r *Reaper) ReconcileLocalRunners(
 // first saw it when the creation time is unknown.
 func (r *Reaper) runnerAge(runner state.RunnerInfo, nowUnix float64) float64 {
 	if runner.CreatedAt != nil {
-		if t, err := time.Parse(time.RFC3339, *runner.CreatedAt); err == nil {
-			if age := nowUnix - float64(t.Unix()); age > 0 {
-				return age
-			}
+		// A creation time in the future (clock skew) is not trusted.
+		if t, err := time.Parse(time.RFC3339, *runner.CreatedAt); err == nil && float64(t.Unix()) <= nowUnix {
+			return nowUnix - float64(t.Unix())
 		}
 	}
 	if r.firstSeen == nil {
