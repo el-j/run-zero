@@ -26,6 +26,9 @@ type RunnerSpec struct {
 	Env          map[string]string
 	Network      string
 	ImageName    string
+	// Proxies points the runner's package managers at the host's caching
+	// proxies (PROXIES_ENABLED); used by stock VM guests.
+	Proxies bool
 }
 
 // RunnerDriver abstracts ephemeral runner lifecycle across container and hypervisor backends.

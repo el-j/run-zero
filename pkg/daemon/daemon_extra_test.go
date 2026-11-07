@@ -156,3 +156,36 @@ func TestInitDriver_UsesBridgeWhenConfigured(t *testing.T) {
 		t.Fatal("expected router driver")
 	}
 }
+
+func TestInitVMDriver_PicksEngineFromConfig(t *testing.T) {
+	t.Setenv("HOST_VM_BRIDGE_URL", "")
+	t.Setenv("RUNZERO_STATE_DIR", t.TempDir())
+	store := driver.NewInstanceStore("")
+	cases := []struct {
+		env  config.MapEnv
+		want string
+	}{
+		{config.MapEnv{}, "orbstack"},
+		{config.MapEnv{"RUNNER_BACKEND": "wsl2"}, "wsl2"},
+		{config.MapEnv{"RUNNER_BACKEND": "multipass"}, "multipass"},
+		{config.MapEnv{"VM_BACKEND": "multipass"}, "multipass"},
+		{config.MapEnv{"VM_BACKEND": "wsl", "WSL_RUNNER_DIR": `D:\runners`}, "wsl2"},
+		{config.MapEnv{"VM_BACKEND": "orbstack", "RUNNER_BACKEND": "wsl2"}, "orbstack"},
+	}
+	for _, c := range cases {
+		cfg, err := config.LoadConfig(c.env)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if got := initVMDriver(cfg, store).Backend(); got != c.want {
+			t.Errorf("%v: got %s, want %s", c.env, got, c.want)
+		}
+	}
+	if stateDir() == ".runzero-state" {
+		t.Error("RUNZERO_STATE_DIR must be honoured")
+	}
+	t.Setenv("RUNZERO_STATE_DIR", "")
+	if stateDir() != ".runzero-state" {
+		t.Error("default state dir")
+	}
+}

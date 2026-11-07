@@ -64,12 +64,13 @@ RunZero is the **first local runner fleet that gives you the choice between ultr
 | 🪟 **Windows WSL2** (`RUNNER_BACKEND=wsl2`) | [Windows Subsystem for Linux 2](https://learn.microsoft.com/en-us/windows/wsl/) | Native Linux VM execution on Windows 10/11 & Windows Server. | ⚠️ Unit-tested only — **not yet verified against a real Windows/WSL2 host** |
 | 🐧 **Canonical Multipass** (`RUNNER_BACKEND=multipass`) | [Canonical Multipass](https://multipass.run/) | Universal cross-platform VM backend for macOS, Linux, and Windows. | ⚠️ Unit-tested only — **not yet verified against a real Multipass install** |
 
-The WSL2 and Multipass drivers register and run ephemeral runners and are covered by unit tests that verify command
-construction (every `subprocess` call to `wsl.exe` / `multipass` is mocked at the call site), but
-neither has been exercised against real hardware — this project has been developed and driven
-entirely from a macOS host with OrbStack. See [`E2E_TESTING.md`](E2E_TESTING.md) and
-[issue #12](https://github.com/el-j/run-zero/issues/12) for the full honest breakdown and how to
-help verify one of these backends for real.
+The WSL2 and Multipass drivers (`pkg/driver/wsl.go`, `pkg/driver/multipass.go`) launch a fresh guest
+per job, install and register an ephemeral runner there, and remove the guest when its job is done.
+Their unit tests verify every `wsl.exe` / `multipass` command through a mocked executor, but neither
+has been exercised against real hardware: this project is developed on a macOS host with OrbStack.
+When the daemon runs in Docker, these engines are driven through the host VM bridge like OrbStack.
+See [`E2E_TESTING.md`](E2E_TESTING.md) and [issue #12](https://github.com/el-j/run-zero/issues/12)
+for how to help verify one of these backends for real.
 
 ---
 
@@ -422,7 +423,7 @@ The Makefile is split per sub-package under [`mk/`](mk/) (`go`, `spec`, `web`, `
 | `OWNER` | GitHub username to auto-discover all owned repos | *None* |
 | `REPOS` | Comma-separated list of target repos (`owner/repo`) | *None* |
 | `ORG` | Organization mode: runners register at org scope and serve queued jobs from the org's active repos | *None* |
-| `RUNNER_BACKEND` | Execution driver (`auto`, `docker`, `orbstack-vm`); `wsl2` and `multipass` are accepted but have no driver yet ([U-01](TRACEABILITY.md#advertised-but-not-implemented)) | `auto` |
+| `RUNNER_BACKEND` | Execution driver for every job: `auto` (containers, with `AUTO_ROUTE_VM` sending VM jobs to `VM_BACKEND`), `docker`, `orbstack-vm`, `wsl2` or `multipass` | `auto` |
 | `AUTO_ROUTE_VM` | Automatically route browser/systemd/e2e jobs to VMs | `true` |
 | `AUTO_DISCOVER_REPOS` | Automatically discover and monitor all user repos | `true` |
 | `ACTIVE_REPO_DAYS` | Only monitor repos pushed in the last N days | `60` |
@@ -453,6 +454,11 @@ The Makefile is split per sub-package under [`mk/`](mk/) (`go`, `spec`, `web`, `
 | `DASHBOARD_ENABLED` | Serve the dashboard and control-plane API | `true` |
 | `DASHBOARD_HOST` | Dashboard listen address | `127.0.0.1` |
 | `DASHBOARD_PORT` | Dashboard listen port | `49505` |
+| `VM_BACKEND` | VM engine for VM-routed jobs: `auto` (OrbStack, or the engine `RUNNER_BACKEND` names), `orbstack`, `wsl2` or `multipass` | `auto` |
+| `MULTIPASS_IMAGE` | Ubuntu image Multipass launches per job | `24.04` |
+| `WSL_DISTRO_BASE` | WSL2 distro that runs jobs when no `WSL_BASE_TARBALL` is set (needs a `runner` user with passwordless sudo) | `Ubuntu-24.04` |
+| `WSL_BASE_TARBALL` | Root filesystem tarball imported as a fresh WSL2 distro per job (recommended; distros are unregistered after the job) | *None* |
+| `WSL_RUNNER_DIR` | Where per-job WSL2 distros are installed | `<state dir>/wsl` |
 
 ---
 

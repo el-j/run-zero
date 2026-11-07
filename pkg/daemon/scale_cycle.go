@@ -366,6 +366,7 @@ func (s *Scaler) runnerSpec(repo, targetArch, backend string, job *state.QueuedJ
 		Labels:   []string{"self-hosted", "local", targetArch},
 		CacheDir: s.cfg.HostCacheDir,
 		Network:  "host",
+		Proxies:  s.cfg.ProxiesEnabled,
 	}
 	scope := repo + "_standby"
 	if job != nil {

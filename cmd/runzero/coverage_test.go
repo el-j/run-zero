@@ -12,6 +12,8 @@ import (
 	"syscall"
 	"testing"
 	"time"
+
+	"github.com/el-j/run-zero/pkg/config"
 )
 
 type fakeExec struct {
@@ -206,5 +208,18 @@ func TestRunBridge_StartStopAndErrors(t *testing.T) {
 	}
 	if !strings.Contains(e.String(), "[Bridge Error]") {
 		t.Fatal(e.String())
+	}
+}
+
+func TestBridgeVMSettings(t *testing.T) {
+	if cfg := bridgeVMSettings(config.MapEnv{"MULTIPASS_IMAGE": "22.04"}); cfg.MultipassImage != "22.04" {
+		t.Fatalf("expected the .env value, got %+v", cfg)
+	}
+	if cfg := bridgeVMSettings(nil); cfg == nil {
+		t.Fatal("expected defaults without a .env file")
+	}
+	t.Setenv("VM_BACKEND", "hyperv")
+	if cfg := bridgeVMSettings(nil); cfg.MultipassImage != "" || cfg.VMBackend != "" {
+		t.Fatalf("invalid configuration must fall back to driver defaults, got %+v", cfg)
 	}
 }

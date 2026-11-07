@@ -21,9 +21,9 @@ Claimed in: **R** = `README.md`, **W** = website (`website/src`), **E** = `E2E_T
 | F-02 | Repo auto-discovery (owner, org or explicit list, active-days filter) | R, W | `pkg/github/discovery.go`, `pkg/github/poller.go` | `pkg/github/discovery_test.go`, `pkg/github/poller_test.go` | ✅ |
 | F-03 | Org mode: runners register at org scope | R | `pkg/github/registration.go` | `pkg/github/registration_test.go` | ✅ |
 | F-04 | Docker container backend | R, W | `pkg/driver/docker.go`, `pkg/driver/docker_ops.go` | `pkg/driver/docker_test.go` | ✅ |
-| F-05 | OrbStack VM backend, direct or through the host VM bridge | R, W | `pkg/driver/orbstack.go`, `pkg/driver/orbstack_ops.go`, `pkg/driver/bridge.go`, `pkg/bridge/server.go`, `cmd/runzero/bridge.go` | `pkg/driver/orbstack_test.go`, `pkg/driver/bridge_test.go`, `pkg/bridge/server_test.go` | ✅ |
-| F-06 | WSL2 backend | R | — | — | ❌ see U-01 |
-| F-07 | Canonical Multipass backend | R | — | — | ❌ see U-01 |
+| F-05 | OrbStack VM backend, direct or through the host VM bridge (sizing, cache mounts and proxies forwarded) | R, W | `pkg/driver/orbstack.go`, `pkg/driver/orbstack_ops.go`, `pkg/driver/bridge.go`, `pkg/bridge/server.go`, `pkg/bridge/handlers.go`, `cmd/runzero/bridge.go` | `pkg/driver/orbstack_test.go`, `pkg/driver/bridge_test.go`, `pkg/bridge/server_test.go`, `pkg/bridge/roundtrip_test.go` | ✅ |
+| F-06 | WSL2 backend (per-job distro from `WSL_BASE_TARBALL`, or a shared `WSL_DISTRO_BASE`) | R | `pkg/driver/wsl.go`, `pkg/driver/guest.go`, `pkg/daemon/init.go` | `pkg/driver/vm_drivers_test.go`, `pkg/daemon/daemon_extra_test.go` | ⚠️ not yet run on a real Windows host |
+| F-07 | Canonical Multipass backend (fresh Ubuntu VM per job) | R | `pkg/driver/multipass.go`, `pkg/driver/guest.go`, `pkg/daemon/init.go` | `pkg/driver/vm_drivers_test.go`, `pkg/daemon/daemon_extra_test.go` | ⚠️ not yet run against a real Multipass install |
 | F-08 | Hybrid auto-routing of jobs to VMs by label, job or workflow name, or workflow `services:`/`container:` (`AUTO_ROUTE_VM`, `VM_TRIGGER_LABELS`) | R, W | `pkg/scheduling/scheduling.go`, `pkg/daemon/workflow_services.go`, `pkg/inspector/matcher.go`, `pkg/driver/router.go` | `pkg/scheduling/scheduling_test.go`, `pkg/daemon/workflow_services_test.go`, `pkg/driver/router_test.go` | ✅ |
 | F-09 | Golden VM base images, cloned per job (`build-vm-base`) | R, W | `pkg/builder/builder.go`, `pkg/builder/lifecycle.go`, `cmd/runzero/build_vm.go` | `pkg/builder/builder_test.go`, `pkg/builder/lifecycle_test.go` | ✅ |
 | F-10 | Runner image builds from the dashboard, including rebuild of a missing image | W | `pkg/builder/manager.go`, `pkg/builder/rebuild.go`, `pkg/api/handlers_images.go` | `pkg/builder/manager_test.go`, `pkg/builder/rebuild_test.go`, `pkg/api/handlers_images_test.go` | ✅ |
@@ -54,11 +54,6 @@ Claimed in: **R** = `README.md`, **W** = website (`website/src`), **E** = `E2E_T
 
 ### Advertised but not implemented
 
-- **U-01 WSL2 and Multipass backends** (F-06, F-07). `RUNNER_BACKEND` accepts
-  `wsl2`, `wsl`, `windows`, `multipass` and `canonical-multipass`
-  (`pkg/config/validation.go`), but the Go engine has no driver for them:
-  `pkg/daemon/init.go` only builds Docker and OrbStack drivers, so these values
-  silently fall back to the router's default.
 - **U-05 Mutation testing** (F-31). The website claims 100% mutation testing;
   `MUTATION_TESTING.md` describes `make check` and `make e2e` only, and no
   mutation tool runs.
@@ -80,4 +75,4 @@ The README configuration table lists every setting (enforced by
 `MIN_RUNNERS`, `ORG`, `POLL_INTERVAL`, `REPO`, `REPOS`, `REPO_PRIORITY`,
 `RUNNER_BUSY_TIMEOUT_SECONDS` and `VM_TRIGGER_LABELS` (**U-10**).
 
-_Resolved: U-06 `RATE_LIMIT_REFRESH_INTERVAL` and U-07 `RUNNER_BUSY_TIMEOUT_SECONDS` are applied; U-09 label-based sizing is wired into spawning (F-12); U-03 the `MIN_RUNNERS` standby pool is implemented (F-18); U-04 polling is paced by the API quota (F-19); U-02 jobs orphaned on zombie runners are cancelled (F-17); U-08 `pkg/parity` runs as `runzero parity` against the real scheduling code (F-32)._
+_Resolved: U-06 `RATE_LIMIT_REFRESH_INTERVAL` and U-07 `RUNNER_BUSY_TIMEOUT_SECONDS` are applied; U-09 label-based sizing is wired into spawning (F-12); U-03 the `MIN_RUNNERS` standby pool is implemented (F-18); U-04 polling is paced by the API quota (F-19); U-02 jobs orphaned on zombie runners are cancelled (F-17); U-08 `pkg/parity` runs as `runzero parity` against the real scheduling code (F-32); U-01 WSL2 and Multipass drivers exist (F-06, F-07)._

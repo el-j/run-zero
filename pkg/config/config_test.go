@@ -139,3 +139,22 @@ func TestChoice_EmptyWhitespace(t *testing.T) {
 		t.Fatalf("expected docker for valid choice, got %v, %v", cfg4.RunnerBackend, err)
 	}
 }
+
+func TestLoadConfig_VMSettings(t *testing.T) {
+	cfg, err := LoadConfig(MapEnv{
+		"VM_BACKEND": "multipass", "MULTIPASS_IMAGE": " 22.04 ", "WSL_DISTRO_BASE": "Debian",
+		"WSL_BASE_TARBALL": `C:\base.tar`, "WSL_RUNNER_DIR": `D:\wsl`,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.VMBackend != "multipass" || cfg.MultipassImage != "22.04" || cfg.WSLDistroBase != "Debian" || cfg.WSLBaseTarball != `C:\base.tar` || cfg.WSLRunnerDir != `D:\wsl` {
+		t.Fatalf("unexpected VM settings: %+v", cfg)
+	}
+	if cfg, _ := LoadConfig(MapEnv{}); cfg.VMBackend != "auto" {
+		t.Fatalf("VM_BACKEND default: %q", cfg.VMBackend)
+	}
+	if _, err := LoadConfig(MapEnv{"VM_BACKEND": "hyperv"}); err == nil {
+		t.Fatal("invalid VM_BACKEND must be rejected")
+	}
+}

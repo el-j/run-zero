@@ -80,13 +80,18 @@ func (s *Server) handlePostDriverSpawn(w http.ResponseWriter, r *http.Request, d
 	}
 
 	spec := driver.RunnerSpec{
-		Name:    req.Name,
-		Repo:    req.Repo,
-		Arch:    req.Arch,
-		Backend: driverName,
-		Labels:  labels,
-		Token:   req.RunnerToken,
-		Env:     req.ExtraEnv,
+		Name:      req.Name,
+		Repo:      req.Repo,
+		Arch:      req.Arch,
+		Backend:   driverName,
+		Labels:    labels,
+		Token:     req.RunnerToken,
+		Env:       req.ExtraEnv,
+		CPUs:      req.CPUs,
+		MemoryMB:  req.MemoryMB,
+		Mounts:    req.Mounts,
+		Proxies:   req.Proxies,
+		ImageName: req.ImageName,
 	}
 
 	info, err := d.SpawnRunner(r.Context(), spec)

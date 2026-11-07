@@ -60,8 +60,14 @@ func (b *BridgeDriver) SpawnRunner(ctx context.Context, spec RunnerSpec) (*state
 		"runner_token": spec.Token,
 		"name":         spec.Name,
 		"extra_env":    spec.Env,
+		"cpus":         spec.CPUs,
+		"memory_mb":    spec.MemoryMB,
+		"mounts":       spec.Mounts,
+		"proxies":      spec.Proxies,
+		"image_name":   spec.ImageName,
 	}
-	// The payload holds only strings and a string map, so marshaling cannot fail.
+	// The payload holds only strings, numbers, booleans and string maps, so
+	// marshaling cannot fail.
 	body, _ := json.Marshal(payload)
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, url, bytes.NewReader(body))

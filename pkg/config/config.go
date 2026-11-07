@@ -16,6 +16,7 @@ func LoadConfig(env EnvLookup) (*Config, error) {
 		loadRunnerSettings,
 		loadIntervalSettings,
 		loadDashboardSettings,
+		loadVMSettings,
 	} {
 		if err := load(env, cfg); err != nil {
 			return nil, err
@@ -116,4 +117,16 @@ func loadProviderSettings(env EnvLookup, cfg *Config) {
 	cfg.GitLabGroup = lookupTrimmed(env, "GITLAB_GROUP")
 	cfg.GitLabProjects = lookupTrimmed(env, "GITLAB_PROJECTS")
 	cfg.ProvidersConfigFile = lookupTrimmed(env, "PROVIDERS_CONFIG")
+}
+
+func loadVMSettings(env EnvLookup, cfg *Config) error {
+	var err error
+	if cfg.VMBackend, err = parseChoice(env, "VM_BACKEND", "auto", validBackends); err != nil {
+		return err
+	}
+	cfg.MultipassImage = lookupTrimmed(env, "MULTIPASS_IMAGE")
+	cfg.WSLDistroBase = lookupTrimmed(env, "WSL_DISTRO_BASE")
+	cfg.WSLBaseTarball = lookupTrimmed(env, "WSL_BASE_TARBALL")
+	cfg.WSLRunnerDir = lookupTrimmed(env, "WSL_RUNNER_DIR")
+	return nil
 }

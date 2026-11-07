@@ -55,12 +55,16 @@ func runBridge(args []string, stdout, stderr io.Writer) int {
 	if err := store.Load(); err != nil {
 		_, _ = fmt.Fprintf(stderr, "[Bridge] could not load %s: %v\n", storePath, err)
 	}
-	orbDriver := driver.NewOrbStackDriver(nil, store, "")
-	dockerDriver := driver.NewDockerDriver(nil, store, "", "")
-
+	vm := bridgeVMSettings(dotEnv)
+	wslDir := vm.WSLRunnerDir
+	if wslDir == "" && storePath != "" {
+		wslDir = filepath.Join(filepath.Dir(storePath), "wsl")
+	}
 	drivers := map[string]driver.RunnerDriver{
-		"orbstack": orbDriver,
-		"docker":   dockerDriver,
+		"orbstack":  driver.NewOrbStackDriver(nil, store, ""),
+		"docker":    driver.NewDockerDriver(nil, store, "", ""),
+		"multipass": driver.NewMultipassDriver(nil, store, vm.MultipassImage),
+		"wsl2":      driver.NewWSLDriver(nil, store, vm.WSLDistroBase, vm.WSLBaseTarball, wslDir),
 	}
 
 	srv := bridge.NewServer(*port, *host, *token, Version, "", drivers)
@@ -73,4 +77,18 @@ func runBridge(args []string, stdout, stderr io.Writer) int {
 		return 1
 	}
 	return 0
+}
+
+// bridgeVMSettings reads the Multipass/WSL2 settings from the environment and
+// the .env file; invalid configuration falls back to the drivers' defaults.
+func bridgeVMSettings(dotEnv config.EnvLookup) *config.Config {
+	env := config.EnvLookup(config.OSEnv{})
+	if dotEnv != nil {
+		env = config.CompositeEnv{Primary: config.OSEnv{}, Secondary: dotEnv}
+	}
+	cfg, err := config.LoadConfig(env)
+	if err != nil {
+		return &config.Config{}
+	}
+	return cfg
 }

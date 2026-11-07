@@ -43,11 +43,7 @@ func NewDaemon(cfg *config.Config, version string, distDir, staticDir string) *D
 	st.SetRepoPriority(prio, paused)
 
 	poller := initPoller(cfg, pm, st)
-	stateDir := os.Getenv("RUNZERO_STATE_DIR")
-	if stateDir == "" {
-		stateDir = ".runzero-state"
-	}
-	instStore := driver.NewInstanceStore(filepath.Join(stateDir, "instances.json"))
+	instStore := driver.NewInstanceStore(filepath.Join(stateDir(), "instances.json"))
 	runnerDriver := initDriver(cfg, instStore)
 	ghClient := github.NewClient(cfg.AccessToken, "", nil)
 
@@ -112,6 +108,14 @@ func NewDaemon(cfg *config.Config, version string, distDir, staticDir string) *D
 		reaper:        reaperInst,
 		scaler:        scaler,
 	}
+}
+
+// stateDir is where the daemon keeps runner metadata (RUNZERO_STATE_DIR).
+func stateDir() string {
+	if dir := os.Getenv("RUNZERO_STATE_DIR"); dir != "" {
+		return dir
+	}
+	return ".runzero-state"
 }
 
 // Config returns the active daemon configuration.

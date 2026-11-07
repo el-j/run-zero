@@ -37,6 +37,11 @@ type SpawnRequest struct {
 	RunnerToken string            `json:"runner_token,omitempty"`
 	Name        string            `json:"name,omitempty"`
 	ExtraEnv    map[string]string `json:"extra_env,omitempty"`
+	CPUs        int               `json:"cpus,omitempty"`
+	MemoryMB    int               `json:"memory_mb,omitempty"`
+	Mounts      map[string]string `json:"mounts,omitempty"`
+	Proxies     bool              `json:"proxies,omitempty"`
+	ImageName   string            `json:"image_name,omitempty"`
 }
 
 // SpawnResponse returns the identifier of the spawned runner.

@@ -49,13 +49,12 @@ func isVMTriggerLabel(label string) bool {
 
 // SelectDriver chooses the appropriate driver for a given runner spec.
 func (r *Router) SelectDriver(spec RunnerSpec) RunnerDriver {
-	reqBackend := strings.ToLower(strings.TrimSpace(spec.Backend))
-	if reqBackend == "orbstack" || reqBackend == "vm" {
+	switch BackendKind(spec.Backend) {
+	case KindOrbStack, KindWSL2, KindMultipass, "vm":
 		if r.vmDriver != nil {
 			return r.vmDriver
 		}
-	}
-	if reqBackend == "docker" || reqBackend == "container" {
+	case KindDocker:
 		if r.dockerDriver != nil {
 			return r.dockerDriver
 		}
@@ -69,7 +68,7 @@ func (r *Router) SelectDriver(spec RunnerSpec) RunnerDriver {
 		}
 	}
 
-	if (r.defaultMode == "orbstack" || r.defaultMode == "vm") && r.vmDriver != nil {
+	if IsVMBackend(r.defaultMode) && r.vmDriver != nil {
 		return r.vmDriver
 	}
 

@@ -35,4 +35,11 @@ type Config struct {
 	GitLabGroup                   string
 	GitLabProjects                string
 	ProvidersConfigFile           string
+	// VMBackend is the VM engine for VM-routed jobs: auto (OrbStack, or the
+	// engine RUNNER_BACKEND names), orbstack, wsl2 or multipass.
+	VMBackend      string
+	MultipassImage string
+	WSLDistroBase  string
+	WSLBaseTarball string
+	WSLRunnerDir   string
 }
