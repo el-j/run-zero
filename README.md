@@ -445,8 +445,8 @@ The Makefile is split per sub-package under [`mk/`](mk/) (`go`, `spec`, `web`, `
 | `REPO_PRIORITY` | Comma-separated repos to serve first, in order | *None* |
 | `VM_TRIGGER_LABELS` | Job labels that route a job to a VM runner when `AUTO_ROUTE_VM` is on | `vm,browser,e2e,lighthouse,systemd,gui,unconfined,postgres,mysql,redis,db,database,integration,service,services,dind,chrome,orbstack,wsl,multipass` |
 | `NATIVE_ARCH_OVERRIDE` | On an ARM64 host, run AMD64 jobs as native ARM64 instead of emulating them (jobs with an emulation label still emulate): `off`, `all`, or comma-separated repos | `off` |
-| `RUNNER_CPUS` | CPUs per runner (`0` = default of 3); job labels such as `4cpu-8gb`, `small`, `medium`, `large`, `xlarge` override it | `0` |
-| `RUNNER_MEMORY` | Memory per runner, e.g. `8g` or `4096m` (empty = 4096 MiB); job labels such as `4cpu-8gb` or `highmem` override it | *None* |
+| `RUNNER_CPUS` | CPUs per runner; `0` = an equal share of the host's CPUs (minus 1 reserved) per `MAX_RUNNERS`. Job labels such as `4cpu-8gb`, `small`, `medium`, `large`, `xlarge` override it | `0` |
+| `RUNNER_MEMORY` | Memory per runner, e.g. `8g` or `4096m`; empty = an equal share of host memory (minus 2 GiB reserved) per `MAX_RUNNERS`, or 4096 MiB when host memory is unknown (non-Linux). Job labels such as `4cpu-8gb` or `highmem` override it | *None* |
 | `HOST_CACHE_DIR` | Host directory for persistent per-runner package caches (caching is off when empty) | *None* |
 | `CLEANUP_RUNNERS_ON_SHUTDOWN` | Stop and remove all runners when the daemon exits | `false` |
 | `RUNNER_BUSY_TIMEOUT_SECONDS` | Reap a runner GitHub has reported busy for longer than this (stuck job) | `7200` |

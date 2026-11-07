@@ -280,6 +280,7 @@ func (s *Scaler) policy() scheduling.Policy {
 		RunnerCPUs:      s.cfg.RunnerCPUs,
 		RunnerMemory:    s.cfg.RunnerMemory,
 		MaxRunners:      s.cfg.MaxRunners,
+		Host:            s.host,
 	}
 }
 

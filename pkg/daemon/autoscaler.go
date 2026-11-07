@@ -18,6 +18,7 @@ import (
 	"github.com/el-j/run-zero/pkg/inspector"
 	"github.com/el-j/run-zero/pkg/provider"
 	"github.com/el-j/run-zero/pkg/reaper"
+	"github.com/el-j/run-zero/pkg/sizing"
 	"github.com/el-j/run-zero/pkg/state"
 )
 
@@ -51,6 +52,7 @@ type Scaler struct {
 	standbyCursor      int
 	pacing             bool // polling is currently slowed by a low API quota
 	workflows          *inspector.WorkflowCache
+	host               sizing.HostCapacity
 	cachedWorkflows    int
 	lastHistoryRefresh time.Time
 	historyRunning     atomic.Bool
@@ -153,6 +155,7 @@ func NewScaler(
 		reaper:         rp,
 		archOverride:   override,
 		historyFetcher: github.NewHistoryFetcher(gh),
+		host:           sizing.DetectHostCapacity(),
 		firstSeen:      make(map[string]time.Time),
 	}
 }

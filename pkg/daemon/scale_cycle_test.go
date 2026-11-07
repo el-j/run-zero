@@ -18,6 +18,7 @@ import (
 	"github.com/el-j/run-zero/pkg/github"
 	"github.com/el-j/run-zero/pkg/provider"
 	"github.com/el-j/run-zero/pkg/reaper"
+	"github.com/el-j/run-zero/pkg/sizing"
 	"github.com/el-j/run-zero/pkg/state"
 )
 
@@ -103,7 +104,9 @@ func newTestScaler(t *testing.T, cfg *config.Config, gh *github.Client, drv driv
 	pm, _ := github.NewPriorityManager("", repos, paused)
 	rec := github.NewReconciler(pm)
 	poller := github.NewPoller(gh, rec, st, repos, 10*time.Second)
-	return NewScaler(cfg, st, drv, gh, pm, rec, poller, nil), st
+	s := NewScaler(cfg, st, drv, gh, pm, rec, poller, nil)
+	s.host = sizing.HostCapacity{} // keep sizing independent of the test machine
+	return s, st
 }
 
 func hasLog(st *state.State, sub string) bool {
@@ -1043,6 +1046,16 @@ func TestResolveSizing_LabelsOverrideConfig(t *testing.T) {
 		if cpus, mem := s.resolveSizing(c.labels); cpus != c.cpus || mem != c.memMB {
 			t.Errorf("resolveSizing(%v) = %d CPU / %d MiB, want %d / %d", c.labels, cpus, mem, c.cpus, c.memMB)
 		}
+	}
+}
+
+func TestResolveSizing_DerivesFromHostWhenUnconfigured(t *testing.T) {
+	s := &Scaler{cfg: &config.Config{MaxRunners: 4}, host: sizing.HostCapacity{CPUs: 9, MemoryMiB: 18432}}
+	if cpus, mem := s.resolveSizing(nil); cpus != 2 || mem != 4096 {
+		t.Fatalf("got %d CPU / %d MiB, want 2 / 4096 (host share per runner)", cpus, mem)
+	}
+	if NewScaler(&config.Config{}, state.NewState(1, "t", nil), nil, nil, nil, nil, nil, nil).host.CPUs < 1 {
+		t.Fatal("NewScaler must detect the host's CPUs")
 	}
 }
 
