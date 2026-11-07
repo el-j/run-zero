@@ -155,6 +155,9 @@ func terminalCommand(backend, name string) string {
 	return fmt.Sprintf("docker exec -it %s bash", name)
 }
 
+// bridgeTerminalTimeout bounds the open-terminal request to the host VM bridge.
+var bridgeTerminalTimeout = 5 * time.Second
+
 // launchBridgeTerminal asks the host VM bridge to open a terminal; false when unavailable or failed.
 func launchBridgeTerminal(r *http.Request, payload RunnerActionPayload, name, backend string) bool {
 	bridgeURL := os.Getenv("HOST_VM_BRIDGE_URL")
@@ -174,7 +177,7 @@ func launchBridgeTerminal(r *http.Request, payload RunnerActionPayload, name, ba
 	if token := os.Getenv("RUNZERO_BRIDGE_TOKEN"); token != "" {
 		httpReq.Header.Set("Authorization", "Bearer "+token)
 	}
-	client := &http.Client{Timeout: 5 * time.Second}
+	client := &http.Client{Timeout: bridgeTerminalTimeout}
 	resp, err := client.Do(httpReq)
 	if err != nil {
 		return false
@@ -299,13 +302,11 @@ func handlePrune(st *state.State, runnerDriver ...driver.RunnerDriver) http.Hand
 				return
 			}
 			pruned = len(removed)
-			if pruned > 0 {
-				ids := make([]string, 0, len(removed)*2)
-				for _, rem := range removed {
-					ids = append(ids, rem.ID, rem.Name)
-				}
-				st.RemoveRunners(ids)
+			var ids []string
+			for _, rem := range removed {
+				ids = append(ids, rem.ID, rem.Name)
 			}
+			st.RemoveRunners(ids)
 		}
 
 		st.AppendLog(fmt.Sprintf("[Go Engine] ✂️ Triggered fleet runner prune. Removed %d finished runner(s).", pruned))
