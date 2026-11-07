@@ -121,3 +121,34 @@ func TestClient_GetWorkflowRunAndJob(t *testing.T) {
 		t.Errorf("unexpected workflow job: %+v", job)
 	}
 }
+
+func TestGetWorkflowFile(t *testing.T) {
+	body, code := `{"encoding":"base64","content":"am9iczoK\nICB0OiB7fQo="}`, http.StatusOK
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/repos/o/r/contents/.github/workflows/ci.yml" || r.URL.Query().Get("ref") != "abc" {
+			t.Errorf("unexpected request %s", r.URL)
+		}
+		w.WriteHeader(code)
+		_, _ = w.Write([]byte(body))
+	}))
+	defer ts.Close()
+	c := NewClient("t", ts.URL, ts.Client())
+
+	text, err := c.GetWorkflowFile(context.Background(), "o/r", ".github/workflows/ci.yml", "abc")
+	if err != nil || text != "jobs:\n  t: {}\n" {
+		t.Fatalf("got %q, %v", text, err)
+	}
+	for name, tc := range map[string]struct {
+		body string
+		code int
+	}{
+		"http error":     {`{}`, http.StatusNotFound},
+		"wrong encoding": {`{"encoding":"none","content":"x"}`, http.StatusOK},
+		"bad base64":     {`{"encoding":"base64","content":"%%%"}`, http.StatusOK},
+	} {
+		body, code = tc.body, tc.code
+		if _, err := c.GetWorkflowFile(context.Background(), "o/r", ".github/workflows/ci.yml", "abc"); err == nil {
+			t.Errorf("%s: expected error", name)
+		}
+	}
+}

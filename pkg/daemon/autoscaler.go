@@ -15,6 +15,7 @@ import (
 	"github.com/el-j/run-zero/pkg/config"
 	"github.com/el-j/run-zero/pkg/driver"
 	"github.com/el-j/run-zero/pkg/github"
+	"github.com/el-j/run-zero/pkg/inspector"
 	"github.com/el-j/run-zero/pkg/provider"
 	"github.com/el-j/run-zero/pkg/reaper"
 	"github.com/el-j/run-zero/pkg/state"
@@ -49,6 +50,8 @@ type Scaler struct {
 	lastRateLimit      time.Time
 	standbyCursor      int
 	pacing             bool // polling is currently slowed by a low API quota
+	workflows          *inspector.WorkflowCache
+	cachedWorkflows    int
 	lastHistoryRefresh time.Time
 	historyRunning     atomic.Bool
 	// runnersFinished is set when a runner's job ended, so the finished job

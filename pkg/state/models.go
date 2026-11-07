@@ -147,6 +147,11 @@ type QueuedJob struct {
 	WaitingReason *string `json:"waiting_reason,omitempty"`
 	// RunURL Browser URL for the workflow run.
 	RunURL *string `json:"run_url,omitempty"`
+	// WorkflowPath Repository path of the run's workflow file (internal; used
+	// to detect services/container jobs for VM routing).
+	WorkflowPath string `json:"-"`
+	// HeadSHA Commit the run executes (internal).
+	HeadSHA string `json:"-"`
 	// RunnerName Name of the runner that handled the job.
 	RunnerName *string `json:"runner_name,omitempty"`
 	// StagesDone Number of completed workflow stages.

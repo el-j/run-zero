@@ -297,12 +297,6 @@ func (s *Scaler) resolveJobArch(job state.QueuedJob, repo string) string {
 	return scheduling.Arch(s.policy(), schedJob(job, repo))
 }
 
-// resolveJobBackend picks docker or orbstack from config and VM triggers.
-func (s *Scaler) resolveJobBackend(job state.QueuedJob) string {
-	backend, _ := scheduling.Backend(s.policy(), schedJob(job, ""))
-	return backend
-}
-
 // resolveSizing returns the CPU and memory (MiB) for a new runner.
 func (s *Scaler) resolveSizing(labels []string) (cpus, memMB int) {
 	return scheduling.Size(s.policy(), labels)
@@ -329,7 +323,7 @@ func (s *Scaler) spawnRunner(ctx context.Context, repo string, job *state.Queued
 		forJob = *job
 	}
 	targetArch := s.resolveJobArch(forJob, repo)
-	backend := s.resolveJobBackend(forJob)
+	backend := s.resolveJobBackend(ctx, repo, forJob)
 	spawnKey := backend + "/" + targetArch
 	if s.spawnBlocked(spawnKey) {
 		return nil

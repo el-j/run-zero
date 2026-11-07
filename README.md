@@ -91,7 +91,20 @@ jobs:
     runs-on: [ self-hosted, local, browser ]  # or 'vm', 'e2e', 'lighthouse', 'systemd'
     steps:
       - run: npx lhci autorun
+
+# 3. Job with service containers (or a job container) -> routed to a VM too,
+#    detected from the workflow file at the run's commit
+jobs:
+  integration:
+    runs-on: [ self-hosted, local ]
+    services:
+      postgres:
+        image: postgres:16
 ```
+
+A job goes to a VM when a `VM_TRIGGER_LABELS` word appears in its labels, job name or workflow
+name, or when its workflow gives it `services:` or a `container:`. Each workflow file is fetched once
+per commit and cached.
 
 ---
 

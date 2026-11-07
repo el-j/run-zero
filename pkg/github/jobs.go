@@ -2,7 +2,10 @@ package github
 
 import (
 	"context"
+	"encoding/base64"
 	"fmt"
+	"net/url"
+	"strings"
 
 	"github.com/el-j/run-zero/pkg/state"
 )
@@ -34,6 +37,10 @@ type WorkflowRun struct {
 	UpdatedAt string `json:"updated_at"`
 	// WorkflowName Display name of the workflow.
 	WorkflowName *string `json:"workflow_name,omitempty"`
+	// Path Repository path of the workflow file, e.g. .github/workflows/ci.yml.
+	Path string `json:"path"`
+	// HeadSHA Commit the run executes.
+	HeadSHA string `json:"head_sha"`
 }
 
 type workflowRun = WorkflowRun
@@ -191,6 +198,8 @@ func activeJob(repo string, run workflowRun, j workflowJob, stagesDone, stagesTo
 	}
 
 	return state.QueuedJob{
+		WorkflowPath:   run.Path,
+		HeadSHA:        run.HeadSHA,
 		Steps:          steps,
 		ID:             j.ID,
 		RunID:          run.ID,
@@ -253,4 +262,25 @@ func (c *Client) ListQueuedJobs(ctx context.Context, repo string) ([]state.Queue
 		}
 	}
 	return queued, nil
+}
+
+// GetWorkflowFile returns the text of the workflow file at path in repo, as of
+// commit ref.
+func (c *Client) GetWorkflowFile(ctx context.Context, repo, path, ref string) (string, error) {
+	endpoint := fmt.Sprintf("/repos/%s/contents/%s?ref=%s", repo, path, url.QueryEscape(ref))
+	var body struct {
+		Content  string `json:"content"`
+		Encoding string `json:"encoding"`
+	}
+	if _, err := c.DoRequest(ctx, "GET", endpoint, nil, &body); err != nil {
+		return "", err
+	}
+	if body.Encoding != "base64" {
+		return "", fmt.Errorf("unexpected workflow file encoding %q", body.Encoding)
+	}
+	data, err := base64.StdEncoding.DecodeString(strings.ReplaceAll(body.Content, "\n", ""))
+	if err != nil {
+		return "", fmt.Errorf("failed decoding workflow file: %w", err)
+	}
+	return string(data), nil
 }
