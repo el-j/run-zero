@@ -27,30 +27,10 @@ type RunnerSizing struct {
 
 // DeriveSizing computes equal share of host resources per runner after safety reserves.
 func DeriveSizing(host HostCapacity, maxRunners int) (int, int) {
-	runners := maxRunners
-	if runners < 1 {
-		runners = 1
-	}
-
-	availCPUs := host.CPUs - ReserveCPUs
-	if availCPUs < 1 {
-		availCPUs = 1
-	}
-	cpus := availCPUs / runners
-	if cpus < 1 {
-		cpus = 1
-	}
-
-	availMem := host.MemoryMiB - ReserveMemoryMiB
-	if availMem < MinMemoryMiB {
-		availMem = MinMemoryMiB
-	}
-	mem := availMem / runners
-	if mem < MinMemoryMiB {
-		mem = MinMemoryMiB
-	}
-
-	return cpus, mem
+	runners := max(maxRunners, 1)
+	availCPUs := max(host.CPUs-ReserveCPUs, 1)
+	availMem := max(host.MemoryMiB-ReserveMemoryMiB, MinMemoryMiB)
+	return max(availCPUs/runners, 1), max(availMem/runners, MinMemoryMiB)
 }
 
 // ResolveSizing resolves effective sizing from configuration and host metrics.

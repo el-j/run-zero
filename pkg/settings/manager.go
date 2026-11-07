@@ -110,9 +110,8 @@ func (m *Manager) Apply(update SettingsUpdate) (*config.Config, error) {
 		dotEnvUpdates["CACHE_ENABLED"] = strconv.FormatBool(*update.CacheEnabled)
 	}
 
-	if m.envPath != "" && len(dotEnvUpdates) > 0 {
-		_ = UpdateDotEnv(m.envPath, dotEnvUpdates)
-	}
+	// UpdateDotEnv does nothing without a path or updates.
+	_ = UpdateDotEnv(m.envPath, dotEnvUpdates)
 
 	for _, sub := range m.subscribers {
 		sub(cfg)

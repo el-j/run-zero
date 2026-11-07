@@ -46,13 +46,14 @@ func UpdateDotEnv(filePath string, keyValues map[string]string) error {
 		}
 	}
 
+	// At least one key is written, so the content is never empty.
 	outContent := strings.Join(existingLines, "\n")
-	if len(existingLines) > 0 && !strings.HasSuffix(outContent, "\n") {
+	if !strings.HasSuffix(outContent, "\n") {
 		outContent += "\n"
 	}
 
 	tmpFile := filePath + ".tmp"
-	if err := os.MkdirAll(filepath.Dir(filePath), 0755); err != nil && filepath.Dir(filePath) != "." {
+	if err := os.MkdirAll(filepath.Dir(filePath), 0755); err != nil {
 		return err
 	}
 	if err := os.WriteFile(tmpFile, []byte(outContent), 0644); err != nil {
