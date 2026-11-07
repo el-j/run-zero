@@ -59,7 +59,7 @@ func (pm *PriorityManager) SortRepos(repos []string) []string {
 	result := make([]string, len(repos))
 	copy(result, repos)
 
-	for i := 0; i < len(result)-1; i++ {
+	for i := range result {
 		for j := i + 1; j < len(result); j++ {
 			p1, ok1 := prioMap[result[i]]
 			p2, ok2 := prioMap[result[j]]

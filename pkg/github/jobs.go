@@ -192,7 +192,8 @@ func activeJob(repo string, run workflowRun, j workflowJob, stagesDone, stagesTo
 	if stepsTotal > 0 {
 		pct := (stepsCompleted * 100) / stepsTotal
 		progressPct = &pct
-	} else if stagesTotal > 0 {
+	} else {
+		// j belongs to its run, so stagesTotal is at least 1.
 		pct := (stagesDone * 100) / stagesTotal
 		progressPct = &pct
 	}

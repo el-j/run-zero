@@ -183,10 +183,7 @@ func (h *HistoryFetcher) annotationMessages(ctx context.Context, repo string, jo
 		}
 	}
 	msgs := append(failures, others...)
-	if len(msgs) > maxAnnotationMsgs {
-		msgs = msgs[:maxAnnotationMsgs]
-	}
-	return msgs
+	return msgs[:min(len(msgs), maxAnnotationMsgs)]
 }
 
 // Diagnose turns a finished job's conclusion and step results into a short,

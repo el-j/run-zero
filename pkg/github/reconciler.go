@@ -2,6 +2,7 @@ package github
 
 import (
 	"fmt"
+	"slices"
 	"sort"
 	"strings"
 
@@ -20,10 +21,7 @@ func NewReconciler(pm *PriorityManager) *Reconciler {
 
 // Reconcile calculates queue order and waiting reasons for all queued jobs based on priority and slot capacity.
 func (r *Reconciler) Reconcile(jobs []state.QueuedJob, busyRunners, maxRunners int) []state.QueuedJob {
-	freeSlots := maxRunners - busyRunners
-	if freeSlots < 0 {
-		freeSlots = 0
-	}
+	freeSlots := max(maxRunners-busyRunners, 0)
 
 	prioList, pausedList := r.pm.GetState()
 	prioMap := make(map[string]int)
@@ -90,8 +88,5 @@ func (r *Reconciler) Reconcile(jobs []state.QueuedJob, busyRunners, maxRunners i
 		}
 	}
 
-	result := make([]state.QueuedJob, 0, len(active)+len(paused))
-	result = append(result, active...)
-	result = append(result, paused...)
-	return result
+	return slices.Concat(active, paused)
 }
