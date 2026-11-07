@@ -68,6 +68,17 @@ func NewServer(port int, host, token, version, gitSHA string, drivers map[string
 	}
 }
 
+// stopGoldenTemplates stops golden base VM templates left running (e.g. by an
+// interrupted build) and logs which ones it stopped.
+func (s *Server) stopGoldenTemplates(ctx context.Context) {
+	if s.gb == nil {
+		return
+	}
+	if stopped, err := s.gb.EnsureBaseImagesStopped(ctx); err == nil && len(stopped) > 0 {
+		log.Printf("[bridge] Stopped running golden base VM templates on startup: %v", stopped)
+	}
+}
+
 func (s *Server) resolveDriver(name string) driver.RunnerDriver {
 	key := strings.ToLower(strings.TrimSpace(name))
 	if d, ok := s.driverMap[key]; ok {
@@ -201,13 +212,7 @@ func (s *Server) Run(ctx context.Context) error {
 	}
 
 	// Ensure no golden base VM templates are left running on startup
-	go func() {
-		if s.gb != nil {
-			if stopped, err := s.gb.EnsureBaseImagesStopped(context.Background()); err == nil && len(stopped) > 0 {
-				log.Printf("[bridge] Stopped running golden base VM templates on startup: %v", stopped)
-			}
-		}
-	}()
+	go s.stopGoldenTemplates(context.Background())
 	errCh := make(chan error, 1)
 	go func() {
 		if err := s.httpSrv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
