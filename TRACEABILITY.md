@@ -6,7 +6,7 @@ tests that verify it, and where it is documented. Gaps are listed under
 
 `test/traceability` keeps this file honest: it fails when a path cited here no
 longer exists, or when a setting the daemon reads is missing from the
-README's configuration table.
+README's configuration table or the website's environment reference.
 
 **Status:** ✅ implemented, tested and documented · ⚠️ partly (see notes) ·
 ❌ advertised but not implemented.
@@ -65,14 +65,4 @@ Claimed in: **R** = `README.md`, **W** = website (`website/src`), **E** = `E2E_T
   (`chrome`, `orbstack`, `wsl`, `multipass`) were added to the default
   `VM_TRIGGER_LABELS`.
 
-### Settings missing from the website's environment reference
-
-The README configuration table lists every setting (enforced by
-`test/traceability`). The website page
-`website/src/components/docs/DocsEnvReference.astro` does not yet cover
-`AUTO_DISCOVER_REPOS`, `CACHE_ENABLED`, `DASHBOARD_ENABLED`, `DASHBOARD_HOST`,
-`DASHBOARD_PORT`, `DISCOVERY_INTERVAL`, `GITHUB_TOKEN`, `HOST_CACHE_DIR`,
-`MIN_RUNNERS`, `ORG`, `POLL_INTERVAL`, `REPO`, `REPOS`, `REPO_PRIORITY`,
-`RUNNER_BUSY_TIMEOUT_SECONDS` and `VM_TRIGGER_LABELS` (**U-10**).
-
-_Resolved: U-06 `RATE_LIMIT_REFRESH_INTERVAL` and U-07 `RUNNER_BUSY_TIMEOUT_SECONDS` are applied; U-09 label-based sizing is wired into spawning (F-12); U-03 the `MIN_RUNNERS` standby pool is implemented (F-18); U-04 polling is paced by the API quota (F-19); U-02 jobs orphaned on zombie runners are cancelled (F-17); U-08 `pkg/parity` runs as `runzero parity` against the real scheduling code (F-32); U-01 WSL2 and Multipass drivers exist (F-06, F-07)._
+_Resolved: U-06 `RATE_LIMIT_REFRESH_INTERVAL` and U-07 `RUNNER_BUSY_TIMEOUT_SECONDS` are applied; U-09 label-based sizing is wired into spawning (F-12); U-03 the `MIN_RUNNERS` standby pool is implemented (F-18); U-04 polling is paced by the API quota (F-19); U-02 jobs orphaned on zombie runners are cancelled (F-17); U-08 `pkg/parity` runs as `runzero parity` against the real scheduling code (F-32); U-01 WSL2 and Multipass drivers exist (F-06, F-07); U-10 the website's environment reference lists every setting._

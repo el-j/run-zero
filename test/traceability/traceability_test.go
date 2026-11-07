@@ -88,3 +88,14 @@ func TestConfigVarsDocumented(t *testing.T) {
 		}
 	}
 }
+
+// TestConfigVarsOnWebsite fails when the daemon reads a setting the website's
+// environment reference does not mention.
+func TestConfigVarsOnWebsite(t *testing.T) {
+	page := read(t, "website/src/components/docs/DocsEnvReference.astro")
+	for _, v := range configVars(t) {
+		if !regexp.MustCompile(`\b` + v + `\b`).MatchString(page) {
+			t.Errorf("pkg/config reads %s, but the website's environment reference does not mention it", v)
+		}
+	}
+}

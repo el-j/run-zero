@@ -33,9 +33,12 @@
           <code>OWNER</code>
         </td>
         <td>
-          <em>Required</em>
+          <em>Optional</em>
         </td>
-        <td>GitHub username to monitor for auto-discovery.</td>
+        <td>
+          GitHub username to monitor for auto-discovery. Set one of{" "}
+          <code>OWNER</code>, <code>ORG</code> or <code>REPOS</code>.
+        </td>
       </tr>
       <tr>
         <td>
@@ -57,8 +60,9 @@
           <code>true</code>
         </td>
         <td>
-          Automatically route jobs with <code>browser</code>/<code>e2e</code>/
-          <code>systemd</code> labels to VMs.
+          Route jobs to a VM when a <code>VM_TRIGGER_LABELS</code> word appears
+          in their labels, job name or workflow name, or when their workflow
+          gives them <code>services:</code> or a <code>container:</code>.
         </td>
       </tr>
       <tr>
@@ -241,6 +245,241 @@
         <td>
           Path to a multi-instance providers YAML configuration file for
           enterprise setups.
+        </td>
+      </tr>
+      <tr>
+        <td>
+          <code>AUTO_DISCOVER_REPOS</code>
+        </td>
+        <td>
+          <code>true</code>
+        </td>
+        <td>
+          Discover and monitor every recently active repository of{" "}
+          <code>OWNER</code> or <code>ORG</code>.
+        </td>
+      </tr>
+      <tr>
+        <td>
+          <code>CACHE_ENABLED</code>
+        </td>
+        <td>
+          <code>true</code>
+        </td>
+        <td>
+          Mount persistent package and tool caches from{" "}
+          <code>HOST_CACHE_DIR</code> into runners.
+        </td>
+      </tr>
+      <tr>
+        <td>
+          <code>DASHBOARD_ENABLED</code>
+        </td>
+        <td>
+          <code>true</code>
+        </td>
+        <td>Serve the dashboard and control-plane API.</td>
+      </tr>
+      <tr>
+        <td>
+          <code>DASHBOARD_HOST</code>
+        </td>
+        <td>
+          <code>127.0.0.1</code>
+        </td>
+        <td>Dashboard listen address.</td>
+      </tr>
+      <tr>
+        <td>
+          <code>DASHBOARD_PORT</code>
+        </td>
+        <td>
+          <code>49505</code>
+        </td>
+        <td>Dashboard listen port.</td>
+      </tr>
+      <tr>
+        <td>
+          <code>DISCOVERY_INTERVAL</code>
+        </td>
+        <td>
+          <code>900</code>
+        </td>
+        <td>How often (seconds) repository auto-discovery runs.</td>
+      </tr>
+      <tr>
+        <td>
+          <code>GITHUB_TOKEN</code>
+        </td>
+        <td>
+          <em>Optional</em>
+        </td>
+        <td>
+          Fallback for <code>ACCESS_TOKEN</code> when that is unset.
+        </td>
+      </tr>
+      <tr>
+        <td>
+          <code>HOST_CACHE_DIR</code>
+        </td>
+        <td>
+          <em>Optional</em>
+        </td>
+        <td>
+          Host directory holding the persistent per-runner caches; caching is
+          off when empty.
+        </td>
+      </tr>
+      <tr>
+        <td>
+          <code>MIN_RUNNERS</code>
+        </td>
+        <td>
+          <code>0</code>
+        </td>
+        <td>
+          Warm standby pool: idle runners kept ready after queued jobs are
+          served (org scope in <code>ORG</code> mode, else round-robin across
+          repos by priority; capped by <code>MAX_RUNNERS</code>; exempt from
+          idle reaping).
+        </td>
+      </tr>
+      <tr>
+        <td>
+          <code>MULTIPASS_IMAGE</code>
+        </td>
+        <td>
+          <code>24.04</code>
+        </td>
+        <td>Ubuntu image Multipass launches per job.</td>
+      </tr>
+      <tr>
+        <td>
+          <code>ORG</code>
+        </td>
+        <td>
+          <em>Optional</em>
+        </td>
+        <td>
+          Organization mode: runners register at org scope and serve the org's
+          active repositories.
+        </td>
+      </tr>
+      <tr>
+        <td>
+          <code>POLL_INTERVAL</code>
+        </td>
+        <td>
+          <code>10</code>
+        </td>
+        <td>
+          Queue check interval in seconds; stretched automatically as the GitHub
+          API quota runs low.
+        </td>
+      </tr>
+      <tr>
+        <td>
+          <code>REPO</code>
+        </td>
+        <td>
+          <em>Optional</em>
+        </td>
+        <td>
+          Fallback for <code>REPOS</code> when that is unset.
+        </td>
+      </tr>
+      <tr>
+        <td>
+          <code>REPOS</code>
+        </td>
+        <td>
+          <em>Optional</em>
+        </td>
+        <td>
+          Comma-separated <code>owner/repo</code> list to monitor instead of
+          auto-discovery.
+        </td>
+      </tr>
+      <tr>
+        <td>
+          <code>REPO_PRIORITY</code>
+        </td>
+        <td>
+          <em>Optional</em>
+        </td>
+        <td>Comma-separated repositories to serve first, in order.</td>
+      </tr>
+      <tr>
+        <td>
+          <code>RUNNER_BUSY_TIMEOUT_SECONDS</code>
+        </td>
+        <td>
+          <code>7200</code>
+        </td>
+        <td>
+          Reap a runner GitHub has reported busy for longer than this (stuck
+          job).
+        </td>
+      </tr>
+      <tr>
+        <td>
+          <code>VM_BACKEND</code>
+        </td>
+        <td>
+          <code>auto</code>
+        </td>
+        <td>
+          VM engine for VM-routed jobs: <code>auto</code> (OrbStack, or the
+          engine <code>RUNNER_BACKEND</code> names), <code>orbstack</code>,{" "}
+          <code>wsl2</code> or <code>multipass</code>.
+        </td>
+      </tr>
+      <tr>
+        <td>
+          <code>VM_TRIGGER_LABELS</code>
+        </td>
+        <td>
+          <code>vm,browser,e2e,…</code>
+        </td>
+        <td>
+          Words that route a job to a VM when found in its labels, job name or
+          workflow name.
+        </td>
+      </tr>
+      <tr>
+        <td>
+          <code>WSL_BASE_TARBALL</code>
+        </td>
+        <td>
+          <em>Optional</em>
+        </td>
+        <td>
+          Root filesystem tarball imported as a fresh WSL2 distro per job,
+          unregistered after the job (recommended).
+        </td>
+      </tr>
+      <tr>
+        <td>
+          <code>WSL_DISTRO_BASE</code>
+        </td>
+        <td>
+          <code>Ubuntu-24.04</code>
+        </td>
+        <td>
+          WSL2 distro that runs jobs when no <code>WSL_BASE_TARBALL</code> is
+          set (needs a <code>runner</code> user with passwordless sudo).
+        </td>
+      </tr>
+      <tr>
+        <td>
+          <code>WSL_RUNNER_DIR</code>
+        </td>
+        <td>
+          <em>Optional</em>
+        </td>
+        <td>
+          Where per-job WSL2 distros are installed (default: the state
+          directory).
         </td>
       </tr>
     </tbody>
