@@ -141,8 +141,7 @@ func (d *DockerDriver) StopRunner(ctx context.Context, runnerID string) error {
 func extractRunIDToken(nameOrID string) string {
 	parts := strings.Split(nameOrID, "-")
 	for _, p := range parts {
-		if strings.HasPrefix(p, "r") && len(p) > 2 {
-			digits := p[1:]
+		if digits, ok := strings.CutPrefix(p, "r"); ok && digits != "" {
 			allDigits := true
 			for _, r := range digits {
 				if r < '0' || r > '9' {

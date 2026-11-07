@@ -130,7 +130,7 @@ func runnerLabelArgs(spec RunnerSpec, name string) []string {
 	if spec.WorkflowName != nil && *spec.WorkflowName != "" {
 		labels = append(labels, fmt.Sprintf("runzero.workflow=%s", *spec.WorkflowName))
 	}
-	args := make([]string, 0, 2*len(labels))
+	var args []string
 	for _, l := range labels {
 		args = append(args, "--label", l)
 	}
@@ -165,7 +165,7 @@ func (d *DockerDriver) resourceArgs(spec RunnerSpec) []string {
 // runnerEnv merges spec.Env with the defaults the runner entrypoint needs;
 // values already present in spec.Env win.
 func runnerEnv(spec RunnerSpec, name string) map[string]string {
-	env := make(map[string]string, len(spec.Env)+6)
+	env := map[string]string{}
 	for k, v := range spec.Env {
 		env[k] = v
 	}

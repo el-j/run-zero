@@ -81,48 +81,42 @@ func parseIDPtr(s string) *int64 {
 
 // JobScopedRunnerName builds a deterministic, job-correlated runner name.
 func JobScopedRunnerName(repo, arch string, runID, jobID int64, entropy string) string {
-	archToken := sanitizeNamePart(arch)
-	if archToken == "" || archToken == "unknown" {
-		archToken = "amd64"
-	}
-	repoPart := repoToken(repo)
-	entropyPart := sanitizeNamePart(entropy)
-	if entropyPart == "" || entropyPart == "unknown" {
-		entropyPart = "rand"
-	}
-	prefix := fmt.Sprintf("runzero-j%d-r%d-%s-", jobID, runID, archToken)
-	return prefix + fitRepoPart(repoPart, len(prefix)+1+len(entropyPart)) + "-" + entropyPart
+	return runnerName(fmt.Sprintf("runzero-j%d-r%d-%s-", jobID, runID, nameArch(arch)), repo, entropy)
 }
 
 // ManualRunnerName builds a clear manually-started runner name.
 func ManualRunnerName(repo, arch, entropy string) string {
-	archToken := sanitizeNamePart(arch)
-	if archToken == "" || archToken == "unknown" {
-		archToken = "amd64"
-	}
-	repoPart := repoToken(repo)
+	return runnerName(fmt.Sprintf("runzero-manual-%s-", nameArch(arch)), repo, entropy)
+}
+
+// runnerName joins prefix, the repo token (shortened to fit) and the entropy
+// suffix ("rand" when entropy is empty or unusable).
+func runnerName(prefix, repo, entropy string) string {
 	entropyPart := sanitizeNamePart(entropy)
 	if entropyPart == "" || entropyPart == "unknown" {
 		entropyPart = "rand"
 	}
-	prefix := fmt.Sprintf("runzero-manual-%s-", archToken)
-	return prefix + fitRepoPart(repoPart, len(prefix)+1+len(entropyPart)) + "-" + entropyPart
+	return prefix + fitRepoPart(repoToken(repo), len(prefix)+1+len(entropyPart)) + "-" + entropyPart
+}
+
+// nameArch is the arch token for a runner name, amd64 when arch is unusable.
+func nameArch(arch string) string {
+	token := sanitizeNamePart(arch)
+	if token == "" || token == "unknown" {
+		return "amd64"
+	}
+	return token
 }
 
 // maxRunnerNameLen is GitHub's limit for a self-hosted runner name.
 const maxRunnerNameLen = 64
 
 // fitRepoPart trims the owner/repo token so the whole runner name stays within
-// maxRunnerNameLen, given the length of everything else in the name.
+// maxRunnerNameLen, given the length of everything else in the name (keeping
+// at least 8 characters of it), without leading or trailing separators.
 func fitRepoPart(repoPart string, otherLen int) string {
-	allowed := maxRunnerNameLen - otherLen
-	if allowed < 8 {
-		allowed = 8
-	}
-	if len(repoPart) <= allowed {
-		return repoPart
-	}
-	return strings.Trim(repoPart[:allowed], "-_.")
+	allowed := max(maxRunnerNameLen-otherLen, 8)
+	return strings.Trim(repoPart[:min(len(repoPart), allowed)], "-_.")
 }
 
 // ResolveRepoFromMachineName maps a runner name whose repo token is lossy (OrbStack

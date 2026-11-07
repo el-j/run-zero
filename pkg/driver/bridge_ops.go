@@ -1,7 +1,6 @@
 package driver
 
 import (
-	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -13,12 +12,9 @@ import (
 // ListRunners queries GET /api/drivers/{backend}/runners on the bridge.
 func (b *BridgeDriver) ListRunners(ctx context.Context) ([]state.RunnerInfo, error) {
 	url := fmt.Sprintf("%s/api/drivers/%s/runners", b.baseURL, b.backend)
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+	req, err := b.newRequest(ctx, http.MethodGet, url, nil)
 	if err != nil {
 		return nil, err
-	}
-	if b.token != "" {
-		req.Header.Set("Authorization", "Bearer "+b.token)
 	}
 
 	resp, err := b.client.Do(req)
@@ -41,13 +37,9 @@ func (b *BridgeDriver) ListRunners(ctx context.Context) ([]state.RunnerInfo, err
 func (b *BridgeDriver) StopRunner(ctx context.Context, runnerID string) error {
 	url := fmt.Sprintf("%s/api/drivers/%s/stop", b.baseURL, b.backend)
 	body, _ := json.Marshal(map[string]string{"runner_id": runnerID})
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, url, bytes.NewReader(body))
+	req, err := b.newRequest(ctx, http.MethodPost, url, body)
 	if err != nil {
 		return err
-	}
-	req.Header.Set("Content-Type", "application/json")
-	if b.token != "" {
-		req.Header.Set("Authorization", "Bearer "+b.token)
 	}
 
 	resp, err := b.client.Do(req)
@@ -76,12 +68,9 @@ func (b *BridgeDriver) StopRunner(ctx context.Context, runnerID string) error {
 // CleanupAll calls POST /api/drivers/{backend}/cleanup on the bridge.
 func (b *BridgeDriver) CleanupAll(ctx context.Context) error {
 	url := fmt.Sprintf("%s/api/drivers/%s/cleanup", b.baseURL, b.backend)
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, url, nil)
+	req, err := b.newRequest(ctx, http.MethodPost, url, nil)
 	if err != nil {
 		return err
-	}
-	if b.token != "" {
-		req.Header.Set("Authorization", "Bearer "+b.token)
 	}
 	resp, err := b.client.Do(req)
 	if err != nil {

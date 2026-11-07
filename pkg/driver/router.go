@@ -149,7 +149,7 @@ func (r *Router) StopRunner(ctx context.Context, runnerID string) error {
 func (r *Router) RunnerLogs(ctx context.Context, runnerID string, tail int) (string, error) {
 	var ordered []RunnerDriver
 	if r.store != nil {
-		if info, ok := r.store.Get(runnerID); ok && info.Backend == "orbstack" {
+		if info, ok := r.store.Get(runnerID); ok && IsVMBackend(info.Backend) {
 			ordered = append(ordered, r.vmDriver, r.dockerDriver)
 		}
 	}
@@ -188,16 +188,11 @@ func (r *Router) CleanupAll(ctx context.Context) error {
 	return firstErr
 }
 
-// ownerFromStore returns the driver recorded for runnerID (matched by store key,
-// then by name or ID), or nil when the store does not know it.
+// ownerFromStore returns the driver recorded for runnerID (matched by ID or
+// name), or nil when the store does not know it.
 func (r *Router) ownerFromStore(runnerID string) RunnerDriver {
 	if r.store == nil {
 		return nil
-	}
-	if info, ok := r.store.Get(runnerID); ok {
-		if d := r.driverFor(info.Backend); d != nil {
-			return d
-		}
 	}
 	for _, info := range r.store.List() {
 		if info.Name != runnerID && info.ID != runnerID {

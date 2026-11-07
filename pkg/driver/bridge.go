@@ -30,7 +30,7 @@ func NewBridgeDriver(baseURL, backend, token string, client *http.Client, store 
 		backend = "orbstack"
 	}
 	if client == nil {
-		client = &http.Client{Timeout: 60 * time.Second}
+		client = &http.Client{Timeout: bridgeRequestTimeout}
 	}
 	var instStore *InstanceStore
 	if len(store) > 0 {
@@ -48,6 +48,26 @@ func NewBridgeDriver(baseURL, backend, token string, client *http.Client, store 
 // Backend returns the target backend name.
 func (b *BridgeDriver) Backend() string {
 	return b.backend
+}
+
+// bridgeRequestTimeout bounds requests to the host bridge (a spawn waits for the
+// VM to boot).
+var bridgeRequestTimeout = 60 * time.Second
+
+// newRequest builds a bridge request with the bearer token (when set) and, for
+// a body, a JSON content type.
+func (b *BridgeDriver) newRequest(ctx context.Context, method, url string, body []byte) (*http.Request, error) {
+	req, err := http.NewRequestWithContext(ctx, method, url, bytes.NewReader(body))
+	if err != nil {
+		return nil, err
+	}
+	if body != nil {
+		req.Header.Set("Content-Type", "application/json")
+	}
+	if b.token != "" {
+		req.Header.Set("Authorization", "Bearer "+b.token)
+	}
+	return req, nil
 }
 
 // SpawnRunner invokes POST /api/drivers/{backend}/spawn on the bridge.
@@ -70,13 +90,9 @@ func (b *BridgeDriver) SpawnRunner(ctx context.Context, spec RunnerSpec) (*state
 	// marshaling cannot fail.
 	body, _ := json.Marshal(payload)
 
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, url, bytes.NewReader(body))
+	req, err := b.newRequest(ctx, http.MethodPost, url, body)
 	if err != nil {
 		return nil, err
-	}
-	req.Header.Set("Content-Type", "application/json")
-	if b.token != "" {
-		req.Header.Set("Authorization", "Bearer "+b.token)
 	}
 
 	resp, err := b.client.Do(req)
