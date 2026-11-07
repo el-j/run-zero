@@ -23,6 +23,8 @@ func run(args []string, stdout, stderr io.Writer) int {
 			return runBridge(args[1:], stdout, stderr)
 		case "build-vm-base", "-build-vm-base", "--build-vm-base":
 			return runBuildVMBase(args[1:], stdout, stderr)
+		case "parity", "-parity", "--parity":
+			return runParity(stdout)
 		}
 	}
 

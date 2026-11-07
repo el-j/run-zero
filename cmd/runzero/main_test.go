@@ -6,6 +6,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/el-j/run-zero/pkg/parity"
 )
 
 func TestCLI_Version(t *testing.T) {
@@ -108,5 +110,23 @@ func TestCLI_BuildVMBase(t *testing.T) {
 	code = run([]string{"build-vm-base", "-arch", "invalid_arch"}, &stdout, &stderr)
 	if code != 1 {
 		t.Fatalf("expected 1 for invalid arch, got %d", code)
+	}
+}
+
+func TestCLI_Parity(t *testing.T) {
+	var stdout, stderr bytes.Buffer
+	if code := run([]string{"parity"}, &stdout, &stderr); code != 0 {
+		t.Fatalf("parity failed (%d): %s", code, stdout.String())
+	}
+	if !strings.Contains(stdout.String(), "scheduling scenarios match") {
+		t.Fatalf("unexpected output: %s", stdout.String())
+	}
+}
+
+func TestReportParity_FailureExitsOne(t *testing.T) {
+	var out bytes.Buffer
+	code := reportParity(&out, []parity.Result{{Name: "ok", Passed: true}, {Name: "bad", DiffMsg: "arch mismatch"}})
+	if code != 1 || !strings.Contains(out.String(), "FAIL  bad: arch mismatch") || !strings.Contains(out.String(), "1/2") {
+		t.Fatalf("code %d, output %s", code, out.String())
 	}
 }

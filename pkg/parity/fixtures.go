@@ -20,9 +20,11 @@ jobs:
 			CapacityCPUs:     10,
 			CapacityMemoryMB: 16384,
 			MaxRunners:       2,
+			// A job without an arch label runs on amd64 (RUNNER_ARCH=both), even
+			// on an arm64 host, unless NATIVE_ARCH_OVERRIDE says otherwise.
 			Expected: Decision{
 				Backend:      "docker",
-				Arch:         "arm64",
+				Arch:         "amd64",
 				RequiresVM:   false,
 				TriggerMatch: "",
 				CPUs:         "4",
@@ -43,16 +45,16 @@ jobs:
       - run: make integration`,
 			JobName:          "integration",
 			JobLabels:        []string{"self-hosted"},
-			HostArch:         "arm64",
+			HostArch:         "amd64",
 			ArchOverride:     "off",
 			CapacityCPUs:     8,
 			CapacityMemoryMB: 8192,
 			MaxRunners:       2,
 			Expected: Decision{
-				Backend:      "orbstack-vm",
-				Arch:         "arm64",
+				Backend:      "orbstack",
+				Arch:         "amd64",
 				RequiresVM:   true,
-				TriggerMatch: "services:",
+				TriggerMatch: "services",
 				CPUs:         "3",
 				MemoryMB:     3072,
 			},

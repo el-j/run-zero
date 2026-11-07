@@ -5,78 +5,62 @@ import (
 	"strings"
 
 	"github.com/el-j/run-zero/pkg/arch"
+	"github.com/el-j/run-zero/pkg/config"
 	"github.com/el-j/run-zero/pkg/inspector"
+	"github.com/el-j/run-zero/pkg/scheduling"
 	"github.com/el-j/run-zero/pkg/sizing"
 )
 
-// EvaluateTestCase evaluates a single parity test scenario against Go engine packages.
+// EvaluateTestCase plans a scenario's job with the autoscaler's own decision
+// logic (pkg/scheduling, default configuration) and compares the result with
+// the scenario's expected decision.
 func EvaluateTestCase(tc TestCase) (Decision, Result) {
-	declaresServices := inspector.JobUsesServicesOrContainer(tc.WorkflowYAML, tc.JobName)
-	reqVM, trigger := inspector.JobNeedsVM(tc.JobLabels, tc.JobName, declaresServices)
-
-	backend := "docker"
-	if reqVM {
-		backend = "orbstack-vm"
-	}
-
-	initialArch := "arm64"
-	for _, l := range tc.JobLabels {
-		if strings.EqualFold(l, "amd64") || strings.EqualFold(l, "x64") || strings.EqualFold(l, "x86_64") {
-			initialArch = "amd64"
-			break
-		}
-	}
-
+	cfg, _ := config.LoadConfig(config.MapEnv{})
 	override, _ := arch.NewNativeArchOverride(tc.ArchOverride, tc.HostArch)
-	effectiveArch := override.ArchFor(initialArch, tc.JobLabels, tc.Repo)
-
-	sizingRes := sizing.ResolveSizing("", "", tc.MaxRunners, sizing.HostCapacity{
-		CPUs:      tc.CapacityCPUs,
-		MemoryMiB: tc.CapacityMemoryMB,
+	policy := scheduling.Policy{
+		Backend:         cfg.RunnerBackend,
+		AutoRouteVM:     cfg.AutoRouteVM,
+		VMTriggerLabels: cfg.VMTriggerLabels,
+		RunnerArch:      cfg.RunnerArch,
+		ArchOverride:    override,
+		MaxRunners:      tc.MaxRunners,
+		Host:            sizing.HostCapacity{CPUs: tc.CapacityCPUs, MemoryMiB: tc.CapacityMemoryMB},
+	}
+	declares := inspector.JobUsesServicesOrContainer(tc.WorkflowYAML, tc.JobName)
+	d := scheduling.Plan(policy, scheduling.Job{
+		Repo:             tc.Repo,
+		Name:             tc.JobName,
+		Labels:           tc.JobLabels,
+		DeclaresServices: declares != nil && *declares,
 	})
 
-	cpus := ""
-	if sizingRes.CPUs != nil {
-		cpus = fmt.Sprintf("%d", *sizingRes.CPUs)
-	}
-	mem := 0
-	if sizingRes.MemoryMiB != nil {
-		mem = *sizingRes.MemoryMiB
-	}
-
 	actual := Decision{
-		Backend:      backend,
-		Arch:         effectiveArch,
-		RequiresVM:   reqVM,
-		TriggerMatch: trigger,
-		CPUs:         cpus,
-		MemoryMB:     mem,
+		Backend:      d.Backend,
+		Arch:         d.Arch,
+		RequiresVM:   d.RequiresVM(),
+		TriggerMatch: d.Trigger,
+		CPUs:         fmt.Sprintf("%d", d.CPUs),
+		MemoryMB:     d.MemoryMiB,
 	}
 
 	res := Result{Name: tc.Name, Passed: true}
 	var diffs []string
-
-	if actual.Backend != tc.Expected.Backend {
-		diffs = append(diffs, fmt.Sprintf("backend mismatch: got %s, want %s", actual.Backend, tc.Expected.Backend))
+	check := func(field string, got, want any) {
+		if got != want {
+			diffs = append(diffs, fmt.Sprintf("%s mismatch: got %v, want %v", field, got, want))
+		}
 	}
-	if actual.Arch != tc.Expected.Arch {
-		diffs = append(diffs, fmt.Sprintf("arch mismatch: got %s, want %s", actual.Arch, tc.Expected.Arch))
-	}
-	if actual.RequiresVM != tc.Expected.RequiresVM {
-		diffs = append(diffs, fmt.Sprintf("requiresVM mismatch: got %v, want %v", actual.RequiresVM, tc.Expected.RequiresVM))
-	}
-	if actual.CPUs != tc.Expected.CPUs {
-		diffs = append(diffs, fmt.Sprintf("cpus mismatch: got %s, want %s", actual.CPUs, tc.Expected.CPUs))
-	}
-	if actual.MemoryMB != tc.Expected.MemoryMB {
-		diffs = append(diffs, fmt.Sprintf("memory mismatch: got %d, want %d", actual.MemoryMB, tc.Expected.MemoryMB))
-	}
+	check("backend", actual.Backend, tc.Expected.Backend)
+	check("arch", actual.Arch, tc.Expected.Arch)
+	check("requiresVM", actual.RequiresVM, tc.Expected.RequiresVM)
+	check("trigger", actual.TriggerMatch, tc.Expected.TriggerMatch)
+	check("cpus", actual.CPUs, tc.Expected.CPUs)
+	check("memory", actual.MemoryMB, tc.Expected.MemoryMB)
 
 	if len(diffs) > 0 {
 		res.Passed = false
 		res.DiffMsg = strings.Join(diffs, "; ")
 	}
-
 	return actual, res
 }
 

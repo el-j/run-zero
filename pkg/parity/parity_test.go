@@ -29,11 +29,11 @@ func TestEvaluateTestCase_MismatchReporting(t *testing.T) {
 		CapacityMemoryMB: 4096,
 		MaxRunners:       1,
 		Expected: Decision{
-			Backend:    "orbstack-vm", // actual will be docker
-			Arch:       "amd64",       // actual will be arm64
-			RequiresVM: true,          // actual will be false
-			CPUs:       "99",          // actual will be 3
-			MemoryMB:   9999,          // actual will be 3276
+			Backend:    "orbstack", // actual will be docker
+			Arch:       "arm64",    // actual will be amd64
+			RequiresVM: true,       // actual will be false
+			CPUs:       "99",       // actual will be 3
+			MemoryMB:   9999,       // actual will be 2048
 		},
 	}
 

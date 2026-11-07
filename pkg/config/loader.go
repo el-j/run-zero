@@ -91,7 +91,7 @@ func loadRunnerOptions(env EnvLookup) (*runnerOptions, error) {
 
 // defaultVMTriggerLabels are the job labels that route a job to a VM runner when
 // VM_TRIGGER_LABELS is unset.
-const defaultVMTriggerLabels = "vm,browser,e2e,lighthouse,systemd,gui,unconfined,postgres,mysql,redis,db,database,integration,service,services,dind"
+const defaultVMTriggerLabels = "vm,browser,e2e,lighthouse,systemd,gui,unconfined,postgres,mysql,redis,db,database,integration,service,services,dind,chrome,orbstack,wsl,multipass"
 
 // parseVMTriggerLabels returns VM_TRIGGER_LABELS (or the defaults) lower-cased
 // and de-duplicated, in order.

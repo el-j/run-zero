@@ -62,7 +62,7 @@ services:
       - PROXIES_ENABLED=${PROXIES_ENABLED:-true}
       - RUNNER_BACKEND=${RUNNER_BACKEND:-auto}
       - AUTO_ROUTE_VM=${AUTO_ROUTE_VM:-true}
-      - VM_TRIGGER_LABELS=${VM_TRIGGER_LABELS:-vm,browser,e2e,lighthouse,systemd,gui,unconfined,postgres,mysql,redis,db,database,integration,service,services,dind}
+      - VM_TRIGGER_LABELS=${VM_TRIGGER_LABELS:-vm,browser,e2e,lighthouse,systemd,gui,unconfined,postgres,mysql,redis,db,database,integration,service,services,dind,chrome,orbstack,wsl,multipass}
       - DOCKER_NETWORK=${DOCKER_NETWORK:-host}
       - HOST_CACHE_DIR=${HOST_CACHE_DIR:-}
       - RUNNER_LABELS=${RUNNER_LABELS:-}

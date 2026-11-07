@@ -259,7 +259,7 @@ support endpoints.
 
 ```text
 .
-├── cmd/runzero/                           # ⚙️ CLI entrypoints (daemon, bridge, doctor, VM base build)
+├── cmd/runzero/                           # ⚙️ CLI entrypoints (daemon, bridge, doctor, parity, VM base build)
 ├── pkg/                                   # 🧠 Go engine modules (api, daemon, driver, github, state, reaper, ...)
 ├── web/                                   # 🖥️ TypeScript/Vite dashboard (live fleet UI + API client)
 │   ├── src/                               #    Dashboard TS, styles, generated OpenAPI types
@@ -368,6 +368,8 @@ build, and `bash -n` + shellcheck on every maintained shell script.
 | `make lint` | `go vet`, website Oxlint and shellcheck |
 | `make fmt` / `make fmt-check` | Format / verify formatting (Go + website) |
 | `make e2e` | Playwright end-to-end tests for website + dashboard lifecycle/retry/cleanup flows |
+| `runzero doctor` | Check the host: Docker, OrbStack, GitHub token, cache directory and proxies |
+| `runzero parity` | Check the autoscaler's scheduling decisions (backend, arch, sizing) against baseline scenarios |
 
 See [`E2E_TESTING.md`](E2E_TESTING.md) for what is automated in CI versus what requires a human
 running a manual runbook locally (OrbStack VM, WSL2, Multipass).
@@ -428,7 +430,7 @@ The Makefile is split per sub-package under [`mk/`](mk/) (`go`, `spec`, `web`, `
 | `GITHUB_TOKEN` | Fallback for `ACCESS_TOKEN` when that is unset | *None* |
 | `REPO` | Fallback for `REPOS` when that is unset | *None* |
 | `REPO_PRIORITY` | Comma-separated repos to serve first, in order | *None* |
-| `VM_TRIGGER_LABELS` | Job labels that route a job to a VM runner when `AUTO_ROUTE_VM` is on | `vm,browser,e2e,lighthouse,systemd,gui,unconfined,postgres,mysql,redis,db,database,integration,service,services,dind` |
+| `VM_TRIGGER_LABELS` | Job labels that route a job to a VM runner when `AUTO_ROUTE_VM` is on | `vm,browser,e2e,lighthouse,systemd,gui,unconfined,postgres,mysql,redis,db,database,integration,service,services,dind,chrome,orbstack,wsl,multipass` |
 | `NATIVE_ARCH_OVERRIDE` | On an ARM64 host, run AMD64 jobs as native ARM64 instead of emulating them (jobs with an emulation label still emulate): `off`, `all`, or comma-separated repos | `off` |
 | `RUNNER_CPUS` | CPUs per runner (`0` = default of 3); job labels such as `4cpu-8gb`, `small`, `medium`, `large`, `xlarge` override it | `0` |
 | `RUNNER_MEMORY` | Memory per runner, e.g. `8g` or `4096m` (empty = 4096 MiB); job labels such as `4cpu-8gb` or `highmem` override it | *None* |

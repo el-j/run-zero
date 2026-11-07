@@ -24,7 +24,7 @@ Claimed in: **R** = `README.md`, **W** = website (`website/src`), **E** = `E2E_T
 | F-05 | OrbStack VM backend, direct or through the host VM bridge | R, W | `pkg/driver/orbstack.go`, `pkg/driver/orbstack_ops.go`, `pkg/driver/bridge.go`, `pkg/bridge/server.go`, `cmd/runzero/bridge.go` | `pkg/driver/orbstack_test.go`, `pkg/driver/bridge_test.go`, `pkg/bridge/server_test.go` | ✅ |
 | F-06 | WSL2 backend | R | — | — | ❌ see U-01 |
 | F-07 | Canonical Multipass backend | R | — | — | ❌ see U-01 |
-| F-08 | Hybrid auto-routing of jobs to VMs by label (`AUTO_ROUTE_VM`, `VM_TRIGGER_LABELS`) | R, W | `pkg/driver/router.go`, `pkg/daemon/scale_cycle.go` | `pkg/driver/router_test.go`, `pkg/daemon/scale_cycle_test.go` | ✅ |
+| F-08 | Hybrid auto-routing of jobs to VMs by label, job or workflow name (`AUTO_ROUTE_VM`, `VM_TRIGGER_LABELS`) | R, W | `pkg/scheduling/scheduling.go`, `pkg/driver/router.go` | `pkg/scheduling/scheduling_test.go`, `pkg/driver/router_test.go` | ✅ |
 | F-09 | Golden VM base images, cloned per job (`build-vm-base`) | R, W | `pkg/builder/builder.go`, `pkg/builder/lifecycle.go`, `cmd/runzero/build_vm.go` | `pkg/builder/builder_test.go`, `pkg/builder/lifecycle_test.go` | ✅ |
 | F-10 | Runner image builds from the dashboard, including rebuild of a missing image | W | `pkg/builder/manager.go`, `pkg/builder/rebuild.go`, `pkg/api/handlers_images.go` | `pkg/builder/manager_test.go`, `pkg/builder/rebuild_test.go`, `pkg/api/handlers_images_test.go` | ✅ |
 | F-11 | Native ARM64 with AMD64 emulation; per-repo native-arch override (`NATIVE_ARCH_OVERRIDE`) | R, W | `pkg/arch/override.go`, `pkg/daemon/scale_cycle.go` | `pkg/arch/override_test.go` | ✅ |
@@ -48,6 +48,7 @@ Claimed in: **R** = `README.md`, **W** = website (`website/src`), **E** = `E2E_T
 | F-29 | `runzero doctor` host diagnostics | R | `pkg/doctor/checks.go`, `cmd/runzero/doctor_cmd.go` | `pkg/doctor/checks_test.go` | ✅ |
 | F-30 | Control-plane API matches the TypeSpec contract | R | `spec/main.tsp`, `pkg/api/server.go` | `pkg/api/spec_drift_test.go` | ✅ |
 | F-31 | "100% mutation tested" | W | — | — | ❌ see U-05 |
+| F-32 | `runzero parity`: self-check of scheduling decisions against baseline scenarios | R | `pkg/parity/runner.go`, `pkg/parity/fixtures.go`, `cmd/runzero/parity_cmd.go` | `pkg/parity/parity_test.go`, `cmd/runzero/main_test.go` | ✅ |
 
 ## Unlinked
 
@@ -64,8 +65,10 @@ Claimed in: **R** = `README.md`, **W** = website (`website/src`), **E** = `E2E_T
 
 ### Code that no feature reaches
 
-- **U-08 `pkg/parity`** (VM vs container toolchain parity) is imported by no
-  binary; `pkg/inspector` is imported only by `pkg/parity`.
+- **U-11 `inspector.JobNeedsVM`** (`pkg/inspector/heuristics.go`) is superseded
+  by `scheduling.Backend` and called by nothing; its extra trigger words
+  (`chrome`, `orbstack`, `wsl`, `multipass`) were added to the default
+  `VM_TRIGGER_LABELS`.
 
 ### Settings missing from the website's environment reference
 
@@ -77,4 +80,4 @@ The README configuration table lists every setting (enforced by
 `MIN_RUNNERS`, `ORG`, `POLL_INTERVAL`, `REPO`, `REPOS`, `REPO_PRIORITY`,
 `RUNNER_BUSY_TIMEOUT_SECONDS` and `VM_TRIGGER_LABELS` (**U-10**).
 
-_Resolved: U-06 `RATE_LIMIT_REFRESH_INTERVAL` and U-07 `RUNNER_BUSY_TIMEOUT_SECONDS` are applied; U-09 label-based sizing is wired into spawning (F-12); U-03 the `MIN_RUNNERS` standby pool is implemented (F-18); U-04 polling is paced by the API quota (F-19); U-02 jobs orphaned on zombie runners are cancelled (F-17)._
+_Resolved: U-06 `RATE_LIMIT_REFRESH_INTERVAL` and U-07 `RUNNER_BUSY_TIMEOUT_SECONDS` are applied; U-09 label-based sizing is wired into spawning (F-12); U-03 the `MIN_RUNNERS` standby pool is implemented (F-18); U-04 polling is paced by the API quota (F-19); U-02 jobs orphaned on zombie runners are cancelled (F-17); U-08 `pkg/parity` runs as `runzero parity` against the real scheduling code (F-32)._
