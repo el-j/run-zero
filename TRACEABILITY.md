@@ -47,16 +47,15 @@ Claimed in: **R** = `README.md`, **W** = website (`website/src`), **E** = `E2E_T
 | F-28 | GitLab runners and jobs, multi-instance providers (`PROVIDERS_CONFIG`) | R | `pkg/gitlab/runners.go`, `pkg/gitlab/jobs.go`, `pkg/provider/manager.go`, `pkg/provider/config.go` | `pkg/gitlab/runners_test.go`, `pkg/gitlab/jobs_test.go`, `pkg/provider/manager_test.go` | ✅ |
 | F-29 | `runzero doctor` host diagnostics | R | `pkg/doctor/checks.go`, `cmd/runzero/doctor_cmd.go` | `pkg/doctor/checks_test.go` | ✅ |
 | F-30 | Control-plane API matches the TypeSpec contract | R | `spec/main.tsp`, `pkg/api/server.go` | `pkg/api/spec_drift_test.go` | ✅ |
-| F-31 | "100% mutation tested" | W | — | — | ❌ see U-05 |
+| F-31 | Mutation tested: each Go package catches ≥ 97% of injected bugs (weekly CI) | W | `mk/go.mk`, `.github/workflows/mutation.yml` | `MUTATION_TESTING.md` | ✅ (dashboard: coverage-gated, no mutation testing yet) |
 | F-32 | `runzero parity`: self-check of scheduling decisions against baseline scenarios | R | `pkg/parity/runner.go`, `pkg/parity/fixtures.go`, `cmd/runzero/parity_cmd.go` | `pkg/parity/parity_test.go`, `cmd/runzero/main_test.go` | ✅ |
 
 ## Unlinked
 
 ### Advertised but not implemented
 
-- **U-05 Mutation testing** (F-31). The website claims 100% mutation testing;
-  `MUTATION_TESTING.md` describes `make check` and `make e2e` only, and no
-  mutation tool runs.
+_None._ WSL2 (F-06) and Multipass (F-07) are implemented but not yet run on
+real hardware.
 
 ### Code that no feature reaches
 
@@ -65,4 +64,4 @@ Claimed in: **R** = `README.md`, **W** = website (`website/src`), **E** = `E2E_T
   (`chrome`, `orbstack`, `wsl`, `multipass`) were added to the default
   `VM_TRIGGER_LABELS`.
 
-_Resolved: U-06 `RATE_LIMIT_REFRESH_INTERVAL` and U-07 `RUNNER_BUSY_TIMEOUT_SECONDS` are applied; U-09 label-based sizing is wired into spawning (F-12); U-03 the `MIN_RUNNERS` standby pool is implemented (F-18); U-04 polling is paced by the API quota (F-19); U-02 jobs orphaned on zombie runners are cancelled (F-17); U-08 `pkg/parity` runs as `runzero parity` against the real scheduling code (F-32); U-01 WSL2 and Multipass drivers exist (F-06, F-07); U-10 the website's environment reference lists every setting._
+_Resolved: U-06 `RATE_LIMIT_REFRESH_INTERVAL` and U-07 `RUNNER_BUSY_TIMEOUT_SECONDS` are applied; U-09 label-based sizing is wired into spawning (F-12); U-03 the `MIN_RUNNERS` standby pool is implemented (F-18); U-04 polling is paced by the API quota (F-19); U-02 jobs orphaned on zombie runners are cancelled (F-17); U-08 `pkg/parity` runs as `runzero parity` against the real scheduling code (F-32); U-01 WSL2 and Multipass drivers exist (F-06, F-07); U-10 the website's environment reference lists every setting; U-05 Go mutation testing runs and gates (F-31)._
