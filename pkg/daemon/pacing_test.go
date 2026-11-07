@@ -9,6 +9,7 @@ import (
 
 	"github.com/el-j/run-zero/pkg/config"
 	"github.com/el-j/run-zero/pkg/github"
+	"github.com/el-j/run-zero/pkg/sizing"
 	"github.com/el-j/run-zero/pkg/state"
 )
 
@@ -73,5 +74,14 @@ func TestNextCycleDelay_PacesAndLogsChanges(t *testing.T) {
 	s.cfg.PollInterval = 0
 	if d := s.nextCycleDelay(); d != 10*time.Second {
 		t.Fatalf("default interval: got %s", d)
+	}
+}
+
+func TestLogSizing_WarnsOnOversubscription(t *testing.T) {
+	st := state.NewState(1, "test", nil)
+	s := &Scaler{cfg: &config.Config{MaxRunners: 4, RunnerCPUs: 4}, state: st, host: sizing.HostCapacity{CPUs: 9, MemoryMiB: 18432}}
+	s.logSizing()
+	if !hasLog(st, "Runner sizing: 4 CPU") || !hasLog(st, "⚠️ Sizing: max_runners x cpus") {
+		t.Fatalf("expected sizing summary and warning, got %+v", st.GetLogs())
 	}
 }

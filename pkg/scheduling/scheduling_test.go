@@ -1,6 +1,7 @@
 package scheduling
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/el-j/run-zero/pkg/arch"
@@ -86,5 +87,34 @@ func TestPlan(t *testing.T) {
 	}
 	if (Decision{Backend: "docker"}).RequiresVM() {
 		t.Fatal("docker must not require a VM")
+	}
+}
+
+func TestSize_Unlimited(t *testing.T) {
+	p := Policy{Unlimited: true, RunnerCPUs: 4, RunnerMemory: "8g", Host: sizing.HostCapacity{CPUs: 9, MemoryMiB: 18432}, MaxRunners: 2}
+	if cpus, mem := Size(p, nil); cpus != 0 || mem != 0 {
+		t.Fatalf("unlimited must drop limits, got %d/%d", cpus, mem)
+	}
+	if cpus, mem := Size(p, []string{"large"}); cpus != 4 || mem != 8192 {
+		t.Fatalf("labels still size an unlimited fleet, got %d/%d", cpus, mem)
+	}
+}
+
+func TestSizingSummary(t *testing.T) {
+	host := sizing.HostCapacity{CPUs: 9, MemoryMiB: 18432}
+	summary, warnings := SizingSummary(Policy{Host: host, MaxRunners: 2})
+	if summary != "4 CPU / 8192 MiB per runner, up to 2 runners (host: 9 CPU / 18432 MiB)" || len(warnings) != 0 {
+		t.Fatalf("derived: %q %v", summary, warnings)
+	}
+	_, warnings = SizingSummary(Policy{Host: host, MaxRunners: 4, RunnerCPUs: 4})
+	if len(warnings) != 1 || !strings.Contains(warnings[0], "exceeds host's 9 CPUs") {
+		t.Fatalf("oversubscription: %v", warnings)
+	}
+	summary, warnings = SizingSummary(Policy{Unlimited: true, Host: host, MaxRunners: 2})
+	if !strings.HasPrefix(summary, "unlimited CPU / unlimited memory per runner") || len(warnings) != 1 {
+		t.Fatalf("unlimited: %q %v", summary, warnings)
+	}
+	if summary, warnings = SizingSummary(Policy{MaxRunners: 3}); summary != "3 CPU / 4096 MiB per runner, up to 3 runners" || warnings != nil {
+		t.Fatalf("unknown host: %q %v", summary, warnings)
 	}
 }

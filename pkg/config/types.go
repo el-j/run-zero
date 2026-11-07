@@ -35,6 +35,9 @@ type Config struct {
 	GitLabGroup                   string
 	GitLabProjects                string
 	ProvidersConfigFile           string
+	// RunnerSizing is "auto" (limit each runner's CPUs/memory) or "unlimited"
+	// (no limits; every runner may claim every host core).
+	RunnerSizing string
 	// VMBackend is the VM engine for VM-routed jobs: auto (OrbStack, or the
 	// engine RUNNER_BACKEND names), orbstack, wsl2 or multipass.
 	VMBackend      string

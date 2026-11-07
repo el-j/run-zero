@@ -448,6 +448,7 @@ The Makefile is split per sub-package under [`mk/`](mk/) (`go`, `spec`, `web`, `
 | `NATIVE_ARCH_OVERRIDE` | On an ARM64 host, run AMD64 jobs as native ARM64 instead of emulating them (jobs with an emulation label still emulate): `off`, `all`, or comma-separated repos | `off` |
 | `RUNNER_CPUS` | CPUs per runner; `0` = an equal share of the host's CPUs (minus 1 reserved) per `MAX_RUNNERS`. Job labels such as `4cpu-8gb`, `small`, `medium`, `large`, `xlarge` override it | `0` |
 | `RUNNER_MEMORY` | Memory per runner, e.g. `8g` or `4096m`; empty = an equal share of host memory (minus 2 GiB reserved) per `MAX_RUNNERS`, or 4096 MiB when host memory is unknown (non-Linux). Job labels such as `4cpu-8gb` or `highmem` override it | *None* |
+| `RUNNER_SIZING` | `auto` limits each runner as above; `unlimited` drops the limits so every runner may claim every host core (job-label sizes still apply; Multipass then uses 2 CPU / 2 GiB). The startup log shows the sizing and warns when `MAX_RUNNERS` runners oversubscribe the host | `auto` |
 | `HOST_CACHE_DIR` | Host directory for persistent per-runner package caches (caching is off when empty) | *None* |
 | `CLEANUP_RUNNERS_ON_SHUTDOWN` | Stop and remove all runners when the daemon exits | `false` |
 | `RUNNER_BUSY_TIMEOUT_SECONDS` | Reap a runner GitHub has reported busy for longer than this (stuck job) | `7200` |

@@ -18,6 +18,7 @@ import (
 	"github.com/el-j/run-zero/pkg/inspector"
 	"github.com/el-j/run-zero/pkg/provider"
 	"github.com/el-j/run-zero/pkg/reaper"
+	"github.com/el-j/run-zero/pkg/scheduling"
 	"github.com/el-j/run-zero/pkg/sizing"
 	"github.com/el-j/run-zero/pkg/state"
 )
@@ -157,6 +158,16 @@ func NewScaler(
 		historyFetcher: github.NewHistoryFetcher(gh),
 		host:           sizing.DetectHostCapacity(),
 		firstSeen:      make(map[string]time.Time),
+	}
+}
+
+// logSizing reports the per-runner size and any host oversubscription once at
+// startup, in the log the dashboard shows.
+func (s *Scaler) logSizing() {
+	summary, warnings := scheduling.SizingSummary(s.policy())
+	s.state.AppendLog("[Autoscaler] 📐 Runner sizing: " + summary)
+	for _, w := range warnings {
+		s.state.AppendLog("[Autoscaler] ⚠️ Sizing: " + w)
 	}
 }
 
@@ -322,6 +333,7 @@ func (s *Scaler) historyRefreshDue() bool {
 
 // Start begins periodic scaling loops until ctx is canceled.
 func (s *Scaler) Start(ctx context.Context) {
+	s.logSizing()
 	for {
 		s.ScaleCycle(ctx)
 		select {

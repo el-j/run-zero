@@ -51,13 +51,15 @@ func (m *MultipassDriver) SpawnRunner(ctx context.Context, spec RunnerSpec) (*st
 	}
 	name := orbstackMachineName(spec.Name)
 
-	args := []string{"launch", m.image, "--name", name}
-	if spec.CPUs > 0 {
-		args = append(args, "--cpus", fmt.Sprintf("%d", spec.CPUs))
+	// Multipass needs explicit sizes; unlimited sizing (0) gets 2 CPU / 2 GiB.
+	cpus, mem := spec.CPUs, spec.MemoryMB
+	if cpus <= 0 {
+		cpus = 2
 	}
-	if spec.MemoryMB > 0 {
-		args = append(args, "--memory", fmt.Sprintf("%dM", spec.MemoryMB))
+	if mem <= 0 {
+		mem = 2048
 	}
+	args := []string{"launch", m.image, "--name", name, "--cpus", fmt.Sprintf("%d", cpus), "--memory", fmt.Sprintf("%dM", mem)}
 	if out, err := m.executor.Run(ctx, "multipass", args...); err != nil {
 		return nil, fmt.Errorf("multipass launch failed (%w): %s", err, strings.TrimSpace(string(out)))
 	}

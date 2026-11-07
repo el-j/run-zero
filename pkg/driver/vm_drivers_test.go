@@ -165,8 +165,8 @@ func TestMultipass_SpawnRunnerFailures(t *testing.T) {
 	if _, err := newTestMultipass(exec).SpawnRunner(ctx, spec); err == nil {
 		t.Fatal("bootstrap failure must fail the spawn")
 	}
-	if !exec.called("multipass delete --purge") || exec.called("multipass launch 24.04 --name runzero-j1-r2-amd64-el-j-repo-x-abc123 --cpus") {
-		t.Errorf("expected cleanup and no sizing flags: %v", exec.calls)
+	if !exec.called("multipass delete --purge") || !exec.called("multipass launch 24.04 --name runzero-j1-r2-amd64-el-j-repo-x-abc123 --cpus 2 --memory 2048M") {
+		t.Errorf("expected cleanup and the 2 CPU / 2 GiB fallback for unlimited sizing: %v", exec.calls)
 	}
 }
 

@@ -5,6 +5,7 @@
 package scheduling
 
 import (
+	"fmt"
 	"strings"
 	"unicode"
 
@@ -30,7 +31,10 @@ type Policy struct {
 	ArchOverride *arch.NativeArchOverride
 	RunnerCPUs   int
 	RunnerMemory string
-	MaxRunners   int
+	// Unlimited (RUNNER_SIZING=unlimited) drops CPU/memory limits; sizes a
+	// job requests through its labels still apply.
+	Unlimited  bool
+	MaxRunners int
 	// Host is the machine's capacity; zero means unknown.
 	Host sizing.HostCapacity
 }
@@ -149,6 +153,9 @@ func Arch(p Policy, job Job) string {
 // a reserve) per MAX_RUNNERS, or DefaultCPUs/DefaultMemoryMiB when the host's
 // capacity is unknown.
 func Size(p Policy, labels []string) (cpus, memMiB int) {
+	if p.Unlimited {
+		return labelSize(0, 0, labels)
+	}
 	cpus, memMiB = DefaultCPUs, DefaultMemoryMiB
 	if p.Host.CPUs > 0 {
 		cpus, _ = sizing.DeriveSizing(p.Host, p.MaxRunners)
@@ -164,6 +171,11 @@ func Size(p Policy, labels []string) (cpus, memMiB int) {
 			memMiB = *m
 		}
 	}
+	return labelSize(cpus, memMiB, labels)
+}
+
+// labelSize applies the sizes requested through job labels over cpus/memMiB.
+func labelSize(cpus, memMiB int, labels []string) (int, int) {
 	labelCPUs, labelMem := sizing.ParseLabelSizing(labels)
 	if labelCPUs != nil {
 		cpus = *labelCPUs
@@ -172,4 +184,24 @@ func Size(p Policy, labels []string) (cpus, memMiB int) {
 		memMiB = *labelMem
 	}
 	return cpus, memMiB
+}
+
+// SizingSummary describes the per-runner size for a job without sizing labels,
+// with warnings when MAX_RUNNERS such runners oversubscribe the host.
+func SizingSummary(p Policy) (summary string, warnings []string) {
+	cpus, mem := Size(p, nil)
+	var cpusPtr, memPtr *int
+	cpuText, memText := "unlimited CPU", "unlimited memory"
+	if cpus > 0 {
+		cpusPtr, cpuText = &cpus, fmt.Sprintf("%d CPU", cpus)
+	}
+	if mem > 0 {
+		memPtr, memText = &mem, fmt.Sprintf("%d MiB", mem)
+	}
+	summary = fmt.Sprintf("%s / %s per runner, up to %d runners", cpuText, memText, p.MaxRunners)
+	if p.Host.CPUs > 0 {
+		summary += fmt.Sprintf(" (host: %d CPU / %d MiB)", p.Host.CPUs, p.Host.MemoryMiB)
+		warnings = sizing.OversubscriptionWarnings(cpusPtr, memPtr, p.Host, p.MaxRunners)
+	}
+	return summary, warnings
 }

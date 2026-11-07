@@ -79,7 +79,8 @@ func loadRunnerSettings(env EnvLookup, cfg *Config) error {
 	cfg.NativeArchOverride = opts.nativeArchOverride
 	cfg.RunnerCPUs = opts.runnerCPUs
 	cfg.RunnerMemory = opts.runnerMemory
-	return nil
+	cfg.RunnerSizing, err = parseChoice(env, "RUNNER_SIZING", "auto", map[string]bool{"auto": true, "unlimited": true})
+	return err
 }
 
 func loadIntervalSettings(env EnvLookup, cfg *Config) error {

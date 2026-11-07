@@ -279,6 +279,7 @@ func (s *Scaler) policy() scheduling.Policy {
 		ArchOverride:    s.archOverride,
 		RunnerCPUs:      s.cfg.RunnerCPUs,
 		RunnerMemory:    s.cfg.RunnerMemory,
+		Unlimited:       s.cfg.RunnerSizing == "unlimited",
 		MaxRunners:      s.cfg.MaxRunners,
 		Host:            s.host,
 	}
