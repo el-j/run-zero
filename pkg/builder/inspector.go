@@ -47,26 +47,24 @@ func NewImageInspector(gb *GoldenBuilder, exec driver.CmdExecutor) *ImageInspect
 	}
 }
 
+// allImagesReady reports whether every image in every group is ready.
+func allImagesReady(groups ...[]InfrastructureImageStatus) bool {
+	for _, group := range groups {
+		for _, img := range group {
+			if img.Status != string(StatusReady) {
+				return false
+			}
+		}
+	}
+	return true
+}
+
 // Inspect collects readiness information for both VM bases and Docker runner containers.
 func (ins *ImageInspector) Inspect(ctx context.Context) ImagesStatusResponse {
 	vmImages := ins.inspectVMs(ctx)
 	containerImages := ins.inspectContainers(ctx)
 
-	allReady := true
-	for _, img := range vmImages {
-		if img.Status != string(StatusReady) {
-			allReady = false
-			break
-		}
-	}
-	if allReady {
-		for _, img := range containerImages {
-			if img.Status != string(StatusReady) {
-				allReady = false
-				break
-			}
-		}
-	}
+	allReady := allImagesReady(vmImages, containerImages)
 
 	return ImagesStatusResponse{
 		VMImages:        vmImages,
@@ -182,6 +180,9 @@ func (ins *ImageInspector) inspectContainers(ctx context.Context) []Infrastructu
 	return results
 }
 
+// bridgeStatusTimeout bounds the VM image status request to the host bridge.
+var bridgeStatusTimeout = 5 * time.Second
+
 func (ins *ImageInspector) fetchVMsFromBridge(ctx context.Context, bridgeURL string) []InfrastructureImageStatus {
 	reqURL := strings.TrimSuffix(bridgeURL, "/") + "/api/images"
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, reqURL, nil)
@@ -191,7 +192,7 @@ func (ins *ImageInspector) fetchVMsFromBridge(ctx context.Context, bridgeURL str
 	if token := os.Getenv("RUNZERO_BRIDGE_TOKEN"); token != "" {
 		req.Header.Set("Authorization", "Bearer "+token)
 	}
-	client := &http.Client{Timeout: 5 * time.Second}
+	client := &http.Client{Timeout: bridgeStatusTimeout}
 	resp, err := client.Do(req)
 	if err != nil {
 		return nil

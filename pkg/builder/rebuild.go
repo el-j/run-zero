@@ -3,23 +3,11 @@ package builder
 import (
 	"context"
 	"fmt"
-	"os"
-
-	"github.com/el-j/run-zero/docker"
 )
 
 // BuildBaseImage provisions a new golden base VM with zero downtime for existing jobs.
 func (b *GoldenBuilder) BuildBaseImage(ctx context.Context, arch string) (bool, error) {
-	var customScript string
-	if b.cfg.ProvisionScriptPath != "" {
-		if data, err := os.ReadFile(b.cfg.ProvisionScriptPath); err == nil {
-			customScript = string(data)
-		}
-	}
-	if customScript == "" && docker.ProvisionToolchainScript != "" {
-		customScript = docker.ProvisionToolchainScript
-	}
-	fullScript := FullProvisionScript(arch, b.cfg.RunnerVersion, customScript)
+	fullScript := FullProvisionScript(arch, b.cfg.RunnerVersion, b.provisionScript())
 
 	baseName := b.BaseImageName(arch)
 	if b.BaseImageExists(ctx, arch) {

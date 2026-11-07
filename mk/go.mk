@@ -28,6 +28,19 @@ build-go-multiarch: ensure-ui ## Compile static binaries for darwin/linux x arm6
 test: ## Run Go unit tests
 	go test ./...
 
+# Mutation testing: gremlins mutates each package's code and re-runs its tests;
+# a surviving mutant is a behaviour no test pins. Too slow for every commit, so
+# CI runs it weekly (.github/workflows/mutation.yml).
+GREMLINS ?= gremlins
+MUTATION_EFFICACY ?= 97
+
+.PHONY: mutate
+mutate: ## Mutation-test every Go package (gremlins); fails below MUTATION_EFFICACY % test efficacy
+	@for p in $$(go list ./pkg/... ./cmd/... | sed 's|github.com/el-j/run-zero/|./|'); do \
+		echo "$(CYAN)==> $$p$(RESET)"; \
+		$(GREMLINS) unleash --workers 1 --timeout-coefficient 30 --threshold-efficacy $(MUTATION_EFFICACY) -S lt $$p || exit 1; \
+	done
+
 .PHONY: check-go
 check-go: lint-go ## Go gates: lint + go test with race detector and a 100% coverage floor
 	go test -race -count=1 -coverprofile=coverage.out ./...

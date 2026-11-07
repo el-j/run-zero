@@ -213,9 +213,7 @@ func (m *BuildManager) runBuild(ctx context.Context, progress *ImageBuildProgres
 // hook and publishes the final progress.
 func (m *BuildManager) finishBuild(progress *ImageBuildProgress) {
 	m.mu.Lock()
-	if m.cancelFunc != nil {
-		m.cancelFunc = nil
-	}
+	m.cancelFunc = nil
 	if progress.Status == string(StatusBuilding) {
 		progress.Status = string(StatusReady)
 		progress.ProgressPct = 100
@@ -296,11 +294,14 @@ func (m *BuildManager) buildVMImage(ctx context.Context, arch string) error {
 	return nil
 }
 
+// bridgeBuildTimeout bounds each request to the host bridge during a VM build.
+var bridgeBuildTimeout = 30 * time.Second
+
 func (m *BuildManager) buildVMImageViaBridge(ctx context.Context, bridgeURL, arch string) error {
 	m.appendLog(fmt.Sprintf("[BUILD:VM] Delegating VM build to Host VM Bridge at %s...", bridgeURL))
 	base := strings.TrimSuffix(bridgeURL, "/")
 	token := os.Getenv("RUNZERO_BRIDGE_TOKEN")
-	client := &http.Client{Timeout: 30 * time.Second}
+	client := &http.Client{Timeout: bridgeBuildTimeout}
 
 	buildID, err := startBridgeBuild(ctx, client, base, token, arch)
 	if err != nil {
@@ -412,12 +413,10 @@ func fetchBridgeProgress(ctx context.Context, client *http.Client, pollURL, toke
 // mirrorBridgeProgress copies new bridge log lines and the current step into the
 // local build, returning the new log offset.
 func (m *BuildManager) mirrorBridgeProgress(prog ImageBuildProgress, lastLogIndex int) int {
-	if len(prog.LogLines) > lastLogIndex {
-		for _, line := range prog.LogLines[lastLogIndex:] {
-			m.appendLog(line)
-		}
-		lastLogIndex = len(prog.LogLines)
+	for _, line := range prog.LogLines[min(lastLogIndex, len(prog.LogLines)):] {
+		m.appendLog(line)
 	}
+	lastLogIndex = max(lastLogIndex, len(prog.LogLines))
 	if prog.CurrentStep != "" {
 		m.mu.Lock()
 		if m.activeBuild != nil {
@@ -491,12 +490,13 @@ func (m *BuildManager) appendLog(line string) {
 	m.mu.Unlock()
 }
 
+// maxBuildLogLines bounds the log kept for the active build.
+const maxBuildLogLines = 1000
+
 func (m *BuildManager) appendLogLocked(line string) {
 	if m.activeBuild != nil {
-		if len(m.activeBuild.LogLines) > 1000 {
-			m.activeBuild.LogLines = m.activeBuild.LogLines[len(m.activeBuild.LogLines)-1000:]
-		}
-		m.activeBuild.LogLines = append(m.activeBuild.LogLines, line)
+		lines := append(m.activeBuild.LogLines, line)
+		m.activeBuild.LogLines = lines[max(len(lines)-maxBuildLogLines, 0):]
 	}
 	if m.logHook != nil {
 		m.logHook(line)

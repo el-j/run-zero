@@ -72,22 +72,28 @@ func (b *GoldenBuilder) WriteStamp(arch string) error {
 	return os.WriteFile(p, []byte(b.stampValue()+"\n"), 0644)
 }
 
+// provisionScript is the toolchain provisioning script for golden images: the
+// file at ProvisionScriptPath when it is set and non-empty, else the script
+// embedded from docker/provision-toolchain.sh.
+func (b *GoldenBuilder) provisionScript() string {
+	if b.cfg.ProvisionScriptPath != "" {
+		if data, err := os.ReadFile(b.cfg.ProvisionScriptPath); err == nil && len(data) > 0 {
+			return string(data)
+		}
+	}
+	return docker.ProvisionToolchainScript
+}
+
 // stampValue identifies what a golden image was built from: the runner version plus a
 // short hash of the toolchain provisioning script. Editing the script (new apt
 // package, Node version, ...) therefore marks existing images stale and they get
 // rebuilt, instead of silently keeping an outdated toolchain.
 func (b *GoldenBuilder) stampValue() string {
-	var data []byte
-	if b.cfg.ProvisionScriptPath != "" {
-		data, _ = os.ReadFile(b.cfg.ProvisionScriptPath)
-	}
-	if len(data) == 0 && docker.ProvisionToolchainScript != "" {
-		data = []byte(docker.ProvisionToolchainScript)
-	}
-	if len(data) == 0 {
+	script := b.provisionScript()
+	if script == "" {
 		return b.cfg.RunnerVersion
 	}
-	sum := sha256.Sum256(data)
+	sum := sha256.Sum256([]byte(script))
 	return b.cfg.RunnerVersion + "+" + hex.EncodeToString(sum[:])[:12]
 }
 
