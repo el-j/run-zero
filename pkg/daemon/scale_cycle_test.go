@@ -828,16 +828,6 @@ func TestSpawnBlocked_KeepsPauseUntilImageReady(t *testing.T) {
 	}
 }
 
-func TestTokenizeAndRoutingEdges(t *testing.T) {
-	if tokenizeLower("   ") != nil {
-		t.Fatal("blank input should yield no tokens")
-	}
-	job := state.QueuedJob{Name: "e2e"}
-	if shouldRouteToVM(job, nil) || shouldRouteToVM(job, []string{"", "  "}) {
-		t.Fatal("empty triggers must never route")
-	}
-}
-
 func TestRandomHex_FallsBackWhenEntropyFails(t *testing.T) {
 	orig := randRead
 	randRead = func([]byte) (int, error) { return 0, errors.New("no entropy") }

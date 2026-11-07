@@ -9,7 +9,7 @@ import (
 	"github.com/el-j/run-zero/pkg/cache"
 	"github.com/el-j/run-zero/pkg/driver"
 	"github.com/el-j/run-zero/pkg/provider"
-	"github.com/el-j/run-zero/pkg/sizing"
+	"github.com/el-j/run-zero/pkg/scheduling"
 	"github.com/el-j/run-zero/pkg/state"
 )
 
@@ -269,58 +269,43 @@ func (s *Scaler) scaleUp(ctx context.Context, active []state.RunnerInfo, tracked
 	return active
 }
 
+// policy is the scheduling configuration currently in effect.
+func (s *Scaler) policy() scheduling.Policy {
+	return scheduling.Policy{
+		Backend:         s.cfg.RunnerBackend,
+		AutoRouteVM:     s.cfg.AutoRouteVM,
+		VMTriggerLabels: s.cfg.VMTriggerLabels,
+		RunnerArch:      s.cfg.RunnerArch,
+		ArchOverride:    s.archOverride,
+		RunnerCPUs:      s.cfg.RunnerCPUs,
+		RunnerMemory:    s.cfg.RunnerMemory,
+		MaxRunners:      s.cfg.MaxRunners,
+	}
+}
+
+// schedJob describes a queued job of repo for scheduling.
+func schedJob(job state.QueuedJob, repo string) scheduling.Job {
+	j := scheduling.Job{Repo: repo, Name: job.Name, Labels: job.Labels}
+	if job.WorkflowName != nil {
+		j.WorkflowName = *job.WorkflowName
+	}
+	return j
+}
+
 // resolveJobArch picks the architecture a job needs, honouring native-arch override.
 func (s *Scaler) resolveJobArch(job state.QueuedJob, repo string) string {
-	jobArch := "amd64"
-	if s.cfg.RunnerArch != "both" && s.cfg.RunnerArch != "" {
-		jobArch = s.cfg.RunnerArch
-	} else {
-		for _, l := range job.Labels {
-			lower := strings.ToLower(l)
-			if lower == "arm64" || lower == "aarch64" || lower == "arm" {
-				jobArch = "arm64"
-				break
-			}
-		}
-	}
-	if s.archOverride != nil {
-		return s.archOverride.ArchFor(jobArch, job.Labels, repo)
-	}
-	return jobArch
+	return scheduling.Arch(s.policy(), schedJob(job, repo))
 }
 
-// resolveJobBackend picks docker or orbstack from config and VM trigger labels.
+// resolveJobBackend picks docker or orbstack from config and VM triggers.
 func (s *Scaler) resolveJobBackend(job state.QueuedJob) string {
-	if s.cfg.RunnerBackend != "" && s.cfg.RunnerBackend != "auto" {
-		return s.cfg.RunnerBackend
-	}
-	if s.cfg.AutoRouteVM && shouldRouteToVM(job, s.cfg.VMTriggerLabels) {
-		return "orbstack"
-	}
-	return "docker"
+	backend, _ := scheduling.Backend(s.policy(), schedJob(job, ""))
+	return backend
 }
 
-// resolveSizing returns the CPU and memory (MiB) for a new runner: sizes a job
-// requests through its labels (e.g. "4cpu-8gb", "large", "highmem") win over
-// RUNNER_CPUS / RUNNER_MEMORY, which win over the 3 CPU / 4096 MiB default.
+// resolveSizing returns the CPU and memory (MiB) for a new runner.
 func (s *Scaler) resolveSizing(labels []string) (cpus, memMB int) {
-	cpus, memMB = 3, 4096
-	if s.cfg.RunnerCPUs > 0 {
-		cpus = s.cfg.RunnerCPUs
-	}
-	if s.cfg.RunnerMemory != "" {
-		if m := sizing.ParseMemoryMiB(s.cfg.RunnerMemory); m != nil {
-			memMB = *m
-		}
-	}
-	labelCPUs, labelMem := sizing.ParseLabelSizing(labels)
-	if labelCPUs != nil {
-		cpus = *labelCPUs
-	}
-	if labelMem != nil {
-		memMB = *labelMem
-	}
-	return cpus, memMB
+	return scheduling.Size(s.policy(), labels)
 }
 
 // spawnForJob provisions a runner for one queued job; nil means nothing was

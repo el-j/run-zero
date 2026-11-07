@@ -9,7 +9,6 @@ import (
 	"strings"
 	"sync/atomic"
 	"time"
-	"unicode"
 
 	"github.com/el-j/run-zero/pkg/arch"
 	"github.com/el-j/run-zero/pkg/builder"
@@ -30,55 +29,6 @@ func randomHex(bytesLen int) string {
 		return fmt.Sprintf("%06x", time.Now().UnixNano()%0xFFFFFF)
 	}
 	return hex.EncodeToString(b)
-}
-
-func tokenizeLower(input string) []string {
-	if strings.TrimSpace(input) == "" {
-		return nil
-	}
-	return strings.FieldsFunc(strings.ToLower(input), func(r rune) bool {
-		return !unicode.IsLetter(r) && !unicode.IsDigit(r)
-	})
-}
-
-func shouldRouteToVM(job state.QueuedJob, triggers []string) bool {
-	if len(triggers) == 0 {
-		return false
-	}
-	triggerSet := make(map[string]struct{}, len(triggers))
-	for _, t := range triggers {
-		tt := strings.ToLower(strings.TrimSpace(t))
-		if tt == "" {
-			continue
-		}
-		triggerSet[tt] = struct{}{}
-	}
-	if len(triggerSet) == 0 {
-		return false
-	}
-
-	for _, label := range job.Labels {
-		for _, token := range tokenizeLower(label) {
-			if _, ok := triggerSet[token]; ok {
-				return true
-			}
-		}
-	}
-
-	for _, token := range tokenizeLower(job.Name) {
-		if _, ok := triggerSet[token]; ok {
-			return true
-		}
-	}
-
-	if job.WorkflowName != nil {
-		for _, token := range tokenizeLower(*job.WorkflowName) {
-			if _, ok := triggerSet[token]; ok {
-				return true
-			}
-		}
-	}
-	return false
 }
 
 // Scaler manages the background autoscaling loop, repository discovery,
