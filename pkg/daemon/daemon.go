@@ -50,7 +50,7 @@ func NewDaemon(cfg *config.Config, version string, distDir, staticDir string) *D
 	var srv *api.Server
 	if cfg.DashboardEnabled {
 		allowedHosts := []string{cfg.DashboardHost, "localhost", "127.0.0.1"}
-		srv = api.NewServerWithDeps(cfg, st, distDir, staticDir, allowedHosts, 5*time.Second, ghClient, runnerDriver)
+		srv = api.NewServerWithDeps(cfg, st, distDir, staticDir, allowedHosts, dashboardHeartbeat, ghClient, runnerDriver)
 	}
 
 	rec := github.NewReconciler(pm)
@@ -61,7 +61,7 @@ func NewDaemon(cfg *config.Config, version string, distDir, staticDir string) *D
 
 	providerMgr := provider.NewManager()
 	if cfg.ProvidersConfigFile != "" {
-		if fileCfg, err := provider.LoadConfigFile(cfg.ProvidersConfigFile); err == nil && len(fileCfg.Providers) > 0 {
+		if fileCfg, err := provider.LoadConfigFile(cfg.ProvidersConfigFile); err == nil {
 			for _, p := range fileCfg.Providers {
 				switch strings.ToLower(p.Type) {
 				case "gitlab":
@@ -82,14 +82,7 @@ func NewDaemon(cfg *config.Config, version string, distDir, staticDir string) *D
 	}
 	if _, exists := providerMgr.Get("gitlab"); cfg.GitLabToken != "" && !exists {
 		glClient := gitlab.NewClient(cfg.GitLabToken, cfg.GitLabURL, nil)
-		var glProjects []string
-		if cfg.GitLabProjects != "" {
-			for _, p := range strings.Split(cfg.GitLabProjects, ",") {
-				if trimmed := strings.TrimSpace(p); trimmed != "" {
-					glProjects = append(glProjects, trimmed)
-				}
-			}
-		}
+		glProjects := splitList(cfg.GitLabProjects)
 		glAdapter := gitlab.NewProviderAdapter("gitlab", "", glClient, cfg.GitLabGroup, glProjects)
 		providerMgr.Register(glAdapter)
 	}
@@ -109,6 +102,13 @@ func NewDaemon(cfg *config.Config, version string, distDir, staticDir string) *D
 		scaler:        scaler,
 	}
 }
+
+// dashboardHeartbeat is the SSE keep-alive interval; shutdownTimeout bounds the
+// dashboard server's graceful shutdown.
+const (
+	dashboardHeartbeat = 5 * time.Second
+	shutdownTimeout    = 3 * time.Second
+)
 
 // stateDir is where the daemon keeps runner metadata (RUNZERO_STATE_DIR).
 func stateDir() string {
@@ -183,7 +183,7 @@ func (d *Daemon) Stop() error {
 		_ = d.driver.CleanupAll(context.Background())
 	}
 	if d.server != nil {
-		ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+		ctx, cancel := context.WithTimeout(context.Background(), shutdownTimeout)
 		defer cancel()
 		if err := d.server.Shutdown(ctx); err != nil {
 			return err

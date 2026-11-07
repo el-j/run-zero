@@ -205,3 +205,9 @@ func TestConvertToRunnerInfo_OfflineState(t *testing.T) {
 		t.Fatalf("online: %q", s)
 	}
 }
+
+func TestPoller_Interval(t *testing.T) {
+	if got := NewPoller(nil, nil, nil, nil, 3*time.Second).Interval(); got != 3*time.Second {
+		t.Fatalf("got %s", got)
+	}
+}

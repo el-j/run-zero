@@ -14,31 +14,26 @@ import (
 	"github.com/el-j/run-zero/pkg/state"
 )
 
-func initPriorityManager(cfg *config.Config) *github.PriorityManager {
-	var prioList []string
-	if cfg.RepoPriority != "" {
-		for _, p := range strings.Split(cfg.RepoPriority, ",") {
-			if strings.TrimSpace(p) != "" {
-				prioList = append(prioList, strings.TrimSpace(p))
-			}
+// splitList splits a comma-separated setting into its non-blank, trimmed items.
+func splitList(s string) []string {
+	var items []string
+	for _, item := range strings.Split(s, ",") {
+		if trimmed := strings.TrimSpace(item); trimmed != "" {
+			items = append(items, trimmed)
 		}
 	}
-	pm, _ := github.NewPriorityManager("repo_priority.json", prioList, nil)
+	return items
+}
+
+func initPriorityManager(cfg *config.Config) *github.PriorityManager {
+	pm, _ := github.NewPriorityManager("repo_priority.json", splitList(cfg.RepoPriority), nil)
 	return pm
 }
 
 func initPoller(cfg *config.Config, pm *github.PriorityManager, st *state.State) *github.Poller {
-	var repos []string
-	if cfg.ReposConfig != "" {
-		for _, r := range strings.Split(cfg.ReposConfig, ",") {
-			if strings.TrimSpace(r) != "" {
-				repos = append(repos, strings.TrimSpace(r))
-			}
-		}
-	}
 	ghClient := github.NewClient(cfg.AccessToken, "", nil)
 	rec := github.NewReconciler(pm)
-	return github.NewPoller(ghClient, rec, st, repos, time.Duration(cfg.PollInterval)*time.Second)
+	return github.NewPoller(ghClient, rec, st, splitList(cfg.ReposConfig), time.Duration(cfg.PollInterval)*time.Second)
 }
 
 func initDriver(cfg *config.Config, store *driver.InstanceStore) driver.RunnerDriver {
@@ -80,11 +75,15 @@ func initVMDriver(cfg *config.Config, store *driver.InstanceStore) driver.Runner
 // newWSLDriver builds the WSL2 driver, keeping imported distros in
 // WSL_RUNNER_DIR or the state directory.
 func newWSLDriver(cfg *config.Config, store *driver.InstanceStore) driver.RunnerDriver {
-	dir := cfg.WSLRunnerDir
-	if dir == "" {
-		dir = filepath.Join(stateDir(), "wsl")
+	return driver.NewWSLDriver(nil, store, cfg.WSLDistroBase, cfg.WSLBaseTarball, wslRunnerDir(cfg))
+}
+
+// wslRunnerDir is WSL_RUNNER_DIR, or <state dir>/wsl.
+func wslRunnerDir(cfg *config.Config) string {
+	if cfg.WSLRunnerDir != "" {
+		return cfg.WSLRunnerDir
 	}
-	return driver.NewWSLDriver(nil, store, cfg.WSLDistroBase, cfg.WSLBaseTarball, dir)
+	return filepath.Join(stateDir(), "wsl")
 }
 
 func initReaper(cfg *config.Config, d driver.RunnerDriver, gh *github.Client) *reaper.Reaper {

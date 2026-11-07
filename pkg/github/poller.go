@@ -48,6 +48,9 @@ func NewPoller(
 	}
 }
 
+// Interval is how often the poller checks the queue.
+func (p *Poller) Interval() time.Duration { return p.pollInterval }
+
 // SetRepos dynamically updates the monitored repositories list.
 func (p *Poller) SetRepos(repos []string) {
 	p.repoMu.Lock()

@@ -12,7 +12,7 @@ import (
 // ORG mode they register at org scope and serve any of the org's repos), and
 // the pool never pushes the fleet past MAX_RUNNERS.
 func (s *Scaler) topUpStandby(ctx context.Context, active []state.RunnerInfo, tracked []string) []state.RunnerInfo {
-	if s.cfg.MinRunners <= 0 || s.driver == nil || s.state.GetSnapshot().AutoscalerStatus == "paused" {
+	if s.driver == nil || s.state.GetSnapshot().AutoscalerStatus == "paused" {
 		return active
 	}
 	repos := s.standbyRepos(tracked)

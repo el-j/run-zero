@@ -51,7 +51,8 @@ type Scaler struct {
 	lastBilling        time.Time
 	lastRateLimit      time.Time
 	standbyCursor      int
-	pacing             bool // polling is currently slowed by a low API quota
+	pacing             bool             // polling is currently slowed by a low API quota
+	now                func() time.Time // clock; nil means time.Now
 	workflows          *inspector.WorkflowCache
 	host               sizing.HostCapacity
 	cachedWorkflows    int
@@ -161,6 +162,14 @@ func NewScaler(
 	}
 }
 
+// since returns the time elapsed since t on the scaler's clock.
+func (s *Scaler) since(t time.Time) time.Duration {
+	if s.now != nil {
+		return s.now().Sub(t)
+	}
+	return time.Since(t)
+}
+
 // logSizing reports the per-runner size and any host oversubscription once at
 // startup, in the log the dashboard shows.
 func (s *Scaler) logSizing() {
@@ -177,7 +186,7 @@ func (s *Scaler) DiscoverAndSync(ctx context.Context) {
 		return
 	}
 
-	needsDiscovery := s.lastDiscovery.IsZero() || time.Since(s.lastDiscovery) >= time.Duration(s.cfg.DiscoveryInterval)*time.Second
+	needsDiscovery := s.lastDiscovery.IsZero() || s.since(s.lastDiscovery) >= time.Duration(s.cfg.DiscoveryInterval)*time.Second
 	if needsDiscovery && (s.cfg.AutoDiscover || s.cfg.ReposConfig != "") {
 		discovered, err := s.ghClient.DiscoverRepositories(
 			ctx,
@@ -207,7 +216,7 @@ func (s *Scaler) DiscoverAndSync(ctx context.Context) {
 
 	// Refresh Rate Limit: every response updates it from headers; the explicit
 	// refresh also catches an early reset while requests are held back.
-	if time.Since(s.lastRateLimit) >= time.Duration(s.cfg.RateLimitRefreshInterval)*time.Second {
+	if s.since(s.lastRateLimit) >= time.Duration(s.cfg.RateLimitRefreshInterval)*time.Second {
 		if err := s.ghClient.RefreshRateLimit(ctx); err == nil {
 			s.lastRateLimit = time.Now()
 		}
@@ -220,7 +229,7 @@ func (s *Scaler) DiscoverAndSync(ctx context.Context) {
 	}
 
 	// Refresh Actions Billing
-	needsBilling := s.lastBilling.IsZero() || time.Since(s.lastBilling) >= time.Duration(s.cfg.ActionsBillingRefreshInterval)*time.Second
+	needsBilling := s.lastBilling.IsZero() || s.since(s.lastBilling) >= time.Duration(s.cfg.ActionsBillingRefreshInterval)*time.Second
 	if needsBilling {
 		if billing, err := s.ghClient.GetActionsBilling(ctx, s.cfg.Owner, s.cfg.Org); err == nil {
 			s.lastBilling = time.Now()
@@ -307,9 +316,6 @@ func (s *Scaler) refreshCompletedJobs(ctx context.Context, repos []string) {
 		}
 		all = append(all, jobs...)
 	}
-	if len(all) == 0 {
-		all = []state.CompletedJob{}
-	}
 	s.state.SetCompletedJobs(all)
 	s.lastHistoryRefresh = time.Now()
 }
@@ -322,7 +328,7 @@ func (s *Scaler) historyRefreshDue() bool {
 		s.runnersFinished.Store(false)
 		return true
 	}
-	since := time.Since(s.lastHistoryRefresh)
+	since := s.since(s.lastHistoryRefresh)
 	if since >= historyRefreshMinInterval ||
 		(since >= finishedRefreshMinInterval && s.runnersFinished.Load()) {
 		s.runnersFinished.Store(false)

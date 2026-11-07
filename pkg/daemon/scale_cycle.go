@@ -123,7 +123,7 @@ func (s *Scaler) collectActiveJobs(ctx context.Context, tracked []string) ([]sta
 			continue
 		}
 		jobs, err := s.ghClient.ListActiveJobs(ctx, repo)
-		if err == nil && len(jobs) > 0 {
+		if err == nil {
 			allJobs = append(allJobs, jobs...)
 			jobsByRepo[repo] = jobs
 		}
@@ -194,9 +194,7 @@ func (s *Scaler) runnerStillNeeded(ctx context.Context, r state.RunnerInfo, allJ
 	if err := s.driver.StopRunner(ctx, r.ID); err != nil && r.Name != "" && r.Name != r.ID {
 		_ = s.driver.StopRunner(ctx, r.Name)
 	}
-	if s.firstSeen != nil {
-		delete(s.firstSeen, r.Name)
-	}
+	delete(s.firstSeen, r.Name)
 	return false
 }
 
@@ -247,9 +245,6 @@ func (s *Scaler) scaleUp(ctx context.Context, active []state.RunnerInfo, tracked
 			}
 		}
 		uncovered := len(queued) - activeByRepo[repo]
-		if uncovered <= 0 {
-			continue
-		}
 		for _, job := range queued {
 			if len(active) >= s.cfg.MaxRunners || uncovered <= 0 {
 				break
@@ -262,7 +257,6 @@ func (s *Scaler) scaleUp(ctx context.Context, active []state.RunnerInfo, tracked
 				continue
 			}
 			active = append(active, *info)
-			activeByRepo[repo]++
 			uncovered--
 		}
 	}
