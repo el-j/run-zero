@@ -78,22 +78,28 @@ TypeScript 7 no longer ships, and our tsconfig has nothing to rewrite.
 
 ### Current result
 
-The first full run scored **72.47%**: 2875 killed, 81 timed out, 1123 survived
-out of 4087 mutants. The `break` threshold is set to 72, so the score cannot
-fall, and is raised as survivors are killed.
+Every module the dashboard uses scores **100%**. The whole of `web/src`
+scores about **94%** (first run: 72.47%), and the `break` threshold is 93.
 
-| Area | Score |
-|---|---|
-| `render/jobs.ts` | 43.8% |
-| `render/runners.ts` | 56.4% |
-| `render/queue.ts` | 58.7% |
-| `render/repos.ts` | 65.8% |
-| `components/` | 68.1% |
-| `handlers/` | 82.0% |
-| `api/client.ts` | 85.4% |
+The remaining survivors (213) are all in seven components that nothing in
+the app imports: `Header`, `CapacityMeter`, `CachePanel`, `PriorityManager`,
+`QueueView`, `RunnerFleet` and `SettingsPanel` in `web/src/components/`. The
+`render/` modules and `settings.ts` replaced them. Only `BuildImagesModal` is
+used, and it scores 100%.
 
-By kind, 407 survivors are string literals (class names and text in rendered
-markup), 285 conditional expressions, 125 logical operators and 55
-comparisons. Those last three are untested branches. The render modules are
-covered line by line but their output is rarely asserted, which is the main
-gap.
+How the live code got there:
+
+- **Snapshots of rendered markup.** Each renderer's cards, table rows and
+  empty states are snapshotted, with the clock and locale fixed by
+  `pinClockAndLocale()` in `web/test/helpers.ts`, so they match on every
+  machine.
+- **Order tests for every sort key** in both directions, with tie-breakers
+  checked in either input order (a sort only compares some pairs).
+- **Checks after the fact, not inside mocks.** An `expect` inside a mocked
+  call is swallowed when the code under test catches errors.
+- **Simpler code where a survivor was redundant:** shared `describe()`
+  helpers instead of per-view copies, sort keys compared as pairs instead of
+  concatenated strings, and guards that never changed a result removed.
+
+Run with `--force` to check a result: incremental mode can keep a stale
+result for module-level constants.

@@ -37,6 +37,15 @@ describe("hooks", () => {
 
 describe("state", () => {
   it("creates defaults and honors persisted preferences", () => {
+    expect(createState()).toMatchObject({
+      currentRepos: [],
+      currentRunners: [],
+      currentQueuedJobs: [],
+      currentCompletedJobs: [],
+      currentRepoPriority: [],
+      currentPausedRepos: new Set(),
+      currentConcurrency: { active: 0, max: 3, min: 0 },
+    });
     expect(createState().currentViewMode).toBe("cards");
     expect(createState().terminalHeightPx).toBe(180);
     localStorage.setItem("runzero_display_mode", "table");

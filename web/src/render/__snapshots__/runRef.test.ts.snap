@@ -1,0 +1,14 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`progressHtml output > counts completed steps and renders each step chip 1`] = `
+"
+    <div class="mini-progress-wrap" style="margin-top: 6px;">
+      <div class="mini-progress-text">
+        <span>step 2/4</span>
+        <span style="color: var(--emerald); font-weight: 700;">25%</span>
+      </div>
+      <div class="mini-progress-track"><div class="mini-progress-fill" style="width: 25%;"></div></div>
+      
+      <div class="step-pipeline"><span class="step-chip completed" title="Set up">✓ Set up</span><span class="step-chip in_progress" title="Build &lt;x&gt;">▶ Build &lt;x&gt;</span><span class="step-chip queued" title="Test">○ Test</span><span class="step-chip queued" title="Post">○ Post</span></div>
+    </div>"
+`;

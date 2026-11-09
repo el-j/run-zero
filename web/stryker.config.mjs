@@ -19,7 +19,7 @@ export default {
   htmlReporter: { fileName: "reports/mutation/index.html" },
   incremental: true,
   incrementalFile: "reports/stryker-incremental.json",
-  // break is the baseline from the first full run (72.47%); raise it as
-  // survivors are killed. See ../MUTATION_TESTING.md.
-  thresholds: { high: 95, low: 85, break: 72 },
+  // Every module the app uses scores 100%; the remaining survivors are in the
+  // unused components (see ../MUTATION_TESTING.md). Raise break as they go.
+  thresholds: { high: 95, low: 85, break: 93 },
 };

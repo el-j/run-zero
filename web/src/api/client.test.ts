@@ -122,6 +122,12 @@ describe("subscribeSSE", () => {
   });
 });
 
+it("uses same-origin paths by default", async () => {
+  const f = stubFetch(() => jsonResponse({}));
+  await new RunZeroClient().getFleet();
+  expect(f).toHaveBeenCalledWith("/api/fleet");
+});
+
 describe("RunZeroClient POST requests", () => {
   it.each([
     [

@@ -1,12 +1,5 @@
 import { describe, expect, it } from "vitest";
-import {
-  jobLinkHtml,
-  jobUrlOf,
-  progressHtml,
-  runLinkHtml,
-  runUrlOf,
-  stepIcon,
-} from "./runRef";
+import { jobLinkHtml, jobUrlOf, progressHtml, runLinkHtml, runUrlOf, stepIcon } from "./runRef";
 
 describe("runRef", () => {
   it("runUrlOf", () => {
@@ -74,6 +67,20 @@ describe("runRef", () => {
     );
     expect(progressHtml({ progress_pct: 10 }, false)).toContain("0/1 jobs");
     expect(progressHtml({ current_step: "x" }, false)).toContain("0/1 jobs");
-    expect(progressHtml({ steps: [] , progress_pct: 3}, false)).not.toContain("step-pipeline");
+    expect(progressHtml({ steps: [], progress_pct: 3 }, false)).not.toContain("step-pipeline");
+  });
+});
+
+describe("progressHtml output", () => {
+  it("counts completed steps and renders each step chip", () => {
+    const steps = [
+      { number: 1, name: "Set up", status: "completed" },
+      { number: 2, name: "Build <x>", status: "in_progress" },
+      { number: 3, name: "Test", status: "queued" },
+      { number: 4, name: "Post", status: "queued" },
+    ];
+    const html = progressHtml({ steps, progress_pct: 25 }, false);
+    expect(html).toContain("step 2/4");
+    expect(html).toMatchSnapshot();
   });
 });
