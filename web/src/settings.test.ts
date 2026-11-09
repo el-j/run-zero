@@ -3,7 +3,10 @@ import { jsonResponse, mountDashboard, stubFetch } from "../test/helpers";
 import { initDom, dom } from "./dom";
 import { openSettingsModal, saveSettings } from "./settings";
 
-const toast = () => document.getElementById("toast-container")?.lastElementChild?.textContent ?? "";
+const toasts = () =>
+  [...(document.getElementById("toast-container")?.children ?? [])] as HTMLElement[];
+const toast = () => toasts().at(-1)?.textContent ?? "";
+const toastIsError = () => toasts().at(-1)?.style.borderColor === "var(--crimson)";
 const full = {
   max_runners: 7,
   min_runners: 2,
@@ -58,7 +61,8 @@ describe("openSettingsModal", () => {
   });
 
   it("tolerates missing inputs", async () => {
-    for (const el of document.querySelectorAll("#settings-modal input, #settings-modal select")) el.remove();
+    for (const el of document.querySelectorAll("#settings-modal input, #settings-modal select"))
+      el.remove();
     initDom();
     stubFetch(() => jsonResponse(full));
     await openSettingsModal();
@@ -77,6 +81,8 @@ describe("openSettingsModal", () => {
     stubFetch(() => jsonResponse({}, { ok: false, status: 500 }));
     await openSettingsModal();
     expect(toast()).toContain("Failed to load settings");
+    expect(toastIsError()).toBe(true);
+    expect(toasts()[0].textContent).toBe("Loading configuration...");
   });
 });
 
@@ -90,6 +96,14 @@ describe("saveSettings", () => {
     expect(JSON.parse(post[1]!.body as string)).toEqual(full);
     expect(dom.settingsModal!.open).toBe(false);
     expect(toast()).toContain("Settings updated");
+    expect(toastIsError()).toBe(false);
+    expect(toasts().map((t) => t.textContent)).toContain("Applying configuration update...");
+    // Reloads the settings and the fleet afterwards.
+    const gets = f.mock.calls
+      .filter((c) => !c[1]?.method || c[1].method === "GET")
+      .map((c) => String(c[0]));
+    expect(gets.some((u) => u.endsWith("/api/settings"))).toBe(true);
+    expect(gets.some((u) => u.endsWith("/api/fleet"))).toBe(true);
   });
 
   it("omits optional fields whose inputs are missing", async () => {
@@ -109,6 +123,26 @@ describe("saveSettings", () => {
     stubFetch(() => jsonResponse({}, { ok: false }));
     await saveSettings();
     expect(toast()).toContain("Failed to save settings");
+    expect(toastIsError()).toBe(true);
+  });
+
+  it("trims the memory and cache directory", async () => {
+    dom.inputMaxRunners!.value = "1";
+    dom.inputMinRunners!.value = "0";
+    dom.inputRunnerMemory!.value = "  8G ";
+    dom.inputCacheDir!.value = " /cache  ";
+    const f = stubFetch(() => jsonResponse({ success: true }));
+    await saveSettings();
+    const body = JSON.parse(f.mock.calls.find((c) => c[1]?.method === "POST")![1]!.body as string);
+    expect(body.runner_memory).toBe("8G");
+    expect(body.host_cache_dir).toBe("/cache");
+  });
+
+  it("does not save without the dialog", async () => {
+    const f = stubFetch(() => jsonResponse({}));
+    (dom as { settingsModal: HTMLDialogElement | null }).settingsModal = null;
+    await saveSettings();
+    expect(f).not.toHaveBeenCalled();
   });
 
   it("bails out when required elements are missing", async () => {

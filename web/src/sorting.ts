@@ -20,8 +20,6 @@ export function updateSortHeaderIndicators() {
     th.classList.remove("sort-asc", "sort-desc");
     const table = th.dataset.table;
     const key = th.dataset.sortKey;
-    if (!table || !key) return;
-
     const match =
       (table === "runners" && state.runnersSort.key === key && state.runnersSort.dir) ||
       (table === "queue" && state.queueSort.key === key && state.queueSort.dir) ||

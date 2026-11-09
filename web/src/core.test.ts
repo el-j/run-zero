@@ -67,8 +67,12 @@ describe("ui", () => {
     expect(toasts).toHaveLength(2);
     expect(toasts[0].style.borderColor).toBe("");
     expect(toasts[1].style.borderColor).toBe("var(--crimson)");
-    vi.advanceTimersByTime(3500);
+    vi.advanceTimersByTime(3499);
+    expect(toasts[0].style.opacity).toBe("");
+    vi.advanceTimersByTime(1);
     expect(toasts[0].style.opacity).toBe("0");
+    expect(toasts[0].style.transform).toBe("translateY(10px)");
+    expect(toasts[0].style.transition).toBe("all 0.3s ease");
     vi.advanceTimersByTime(300);
     expect(document.querySelectorAll(".toast")).toHaveLength(0);
   });
@@ -85,7 +89,7 @@ describe("ui", () => {
     setConnectionStatus("error", "ERR");
     expect(dom.connectionBadge.classList.contains("error")).toBe(true);
     setConnectionStatus("online", "OK");
-    expect(dom.connectionBadge.className).toBe("badge badge-pulse");
+    expect(dom.connectionBadge.className).toBe("badge badge-pulse online");
   });
 
   it("setConnectionStatus is a no-op without elements", () => {

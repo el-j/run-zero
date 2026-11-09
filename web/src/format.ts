@@ -69,8 +69,10 @@ export function normalizeFilter(value: string): string {
  * @param fields - Searchable values; nullish entries are ignored.
  * @param query - Normalized query. An empty query matches everything.
  */
-export function includesFilter(fields: Array<string | number | undefined | null>, query: string): boolean {
-  if (!query) return true;
+export function includesFilter(
+  fields: Array<string | number | undefined | null>,
+  query: string,
+): boolean {
   const haystack = fields
     .map((f) => (f === undefined || f === null ? "" : String(f).toLowerCase()))
     .join(" ");

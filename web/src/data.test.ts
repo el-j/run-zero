@@ -29,6 +29,36 @@ describe("loadCacheStats", () => {
     expect(state.latestCacheStats).toBeTruthy();
   });
 
+  it.each([
+    [5 * GiB, "// Cache active · healthy"],
+    [5 * GiB - 1, "// Cache warm · low pressure"],
+    [20 * GiB, "// Cache heavy · consider prune"],
+    [20 * GiB - 1, "// Cache active · healthy"],
+  ])("puts %d bytes on the right side of a health threshold", async (bytes, text) => {
+    stubFetch(() => jsonResponse(stats(bytes)));
+    await loadCacheStats();
+    expect(dom.kpiCacheHealth!.textContent).toBe(text);
+  });
+
+  it("fills the size bar against 50 GiB", async () => {
+    stubFetch(() => jsonResponse(stats(25 * GiB)));
+    await loadCacheStats();
+    expect(dom.kpiCacheBar!.style.width).toBe("50%");
+  });
+
+  it.each(["kpi-cache-size", "kpi-cache-bar", "kpi-cache-health"])(
+    "still renders the categories without #%s",
+    async (id) => {
+      document.getElementById(id)!.remove();
+      initDom();
+      stubFetch(() =>
+        jsonResponse(stats(GiB, [{ category: "pnpm", bytes: 1, human_readable: "1 B" }])),
+      );
+      await loadCacheStats();
+      expect(document.getElementById("sz-pnpm")!.textContent).toBe("1 B");
+    },
+  );
+
   it("renders sizes and category bars", async () => {
     stubFetch(() =>
       jsonResponse(
@@ -68,7 +98,7 @@ describe("loadCacheStats", () => {
     const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
     stubFetch(() => jsonResponse({}, { ok: false }));
     await loadCacheStats();
-    expect(warn).toHaveBeenCalled();
+    expect(warn).toHaveBeenCalledWith("Could not refresh cache stats:", expect.anything());
   });
 });
 
@@ -109,23 +139,28 @@ describe("loadSettings", () => {
   });
 
   it("returns null on failure", async () => {
-    vi.spyOn(console, "warn").mockImplementation(() => {});
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
     stubFetch(() => jsonResponse({}, { ok: false }));
     expect(await loadSettings()).toBeNull();
+    expect(warn).toHaveBeenCalledWith("Could not load settings:", expect.anything());
   });
 });
 
 describe("refreshState", () => {
   it("marks the connection online and renders", async () => {
-    stubFetch(() => jsonResponse(fleet({ runners: [], queued_jobs: [] })));
+    stubFetch(() => jsonResponse(fleet({ runners: [], queued_jobs: [], version: "9.9" } as never)));
     await refreshState();
     expect(dom.connectionText!.textContent).toBe("LIVE OBSERVABILITY");
+    expect(dom.connectionBadge!.className).toBe("badge badge-pulse online");
+    expect(dom.statVersion!.textContent).toBe("v9.9");
   });
 
   it("marks the connection as errored", async () => {
-    vi.spyOn(console, "warn").mockImplementation(() => {});
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
     stubFetch(() => jsonResponse({}, { ok: false }));
     await refreshState();
     expect(dom.connectionText!.textContent).toBe("RECONNECTING...");
+    expect(dom.connectionBadge!.classList.contains("error")).toBe(true);
+    expect(warn).toHaveBeenCalledWith("Poll state warning:", expect.anything());
   });
 });

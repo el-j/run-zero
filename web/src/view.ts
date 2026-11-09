@@ -19,7 +19,19 @@ export function restoreTabFilters() {
  * Switches between the card and table presentation, persisting the choice and toggling every list's views.
  */
 export function setViewMode(mode: "cards" | "table") {
-  const { viewModeCards, viewModeTable, selectViewModeSetting, runnersCardsView, runnersTableView, queueCardsView, queueTableView, reposCardsView, reposTableView, jobsCardsView, jobsTableView } = dom;
+  const {
+    viewModeCards,
+    viewModeTable,
+    selectViewModeSetting,
+    runnersCardsView,
+    runnersTableView,
+    queueCardsView,
+    queueTableView,
+    reposCardsView,
+    reposTableView,
+    jobsCardsView,
+    jobsTableView,
+  } = dom;
   state.currentViewMode = mode;
   localStorage.setItem("runzero_display_mode", mode);
   const dashboard = document.querySelector<HTMLElement>(".dashboard-container");
@@ -27,57 +39,24 @@ export function setViewMode(mode: "cards" | "table") {
   dashboard?.classList.toggle("view-mode-table", mode === "table");
 
   if (viewModeCards && viewModeTable) {
-    if (mode === "cards") {
-      viewModeCards.classList.add("active");
-      viewModeTable.classList.remove("active");
-    } else {
-      viewModeTable.classList.add("active");
-      viewModeCards.classList.remove("active");
-    }
+    viewModeCards.classList.toggle("active", mode === "cards");
+    viewModeTable.classList.toggle("active", mode === "table");
   }
 
   if (selectViewModeSetting) {
     selectViewModeSetting.value = mode;
   }
 
-  // Toggle views
-  if (runnersCardsView && runnersTableView) {
-    if (mode === "cards") {
-      runnersCardsView.classList.remove("hidden");
-      runnersTableView.classList.add("hidden");
-    } else {
-      runnersCardsView.classList.add("hidden");
-      runnersTableView.classList.remove("hidden");
-    }
-  }
-
-  if (queueCardsView && queueTableView) {
-    if (mode === "cards") {
-      queueCardsView.classList.remove("hidden");
-      queueTableView.classList.add("hidden");
-    } else {
-      queueCardsView.classList.add("hidden");
-      queueTableView.classList.remove("hidden");
-    }
-  }
-
-  if (reposCardsView && reposTableView) {
-    if (mode === "cards") {
-      reposCardsView.classList.remove("hidden");
-      reposTableView.classList.add("hidden");
-    } else {
-      reposCardsView.classList.add("hidden");
-      reposTableView.classList.remove("hidden");
-    }
-  }
-
-  if (jobsCardsView && jobsTableView) {
-    if (mode === "cards") {
-      jobsCardsView.classList.remove("hidden");
-      jobsTableView.classList.add("hidden");
-    } else {
-      jobsCardsView.classList.add("hidden");
-      jobsTableView.classList.remove("hidden");
+  // Each list shows either its cards or its table.
+  for (const [cards, table] of [
+    [runnersCardsView, runnersTableView],
+    [queueCardsView, queueTableView],
+    [reposCardsView, reposTableView],
+    [jobsCardsView, jobsTableView],
+  ]) {
+    if (cards && table) {
+      cards.classList.toggle("hidden", mode !== "cards");
+      table.classList.toggle("hidden", mode !== "table");
     }
   }
   updateSortHeaderIndicators();
@@ -87,7 +66,20 @@ export function setViewMode(mode: "cards" | "table") {
  * Activates one of the fleet control tabs and hides the others.
  */
 export function setActiveTab(tab: "runners" | "queue" | "jobs" | "repos") {
-  const { tabBtnRunners, tabBtnQueue, tabBtnJobs, tabBtnRepos, tabContentRunners, tabContentQueue, tabContentJobs, tabContentRepos, tabActionsRunners, tabActionsQueue, tabActionsJobs, tabActionsRepos } = dom;
+  const {
+    tabBtnRunners,
+    tabBtnQueue,
+    tabBtnJobs,
+    tabBtnRepos,
+    tabContentRunners,
+    tabContentQueue,
+    tabContentJobs,
+    tabContentRepos,
+    tabActionsRunners,
+    tabActionsQueue,
+    tabActionsJobs,
+    tabActionsRepos,
+  } = dom;
   state.currentTab = tab;
 
   const tabs = [

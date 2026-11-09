@@ -38,9 +38,27 @@ describe("startApp", () => {
   it("bootstraps the dashboard in order and binds hooks", async () => {
     const { startApp } = await import("./app");
     await startApp();
-    expect(m.order[0]).toBe("shell");
-    expect(m.order).toContain("streams");
-    expect(m.order.indexOf("logs")).toBeLessThan(m.order.indexOf("modal"));
+    expect(m.order).toEqual([
+      "shell",
+      "dom",
+      "filters",
+      "handlers",
+      "viewMode",
+      "tab",
+      "status",
+      "refresh",
+      "settings",
+      "cache",
+      "logs",
+      "modal",
+      "streams",
+    ]);
+    const { setConnectionStatus } = await import("./ui");
+    const { setViewMode, setActiveTab } = await import("./view");
+    const { state } = await import("./state");
+    expect(setConnectionStatus).toHaveBeenCalledWith("connecting", "CONNECTING...");
+    expect(setViewMode).toHaveBeenCalledWith(state.currentViewMode);
+    expect(setActiveTab).toHaveBeenCalledWith(state.currentTab);
     hooks.refreshState();
     hooks.loadCacheStats();
     expect(m.order.filter((x) => x === "refresh").length).toBeGreaterThan(1);

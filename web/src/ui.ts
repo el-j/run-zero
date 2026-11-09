@@ -31,10 +31,6 @@ export function setConnectionStatus(status: "connecting" | "online" | "error", t
   const { connectionBadge, connectionText } = dom;
   if (!connectionText || !connectionBadge) return;
   connectionText.textContent = text;
-  connectionBadge.className = "badge badge-pulse";
-  if (status === "connecting") {
-    connectionBadge.classList.add("connecting");
-  } else if (status === "error") {
-    connectionBadge.classList.add("error");
-  }
+  // .badge-pulse.connecting and .badge-pulse.error restyle the badge; online is the plain pulse.
+  connectionBadge.className = `badge badge-pulse ${status}`;
 }

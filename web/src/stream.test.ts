@@ -18,28 +18,31 @@ beforeEach(() => {
 
 describe("loadInitialLogs", () => {
   it("appends buffered logs", async () => {
-    stubFetch(() =>
+    const f = stubFetch(() =>
       jsonResponse({ logs: [{ message: "one", timestamp: "t1" }, { message: "two" }] }),
     );
     await loadInitialLogs();
+    expect(f).toHaveBeenCalledWith("/api/logs");
     expect(dom.logTerminal!.children).toHaveLength(2);
   });
 
   it("ignores failed responses and malformed bodies", async () => {
-    stubFetch(() => jsonResponse({}, { ok: false }));
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    stubFetch(() => jsonResponse({ logs: [{ message: "from an error page" }] }, { ok: false }));
     await loadInitialLogs();
     stubFetch(() => jsonResponse({}));
     await loadInitialLogs();
     stubFetch(() => jsonResponse({ logs: "nope" }));
     await loadInitialLogs();
     expect(dom.logTerminal!.children).toHaveLength(0);
+    expect(warn).not.toHaveBeenCalled();
   });
 
   it("warns when the request throws", async () => {
     const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
     stubFetch(() => Promise.reject(new Error("offline")));
     await loadInitialLogs();
-    expect(warn).toHaveBeenCalled();
+    expect(warn).toHaveBeenCalledWith("Could not load initial logs:", expect.any(Error));
   });
 });
 
@@ -53,12 +56,14 @@ describe("startStreams", () => {
     es.emit("fleet", JSON.stringify(fleet({})));
     expect(renderState).toHaveBeenCalled();
     expect(dom.connectionText!.textContent).toBe("LIVE OBSERVABILITY");
+    expect(dom.connectionBadge!.classList.contains("online")).toBe(true);
     es.emit("activity", "hello");
     expect(dom.logTerminal!.children).toHaveLength(1);
     es.emit("build_progress", '{"x":1}');
     expect(modal.handleProgressEvent).toHaveBeenCalledWith({ x: 1 });
     es.onerror?.(new Event("error"));
     expect(dom.connectionText!.textContent).toBe("RECONNECTING...");
+    expect(dom.connectionBadge!.classList.contains("error")).toBe(true);
 
     vi.advanceTimersByTime(20000);
     expect(data.refreshState).toHaveBeenCalledTimes(2);

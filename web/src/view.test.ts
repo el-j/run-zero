@@ -56,6 +56,27 @@ describe("sorting", () => {
     expect(cls[5]).toBe("sortable-col");
     expect(cls[6]).toBe("sortable-col");
   });
+
+  it.each(["runners", "queue", "jobs", "repos"] as const)(
+    "updateSortHeaderIndicators marks a %s header only for its own table and key",
+    (table) => {
+      state.runnersSort = { key: "name", dir: "asc" };
+      state.queueSort = { key: "name", dir: "asc" };
+      state.jobsSort = { key: "name", dir: "asc" };
+      state.reposSort = { key: "repo", dir: "asc" };
+      const key = table === "repos" ? "repo" : "name";
+      document.body.innerHTML = `<table><tr>
+        <th class="sortable-col" data-table="${table}" data-sort-key="${key}"></th>
+        <th class="sortable-col" data-table="${table}" data-sort-key="other"></th>
+        <th class="sortable-col" data-table="nope" data-sort-key="${key}"></th>
+        <th class="sortable-col" data-sort-key="${key}"></th>
+      </tr></table>`;
+      updateSortHeaderIndicators();
+      expect(
+        [...document.querySelectorAll("th")].map((t) => t.classList.contains("sort-asc")),
+      ).toEqual([true, false, false, false]);
+    },
+  );
 });
 
 describe("view", () => {
@@ -78,7 +99,12 @@ describe("view", () => {
   });
 
   it("restoreTabFilters tolerates missing inputs", () => {
-    removeIds("runners-search-input", "queue-search-input", "jobs-search-input", "repo-search-input");
+    removeIds(
+      "runners-search-input",
+      "queue-search-input",
+      "jobs-search-input",
+      "repo-search-input",
+    );
     expect(() => restoreTabFilters()).not.toThrow();
   });
 
@@ -91,7 +117,9 @@ describe("view", () => {
     expect(dom.runnersTableView!.classList.contains("hidden")).toBe(false);
     expect(dom.jobsTableView!.classList.contains("hidden")).toBe(false);
     expect(dom.selectViewModeSetting!.value).toBe("table");
-    expect(document.querySelector(".dashboard-container")!.classList.contains("view-mode-table")).toBe(true);
+    expect(
+      document.querySelector(".dashboard-container")!.classList.contains("view-mode-table"),
+    ).toBe(true);
     setViewMode("cards");
     expect(dom.viewModeCards!.classList.contains("active")).toBe(true);
     expect(dom.runnersCardsView!.classList.contains("hidden")).toBe(false);
@@ -99,6 +127,69 @@ describe("view", () => {
     expect(dom.reposTableView!.classList.contains("hidden")).toBe(true);
     expect(dom.jobsCardsView!.classList.contains("hidden")).toBe(false);
   });
+
+  it.each(["cards", "table"] as const)(
+    "setViewMode(%s) shows only that view of every list",
+    (mode) => {
+      const other = mode === "cards" ? "table" : "cards";
+      setViewMode(other);
+      setViewMode(mode);
+      const container = document.querySelector(".dashboard-container")!;
+      expect(container.classList.contains(`view-mode-${mode}`)).toBe(true);
+      expect(container.classList.contains(`view-mode-${other}`)).toBe(false);
+      expect(dom.viewModeCards!.classList.contains("active")).toBe(mode === "cards");
+      expect(dom.viewModeTable!.classList.contains("active")).toBe(mode === "table");
+      for (const [cards, table] of [
+        [dom.runnersCardsView, dom.runnersTableView],
+        [dom.queueCardsView, dom.queueTableView],
+        [dom.reposCardsView, dom.reposTableView],
+        [dom.jobsCardsView, dom.jobsTableView],
+      ]) {
+        expect(cards!.classList.contains("hidden")).toBe(mode !== "cards");
+        expect(table!.classList.contains("hidden")).toBe(mode !== "table");
+      }
+    },
+  );
+
+  it("setViewMode leaves a list alone when one of its views is missing", () => {
+    removeIds("queue-table-view");
+    dom.queueCardsView!.classList.add("hidden");
+    setViewMode("cards");
+    expect(dom.queueCardsView!.classList.contains("hidden")).toBe(true);
+    removeIds("view-mode-table");
+    dom.viewModeCards!.classList.remove("active");
+    setViewMode("cards");
+    expect(dom.viewModeCards!.classList.contains("active")).toBe(false);
+  });
+
+  it("setViewMode refreshes the sort indicators", () => {
+    const th = document.createElement("th");
+    th.className = "sortable-col";
+    th.dataset.table = "runners";
+    th.dataset.sortKey = state.runnersSort.key;
+    document.body.appendChild(th);
+    setViewMode("table");
+    expect(th.classList.contains(`sort-${state.runnersSort.dir}`)).toBe(true);
+  });
+
+  it.each(["runners", "queue", "jobs", "repos"] as const)(
+    "setActiveTab(%s) activates only that tab",
+    (tab) => {
+      setActiveTab(tab);
+      const tabs = {
+        runners: [dom.tabBtnRunners, dom.tabContentRunners, dom.tabActionsRunners],
+        queue: [dom.tabBtnQueue, dom.tabContentQueue, dom.tabActionsQueue],
+        jobs: [dom.tabBtnJobs, dom.tabContentJobs, dom.tabActionsJobs],
+        repos: [dom.tabBtnRepos, dom.tabContentRepos, dom.tabActionsRepos],
+      };
+      for (const [name, [btn, pane, actions]] of Object.entries(tabs)) {
+        const active = name === tab;
+        expect(btn!.classList.contains("active"), `${name} button`).toBe(active);
+        expect(pane!.classList.contains("hidden"), `${name} pane`).toBe(!active);
+        expect(actions!.classList.contains("hidden"), `${name} actions`).toBe(!active);
+      }
+    },
+  );
 
   it("setViewMode tolerates a missing shell", () => {
     document.body.innerHTML = "";
@@ -134,7 +225,10 @@ describe("terminal", () => {
   });
 
   it("applyTerminalHeight persists and sets the CSS variable", () => {
-    Object.defineProperty(dom.workspaceMainColumn!, "clientHeight", { configurable: true, value: 800 });
+    Object.defineProperty(dom.workspaceMainColumn!, "clientHeight", {
+      configurable: true,
+      value: 800,
+    });
     applyTerminalHeight(300);
     expect(dom.workspaceMainColumn!.style.getPropertyValue("--terminal-height")).toBe("300px");
     expect(localStorage.getItem("runzero_terminal_height_px")).toBe("300");
@@ -143,7 +237,10 @@ describe("terminal", () => {
   });
 
   it("toggleTerminal expands and collapses", () => {
-    Object.defineProperty(dom.workspaceMainColumn!, "clientHeight", { configurable: true, value: 800 });
+    Object.defineProperty(dom.workspaceMainColumn!, "clientHeight", {
+      configurable: true,
+      value: 800,
+    });
     toggleTerminal();
     expect(state.terminalExpanded).toBe(true);
     expect(dom.btnTerminalExpandText!.textContent).toBe("COLLAPSE");
@@ -151,6 +248,7 @@ describe("terminal", () => {
     expect(state.terminalHeightPx).toBe(320);
     toggleTerminal();
     expect(dom.btnTerminalExpandText!.textContent).toBe("EXPAND");
+    expect(dom.btnTerminalExpandIcon!.textContent).toBe("▲");
     expect(state.terminalHeightPx).toBe(180);
     removeIds("btn-terminal-expand-icon", "btn-terminal-expand-text");
     expect(() => toggleTerminal()).not.toThrow();
@@ -160,12 +258,16 @@ describe("terminal", () => {
     const col = dom.workspaceMainColumn!;
     Object.defineProperty(col, "clientHeight", { configurable: true, value: 800 });
     const splitter = dom.mainTerminalSplitter!;
-    vi.spyOn(dom.panelTerminal!, "getBoundingClientRect").mockReturnValue({ height: 200 } as DOMRect);
+    vi.spyOn(dom.panelTerminal!, "getBoundingClientRect").mockReturnValue({
+      height: 200,
+    } as DOMRect);
     initTerminalSplitter();
     expect(col.style.getPropertyValue("--terminal-height")).toBe("180px");
 
     window.dispatchEvent(new MouseEvent("mouseup"));
-    splitter.dispatchEvent(new MouseEvent("mousedown", { clientY: 500, cancelable: true }));
+    const down = new MouseEvent("mousedown", { clientY: 500, cancelable: true });
+    splitter.dispatchEvent(down);
+    expect(down.defaultPrevented).toBe(true);
     expect(splitter.classList.contains("dragging")).toBe(true);
     window.dispatchEvent(new MouseEvent("mousemove", { clientY: 450 }));
     expect(state.terminalHeightPx).toBe(250);
@@ -173,6 +275,10 @@ describe("terminal", () => {
     expect(splitter.classList.contains("dragging")).toBe(false);
     window.dispatchEvent(new MouseEvent("mousemove", { clientY: 100 }));
     expect(state.terminalHeightPx).toBe(250);
+    // The drag's mouseup listener is gone too: a later mouseup leaves a new "dragging" mark alone.
+    splitter.classList.add("dragging");
+    window.dispatchEvent(new MouseEvent("mouseup"));
+    expect(splitter.classList.contains("dragging")).toBe(true);
 
     state.terminalHeightPx = 222;
     window.dispatchEvent(new Event("resize"));
@@ -188,11 +294,14 @@ describe("terminal", () => {
   it("appendLog appends, counts, trims and auto-scrolls", () => {
     appendLog("[Autoscaler] hello <x>", "12:00");
     const line = dom.logTerminal!.firstElementChild!;
+    expect(line.className).toBe("log-line");
     expect(line.innerHTML).toContain("[12:00]");
     expect(line.innerHTML).toContain("tag-cyan");
     expect(dom.terminalLineCount!.textContent).toBe("1 lines");
     appendLog("no timestamp");
-    expect(dom.logTerminal!.lastElementChild!.querySelector(".log-ts")!.textContent).toMatch(/^\[.+\]$/);
+    expect(dom.logTerminal!.lastElementChild!.querySelector(".log-ts")!.textContent).toMatch(
+      /^\[.+\]$/,
+    );
     for (let i = 0; i < 510; i++) appendLog(`l${i}`, "t");
     expect(dom.logTerminal!.children).toHaveLength(500);
 

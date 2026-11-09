@@ -39,6 +39,7 @@ describe("format", () => {
 
   it("escapeHtml", () => {
     expect(escapeHtml("")).toBe("");
+    expect(escapeHtml(undefined as unknown as string)).toBe("");
     expect(escapeHtml(`<a href="x">'&'</a>`)).toBe(
       "&lt;a href=&quot;x&quot;&gt;&#039;&amp;&#039;&lt;/a&gt;",
     );
@@ -49,6 +50,9 @@ describe("format", () => {
     expect(compareValues("a10", "a9")).toBeGreaterThan(0);
     expect(compareValues("A", "a")).toBe(0);
     expect(compareValues(1, "1")).toBe(0);
+    // Mixed types compare as text, never by subtraction.
+    expect(compareValues(10, "9x")).toBeGreaterThan(0);
+    expect(compareValues("b10", 9)).toBeGreaterThan(0);
   });
 
   it("normalizeFilter", () => {
@@ -57,6 +61,10 @@ describe("format", () => {
 
   it("includesFilter", () => {
     expect(includesFilter(["a"], "")).toBe(true);
+    expect(includesFilter([undefined, null], "undefined")).toBe(false);
+    expect(includesFilter([undefined, null], "null")).toBe(false);
+    expect(includesFilter([undefined, "x"], "was here")).toBe(false); // a missing field contributes no text
+    expect(includesFilter([null, "b"], " b")).toBe(true); // an empty field still takes its separator
     expect(includesFilter(["Alpha", undefined, null, 42], "42")).toBe(true);
     expect(includesFilter(["Alpha", undefined, null], "beta")).toBe(false);
     expect(includesFilter(["Alpha", "Beta"], "alpha beta")).toBe(true);
