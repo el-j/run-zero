@@ -24,3 +24,7 @@ dist-ssr
 *.sln
 *.sw?
 coverage
+
+# Stryker mutation testing (pnpm run mutate)
+.stryker-tmp
+reports

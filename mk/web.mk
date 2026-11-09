@@ -28,6 +28,10 @@ fmt-web: ## Format the dashboard sources with oxfmt
 test-web: ## Run dashboard unit tests with the 100% coverage gate (Vitest)
 	@cd web && pnpm run test
 
+.PHONY: mutate-web
+mutate-web: ## Mutation-test the dashboard (Stryker); fails below the break threshold in web/stryker.config.mjs
+	@cd web && pnpm run mutate
+
 .PHONY: check-web
 check-web: lint-web test-web ## Web gate: Oxlint, tests (100% coverage), typecheck and build the production dashboard
 	@cd web && pnpm run build

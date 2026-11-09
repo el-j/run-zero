@@ -2,7 +2,9 @@ name: Mutation Testing
 
 # Mutation testing re-runs each package's tests once per mutant, so it is far
 # too slow for every push: it runs weekly and on demand, and fails when any
-# package's test efficacy drops below the threshold in mk/go.mk.
+# package's test efficacy drops below the threshold in mk/go.mk, or the
+# dashboard's mutation score below the break threshold in
+# web/stryker.config.mjs.
 on:
   schedule:
     - cron: '0 4 * * 1'
@@ -31,3 +33,34 @@ jobs:
 
       - name: Mutation-test every Go package
         run: make mutate
+
+  mutate-web:
+    name: Dashboard mutation testing (Stryker)
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v7
+
+      - name: Set up pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: 22
+
+      - name: Install dashboard dependencies
+        run: cd web && pnpm install
+
+      - name: Mutation-test the dashboard
+        run: make mutate-web
+
+      - name: Upload the mutation report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: stryker-report
+          path: web/reports/mutation/

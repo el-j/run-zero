@@ -58,5 +58,42 @@ Tests that exist mainly to kill mutants live in each package's
 ## Dashboard (TypeScript)
 
 The dashboard is gated by Vitest with 100% statement, branch, function and
-line coverage (`web/vite.config.ts`). It has no mutation testing yet; adding
-[Stryker](https://stryker-mutator.io/) for `web/src` is the next step.
+line coverage (`web/vite.config.ts`) on every commit, and mutation-tested with
+[Stryker](https://stryker-mutator.io/) weekly and on demand:
+
+```bash
+make mutate-web          # or: cd web && pnpm run mutate
+```
+
+The run takes about 25 minutes, writes an HTML report to
+`web/reports/mutation/index.html`, and keeps an incremental result in
+`web/reports/stryker-incremental.json`. Later runs only retest mutants in
+changed code. Both files are git-ignored. The weekly
+[`mutation.yml`](./.github/workflows/mutation.yml) job uploads the report as
+an artifact.
+
+`web/stryker.config.mjs` points `tsconfigFile` at a file that does not exist.
+Stryker rewrites the sandbox's tsconfig through the TypeScript JS API, which
+TypeScript 7 no longer ships, and our tsconfig has nothing to rewrite.
+
+### Current result
+
+The first full run scored **72.47%**: 2875 killed, 81 timed out, 1123 survived
+out of 4087 mutants. The `break` threshold is set to 72, so the score cannot
+fall, and is raised as survivors are killed.
+
+| Area | Score |
+|---|---|
+| `render/jobs.ts` | 43.8% |
+| `render/runners.ts` | 56.4% |
+| `render/queue.ts` | 58.7% |
+| `render/repos.ts` | 65.8% |
+| `components/` | 68.1% |
+| `handlers/` | 82.0% |
+| `api/client.ts` | 85.4% |
+
+By kind, 407 survivors are string literals (class names and text in rendered
+markup), 285 conditional expressions, 125 logical operators and 55
+comparisons. Those last three are untested branches. The render modules are
+covered line by line but their output is rarely asserted, which is the main
+gap.
