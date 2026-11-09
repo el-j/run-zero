@@ -1,4 +1,4 @@
-import { afterEach, beforeEach } from "vitest";
+import { afterEach, beforeEach, vi } from "vitest";
 
 /** Simulated viewport width used by the matchMedia stub. */
 export const viewport = { width: 1200 };
@@ -36,7 +36,11 @@ Object.defineProperty(window, "matchMedia", {
   value: (query: string) => {
     const max = /max-width:\s*(\d+)px/.exec(query);
     const min = /min-width:\s*(\d+)px/.exec(query);
-    const matches = max ? viewport.width <= Number(max[1]) : min ? viewport.width >= Number(min[1]) : false;
+    const matches = max
+      ? viewport.width <= Number(max[1])
+      : min
+        ? viewport.width >= Number(min[1])
+        : false;
     return { matches, media: query };
   },
 });
@@ -61,4 +65,5 @@ beforeEach(() => {
 
 afterEach(() => {
   document.body.innerHTML = "";
+  vi.useRealTimers();
 });

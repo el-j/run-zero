@@ -1,0 +1,219 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`renderCompletedJobs output > renders a filter miss 1`] = `
+"
+      <div class="empty-substate empty-queue-clean">
+        <div class="clean-check-icon">⌕</div>
+        <div class="clean-text font-mono">NO HISTORY MATCHES FILTER</div>
+        <div class="clean-subtext">Try a different history filter. Current query: "&lt;nomatch&gt;".</div>
+      </div>
+    "
+`;
+
+exports[`renderCompletedJobs output > renders the empty history 1`] = `
+"
+      <div class="empty-substate empty-queue-clean">
+        <div class="clean-check-icon">✓</div>
+        <div class="clean-text font-mono">NO COMPLETED JOBS YET</div>
+        <div class="clean-subtext">Recent successful and failed GitHub Actions jobs appear here with a quick retry path.</div>
+      </div>
+    "
+`;
+
+exports[`renderCompletedJobs output > renders the full history as cards and table rows > cards 1`] = `
+"
+        <article class="glass-panel" style="padding: 1rem 1.1rem; display: flex; flex-direction: column; gap: 0.7rem; border-left: 3px solid var(--emerald);">
+          <div style="display: flex; justify-content: space-between; align-items: flex-start; gap: 1rem; flex-wrap: wrap;">
+            <div style="display: flex; flex-direction: column; gap: 0.2rem; min-width: 0;">
+              <div style="display: flex; align-items: center; gap: 0.5rem; flex-wrap: wrap;">
+                <span class="badge badge-live font-mono" style="font-size: 10px;">SUCCESS</span>
+                <a href="http://run" target="_blank" rel="noopener noreferrer" style="font-weight: 700; color: var(--text-main); text-decoration: none;">
+                  ok
+                </a>
+              </div>
+              <div style="font-size: 0.82rem; color: var(--text-muted); display: flex; flex-wrap: wrap; gap: 0.5rem;">
+                <span class="font-mono">o/r</span>
+                <span>•</span><span>CI</span>
+                <span>•</span><span class="badge mono" style="font-size: 0.65rem;">Attempt 2</span>
+                <span>•</span><span class="font-mono">main</span>
+              </div>
+            </div>
+            <div style="font-size: 0.8rem; color: var(--text-muted); text-align: right;">
+              <div class="font-mono">2026-01-02T00:00:00.000Z</div>
+              <div class="font-mono">5s</div>
+            </div>
+          </div>
+
+          <div style="display: flex; flex-direction: column; gap: 0.35rem;">
+            <div style="font-size: 0.8rem; color: var(--text-main); font-weight: 600;">Why it failed</div>
+            <div style="font-size: 0.82rem; color: var(--emerald); line-height: 1.5;">
+              No failure reason captured.
+            </div>
+            
+            <ul style="margin: 0.2rem 0 0 1.25rem; color: var(--text-muted); font-size: 0.78rem; line-height: 1.5;"><li>m1</li><li>m2</li></ul>
+          </div>
+
+          <div style="display: flex; justify-content: flex-end; gap: 0.5rem; align-items: center; flex-wrap: wrap;">
+            <a href="http://gh/job/1" target="_blank" rel="noopener noreferrer" class="btn btn-xs btn-outline font-mono">Open in GitHub</a>
+            
+          </div>
+        </article>
+      
+        <article class="glass-panel" style="padding: 1rem 1.1rem; display: flex; flex-direction: column; gap: 0.7rem; border-left: 3px solid var(--crimson);">
+          <div style="display: flex; justify-content: space-between; align-items: flex-start; gap: 1rem; flex-wrap: wrap;">
+            <div style="display: flex; flex-direction: column; gap: 0.2rem; min-width: 0;">
+              <div style="display: flex; align-items: center; gap: 0.5rem; flex-wrap: wrap;">
+                <span class="badge badge-danger font-mono" style="font-size: 10px;">FAILURE</span>
+                <a href="https://github.com/o/r/actions/runs/100" target="_blank" rel="noopener noreferrer" style="font-weight: 700; color: var(--text-main); text-decoration: none;">
+                  bad
+                </a>
+              </div>
+              <div style="font-size: 0.82rem; color: var(--text-muted); display: flex; flex-wrap: wrap; gap: 0.5rem;">
+                <span class="font-mono">o/r</span>
+                
+                
+                
+              </div>
+            </div>
+            <div style="font-size: 0.8rem; color: var(--text-muted); text-align: right;">
+              <div class="font-mono">2026-01-01T00:00:00.000Z</div>
+              
+            </div>
+          </div>
+
+          <div style="display: flex; flex-direction: column; gap: 0.35rem;">
+            <div style="font-size: 0.8rem; color: var(--text-main); font-weight: 600;">Why it failed</div>
+            <div style="font-size: 0.82rem; color: var(--solar); line-height: 1.5;">
+              boom
+            </div>
+            <div style="font-size: 0.75rem; color: var(--text-muted);">Failed step: <span class="font-mono">step 3</span></div>
+            
+          </div>
+
+          <div style="display: flex; justify-content: flex-end; gap: 0.5rem; align-items: center; flex-wrap: wrap;">
+            <a href="https://github.com/o/r/actions/runs/100" target="_blank" rel="noopener noreferrer" class="btn btn-xs btn-outline font-mono">Open in GitHub</a>
+            <button class="btn btn-xs btn-outline job-rerun-btn font-mono" data-repo="o/r" data-run-id="100">↻ Retry failed jobs</button>
+          </div>
+        </article>
+      
+        <article class="glass-panel" style="padding: 1rem 1.1rem; display: flex; flex-direction: column; gap: 0.7rem; border-left: 3px solid var(--crimson);">
+          <div style="display: flex; justify-content: space-between; align-items: flex-start; gap: 1rem; flex-wrap: wrap;">
+            <div style="display: flex; flex-direction: column; gap: 0.2rem; min-width: 0;">
+              <div style="display: flex; align-items: center; gap: 0.5rem; flex-wrap: wrap;">
+                <span class="badge badge-danger font-mono" style="font-size: 10px;">UNKNOWN</span>
+                <a href="https://github.com/o/r/actions/runs/7" target="_blank" rel="noopener noreferrer" style="font-weight: 700; color: var(--text-main); text-decoration: none;">
+                  mystery
+                </a>
+              </div>
+              <div style="font-size: 0.82rem; color: var(--text-muted); display: flex; flex-wrap: wrap; gap: 0.5rem;">
+                <span class="font-mono">o/r</span>
+                
+                
+                
+              </div>
+            </div>
+            <div style="font-size: 0.8rem; color: var(--text-muted); text-align: right;">
+              <div class="font-mono">—</div>
+              
+            </div>
+          </div>
+
+          <div style="display: flex; flex-direction: column; gap: 0.35rem;">
+            <div style="font-size: 0.8rem; color: var(--text-main); font-weight: 600;">Why it failed</div>
+            <div style="font-size: 0.82rem; color: var(--solar); line-height: 1.5;">
+              No failure reason captured.
+            </div>
+            
+            
+          </div>
+
+          <div style="display: flex; justify-content: flex-end; gap: 0.5rem; align-items: center; flex-wrap: wrap;">
+            <a href="http://gh/job/1" target="_blank" rel="noopener noreferrer" class="btn btn-xs btn-outline font-mono">Open in GitHub</a>
+            <button class="btn btn-xs btn-outline job-rerun-btn font-mono" data-repo="o/r" data-run-id="7">↻ Retry failed jobs</button>
+          </div>
+        </article>
+      "
+`;
+
+exports[`renderCompletedJobs output > renders the full history as cards and table rows > table 1`] = `
+"
+        <tr>
+          <td><span class="jobs-status-pill jobs-status-success font-mono">SUCCESS</span></td>
+          <td>
+            <div class="jobs-table-job">
+              <a href="http://run" target="_blank" rel="noopener noreferrer" class="jobs-table-job-link">ok</a>
+              <div class="jobs-table-repo font-mono">o/r</div>
+              <div class="jobs-table-meta">CI • branch: main • attempt 2</div>
+            </div>
+          </td>
+          <td>
+            <div class="jobs-table-reason" title="No failure reason captured.">No failure reason captured.</div>
+            
+          </td>
+          <td class="font-mono">5s</td>
+          <td class="font-mono">2026-01-02T00:00:00.000Z</td>
+          <td>
+            <div class="jobs-table-actions">
+              <a href="http://gh/job/1" target="_blank" rel="noopener noreferrer" class="btn btn-xs btn-outline font-mono jobs-action-btn">
+                <span class="jobs-action-icon">↗</span><span class="jobs-action-text">GitHub</span>
+              </a>
+              
+            </div>
+          </td>
+        </tr>
+      
+        <tr>
+          <td><span class="jobs-status-pill jobs-status-failed font-mono">FAILURE</span></td>
+          <td>
+            <div class="jobs-table-job">
+              <a href="https://github.com/o/r/actions/runs/100" target="_blank" rel="noopener noreferrer" class="jobs-table-job-link">bad</a>
+              <div class="jobs-table-repo font-mono">o/r</div>
+              
+            </div>
+          </td>
+          <td>
+            <div class="jobs-table-reason" title="boom">boom</div>
+            <div class="jobs-table-step">step: <span class="font-mono">step 3</span></div>
+          </td>
+          <td class="font-mono">—</td>
+          <td class="font-mono">2026-01-01T00:00:00.000Z</td>
+          <td>
+            <div class="jobs-table-actions">
+              <a href="https://github.com/o/r/actions/runs/100" target="_blank" rel="noopener noreferrer" class="btn btn-xs btn-outline font-mono jobs-action-btn">
+                <span class="jobs-action-icon">↗</span><span class="jobs-action-text">GitHub</span>
+              </a>
+              <button class="btn btn-xs btn-outline job-rerun-btn font-mono jobs-action-btn" data-repo="o/r" data-run-id="100">
+                    <span class="jobs-action-icon">↻</span><span class="jobs-action-text">Retry failed</span>
+                  </button>
+            </div>
+          </td>
+        </tr>
+      
+        <tr>
+          <td><span class="jobs-status-pill jobs-status-failed font-mono">UNKNOWN</span></td>
+          <td>
+            <div class="jobs-table-job">
+              <a href="https://github.com/o/r/actions/runs/7" target="_blank" rel="noopener noreferrer" class="jobs-table-job-link">mystery</a>
+              <div class="jobs-table-repo font-mono">o/r</div>
+              
+            </div>
+          </td>
+          <td>
+            <div class="jobs-table-reason" title="No failure reason captured.">No failure reason captured.</div>
+            
+          </td>
+          <td class="font-mono">—</td>
+          <td class="font-mono">—</td>
+          <td>
+            <div class="jobs-table-actions">
+              <a href="http://gh/job/1" target="_blank" rel="noopener noreferrer" class="btn btn-xs btn-outline font-mono jobs-action-btn">
+                <span class="jobs-action-icon">↗</span><span class="jobs-action-text">GitHub</span>
+              </a>
+              <button class="btn btn-xs btn-outline job-rerun-btn font-mono jobs-action-btn" data-repo="o/r" data-run-id="7">
+                    <span class="jobs-action-icon">↻</span><span class="jobs-action-text">Retry failed</span>
+                  </button>
+            </div>
+          </td>
+        </tr>
+      "
+`;

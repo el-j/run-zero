@@ -65,3 +65,21 @@ export async function flush(): Promise<void> {
   for (let i = 0; i < 5; i++) await Promise.resolve();
   await new Promise((r) => setTimeout(r, 0));
 }
+
+/**
+ * Makes rendered output the same on every machine: fixes the clock at `now`
+ * and formats dates and numbers locale-free (ISO dates, plain numbers), so
+ * snapshots of rendered markup do not depend on the host's time zone or locale.
+ */
+export function pinClockAndLocale(now = "2026-01-05T12:00:00Z"): void {
+  vi.useFakeTimers({ toFake: ["Date"], now: new Date(now) });
+  vi.spyOn(Date.prototype, "toLocaleString").mockImplementation(function (this: Date) {
+    return this.toISOString();
+  });
+  vi.spyOn(Date.prototype, "toLocaleTimeString").mockImplementation(function (this: Date) {
+    return this.toISOString().slice(11, 19);
+  });
+  vi.spyOn(Number.prototype, "toLocaleString").mockImplementation(function (this: number) {
+    return String(this);
+  });
+}

@@ -4,6 +4,18 @@ import { dom } from "../dom";
 import { compareValues, escapeHtml, includesFilter, normalizeFilter } from "../format";
 import { state } from "../state";
 
+/** What both the cards and the table show about a completed job. */
+function describe(job: CompletedJob) {
+  const conclusion = (job.conclusion || "unknown").toLowerCase();
+  return {
+    conclusion,
+    isSuccess: conclusion === "success",
+    reason: job.failure_reason || job.failed_step || "No failure reason captured.",
+    completedMs: job.completed_at ? new Date(job.completed_at).getTime() : 0,
+    runUrl: job.run_url || `https://github.com/${job.repo}/actions/runs/${job.run_id}`,
+  };
+}
+
 /**
  * Renders the completed-job history (cards and table) with filtering, sorting and retry buttons.
  */
@@ -27,11 +39,9 @@ export function renderCompletedJobs(jobs: CompletedJob[]) {
       jobsFilter,
     ),
   );
-  const hasFilter = !!jobsFilter;
-
   if (!jobsList || !jobsTableBody || !jobsTableEmpty) return;
 
-  if (jobs.length === 0 || filteredJobs.length === 0) {
+  if (filteredJobs.length === 0) {
     const noHistory = jobs.length === 0;
     const emptyHtml = `
       <div class="empty-substate empty-queue-clean">
@@ -58,23 +68,18 @@ export function renderCompletedJobs(jobs: CompletedJob[]) {
   }
   jobsTableEmpty.classList.add("hidden");
 
-  const sorted = [...filteredJobs].sort((a, b) => {
-    const av = a.completed_at ? new Date(a.completed_at).getTime() : 0;
-    const bv = b.completed_at ? new Date(b.completed_at).getTime() : 0;
-    return bv - av;
-  });
+  const sorted = [...filteredJobs].sort(
+    (a, b) => describe(b).completedMs - describe(a).completedMs,
+  );
 
   jobsList.innerHTML = sorted
     .map((job) => {
-      const conclusion = (job.conclusion || "unknown").toLowerCase();
-      const isSuccess = conclusion === "success";
+      const { conclusion, isSuccess, reason, runUrl } = describe(job);
       const headerKind = isSuccess ? "badge-live" : "badge-danger";
       const statusText = isSuccess ? "SUCCESS" : conclusion.toUpperCase();
-      const reason = job.failure_reason || job.failed_step || "No failure reason captured.";
       const messages = (job.messages || [])
         .map((msg: string) => `<li>${escapeHtml(msg)}</li>`)
         .join("");
-      const runUrl = job.run_url || `https://github.com/${job.repo}/actions/runs/${job.run_id}`;
       const retryBtn = !isSuccess
         ? `<button class="btn btn-xs btn-outline job-rerun-btn font-mono" data-repo="${escapeHtml(job.repo)}" data-run-id="${job.run_id}">↻ Retry failed jobs</button>`
         : "";
@@ -121,40 +126,25 @@ export function renderCompletedJobs(jobs: CompletedJob[]) {
     .join("");
 
   const sortedJobsForTable = [...filteredJobs].sort((a, b) => {
-    const aConclusion = (a.conclusion || "unknown").toLowerCase();
-    const bConclusion = (b.conclusion || "unknown").toLowerCase();
-    const aReason = a.failure_reason || a.failed_step || "No failure reason captured.";
-    const bReason = b.failure_reason || b.failed_step || "No failure reason captured.";
-    const aDuration = a.duration_sec ?? 0;
-    const bDuration = b.duration_sec ?? 0;
-    const aCompleted = a.completed_at ? new Date(a.completed_at).getTime() : 0;
-    const bCompleted = b.completed_at ? new Date(b.completed_at).getTime() : 0;
+    const da = describe(a);
+    const db = describe(b);
     const map: Record<typeof state.jobsSort.key, [string | number, string | number]> = {
-      result: [aConclusion, bConclusion],
+      result: [da.conclusion, db.conclusion],
       name: [`${a.name} ${a.repo}`, `${b.name} ${b.repo}`],
-      analysis: [aReason, bReason],
-      duration: [aDuration, bDuration],
-      completed: [aCompleted, bCompleted],
+      analysis: [da.reason, db.reason],
+      duration: [a.duration_sec ?? 0, b.duration_sec ?? 0],
+      completed: [da.completedMs, db.completedMs],
     };
     const [av, bv] = map[state.jobsSort.key];
     const diff = compareValues(av, bv);
     return state.jobsSort.dir === "asc" ? diff : -diff;
   });
-  if (state.currentViewMode === "table") {
-    jobsTableEmpty.classList.toggle("hidden", sortedJobsForTable.length > 0);
-    jobsTableEmpty.textContent = hasFilter
-      ? `No completed jobs matching "${jobsFilter}".`
-      : "Recent successful and failed GitHub Actions jobs appear here.";
-  }
 
   jobsTableBody.innerHTML = sortedJobsForTable
     .map((job) => {
-      const conclusion = (job.conclusion || "unknown").toLowerCase();
-      const isSuccess = conclusion === "success";
+      const { conclusion, isSuccess, reason, runUrl } = describe(job);
       const statusClass = isSuccess ? "jobs-status-success" : "jobs-status-failed";
       const statusText = isSuccess ? "SUCCESS" : conclusion.toUpperCase();
-      const reason = job.failure_reason || job.failed_step || "No failure reason captured.";
-      const runUrl = job.run_url || `https://github.com/${job.repo}/actions/runs/${job.run_id}`;
       const details = [
         job.workflow_name || "",
         job.head_branch ? `branch: ${job.head_branch}` : "",

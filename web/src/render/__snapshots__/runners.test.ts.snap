@@ -1,0 +1,365 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`renderRunners output > renders a mixed fleet as cards and table rows > cards 1`] = `
+"
+          <div class="runner-card">
+            <div class="runner-card-top">
+              <div class="runner-id-wrap">
+                <span class="runner-pulse"></span>
+                <span class="runner-id font-mono">alpha</span>
+              </div>
+              <div class="runner-badges" style="display: flex; gap: 4px; align-items: center; flex-wrap: wrap;">
+                <span class="tag-provider font-mono" style="background: rgba(252, 109, 38, 0.15); color: #fc6d26; border: 1px solid rgba(252, 109, 38, 0.3); border-radius: 4px; padding: 1px 6px; font-size: 10px;">GitLab</span>
+                <span class="tag-origin font-mono" style="background: rgba(16, 185, 129, 0.15); color: #34d399; border: 1px solid rgba(16, 185, 129, 0.3); border-radius: 4px; padding: 1px 6px; font-size: 10px;">🖥️ Local</span>
+                <span class="tag-engine tag-vm">ORBSTACK</span>
+                <span class="tag-arch font-mono">ARM64</span>
+              </div>
+            </div>
+            <div class="runner-repo">
+              <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"></path>
+              </svg>
+              <div><span>o/a</span><div style="font-size: 11px; color: var(--text-muted); margin-top: 2px;">Workflow: wf</div><div style="font-size: 11px; margin-top: 3px;"><span class="link-label">RUN</span> <a href="https://github.com/o/a/actions/runs/1" target="_blank" rel="noopener noreferrer" class="gh-link run-link" title="Open workflow run">Run #1 ↗</a></div><div style="font-size: 11px; margin-top: 3px;"><span class="link-label">JOB</span> <a href="https://github.com/o/a/actions/runs/1/job/2" target="_blank" rel="noopener noreferrer" class="gh-link job-link" title="Open job">Job #2 ↗</a></div></div>
+            </div>
+            
+    <div class="mini-progress-wrap" style="margin-top: 6px;">
+      <div class="mini-progress-text">
+        <span>0/1 jobs</span>
+        <span style="color: var(--emerald); font-weight: 700;">40%</span>
+      </div>
+      <div class="mini-progress-track"><div class="mini-progress-fill" style="width: 40%;"></div></div>
+      
+      
+    </div>
+            <div class="runner-card-bottom" style="margin-top: 10px;">
+              <span class="stat-label">STATUS: <b class="runner-status-val" style="color: var(--emerald);">BUSY</b></span>
+              <div style="display: flex; align-items: center; gap: 0.5rem;">
+                <span class="runner-duration font-mono">⏱️ 108h 0m</span>
+                
+            <button class="btn btn-xs btn-outline terminal-runner-btn" data-runner-id="a" data-runner-name="alpha" data-backend="orbstack" title="Open terminal directly connected into runner">
+              &gt;_ Terminal
+            </button>
+            <button class="btn btn-xs btn-outline stop-runner-btn" data-runner-id="a" data-runner-name="alpha" data-job-id="2">
+              Stop
+            </button>
+          
+              </div>
+            </div>
+          </div>
+        
+          <div class="runner-card">
+            <div class="runner-card-top">
+              <div class="runner-id-wrap">
+                <span class="runner-pulse"></span>
+                <span class="runner-id font-mono">b</span>
+              </div>
+              <div class="runner-badges" style="display: flex; gap: 4px; align-items: center; flex-wrap: wrap;">
+                <span class="tag-provider font-mono" style="background: rgba(88, 166, 255, 0.15); color: #58a6ff; border: 1px solid rgba(88, 166, 255, 0.3); border-radius: 4px; padding: 1px 6px; font-size: 10px;">GitHub</span>
+                <span class="tag-origin font-mono" style="background: rgba(16, 185, 129, 0.15); color: #34d399; border: 1px solid rgba(16, 185, 129, 0.3); border-radius: 4px; padding: 1px 6px; font-size: 10px;">🖥️ Local</span>
+                <span class="tag-engine tag-docker">DOCKER</span>
+                <span class="tag-arch font-mono">AMD64</span>
+              </div>
+            </div>
+            <div class="runner-repo">
+              <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"></path>
+              </svg>
+              <div><span>Standby Pool</span></div>
+            </div>
+            
+            <div class="runner-card-bottom" style="margin-top: 10px;">
+              <span class="stat-label">STATUS: <b class="runner-status-val" style="color: var(--emerald);">RUNNING</b></span>
+              <div style="display: flex; align-items: center; gap: 0.5rem;">
+                <span class="runner-duration font-mono">⏱️ active</span>
+                
+            <button class="btn btn-xs btn-outline terminal-runner-btn" data-runner-id="b" data-runner-name="b" data-backend="" title="Open terminal directly connected into runner">
+              &gt;_ Terminal
+            </button>
+            <button class="btn btn-xs btn-outline stop-runner-btn" data-runner-id="b" data-runner-name="b" data-job-id="">
+              Stop
+            </button>
+          
+              </div>
+            </div>
+          </div>
+        
+          <div class="runner-card">
+            <div class="runner-card-top">
+              <div class="runner-id-wrap">
+                <span class="runner-pulse"></span>
+                <span class="runner-id font-mono">gamma</span>
+              </div>
+              <div class="runner-badges" style="display: flex; gap: 4px; align-items: center; flex-wrap: wrap;">
+                <span class="tag-provider font-mono" style="background: rgba(88, 166, 255, 0.15); color: #58a6ff; border: 1px solid rgba(88, 166, 255, 0.3); border-radius: 4px; padding: 1px 6px; font-size: 10px;">GitHub</span>
+                <span class="tag-origin font-mono" style="background: rgba(168, 85, 247, 0.15); color: #c084fc; border: 1px solid rgba(168, 85, 247, 0.3); border-radius: 4px; padding: 1px 6px; font-size: 10px;">☁️ Cloud</span>
+                <span class="tag-engine tag-vm">MY-VM</span>
+                <span class="tag-arch font-mono">AMD64</span>
+              </div>
+            </div>
+            <div class="runner-repo">
+              <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"></path>
+              </svg>
+              <div><span>o/r</span><div style="font-size: 11px; margin-top: 3px;"><span class="link-label">JOB</span> <a href="http://j" target="_blank" rel="noopener noreferrer" class="gh-link job-link" title="Open job">jn ↗</a></div></div>
+            </div>
+            
+            <div class="runner-card-bottom" style="margin-top: 10px;">
+              <span class="stat-label">STATUS: <b class="runner-status-val" style="color: var(--emerald);">RUNNING</b></span>
+              <div style="display: flex; align-items: center; gap: 0.5rem;">
+                <span class="runner-duration font-mono">⏱️ active</span>
+                <span class="badge badge-neutral font-mono" style="font-size: 10px; opacity: 0.8;">Remote Managed</span>
+              </div>
+            </div>
+          </div>
+        
+          <div class="runner-card">
+            <div class="runner-card-top">
+              <div class="runner-id-wrap">
+                <span class="runner-pulse"></span>
+                <span class="runner-id font-mono">delta</span>
+              </div>
+              <div class="runner-badges" style="display: flex; gap: 4px; align-items: center; flex-wrap: wrap;">
+                <span class="tag-provider font-mono" style="background: rgba(88, 166, 255, 0.15); color: #58a6ff; border: 1px solid rgba(88, 166, 255, 0.3); border-radius: 4px; padding: 1px 6px; font-size: 10px;">GitHub</span>
+                <span class="tag-origin font-mono" style="background: rgba(245, 158, 11, 0.15); color: #fbbf24; border: 1px solid rgba(245, 158, 11, 0.3); border-radius: 4px; padding: 1px 6px; font-size: 10px;">🌐 External</span>
+                <span class="tag-engine tag-docker">DOCKER</span>
+                <span class="tag-arch font-mono">AMD64</span>
+              </div>
+            </div>
+            <div class="runner-repo">
+              <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"></path>
+              </svg>
+              <div><span>o/r</span><div style="font-size: 11px; margin-top: 3px;"><span class="link-label">RUN</span> <a href="http://r" target="_blank" rel="noopener noreferrer" class="gh-link run-link" title="Open workflow run">Run #4 ↗</a></div></div>
+            </div>
+            
+            <div class="runner-card-bottom" style="margin-top: 10px;">
+              <span class="stat-label">STATUS: <b class="runner-status-val" style="color: var(--emerald);">RUNNING</b></span>
+              <div style="display: flex; align-items: center; gap: 0.5rem;">
+                <span class="runner-duration font-mono">⏱️ active</span>
+                <span class="badge badge-neutral font-mono" style="font-size: 10px; opacity: 0.8;">Remote Managed</span>
+              </div>
+            </div>
+          </div>
+        
+          <div class="runner-card">
+            <div class="runner-card-top">
+              <div class="runner-id-wrap">
+                <span class="runner-pulse"></span>
+                <span class="runner-id font-mono">wsl</span>
+              </div>
+              <div class="runner-badges" style="display: flex; gap: 4px; align-items: center; flex-wrap: wrap;">
+                <span class="tag-provider font-mono" style="background: rgba(88, 166, 255, 0.15); color: #58a6ff; border: 1px solid rgba(88, 166, 255, 0.3); border-radius: 4px; padding: 1px 6px; font-size: 10px;">GitHub</span>
+                <span class="tag-origin font-mono" style="background: rgba(16, 185, 129, 0.15); color: #34d399; border: 1px solid rgba(16, 185, 129, 0.3); border-radius: 4px; padding: 1px 6px; font-size: 10px;">🖥️ Local</span>
+                <span class="tag-engine tag-vm">WSL2</span>
+                <span class="tag-arch font-mono">AMD64</span>
+              </div>
+            </div>
+            <div class="runner-repo">
+              <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"></path>
+              </svg>
+              <div><span>o/r</span></div>
+            </div>
+            
+            <div class="runner-card-bottom" style="margin-top: 10px;">
+              <span class="stat-label">STATUS: <b class="runner-status-val" style="color: var(--emerald);">RUNNING</b></span>
+              <div style="display: flex; align-items: center; gap: 0.5rem;">
+                <span class="runner-duration font-mono">⏱️ 1m 30s</span>
+                
+            <button class="btn btn-xs btn-outline terminal-runner-btn" data-runner-id="w" data-runner-name="wsl" data-backend="wsl2" title="Open terminal directly connected into runner">
+              &gt;_ Terminal
+            </button>
+            <button class="btn btn-xs btn-outline stop-runner-btn" data-runner-id="w" data-runner-name="wsl" data-job-id="">
+              Stop
+            </button>
+          
+              </div>
+            </div>
+          </div>
+        "
+`;
+
+exports[`renderRunners output > renders a mixed fleet as cards and table rows > table 1`] = `
+"
+          <tr>
+            <td>
+              <div style="display: flex; align-items: center; gap: 4px;">
+                <span class="tag-provider font-mono" style="background: rgba(88, 166, 255, 0.15); color: #58a6ff; border: 1px solid rgba(88, 166, 255, 0.3); border-radius: 4px; padding: 1px 4px; font-size: 9px; margin-right: 4px;">GitHub</span>
+                <span class="tag-origin font-mono" style="background: rgba(16, 185, 129, 0.15); color: #34d399; border: 1px solid rgba(16, 185, 129, 0.3); border-radius: 4px; padding: 1px 4px; font-size: 9px;">🖥️ Local</span>
+                <span style="font-weight: 700; color: var(--text-main); margin-left: 2px;">wsl</span>
+              </div>
+              <div style="font-size: 10px; color: var(--text-dim); margin-top: 2px;">w</div>
+            </td>
+            <td>
+              <span style="font-weight: 600;">o/r</span>
+            </td>
+            <td>
+              <span class="tech-chip purple font-mono" style="font-size: 10px;">WSL2</span>
+              <span class="tech-chip solar font-mono" style="font-size: 10px;">AMD64</span>
+            </td>
+            <td>
+              <span class="badge font-mono" style="color: var(--emerald);">RUNNING</span>
+            </td>
+            <td>
+              <span style="color: var(--text-dim);">Standby / Idle</span>
+            </td>
+            <td><span style="color: var(--text-dim);">-</span></td>
+            <td>1m 30s</td>
+            <td style="text-align: right; white-space: nowrap;">
+              
+            <button class="btn btn-xs btn-outline terminal-runner-btn" data-runner-id="w" data-runner-name="wsl" data-backend="wsl2" style="margin-right: 4px;" title="Open terminal directly connected into runner">
+              &gt;_ Terminal
+            </button>
+            <button class="btn btn-xs btn-outline stop-runner-btn" data-runner-id="w" data-runner-name="wsl" data-job-id="">
+              Stop
+            </button>
+          
+            </td>
+          </tr>
+        
+          <tr>
+            <td>
+              <div style="display: flex; align-items: center; gap: 4px;">
+                <span class="tag-provider font-mono" style="background: rgba(252, 109, 38, 0.15); color: #fc6d26; border: 1px solid rgba(252, 109, 38, 0.3); border-radius: 4px; padding: 1px 4px; font-size: 9px; margin-right: 4px;">GitLab</span>
+                <span class="tag-origin font-mono" style="background: rgba(16, 185, 129, 0.15); color: #34d399; border: 1px solid rgba(16, 185, 129, 0.3); border-radius: 4px; padding: 1px 4px; font-size: 9px;">🖥️ Local</span>
+                <span style="font-weight: 700; color: var(--text-main); margin-left: 2px;">alpha</span>
+              </div>
+              <div style="font-size: 10px; color: var(--text-dim); margin-top: 2px;">a</div>
+            </td>
+            <td>
+              <span style="font-weight: 600;">o/a</span>
+            </td>
+            <td>
+              <span class="tech-chip purple font-mono" style="font-size: 10px;">ORBSTACK</span>
+              <span class="tech-chip solar font-mono" style="font-size: 10px;">ARM64</span>
+            </td>
+            <td>
+              <span class="badge font-mono" style="color: var(--emerald);">BUSY</span>
+            </td>
+            <td>
+              
+                <div><span class="link-label">RUN</span> <a href="https://github.com/o/a/actions/runs/1" target="_blank" rel="noopener noreferrer" class="gh-link run-link" title="Open workflow run">Run #1 ↗</a> <span style="color: var(--text-muted);">wf</span></div>
+                <div><span class="link-label">JOB</span> <a href="https://github.com/o/a/actions/runs/1/job/2" target="_blank" rel="noopener noreferrer" class="gh-link job-link" title="Open job">Job #2 ↗</a></div>
+            </td>
+            <td>
+    <div class="mini-progress-wrap" style="margin-top: 0px;">
+      <div class="mini-progress-text">
+        <span>0/1 jobs</span>
+        <span style="color: var(--emerald); font-weight: 700;">40%</span>
+      </div>
+      <div class="mini-progress-track"><div class="mini-progress-fill" style="width: 40%;"></div></div>
+      
+      
+    </div></td>
+            <td>108h 0m</td>
+            <td style="text-align: right; white-space: nowrap;">
+              
+            <button class="btn btn-xs btn-outline terminal-runner-btn" data-runner-id="a" data-runner-name="alpha" data-backend="orbstack" style="margin-right: 4px;" title="Open terminal directly connected into runner">
+              &gt;_ Terminal
+            </button>
+            <button class="btn btn-xs btn-outline stop-runner-btn" data-runner-id="a" data-runner-name="alpha" data-job-id="2">
+              Stop
+            </button>
+          
+            </td>
+          </tr>
+        
+          <tr>
+            <td>
+              <div style="display: flex; align-items: center; gap: 4px;">
+                <span class="tag-provider font-mono" style="background: rgba(88, 166, 255, 0.15); color: #58a6ff; border: 1px solid rgba(88, 166, 255, 0.3); border-radius: 4px; padding: 1px 4px; font-size: 9px; margin-right: 4px;">GitHub</span>
+                <span class="tag-origin font-mono" style="background: rgba(16, 185, 129, 0.15); color: #34d399; border: 1px solid rgba(16, 185, 129, 0.3); border-radius: 4px; padding: 1px 4px; font-size: 9px;">🖥️ Local</span>
+                <span style="font-weight: 700; color: var(--text-main); margin-left: 2px;">b</span>
+              </div>
+              <div style="font-size: 10px; color: var(--text-dim); margin-top: 2px;">b</div>
+            </td>
+            <td>
+              <span style="font-weight: 600;">Standby</span>
+            </td>
+            <td>
+              <span class="tech-chip cyan font-mono" style="font-size: 10px;">DOCKER</span>
+              <span class="tech-chip solar font-mono" style="font-size: 10px;">AMD64</span>
+            </td>
+            <td>
+              <span class="badge font-mono" style="color: var(--emerald);">RUNNING</span>
+            </td>
+            <td>
+              <span style="color: var(--text-dim);">Standby / Idle</span>
+            </td>
+            <td><span style="color: var(--text-dim);">-</span></td>
+            <td>active</td>
+            <td style="text-align: right; white-space: nowrap;">
+              
+            <button class="btn btn-xs btn-outline terminal-runner-btn" data-runner-id="b" data-runner-name="b" data-backend="" style="margin-right: 4px;" title="Open terminal directly connected into runner">
+              &gt;_ Terminal
+            </button>
+            <button class="btn btn-xs btn-outline stop-runner-btn" data-runner-id="b" data-runner-name="b" data-job-id="">
+              Stop
+            </button>
+          
+            </td>
+          </tr>
+        
+          <tr>
+            <td>
+              <div style="display: flex; align-items: center; gap: 4px;">
+                <span class="tag-provider font-mono" style="background: rgba(88, 166, 255, 0.15); color: #58a6ff; border: 1px solid rgba(88, 166, 255, 0.3); border-radius: 4px; padding: 1px 4px; font-size: 9px; margin-right: 4px;">GitHub</span>
+                <span class="tag-origin font-mono" style="background: rgba(168, 85, 247, 0.15); color: #c084fc; border: 1px solid rgba(168, 85, 247, 0.3); border-radius: 4px; padding: 1px 4px; font-size: 9px;">☁️ Cloud</span>
+                <span style="font-weight: 700; color: var(--text-main); margin-left: 2px;">gamma</span>
+              </div>
+              <div style="font-size: 10px; color: var(--text-dim); margin-top: 2px;">c</div>
+            </td>
+            <td>
+              <span style="font-weight: 600;">o/r</span>
+            </td>
+            <td>
+              <span class="tech-chip purple font-mono" style="font-size: 10px;">MY-VM</span>
+              <span class="tech-chip solar font-mono" style="font-size: 10px;">AMD64</span>
+            </td>
+            <td>
+              <span class="badge font-mono" style="color: var(--emerald);">RUNNING</span>
+            </td>
+            <td>
+              
+                <div><span class="link-label">RUN</span> </div>
+                <div><span class="link-label">JOB</span> <a href="http://j" target="_blank" rel="noopener noreferrer" class="gh-link job-link" title="Open job">jn ↗</a></div>
+            </td>
+            <td><span style="color: var(--text-dim);">-</span></td>
+            <td>active</td>
+            <td style="text-align: right; white-space: nowrap;">
+              <span class="badge badge-neutral font-mono" style="font-size: 10px; opacity: 0.8;">Remote Managed</span>
+            </td>
+          </tr>
+        
+          <tr>
+            <td>
+              <div style="display: flex; align-items: center; gap: 4px;">
+                <span class="tag-provider font-mono" style="background: rgba(88, 166, 255, 0.15); color: #58a6ff; border: 1px solid rgba(88, 166, 255, 0.3); border-radius: 4px; padding: 1px 4px; font-size: 9px; margin-right: 4px;">GitHub</span>
+                <span class="tag-origin font-mono" style="background: rgba(245, 158, 11, 0.15); color: #fbbf24; border: 1px solid rgba(245, 158, 11, 0.3); border-radius: 4px; padding: 1px 4px; font-size: 9px;">🌐 External</span>
+                <span style="font-weight: 700; color: var(--text-main); margin-left: 2px;">delta</span>
+              </div>
+              <div style="font-size: 10px; color: var(--text-dim); margin-top: 2px;">d</div>
+            </td>
+            <td>
+              <span style="font-weight: 600;">o/r</span>
+            </td>
+            <td>
+              <span class="tech-chip cyan font-mono" style="font-size: 10px;">DOCKER</span>
+              <span class="tech-chip solar font-mono" style="font-size: 10px;">AMD64</span>
+            </td>
+            <td>
+              <span class="badge font-mono" style="color: var(--emerald);">RUNNING</span>
+            </td>
+            <td>
+              
+                <div><span class="link-label">RUN</span> <a href="http://r" target="_blank" rel="noopener noreferrer" class="gh-link run-link" title="Open workflow run">Run #4 ↗</a></div>
+                <div><span class="link-label">JOB</span> -</div>
+            </td>
+            <td><span style="color: var(--text-dim);">-</span></td>
+            <td>active</td>
+            <td style="text-align: right; white-space: nowrap;">
+              <span class="badge badge-neutral font-mono" style="font-size: 10px; opacity: 0.8;">Remote Managed</span>
+            </td>
+          </tr>
+        "
+`;
