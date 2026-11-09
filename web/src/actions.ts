@@ -50,7 +50,9 @@ export async function openRunnerTerminal(btn: HTMLButtonElement): Promise<void> 
       } catch {}
     }
     showToast(
-      res.terminal_launched ? `Terminal opened for ${runnerName}!` : `Command copied: ${res.command}`,
+      res.terminal_launched
+        ? `Terminal opened for ${runnerName}!`
+        : `Command copied: ${res.command}`,
     );
   } catch (err) {
     showToast(`Failed opening terminal: ${(err as Error).message}`, true);
@@ -97,13 +99,10 @@ export async function triggerQueueAction(btn: HTMLButtonElement): Promise<void> 
   }
 }
 
-/** Asks the daemon to prune idle fleet runners. */
+/** Asks the daemon to prune finished fleet runners. */
 export async function pruneFleet(): Promise<void> {
   try {
-    await fetch("/api/actions/prune", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-    });
+    await client.pruneRunners();
     showToast("Triggered fleet runner prune");
     hooks.refreshState();
   } catch (err) {

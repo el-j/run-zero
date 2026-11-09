@@ -66,13 +66,32 @@ export class RunZeroClient {
     this.baseUrl = baseUrl;
   }
 
-  /** Fetches the current fleet snapshot. @throws On a non-2xx response. */
-  async getFleet(): Promise<FleetState> {
-    const res = await fetch(`${this.baseUrl}/api/fleet`);
+  /** GETs `path`; `what` names the resource in the error. @throws On a non-2xx response. */
+  private async get<T>(path: string, what: string): Promise<T> {
+    const res = await fetch(`${this.baseUrl}${path}`);
     if (!res.ok) {
-      throw new Error(`Failed to fetch fleet state: ${res.status} ${res.statusText}`);
+      throw new Error(`Failed to fetch ${what}: ${res.status} ${res.statusText}`);
     }
     return res.json();
+  }
+
+  /** POSTs `body` as JSON to `path`. @throws With the server's error message on a non-2xx response. */
+  private async post<T>(path: string, body: unknown): Promise<T> {
+    const res = await fetch(`${this.baseUrl}${path}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({ error: res.statusText }));
+      throw new Error(err.error || `HTTP ${res.status}`);
+    }
+    return res.json();
+  }
+
+  /** Fetches the current fleet snapshot. @throws On a non-2xx response. */
+  async getFleet(): Promise<FleetState> {
+    return this.get("/api/fleet", "fleet state");
   }
 
   /**
@@ -83,16 +102,7 @@ export class RunZeroClient {
    * @throws On a non-2xx response.
    */
   async updateRepoPriority(priority: string[], paused: string[]): Promise<SuccessResponse> {
-    const res = await fetch(`${this.baseUrl}/api/actions/repo-priority`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ priority, paused }),
-    });
-    if (!res.ok) {
-      const err = await res.json().catch(() => ({ error: res.statusText }));
-      throw new Error(err.error || `HTTP ${res.status}`);
-    }
-    return res.json();
+    return this.post("/api/actions/repo-priority", { priority, paused });
   }
 
   /**
@@ -108,16 +118,7 @@ export class RunZeroClient {
     runId: number,
     action: "cancel" | "rerun" | "rerun-failed",
   ): Promise<SuccessResponse> {
-    const res = await fetch(`${this.baseUrl}/api/actions/workflow`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ repo, run_id: runId, action }),
-    });
-    if (!res.ok) {
-      const err = await res.json().catch(() => ({ error: res.statusText }));
-      throw new Error(err.error || `HTTP ${res.status}`);
-    }
-    return res.json();
+    return this.post("/api/actions/workflow", { repo, run_id: runId, action });
   }
 
   /**
@@ -131,31 +132,23 @@ export class RunZeroClient {
     action: "start" | "stop" | "drain" | "pause" | "resume" | "open-terminal",
     options: { runnerId?: string; repo?: string; arch?: string; backend?: string } = {},
   ): Promise<SuccessResponse & { command?: string; terminal_launched?: boolean }> {
-    const res = await fetch(`${this.baseUrl}/api/actions/runner`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        action,
-        runner_id: options.runnerId,
-        repo: options.repo,
-        arch: options.arch,
-        backend: options.backend,
-      }),
+    return this.post("/api/actions/runner", {
+      action,
+      runner_id: options.runnerId,
+      repo: options.repo,
+      arch: options.arch,
+      backend: options.backend,
     });
-    if (!res.ok) {
-      const err = await res.json().catch(() => ({ error: res.statusText }));
-      throw new Error(err.error || `HTTP ${res.status}`);
-    }
-    return res.json();
+  }
+
+  /** Removes finished runners from the fleet. @throws On a non-2xx response. */
+  async pruneRunners(): Promise<SuccessResponse> {
+    return this.post("/api/actions/prune", {});
   }
 
   /** Fetches runtime settings. @throws On a non-2xx response. */
   async getSettings(): Promise<SystemSettings> {
-    const res = await fetch(`${this.baseUrl}/api/settings`);
-    if (!res.ok) {
-      throw new Error(`Failed to fetch settings: ${res.status} ${res.statusText}`);
-    }
-    return res.json();
+    return this.get("/api/settings", "settings");
   }
 
   /**
@@ -165,25 +158,12 @@ export class RunZeroClient {
    * @throws On a non-2xx response.
    */
   async updateSettings(settings: SystemSettings): Promise<SuccessResponse> {
-    const res = await fetch(`${this.baseUrl}/api/settings`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(settings),
-    });
-    if (!res.ok) {
-      const err = await res.json().catch(() => ({ error: res.statusText }));
-      throw new Error(err.error || `HTTP ${res.status}`);
-    }
-    return res.json();
+    return this.post("/api/settings", settings);
   }
 
   /** Fetches cache statistics. @throws On a non-2xx response. */
   async getCacheStats(): Promise<CacheStats> {
-    const res = await fetch(`${this.baseUrl}/api/cache`);
-    if (!res.ok) {
-      throw new Error(`Failed to fetch cache stats: ${res.status} ${res.statusText}`);
-    }
-    return res.json();
+    return this.get("/api/cache", "cache stats");
   }
 
   /**
@@ -195,16 +175,7 @@ export class RunZeroClient {
   async purgeCache(
     options: { category?: string; repo?: string; all?: boolean } = {},
   ): Promise<SuccessResponse> {
-    const res = await fetch(`${this.baseUrl}/api/cache/purge`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(options),
-    });
-    if (!res.ok) {
-      const err = await res.json().catch(() => ({ error: res.statusText }));
-      throw new Error(err.error || `HTTP ${res.status}`);
-    }
-    return res.json();
+    return this.post("/api/cache/purge", options);
   }
 
   /**

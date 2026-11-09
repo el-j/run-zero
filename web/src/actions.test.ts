@@ -14,7 +14,10 @@ import { client } from "./api/client";
 import { hooks } from "./hooks";
 import { dom } from "./dom";
 
-const toast = () => document.getElementById("toast-container")?.lastElementChild?.textContent ?? "";
+const toasts = () =>
+  [...(document.getElementById("toast-container")?.children ?? [])] as HTMLElement[];
+const toast = () => toasts().at(-1)?.textContent ?? "";
+const toastIsError = () => toasts().at(-1)?.style.borderColor === "var(--crimson)";
 
 function button(data: Record<string, string>): HTMLButtonElement {
   const b = document.createElement("button");
@@ -46,6 +49,7 @@ describe("stopRunner", () => {
     expect(ctl).toHaveBeenCalledWith("stop", { runnerId: "1" });
     expect(hooks.refreshState).toHaveBeenCalled();
     expect(toast()).toContain("Stopped runner n");
+    expect(toastIsError()).toBe(false);
   });
 
   it("reports failures", async () => {
@@ -53,6 +57,7 @@ describe("stopRunner", () => {
     vi.spyOn(client, "controlRunner").mockRejectedValue(new Error("nope"));
     await stopRunner(button({ runnerId: "1", runnerName: "n" }));
     expect(toast()).toContain("Failed stopping runner: nope");
+    expect(toastIsError()).toBe(true);
   });
 });
 
@@ -75,7 +80,9 @@ describe("openRunnerTerminal", () => {
   });
 
   it("reports the copied command when no terminal launched and clipboard fails", async () => {
-    vi.stubGlobal("navigator", { clipboard: { writeText: vi.fn().mockRejectedValue(new Error("x")) } });
+    vi.stubGlobal("navigator", {
+      clipboard: { writeText: vi.fn().mockRejectedValue(new Error("x")) },
+    });
     vi.spyOn(client, "controlRunner").mockResolvedValue({ command: "cmd" } as never);
     await openRunnerTerminal(btn());
     expect(toast()).toContain("Command copied: cmd");
@@ -87,11 +94,27 @@ describe("openRunnerTerminal", () => {
     expect(toast()).toContain("Terminal opened");
   });
 
+  it("shows the button busy while the request runs", async () => {
+    let seen: [string, boolean] = ["", false];
+    const b = btn();
+    const ctl = vi.spyOn(client, "controlRunner").mockImplementation(async () => {
+      seen = [b.innerHTML, b.disabled];
+      return { terminal_launched: true } as never;
+    });
+    const writeText = vi.fn();
+    vi.stubGlobal("navigator", { clipboard: { writeText } });
+    await openRunnerTerminal(b);
+    expect(seen).toEqual(["Launching...", true]);
+    expect(ctl).toHaveBeenCalledWith("open-terminal", { runnerId: "1", backend: "docker" });
+    expect(writeText).not.toHaveBeenCalled(); // nothing to copy without a command
+  });
+
   it("reports failures and restores the button", async () => {
     vi.spyOn(client, "controlRunner").mockRejectedValue(new Error("bad"));
     const b = btn();
     await openRunnerTerminal(b);
     expect(toast()).toContain("Failed opening terminal: bad");
+    expect(toastIsError()).toBe(true);
     expect(b.disabled).toBe(false);
   });
 });
@@ -105,9 +128,10 @@ describe("retryFailedJobs", () => {
   });
 
   it("respects a declined confirmation", async () => {
-    vi.spyOn(window, "confirm").mockReturnValue(false);
+    const confirmSpy = vi.spyOn(window, "confirm").mockReturnValue(false);
     const spy = vi.spyOn(client, "triggerWorkflowAction");
     await retryFailedJobs(button({ repo: "o/r", runId: "1" }));
+    expect(confirmSpy).toHaveBeenCalledWith("Retry failed jobs for o/r run #1?");
     expect(spy).not.toHaveBeenCalled();
   });
 
@@ -116,6 +140,7 @@ describe("retryFailedJobs", () => {
     const spy = vi.spyOn(client, "triggerWorkflowAction");
     spy.mockResolvedValueOnce({ message: "queued!" } as never);
     await retryFailedJobs(button({ repo: "o/r", runId: "1" }));
+    expect(spy).toHaveBeenCalledWith("o/r", 1, "rerun-failed");
     expect(toast()).toContain("queued!");
     spy.mockResolvedValueOnce({} as never);
     await retryFailedJobs(button({ repo: "o/r", runId: "1" }));
@@ -127,6 +152,7 @@ describe("retryFailedJobs", () => {
     vi.spyOn(client, "triggerWorkflowAction").mockRejectedValue(new Error("x"));
     await retryFailedJobs(button({ repo: "o/r", runId: "1" }));
     expect(toast()).toContain("Failed to retry jobs: x");
+    expect(toastIsError()).toBe(true);
   });
 });
 
@@ -134,9 +160,10 @@ describe("triggerQueueAction", () => {
   const btn = () => button({ repo: "o/r", runId: "5", action: "cancel" });
 
   it("skips when declined", async () => {
-    vi.spyOn(window, "confirm").mockReturnValue(false);
+    const confirmSpy = vi.spyOn(window, "confirm").mockReturnValue(false);
     const spy = vi.spyOn(client, "triggerWorkflowAction");
     await triggerQueueAction(btn());
+    expect(confirmSpy).toHaveBeenCalledWith("Are you sure you want to cancel run #5 on o/r?");
     expect(spy).not.toHaveBeenCalled();
   });
 
@@ -146,6 +173,7 @@ describe("triggerQueueAction", () => {
     await triggerQueueAction(btn());
     expect(spy).toHaveBeenCalledWith("o/r", 5, "cancel");
     expect(hooks.refreshState).toHaveBeenCalled();
+    expect(toast()).toBe("Workflow cancel triggered");
   });
 
   it("reports failures", async () => {
@@ -153,21 +181,30 @@ describe("triggerQueueAction", () => {
     vi.spyOn(client, "triggerWorkflowAction").mockRejectedValue(new Error("x"));
     await triggerQueueAction(btn());
     expect(toast()).toContain("Action failed: x");
+    expect(toastIsError()).toBe(true);
   });
 });
 
 describe("pruneFleet", () => {
   it("posts and refreshes", async () => {
-    const f = stubFetch(() => jsonResponse({}));
+    const prune = vi.spyOn(client, "pruneRunners").mockResolvedValue({} as never);
     await pruneFleet();
-    expect(f).toHaveBeenCalledWith("/api/actions/prune", expect.objectContaining({ method: "POST" }));
+    expect(prune).toHaveBeenCalled();
     expect(hooks.refreshState).toHaveBeenCalled();
+    expect(toast()).toBe("Triggered fleet runner prune");
+  });
+
+  it("reports a rejected prune instead of claiming success", async () => {
+    stubFetch(() => jsonResponse({ error: "driver down" }, { ok: false, status: 500 }));
+    await pruneFleet();
+    expect(toast()).toBe("Prune failed: driver down");
   });
 
   it("reports failures", async () => {
     stubFetch(() => Promise.reject(new Error("down")));
     await pruneFleet();
     expect(toast()).toContain("Prune failed: down");
+    expect(toastIsError()).toBe(true);
   });
 });
 
@@ -177,14 +214,20 @@ describe("cache purges", () => {
     const purge = vi.spyOn(client, "purgeCache");
     confirmSpy.mockReturnValueOnce(false);
     await purgeAllCaches();
+    expect(confirmSpy).toHaveBeenCalledWith(
+      "Are you sure you want to clear all host package caches?",
+    );
     expect(purge).not.toHaveBeenCalled();
     confirmSpy.mockReturnValue(true);
     purge.mockResolvedValueOnce({} as never);
     await purgeAllCaches();
+    expect(purge).toHaveBeenCalledWith({ all: true });
+    expect(toast()).toBe("✓ Cleared all host caches");
     expect(hooks.loadCacheStats).toHaveBeenCalled();
     purge.mockRejectedValueOnce(new Error("x"));
     await purgeAllCaches();
     expect(toast()).toContain("Purge failed: x");
+    expect(toastIsError()).toBe(true);
   });
 
   it("purgeCacheCategory covers decline, success and failure", async () => {
@@ -192,15 +235,18 @@ describe("cache purges", () => {
     const purge = vi.spyOn(client, "purgeCache");
     confirmSpy.mockReturnValueOnce(false);
     await purgeCacheCategory(button({ purgeCategory: "apt" }));
+    expect(confirmSpy).toHaveBeenCalledWith("Purge cache category 'apt'?");
     expect(purge).not.toHaveBeenCalled();
     confirmSpy.mockReturnValue(true);
     purge.mockResolvedValueOnce({} as never);
     await purgeCacheCategory(button({ purgeCategory: "apt" }));
     expect(purge).toHaveBeenCalledWith({ category: "apt" });
     expect(toast()).toContain("Purged apt cache");
+    expect(hooks.loadCacheStats).toHaveBeenCalled();
     purge.mockRejectedValueOnce(new Error("x"));
     await purgeCacheCategory(button({ purgeCategory: "apt" }));
     expect(toast()).toContain("Purge error: x");
+    expect(toastIsError()).toBe(true);
   });
 });
 
@@ -211,7 +257,7 @@ describe("launchRunner", () => {
     const alertSpy = vi.spyOn(window, "alert").mockImplementation(() => {});
     dom.manualRepoInput!.value = "  ";
     await launchRunner(modal());
-    expect(alertSpy).toHaveBeenCalled();
+    expect(alertSpy).toHaveBeenCalledWith("Please enter a target repository.");
   });
 
   it("launches with the selected arch", async () => {
@@ -224,6 +270,10 @@ describe("launchRunner", () => {
     expect(ctl).toHaveBeenCalledWith("start", { repo: "o/r", arch: "arm64" });
     expect(m.open).toBe(false);
     expect(hooks.refreshState).toHaveBeenCalled();
+    expect(toasts().map((t) => t.textContent)).toEqual([
+      "Launching runner for o/r (arm64)...",
+      "✓ Runner launched for o/r",
+    ]);
   });
 
   it("reports failures", async () => {
@@ -231,6 +281,7 @@ describe("launchRunner", () => {
     vi.spyOn(client, "controlRunner").mockRejectedValue(new Error("x"));
     await launchRunner(modal());
     expect(toast()).toContain("Launch failed: x");
+    expect(toastIsError()).toBe(true);
   });
 
   it("handles missing inputs", async () => {

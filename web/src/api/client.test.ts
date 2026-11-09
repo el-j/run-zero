@@ -31,7 +31,9 @@ describe("RunZeroClient GET endpoints", () => {
 
   it("throws with status text on failure", async () => {
     stubFetch(() => bad());
-    await expect(client.getFleet()).rejects.toThrow("Failed to fetch fleet state: 500 Server Error");
+    await expect(client.getFleet()).rejects.toThrow(
+      "Failed to fetch fleet state: 500 Server Error",
+    );
     await expect(client.getSettings()).rejects.toThrow("Failed to fetch settings");
     await expect(client.getCacheStats()).rejects.toThrow("Failed to fetch cache stats");
   });
@@ -102,9 +104,72 @@ describe("subscribeSSE", () => {
     es.emit("fleet", "{bad");
     es.emit("build_progress", "{bad");
     expect(err).toHaveBeenCalledTimes(2);
+    expect(err).toHaveBeenNthCalledWith(
+      1,
+      "Failed to parse fleet SSE data",
+      expect.any(SyntaxError),
+    );
+    expect(err).toHaveBeenNthCalledWith(
+      2,
+      "Failed to parse build_progress SSE data",
+      expect.any(SyntaxError),
+    );
     es.emit("fleet", "{}");
     es.emit("activity", "x");
     es.emit("build_progress", "{}");
     es.onerror?.(new Event("error"));
+    expect(err).toHaveBeenCalledTimes(2); // valid events without a callback are simply dropped
+  });
+});
+
+describe("RunZeroClient POST requests", () => {
+  it.each([
+    [
+      "updateRepoPriority",
+      (c: RunZeroClient) => c.updateRepoPriority(["o/a"], ["o/b"]),
+      "/api/actions/repo-priority",
+      { priority: ["o/a"], paused: ["o/b"] },
+    ],
+    [
+      "triggerWorkflowAction",
+      (c: RunZeroClient) => c.triggerWorkflowAction("o/a", 7, "rerun"),
+      "/api/actions/workflow",
+      { repo: "o/a", run_id: 7, action: "rerun" },
+    ],
+    [
+      "controlRunner",
+      (c: RunZeroClient) =>
+        c.controlRunner("open-terminal", {
+          runnerId: "r1",
+          repo: "o/a",
+          arch: "arm64",
+          backend: "docker",
+        }),
+      "/api/actions/runner",
+      { action: "open-terminal", runner_id: "r1", repo: "o/a", arch: "arm64", backend: "docker" },
+    ],
+    [
+      "updateSettings",
+      (c: RunZeroClient) => c.updateSettings({ max_runners: 2 }),
+      "/api/settings",
+      { max_runners: 2 },
+    ],
+    [
+      "purgeCache",
+      (c: RunZeroClient) => c.purgeCache({ all: true }),
+      "/api/cache/purge",
+      { all: true },
+    ],
+    ["pruneRunners", (c: RunZeroClient) => c.pruneRunners(), "/api/actions/prune", {}],
+  ] as const)("%s posts JSON to its endpoint", async (_name, call, path, body) => {
+    const f = stubFetch(() => jsonResponse({ success: true }));
+    await call(new RunZeroClient("http://x"));
+    const [url, init] = f.mock.calls[0];
+    expect(url).toBe(`http://x${path}`);
+    expect(init).toEqual({
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    });
   });
 });
