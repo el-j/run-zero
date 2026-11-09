@@ -309,9 +309,7 @@ export class BuildImagesModal {
 
   /** Stops the build poll timer, if running. */
   private stopPolling(): void {
-    if (this.pollTimer) {
-      clearInterval(this.pollTimer);
-      this.pollTimer = null;
-    }
+    window.clearInterval(this.pollTimer ?? undefined);
+    this.pollTimer = null;
   }
 }

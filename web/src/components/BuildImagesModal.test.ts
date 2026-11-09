@@ -101,7 +101,17 @@ describe("BuildImagesModal construction and dialog", () => {
 
 describe("BuildImagesModal.refresh", () => {
   it("renders status cards and badge", async () => {
-    stubFetch(() => jsonResponse(status({ vm_images: [img({ kind: "orbstack-vm", name: "vm" }), img({ name: "c", status: "stale", size_human: undefined }), img({ name: "d", status: "missing" })] })));
+    stubFetch(() =>
+      jsonResponse(
+        status({
+          vm_images: [
+            img({ kind: "orbstack-vm", name: "vm" }),
+            img({ name: "c", status: "stale", size_human: undefined }),
+            img({ name: "d", status: "missing" }),
+          ],
+        }),
+      ),
+    );
     make();
     await tick();
     const grid = $("images-status-grid").innerHTML;
@@ -195,9 +205,7 @@ describe("BuildImagesModal.refresh", () => {
 describe("BuildImagesModal.handleProgressEvent", () => {
   it("polls while building and refreshes when done", async () => {
     const f = stubFetch((url) =>
-      url === "/api/images/build/active"
-        ? jsonResponse({}, { ok: false })
-        : jsonResponse(status()),
+      url === "/api/images/build/active" ? jsonResponse({}, { ok: false }) : jsonResponse(status()),
     );
     const m = make();
     await tick();
@@ -272,13 +280,15 @@ describe("BuildImagesModal builds", () => {
     $("btn-build-vm-images").click();
     $("btn-build-container-images").click();
     await tick();
-    expect(bodyOf(f, 1).target).toBe("vm");
-    expect(bodyOf(f, 2).target).toBe("container");
+    expect(bodyOf(f, 1)).toEqual({ target: "vm", arch: "all" });
+    expect(bodyOf(f, 2)).toEqual({ target: "container", arch: "all" });
   });
 
   it("alerts on rejected and failed requests", async () => {
     stubFetch((url) =>
-      url === "/api/actions/build-image" ? jsonResponse({ error: "busy" }, { ok: false }) : jsonResponse(status()),
+      url === "/api/actions/build-image"
+        ? jsonResponse({ error: "busy" }, { ok: false })
+        : jsonResponse(status()),
     );
     make();
     await tick();
@@ -301,7 +311,9 @@ describe("BuildImagesModal builds", () => {
     });
     $("btn-build-all-images").click();
     await tick();
-    expect(window.alert).toHaveBeenCalledWith(expect.stringContaining("Network error triggering build"));
+    expect(window.alert).toHaveBeenCalledWith(
+      expect.stringContaining("Network error triggering build"),
+    );
   });
 
   it("works without progress panel and log", async () => {
@@ -331,5 +343,331 @@ describe("BuildImagesModal builds", () => {
     $("btn-cancel-image-build").click();
     await tick();
     expect(warn).toHaveBeenCalled();
+  });
+});
+
+/** A fetch stub answering per URL; `calls` lists every requested URL. */
+function router(routes: Record<string, () => Response>) {
+  const calls: string[] = [];
+  const f = stubFetch((url) => {
+    calls.push(url);
+    const handler = routes[url];
+    if (!handler) throw new Error(`unexpected fetch ${url}`);
+    return handler();
+  });
+  return { f, calls, count: (url: string) => calls.filter((c) => c === url).length };
+}
+
+describe("BuildImagesModal output", () => {
+  it("renders every kind of image card", async () => {
+    stubFetch(() =>
+      jsonResponse(
+        status({
+          vm_images: [
+            img({ kind: "orbstack-vm", name: "vm-a", version: "2.3", status: "ready" }),
+            img({ kind: "orbstack-vm", name: "vm-b", arch: "amd64", status: "stale" }),
+          ],
+          container_images: [img({ name: "c-a", size_human: "1 GB", status: "missing" })],
+          all_ready: false,
+        }),
+      ),
+    );
+    make();
+    $("badge-images-icon").textContent = "";
+    await tick();
+    expect($("images-status-grid").innerHTML).toMatchSnapshot();
+    expect($("badge-images-status").textContent).toBe("1/3");
+    expect($("badge-images-status").className).toBe("badge badge-warning font-mono");
+    expect($("badge-images-status").style.color).toBe("var(--solar, #f59e0b)");
+    expect($("badge-images-icon").textContent).toBe("⚡");
+  });
+
+  it("shows a ready fleet of images", async () => {
+    stubFetch(() => jsonResponse(status()));
+    make();
+    $("badge-images-icon").textContent = "";
+    await tick();
+    expect($("badge-images-status").className).toBe("badge badge-success font-mono");
+    expect($("badge-images-status").style.color).toBe("var(--accent-emerald, #10b981)");
+    expect($("badge-images-icon").textContent).toBe("✓");
+  });
+
+  it.each(["badge-images-icon", "images-status-grid"])(
+    "refreshes cleanly without #%s",
+    async (id) => {
+      const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+      for (const ready of [true, false]) {
+        stubFetch(() => jsonResponse(status({ all_ready: ready })));
+        const m = make([id]);
+        await m.refresh();
+      }
+      expect(warn).not.toHaveBeenCalled();
+    },
+  );
+
+  it("leaves the header badge alone without a status grid", async () => {
+    stubFetch(() => jsonResponse(status()));
+    make(["images-status-grid"]);
+    $("badge-images-status").textContent = "before";
+    await tick();
+    expect($("badge-images-status").textContent).toBe("before");
+  });
+
+  it("renders an empty status as an empty grid", async () => {
+    stubFetch(() => jsonResponse({ all_ready: true }));
+    make();
+    await tick();
+    expect($("images-status-grid").innerHTML).toBe("");
+    expect($("badge-images-status").textContent).toBe("0/0");
+  });
+
+  it("leaves the grid alone when the status request fails", async () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    stubFetch(() => jsonResponse({ error: "x" }, { ok: false }));
+    $("images-status-grid");
+    make();
+    $("images-status-grid").innerHTML = "before";
+    await tick();
+    expect($("images-status-grid").innerHTML).toBe("before");
+    stubFetch(() => Promise.reject(new Error("offline")));
+    const m = make();
+    await m.refresh();
+    expect(warn).toHaveBeenCalledWith("Failed fetching image status:", expect.any(Error));
+  });
+
+  it("refreshes when the closed dialog opens", async () => {
+    const r = router({ "/api/images": () => jsonResponse(status()) });
+    const m = make();
+    await tick();
+    expect(r.count("/api/images")).toBe(1);
+    m.open();
+    await tick();
+    expect(r.count("/api/images")).toBe(2);
+  });
+
+  it("does not show a finished build it never tracked", async () => {
+    stubFetch(() =>
+      jsonResponse(status({ active_build: progress({ status: "failed", progress_pct: 77 }) })),
+    );
+    make();
+    await tick();
+    expect($("images-build-pct").textContent).not.toBe("77%");
+  });
+
+  it("polls an active build every 1.5 s, once, until it finishes", async () => {
+    let state = "building";
+    const r = router({
+      "/api/images": () => jsonResponse(status()),
+      "/api/images/build/active": () =>
+        jsonResponse(progress({ status: state, progress_pct: state === "building" ? 50 : 100 })),
+    });
+    const m = make();
+    await tick();
+    m.handleProgressEvent(progress() as never);
+    m.handleProgressEvent(progress() as never); // a second event must not start a second poller
+    await tick(1499);
+    expect(r.count("/api/images/build/active")).toBe(0);
+    await tick(1);
+    expect(r.count("/api/images/build/active")).toBe(1);
+    expect($("images-build-pct").textContent).toBe("50%");
+    await tick(1500);
+    expect(r.count("/api/images/build/active")).toBe(2);
+
+    state = "success";
+    const statusBefore = r.count("/api/images");
+    await tick(1500);
+    expect($("images-build-progress-bar").style.background).toBe("var(--accent-emerald, #10b981)");
+    expect(r.count("/api/images")).toBe(statusBefore + 1); // refreshed once the build finished
+    await tick(4500);
+    expect(r.count("/api/images/build/active")).toBe(3); // and stopped polling
+  });
+
+  it("keeps the last progress when a poll is rejected", async () => {
+    router({
+      "/api/images": () => jsonResponse(status()),
+      "/api/images/build/active": () => jsonResponse(progress({ progress_pct: 99 }), { ok: false }),
+    });
+    const m = make();
+    await tick();
+    m.handleProgressEvent(progress({ progress_pct: 10 }) as never);
+    await tick(1500);
+    expect($("images-build-pct").textContent).toBe("10%");
+  });
+
+  it("stops polling and refreshes when a pushed event ends the build", async () => {
+    const r = router({
+      "/api/images": () => jsonResponse(status()),
+      "/api/images/build/active": () => jsonResponse(progress()),
+    });
+    const m = make();
+    await tick();
+    m.handleProgressEvent(progress() as never);
+    const statusBefore = r.count("/api/images");
+    m.handleProgressEvent(progress({ status: "failed" }) as never);
+    await tick(3000);
+    expect(r.count("/api/images/build/active")).toBe(0);
+    expect(r.count("/api/images")).toBe(statusBefore + 1);
+    expect($("images-build-progress-bar").style.background).toBe("var(--crimson, #ef4444)");
+  });
+
+  it("resumes tracking a build found on refresh and finalises it on the next refresh", async () => {
+    let active: Any | undefined = progress({ progress_pct: 30 });
+    const r = router({
+      "/api/images": () => jsonResponse(status({ active_build: active })),
+      "/api/images/build/active": () => jsonResponse(progress({ progress_pct: 30 })),
+    });
+    const m = make();
+    await tick();
+    expect($("images-build-pct").textContent).toBe("30%");
+    active = progress({ status: "success", progress_pct: 100 });
+    await m.refresh();
+    expect($("images-build-pct").textContent).toBe("100%");
+    const polls = r.count("/api/images/build/active");
+    await tick(3000);
+    expect(r.count("/api/images/build/active")).toBe(polls);
+
+    // A tracked build that vanished from the status stops polling and keeps its last progress.
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    active = progress({ progress_pct: 60 });
+    await m.refresh();
+    active = undefined;
+    await m.refresh();
+    expect($("images-build-pct").textContent).toBe("60%");
+    expect(warn).not.toHaveBeenCalled();
+    const after = r.count("/api/images/build/active");
+    await tick(3000);
+    expect(r.count("/api/images/build/active")).toBe(after);
+  });
+
+  it("forgets a build once a pushed event says it ended", async () => {
+    let active: Any | undefined;
+    router({ "/api/images": () => jsonResponse(status({ active_build: active })) });
+    const m = make();
+    await tick();
+    m.handleProgressEvent(progress({ status: "success", progress_pct: 100 }) as never);
+    await tick();
+    active = progress({ status: "failed", progress_pct: 88 });
+    await m.refresh();
+    expect($("images-build-pct").textContent).toBe("100%");
+  });
+
+  it("counts a build as running from the moment it is requested", async () => {
+    let answer!: (r: Response) => void;
+    let active: Any | undefined;
+    router({
+      "/api/images": () => jsonResponse(status({ active_build: active })),
+      "/api/actions/build-image": () =>
+        new Promise<Response>((r) => (answer = r)) as unknown as Response,
+    });
+    const m = make();
+    await tick();
+    $("btn-build-all-images").click();
+    await tick();
+    // The build ended before its request even answered; a refresh now shows that result.
+    active = progress({ status: "failed", progress_pct: 3 });
+    await m.refresh();
+    expect($("images-build-pct").textContent).toBe("3%");
+    answer(jsonResponse(progress({ status: "failed", progress_pct: 3 })));
+    await tick();
+  });
+
+  it("starts a build without a progress panel or log", async () => {
+    router({
+      "/api/images": () => jsonResponse(status()),
+      "/api/actions/build-image": () => jsonResponse(progress()),
+    });
+    make(["images-build-progress-panel", "images-build-log"]);
+    await tick();
+    $("btn-build-all-images").click();
+    await tick();
+    expect(window.alert).not.toHaveBeenCalled();
+  });
+
+  it("cancels without a step label", async () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    router({
+      "/api/images": () => jsonResponse(status()),
+      "/api/actions/build-image/cancel": () => jsonResponse({}),
+    });
+    make(["images-build-step-text"]);
+    await tick();
+    $("btn-cancel-image-build").click();
+    await tick();
+    expect(warn).not.toHaveBeenCalled();
+  });
+
+  it("keeps the log when a progress update has no lines", () => {
+    stubFetch(() => jsonResponse(status()));
+    const m = make();
+    $("images-build-log").textContent = "kept";
+    m.handleProgressEvent(progress({ log_lines: [] }) as never);
+    expect($("images-build-log").textContent).toBe("kept");
+  });
+
+  it("posts a build request and tracks the build it starts", async () => {
+    const r = router({
+      "/api/images": () => jsonResponse(status()),
+      "/api/actions/build-image": () => jsonResponse(progress({ progress_pct: 5 })),
+      "/api/images/build/active": () => jsonResponse(progress({ progress_pct: 6 })),
+    });
+    make();
+    await tick();
+    $("images-build-progress-panel").classList.add("hidden");
+    $("btn-build-vm-images").click();
+    expect($("images-build-progress-panel").classList.contains("hidden")).toBe(false);
+    await tick();
+    const init = r.f.mock.calls.find((c) => c[0] === "/api/actions/build-image")![1]!;
+    expect(init.method).toBe("POST");
+    expect(init.headers).toEqual({ "Content-Type": "application/json" });
+    expect(JSON.parse(init.body as string)).toEqual({ target: "vm", arch: "all" });
+    expect($("images-build-pct").textContent).toBe("5%");
+    await tick(1500);
+    expect($("images-build-pct").textContent).toBe("6%");
+  });
+
+  it.each([
+    ["rejected", () => jsonResponse({ error: "busy" }, { ok: false })],
+    ["unreachable", () => Promise.reject(new Error("net")) as unknown as Response],
+  ])("does not track a %s build request", async (_name, answer) => {
+    let active: Any | undefined;
+    router({
+      "/api/images": () => jsonResponse(status({ active_build: active })),
+      "/api/actions/build-image": answer,
+    });
+    const m = make();
+    await tick();
+    $("btn-build-all-images").click();
+    await tick();
+    active = progress({ status: "failed", progress_pct: 88 });
+    await m.refresh();
+    expect($("images-build-pct").textContent).not.toBe("88%");
+  });
+
+  it("cancels with a POST", async () => {
+    const r = router({
+      "/api/images": () => jsonResponse(status()),
+      "/api/actions/build-image/cancel": () => jsonResponse({}),
+    });
+    make();
+    await tick();
+    $("btn-cancel-image-build").click();
+    await tick();
+    expect(r.f.mock.calls.find((c) => c[0] === "/api/actions/build-image/cancel")![1]).toEqual({
+      method: "POST",
+    });
+  });
+
+  it("warns when cancelling fails", async () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    router({
+      "/api/images": () => jsonResponse(status()),
+      "/api/actions/build-image/cancel": () =>
+        Promise.reject(new Error("x")) as unknown as Response,
+    });
+    make();
+    await tick();
+    $("btn-cancel-image-build").click();
+    await tick();
+    expect(warn).toHaveBeenCalledWith("Cancel build error:", expect.any(Error));
   });
 });
