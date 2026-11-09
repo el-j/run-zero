@@ -10,15 +10,14 @@ import {
 } from "../format";
 import { jobLinkHtml, progressHtml, runLinkHtml } from "./runRef";
 import { state } from "../state";
-
-const VM_BACKEND_HINTS = ["vm", "orb", "multipass", "wsl"];
+import { isVmBackend } from "./backend";
 
 /** What the counts, filters, cards, table and sort all derive from a runner. */
 function describe(r: RunnerInfo) {
   const engine = (r.backend || "docker").toUpperCase();
   const origin = r.is_cloud ? "cloud" : r.origin || "local";
   return {
-    isVm: VM_BACKEND_HINTS.some((hint) => engine.toLowerCase().includes(hint)),
+    isVm: isVmBackend(r.backend),
     origin,
     isLocal: origin === "local",
     engine,

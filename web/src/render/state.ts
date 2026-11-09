@@ -4,6 +4,7 @@ import { formatReset } from "../format";
 import { renderCompletedJobs } from "./jobs";
 import { renderQueue } from "./queue";
 import { renderRepos } from "./repos";
+import { isVmBackend } from "./backend";
 import { renderRunners } from "./runners";
 import { state } from "../state";
 
@@ -11,9 +12,18 @@ import { state } from "../state";
  * Renders the GitHub Actions billing sidebar panel; no-op without billing data.
  */
 export function renderBilling(billing?: FleetState["actions_billing"]) {
-  const { actionsScope, actionsIncluded, actionsTotalUsed, actionsPaidUsed, actionsRemaining, actionsUpdated, actionsStatus } = dom;
+  const {
+    actionsScope,
+    actionsIncluded,
+    actionsTotalUsed,
+    actionsPaidUsed,
+    actionsRemaining,
+    actionsUpdated,
+    actionsStatus,
+  } = dom;
   if (!actionsScope || !billing) return;
-  actionsScope.textContent = "USER:el-j";
+  const { org, owner } = state.latestSettings ?? {};
+  actionsScope.textContent = org ? `ORG:${org}` : owner ? `USER:${owner}` : "--";
   if (actionsIncluded)
     actionsIncluded.textContent = billing.included_minutes
       ? `${billing.included_minutes.toLocaleString()}m`
@@ -43,7 +53,31 @@ export function renderBilling(billing?: FleetState["actions_billing"]) {
  * Renders a full fleet snapshot: stat badges, KPI cards, routing ratio and all sub-views.
  */
 export function renderState(snapshot: FleetState) {
-  const { statRateLimit, statRateLimitBar, statRateMeta, statEngine, statVersion, kpiActiveRunners, kpiMaxRunners, kpiRunnersBar, kpiMinRunnersText, kpiRunnerSizing, kpiQueuedJobs, kpiQueueBar, kpiReposMonitored, kpiVmRatio, kpiRoutingBar, kpiRoutingSub, kpiRoutingHealth, kpiQueueHealth, kpiCacheHealth, barDockerJobs, barVmJobs, cntDockerJobs, cntVmJobs } = dom;
+  const {
+    statRateLimit,
+    statRateLimitBar,
+    statRateMeta,
+    statEngine,
+    statVersion,
+    kpiActiveRunners,
+    kpiMaxRunners,
+    kpiRunnersBar,
+    kpiMinRunnersText,
+    kpiRunnerSizing,
+    kpiQueuedJobs,
+    kpiQueueBar,
+    kpiReposMonitored,
+    kpiVmRatio,
+    kpiRoutingBar,
+    kpiRoutingSub,
+    kpiRoutingHealth,
+    kpiQueueHealth,
+    kpiCacheHealth,
+    barDockerJobs,
+    barVmJobs,
+    cntDockerJobs,
+    cntVmJobs,
+  } = dom;
   if (!snapshot) return;
 
   statVersion.textContent = (snapshot as any).version ? `v${(snapshot as any).version}` : "v1.0.0";
@@ -53,7 +87,7 @@ export function renderState(snapshot: FleetState) {
   const rem = snapshot.rate_limit_remaining ?? null;
   const tot = snapshot.rate_limit_limit ?? null;
   statRateLimit.textContent = rem !== null && tot !== null ? `${rem}/${tot}` : "--/--";
-  const ratePct = rem !== null && tot ? Math.min(100, Math.max(0, (rem / tot) * 100)) : 0;
+  const ratePct = tot ? Math.min(100, Math.max(0, ((rem ?? 0) / tot) * 100)) : 0;
   statRateLimitBar.style.width = `${ratePct}%`;
   if (ratePct < 20) statRateLimitBar.style.backgroundColor = "var(--crimson)";
   else if (ratePct < 50) statRateLimitBar.style.backgroundColor = "var(--solar)";
@@ -112,9 +146,10 @@ export function renderState(snapshot: FleetState) {
 
   // Hybrid routing ratio
   const totalJobs = jobs.length + activeCount;
-  const vmJobs = (snapshot.runners || []).filter((r) => r.backend === "orbstack").length;
-  const dockerJobs = (snapshot.runners || []).filter((r) => r.backend !== "orbstack").length;
-  const vmRatio = totalJobs > 0 ? Math.round((vmJobs / Math.max(1, totalJobs)) * 100) : 0;
+  const runners = snapshot.runners || [];
+  const vmJobs = runners.filter((r) => isVmBackend(r.backend)).length;
+  const dockerJobs = runners.length - vmJobs;
+  const vmRatio = Math.round((vmJobs / Math.max(1, totalJobs)) * 100);
   if (kpiVmRatio) kpiVmRatio.textContent = `${vmRatio}%`;
   if (kpiRoutingBar) kpiRoutingBar.style.width = `${vmRatio}%`;
   if (kpiRoutingSub) {
@@ -145,9 +180,14 @@ export function renderState(snapshot: FleetState) {
   }
 
   // Render subcomponents
-  state.currentRunners = snapshot.runners || [];
+  state.currentRunners = runners;
   renderRunners(state.currentRunners);
-  renderRepos(state.currentRepos, state.currentQueuedJobs, state.currentRepoPriority, state.currentPausedRepos);
+  renderRepos(
+    state.currentRepos,
+    state.currentQueuedJobs,
+    state.currentRepoPriority,
+    state.currentPausedRepos,
+  );
   renderQueue(state.currentQueuedJobs, state.currentConcurrency);
   renderBilling(snapshot.actions_billing);
 }
