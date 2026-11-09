@@ -21,17 +21,14 @@ export function initTelemetryDrawer(): () => void {
   const drawer = document.getElementById("telemetry-drawer");
   const backdrop = document.getElementById("drawer-backdrop");
 
-  /** Opens the drawer and optionally scrolls to the panel for `section`. */
-  const openDrawer = (section?: string) => {
+  /** Opens the drawer and, when given one, scrolls to `panel`. */
+  const openDrawer = (panel?: HTMLElement | null) => {
     drawer?.classList.add("open");
     workspace?.classList.add("drawer-open");
     if (window.matchMedia(MOBILE_QUERY).matches) {
       backdrop?.classList.add("open");
     }
-    if (section) {
-      const el = document.getElementById(DRAWER_PANELS[section] || "");
-      if (el) setTimeout(() => el.scrollIntoView({ behavior: "smooth", block: "start" }), 120);
-    }
+    if (panel) setTimeout(() => panel.scrollIntoView({ behavior: "smooth", block: "start" }), 120);
   };
   const closeDrawer = () => {
     drawer?.classList.remove("open");
@@ -69,7 +66,7 @@ export function initTelemetryDrawer(): () => void {
     card.addEventListener("click", () => {
       const target = card.dataset.kpiTarget!;
       if (target === "runners" || target === "queue") setActiveTab(target);
-      else openDrawer(target);
+      else openDrawer(document.getElementById(DRAWER_PANELS[target]));
     });
   });
   return closeDrawer;

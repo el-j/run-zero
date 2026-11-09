@@ -79,6 +79,26 @@ describe("initTableSortingControls", () => {
     expect(rr.renderRunners).toHaveBeenCalled();
     expect(rr.renderRepos).toHaveBeenCalled();
   });
+
+  it("re-renders every list and marks the sorted header", () => {
+    const th = document.createElement("th");
+    th.className = "sortable-col";
+    th.dataset.table = "queue";
+    th.dataset.sortKey = "repo";
+    document.body.appendChild(th);
+    initTableSortingControls();
+    th.click();
+    expect(rr.renderRunners).toHaveBeenCalledWith(state.currentRunners);
+    expect(rr.renderQueue).toHaveBeenCalledWith(state.currentQueuedJobs, state.currentConcurrency);
+    expect(rr.renderCompletedJobs).toHaveBeenCalledWith(state.currentCompletedJobs);
+    expect(rr.renderRepos).toHaveBeenCalledWith(
+      state.currentRepos,
+      state.currentQueuedJobs,
+      state.currentRepoPriority,
+      state.currentPausedRepos,
+    );
+    expect(th.classList.contains("sort-asc") || th.classList.contains("sort-desc")).toBe(true);
+  });
 });
 
 describe("initViewControls", () => {
@@ -86,7 +106,15 @@ describe("initViewControls", () => {
     initViewControls();
     dom.tabBtnQueue!.click();
     expect(state.currentTab).toBe("queue");
-    for (const b of [dom.tabBtnRunners, dom.tabBtnQueue, dom.tabBtnJobs, dom.tabBtnRepos]) b!.click();
+    for (const [btn, tab] of [
+      [dom.tabBtnRunners, "runners"],
+      [dom.tabBtnQueue, "queue"],
+      [dom.tabBtnJobs, "jobs"],
+      [dom.tabBtnRepos, "repos"],
+    ] as const) {
+      btn!.click();
+      expect(state.currentTab).toBe(tab);
+    }
     dom.viewModeTable!.click();
     expect(state.currentViewMode).toBe("table");
     dom.viewModeCards!.click();
@@ -104,6 +132,13 @@ describe("initViewControls", () => {
 });
 
 describe("initTerminalControls / initClearLogs", () => {
+  it("applies the saved terminal height", () => {
+    const height = () => dom.workspaceMainColumn!.style.getPropertyValue("--terminal-height");
+    expect(height()).toBe("");
+    initTerminalControls();
+    expect(height()).toBe(`${state.terminalHeightPx}px`);
+  });
+
   it("toggles the terminal and clears logs", () => {
     initTerminalControls();
     dom.btnToggleTerminalExpand!.click();
@@ -141,6 +176,15 @@ describe("initFilterControls", () => {
     expect(localStorage.getItem(filterStorageKeys.queue)).toBe("b");
     expect(localStorage.getItem(filterStorageKeys.jobs)).toBe("c");
     expect(localStorage.getItem(filterStorageKeys.repos)).toBe("d");
+    expect(rr.renderRunners).toHaveBeenCalledWith(state.currentRunners);
+    expect(rr.renderQueue).toHaveBeenCalledWith(state.currentQueuedJobs, state.currentConcurrency);
+    expect(rr.renderCompletedJobs).toHaveBeenCalledWith(state.currentCompletedJobs);
+    expect(rr.renderRepos).toHaveBeenCalledWith(
+      state.currentRepos,
+      state.currentQueuedJobs,
+      state.currentRepoPriority,
+      state.currentPausedRepos,
+    );
   });
 
   it("handles origin filter clicks and provider changes", () => {
@@ -148,9 +192,13 @@ describe("initFilterControls", () => {
     const group = dom.runnersOriginFilterGroup!;
     group.dispatchEvent(new MouseEvent("click", { bubbles: true }));
     const buttons = group.querySelectorAll<HTMLButtonElement>("button[data-origin]");
+    buttons[0].classList.add("active");
+    rr.renderRunners.mockClear();
     buttons[1].click();
     expect(state.currentRunnersOrigin).toBe(buttons[1].dataset.origin);
     expect(buttons[1].classList.contains("active")).toBe(true);
+    expect(buttons[0].classList.contains("active")).toBe(false);
+    expect(rr.renderRunners).toHaveBeenCalledOnce();
     const noOrigin = document.createElement("button");
     noOrigin.setAttribute("data-origin", "");
     group.appendChild(noOrigin);
@@ -158,8 +206,10 @@ describe("initFilterControls", () => {
     expect(state.currentRunnersOrigin).toBe("all");
     dom.runnersProviderSelect!.add(new Option("gh", "gh"));
     dom.runnersProviderSelect!.value = "gh";
+    rr.renderRunners.mockClear();
     dom.runnersProviderSelect!.dispatchEvent(new Event("change"));
     expect(state.currentRunnersProvider).toBe("gh");
+    expect(rr.renderRunners).toHaveBeenCalledOnce();
   });
 
   it("tolerates missing elements", () => {
@@ -223,6 +273,19 @@ describe("initSpawnModal", () => {
     initDom();
     initSpawnModal();
   });
+
+  it("leaves its buttons unbound without the dialog", () => {
+    (dom as { spawnModal: HTMLDialogElement | null }).spawnModal = null;
+    initSpawnModal();
+    for (const b of [
+      dom.btnStartRunner,
+      dom.spawnModalClose,
+      dom.spawnModalCancel,
+      dom.spawnModalSubmit,
+    ]) {
+      expect(b!.onclick).toBeNull();
+    }
+  });
 });
 
 describe("initSettingsModal", () => {
@@ -246,6 +309,29 @@ describe("initSettingsModal", () => {
     document.body.innerHTML = "";
     initDom();
     initSettingsModal();
+  });
+
+  it("leaves close and cancel unbound without the dialog", () => {
+    (dom as { settingsModal: HTMLDialogElement | null }).settingsModal = null;
+    initSettingsModal();
+    expect(dom.settingsModalClose!.onclick).toBeNull();
+    expect(dom.settingsModalCancel!.onclick).toBeNull();
+  });
+
+  it("keeps buttons and the form from navigating", () => {
+    initSettingsModal();
+    for (const target of [
+      dom.btnOpenSettings!,
+      dom.btnOpenSettingsPanel!,
+      dom.settingsModalSave!,
+    ]) {
+      const click = new MouseEvent("click", { cancelable: true });
+      target.dispatchEvent(click);
+      expect(click.defaultPrevented).toBe(true);
+    }
+    const submit = new Event("submit", { cancelable: true });
+    dom.settingsForm!.dispatchEvent(submit);
+    expect(submit.defaultPrevented).toBe(true);
   });
 });
 
@@ -321,6 +407,73 @@ describe("initTelemetryDrawer", () => {
     close();
     window.dispatchEvent(new Event("resize"));
   });
+
+  it("opens from a button and cards when the drawer, header and backdrop are missing", () => {
+    vi.useFakeTimers();
+    viewport.width = 500;
+    document.body.innerHTML =
+      '<button id="btn-open-drawer"></button><div data-kpi-target="routing"></div><div data-kpi-target="nope"></div>';
+    initDom();
+    initTelemetryDrawer();
+    expect(() => document.getElementById("btn-open-drawer")!.click()).not.toThrow();
+    document.querySelectorAll<HTMLElement>("[data-kpi-target]").forEach((c) => c.click());
+    expect(() => vi.advanceTimersByTime(200)).not.toThrow();
+    vi.useRealTimers();
+  });
+
+  it("opens the backdrop only on mobile", () => {
+    initTelemetryDrawer();
+    document.getElementById("btn-open-drawer")!.click();
+    expect(document.getElementById("telemetry-drawer")!.classList.contains("open")).toBe(true);
+    expect(document.querySelector(".main-workspace-full")!.classList.contains("drawer-open")).toBe(
+      true,
+    );
+    expect(document.getElementById("drawer-backdrop")!.classList.contains("open")).toBe(false);
+  });
+
+  it("resets the header menu it collapses", () => {
+    initTelemetryDrawer();
+    document.body.classList.add("mobile-menu-open");
+    dom.headerMenuBackdrop!.classList.add("open");
+    dom.btnHeaderMenu!.setAttribute("aria-expanded", "true");
+    document.querySelector<HTMLElement>(".header-right")!.style.display = "flex";
+    document.getElementById("btn-open-drawer")!.click();
+    expect(document.body.classList.contains("mobile-menu-open")).toBe(false);
+    expect(dom.headerMenuBackdrop!.classList.contains("open")).toBe(false);
+    expect(dom.btnHeaderMenu!.getAttribute("aria-expanded")).toBe("false");
+    expect(document.querySelector<HTMLElement>(".header-right")!.style.display).toBe("");
+  });
+
+  it.each([
+    ["routing", "panel-routing-telemetry"],
+    ["cache", "panel-cache-analytics"],
+  ])("scrolls the %s card to its drawer panel", (target, panelId) => {
+    vi.useFakeTimers();
+    const card = document.createElement("div");
+    card.dataset.kpiTarget = target;
+    document.body.appendChild(card);
+    const panel = document.getElementById(panelId)!;
+    const spy = vi.spyOn(panel, "scrollIntoView");
+    initTelemetryDrawer();
+    card.click();
+    expect(document.getElementById("telemetry-drawer")!.classList.contains("open")).toBe(true);
+    vi.advanceTimersByTime(119);
+    expect(spy).not.toHaveBeenCalled();
+    vi.advanceTimersByTime(1);
+    expect(spy).toHaveBeenCalledWith({ behavior: "smooth", block: "start" });
+    vi.useRealTimers();
+  });
+
+  it.each(["runners", "queue"] as const)("switches to the %s tab from its card", (target) => {
+    const card = document.createElement("div");
+    card.dataset.kpiTarget = target;
+    document.body.appendChild(card);
+    state.currentTab = "jobs";
+    initTelemetryDrawer();
+    card.click();
+    expect(state.currentTab).toBe(target);
+    expect(document.getElementById("telemetry-drawer")!.classList.contains("open")).toBe(false);
+  });
 });
 
 describe("initHeaderMenu", () => {
@@ -340,6 +493,50 @@ describe("initHeaderMenu", () => {
     expect(panel().style.display).toBe("none");
   });
 
+  it("closes again, marks the button collapsed and leaves the drawer alone", () => {
+    const closeDrawer = vi.fn();
+    initHeaderMenu(closeDrawer);
+    dom.btnHeaderMenu!.click();
+    closeDrawer.mockClear();
+    dom.btnHeaderMenu!.click();
+    expect(header().classList.contains("menu-open")).toBe(false);
+    expect(dom.btnHeaderMenu!.getAttribute("aria-expanded")).toBe("false");
+    expect(closeDrawer).not.toHaveBeenCalled();
+  });
+
+  it("keeps its own click from closing it again", () => {
+    viewport.width = 500;
+    initHeaderMenu(vi.fn());
+    let bubbled = false;
+    document.body.addEventListener("click", () => (bubbled = true));
+    dom.btnHeaderMenu!.click();
+    expect(bubbled).toBe(false);
+    expect(header().classList.contains("menu-open")).toBe(true);
+  });
+
+  it("opens without a header element", () => {
+    const closeDrawer = vi.fn();
+    initHeaderMenu(closeDrawer);
+    header().remove();
+    dom.btnHeaderMenu!.click();
+    expect(dom.btnHeaderMenu!.getAttribute("aria-expanded")).toBe("true");
+  });
+
+  it("closes through its backdrop on desktop, where outside clicks are ignored", () => {
+    initHeaderMenu(vi.fn());
+    dom.btnHeaderMenu!.click();
+    dom.headerMenuBackdrop!.click();
+    expect(header().classList.contains("menu-open")).toBe(false);
+  });
+
+  it("stays open on a mobile resize", () => {
+    viewport.width = 500;
+    initHeaderMenu(vi.fn());
+    dom.btnHeaderMenu!.click();
+    window.dispatchEvent(new Event("resize"));
+    expect(header().classList.contains("menu-open")).toBe(true);
+  });
+
   it("clears the inline display on desktop", () => {
     initHeaderMenu(vi.fn());
     panel().style.display = "none";
@@ -356,6 +553,7 @@ describe("initHeaderMenu", () => {
     open();
     dom.headerMenuBackdrop!.click();
     expect(header().classList.contains("menu-open")).toBe(false);
+    expect(dom.headerMenuBackdrop!.classList.contains("open")).toBe(false);
 
     open();
     header().click();
@@ -415,6 +613,9 @@ describe("handlers index", () => {
     startUptimeTicker();
     vi.advanceTimersByTime(1000);
     expect(dom.statUptime!.textContent).toBe("01:00:00");
+    state.lastUptimeSeconds = 3600 + 125;
+    vi.advanceTimersByTime(1000);
+    expect(dom.statUptime!.textContent).toBe("01:02:06");
     document.body.innerHTML = "";
     initDom();
     vi.advanceTimersByTime(1000);
