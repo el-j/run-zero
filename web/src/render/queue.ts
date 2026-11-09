@@ -1,8 +1,24 @@
 import { type QueuedJob } from "../api/client";
 import { triggerQueueAction } from "../actions";
 import { dom } from "../dom";
-import { compareValues, escapeHtml, formatDuration, includesFilter, normalizeFilter } from "../format";
+import {
+  compareValues,
+  escapeHtml,
+  formatDuration,
+  includesFilter,
+  normalizeFilter,
+} from "../format";
 import { state } from "../state";
+
+/** The run's GitHub URL. */
+const runUrlOf = (j: QueuedJob) =>
+  j.run_url || `https://github.com/${j.repo}/actions/runs/${j.run_id}`;
+
+/** When the job started running, or else was queued, in epoch ms (0 when unknown). */
+const waitingSince = (j: QueuedJob) => {
+  const since = j.started_at || j.created_at;
+  return since ? new Date(since).getTime() : 0;
+};
 
 /**
  * Renders the queued workflow jobs (cards and table), slot counters and run-control buttons.
@@ -10,7 +26,19 @@ import { state } from "../state";
  * @param concurrency - Active and maximum runner slots.
  */
 export function renderQueue(queuedJobs: QueuedJob[], concurrency: { active: number; max: number }) {
-  const { tabQueueCount, queueTableBody, queueTableEmpty, queueSlotsBadge, queueBusySlots, queueMaxSlots, queueFreeSlots, queueTotalJobs, queueSearchInput, queueJobsCountTag, queueJobsView } = dom;
+  const {
+    tabQueueCount,
+    queueTableBody,
+    queueTableEmpty,
+    queueSlotsBadge,
+    queueBusySlots,
+    queueMaxSlots,
+    queueFreeSlots,
+    queueTotalJobs,
+    queueSearchInput,
+    queueJobsCountTag,
+    queueJobsView,
+  } = dom;
   if (tabQueueCount) tabQueueCount.textContent = String(queuedJobs.length);
   const queueFilter = normalizeFilter(queueSearchInput?.value || "");
   const filteredQueueJobs = queuedJobs.filter((j) =>
@@ -28,7 +56,6 @@ export function renderQueue(queuedJobs: QueuedJob[], concurrency: { active: numb
       queueFilter,
     ),
   );
-  const hasFilter = !!queueFilter;
   const activeRunners = concurrency.active;
   const maxRunners = concurrency.max;
   const freeSlots = Math.max(0, maxRunners - activeRunners);
@@ -45,41 +72,34 @@ export function renderQueue(queuedJobs: QueuedJob[], concurrency: { active: numb
     queueJobsCountTag.textContent = `${queuedJobs.length} JOBS`;
   }
 
-  const hasJobs = queuedJobs.length > 0;
   const hasFilteredJobs = filteredQueueJobs.length > 0;
-  if (queueTableEmpty) {
-    if (hasFilteredJobs) queueTableEmpty.classList.add("hidden");
-    else queueTableEmpty.classList.remove("hidden");
-  }
+  if (queueTableEmpty) queueTableEmpty.classList.toggle("hidden", hasFilteredJobs);
 
-  if (!hasJobs || !hasFilteredJobs) {
+  if (!hasFilteredJobs) {
+    // With jobs queued, an empty result means the filter matched none of them.
+    const filterMiss = queuedJobs.length > 0;
     if (queueJobsView) {
-      if (hasJobs && hasFilter) {
-        queueJobsView.innerHTML = `
+      queueJobsView.innerHTML = filterMiss
+        ? `
           <div class="empty-substate empty-queue-clean">
             <div class="clean-check-icon">⌕</div>
             <div class="clean-text font-mono">NO QUEUED JOBS MATCH</div>
             <div class="clean-subtext">Try a different queue filter. Current query: "${escapeHtml(queueFilter)}".</div>
           </div>
-        `;
-      } else {
-        queueJobsView.innerHTML = `
+        `
+        : `
           <div class="empty-substate empty-queue-clean">
             <div class="clean-check-icon">✓</div>
             <div class="clean-text font-mono">ALL WORKFLOW QUEUES ARE CLEAR</div>
             <div class="clean-subtext">Waiting jobs will appear here in real-time as GitHub Actions workflows trigger.</div>
           </div>
         `;
-      }
     }
-    if (queueTableBody) {
-      queueTableBody.innerHTML = "";
-    }
-    if (queueTableEmpty && state.currentViewMode === "table") {
-      queueTableEmpty.textContent =
-        hasJobs && hasFilter
-          ? `No queued jobs matching "${queueFilter}".`
-          : "Queue is clear — no pending workflow jobs.";
+    if (queueTableBody) queueTableBody.innerHTML = "";
+    if (queueTableEmpty) {
+      queueTableEmpty.textContent = filterMiss
+        ? `No queued jobs matching "${queueFilter}".`
+        : "Queue is clear — no pending workflow jobs.";
     }
     return;
   }
@@ -96,10 +116,9 @@ export function renderQueue(queuedJobs: QueuedJob[], concurrency: { active: numb
           ? '<span class="badge badge-pulse" style="font-size: 11px;">RUNNING</span>'
           : '<span class="badge badge-queued font-mono" style="font-size: 11px;">QUEUED</span>';
 
-        const runUrl = j.run_url || `https://github.com/${j.repo}/actions/runs/${j.run_id}`;
-        const runLink = `<a href="${escapeHtml(runUrl)}" target="_blank" rel="noopener noreferrer" style="color: var(--solar); text-decoration: none; font-weight: 700;">Run #${j.run_id} ↗</a>`;
+        const runLink = `<a href="${escapeHtml(runUrlOf(j))}" target="_blank" rel="noopener noreferrer" style="color: var(--solar); text-decoration: none; font-weight: 700;">Run #${j.run_id} ↗</a>`;
 
-        const labels = (j.labels || [])
+        const labels = (j.labels ?? [])
           .filter((l) => l !== "self-hosted")
           .map(
             (l) =>
@@ -108,7 +127,7 @@ export function renderQueue(queuedJobs: QueuedJob[], concurrency: { active: numb
           .join(" ");
 
         let progressBlock = "";
-        if (j.progress_pct !== undefined || (j.stages_total && j.stages_total > 0)) {
+        if (j.progress_pct !== undefined || (j.stages_total ?? 0) > 0) {
           const pct = j.progress_pct ?? 0;
           progressBlock = `
             <div class="mini-progress-wrap" style="margin-top: 6px;">
@@ -171,57 +190,36 @@ export function renderQueue(queuedJobs: QueuedJob[], concurrency: { active: numb
   }
 
   // 2. Render Table View
-  const sortedQueueForTable = [...queuedJobs].sort((a, b) => {
-    const aPos = a.queue_position ?? Number.MAX_SAFE_INTEGER;
-    const bPos = b.queue_position ?? Number.MAX_SAFE_INTEGER;
-    const aStatus = a.status || "";
-    const bStatus = b.status || "";
-    const aName = `${a.name || ""} ${a.workflow_name || ""}`;
-    const bName = `${b.name || ""} ${b.workflow_name || ""}`;
-    const aRun = a.run_id ?? 0;
-    const bRun = b.run_id ?? 0;
-    const aRepo = `${a.repo || ""} ${a.head_branch || ""}`;
-    const bRepo = `${b.repo || ""} ${b.head_branch || ""}`;
-    const aProgress = a.progress_pct ?? 0;
-    const bProgress = b.progress_pct ?? 0;
-    const aWait = a.started_at
-      ? new Date(a.started_at).getTime()
-      : a.created_at
-        ? new Date(a.created_at).getTime()
-        : 0;
-    const bWait = b.started_at
-      ? new Date(b.started_at).getTime()
-      : b.created_at
-        ? new Date(b.created_at).getTime()
-        : 0;
-    const map: Record<typeof state.queueSort.key, [string | number, string | number]> = {
-      position: [aPos, bPos],
-      status: [aStatus, bStatus],
-      name: [aName, bName],
-      run: [aRun, bRun],
-      repo: [aRepo, bRepo],
-      progress: [aProgress, bProgress],
-      wait: [aWait, bWait],
+  const filteredQueueForTable = [...filteredQueueJobs].sort((a, b) => {
+    // Each key compares these pairs in turn until one differs.
+    const keys: Record<typeof state.queueSort.key, Array<[string | number, string | number]>> = {
+      position: [
+        [a.queue_position ?? Number.MAX_SAFE_INTEGER, b.queue_position ?? Number.MAX_SAFE_INTEGER],
+      ],
+      status: [[a.status, b.status]],
+      name: [
+        [a.name, b.name],
+        [a.workflow_name ?? "", b.workflow_name ?? ""],
+      ],
+      run: [[a.run_id ?? 0, b.run_id ?? 0]],
+      repo: [
+        [a.repo, b.repo],
+        [a.head_branch ?? "", b.head_branch ?? ""],
+      ],
+      progress: [[a.progress_pct ?? 0, b.progress_pct ?? 0]],
+      wait: [[waitingSince(a), waitingSince(b)]],
     };
-    const [av, bv] = map[state.queueSort.key];
-    const diff = compareValues(av, bv);
+    const diff = keys[state.queueSort.key].reduce(
+      (acc, [av, bv]) => acc || compareValues(av, bv),
+      0,
+    );
     return state.queueSort.dir === "asc" ? diff : -diff;
   });
-  const filteredQueueSet = new Set(filteredQueueJobs);
-  const filteredQueueForTable = sortedQueueForTable.filter((j) => filteredQueueSet.has(j));
-
-  if (queueTableEmpty && state.currentViewMode === "table") {
-    queueTableEmpty.classList.toggle("hidden", filteredQueueForTable.length > 0);
-    queueTableEmpty.textContent = hasFilter
-      ? `No queued jobs matching "${queueFilter}".`
-      : "Queue is clear — no pending workflow jobs.";
-  }
 
   if (queueTableBody) {
     queueTableBody.innerHTML = filteredQueueForTable
       .map((j) => {
         const isRunning = j.status === "in_progress";
-        const runUrl = j.run_url || `https://github.com/${j.repo}/actions/runs/${j.run_id}`;
         const duration = formatDuration(j.started_at || j.created_at);
         const pct = j.progress_pct ?? 0;
 
@@ -242,7 +240,7 @@ export function renderQueue(queuedJobs: QueuedJob[], concurrency: { active: numb
               <div style="font-size: 11px; color: var(--text-muted);">${escapeHtml(j.workflow_name || "Workflow")}</div>
             </td>
             <td>
-              <a href="${escapeHtml(runUrl)}" target="_blank" rel="noopener noreferrer" style="color: var(--solar); font-weight: 700;">
+              <a href="${escapeHtml(runUrlOf(j))}" target="_blank" rel="noopener noreferrer" style="color: var(--solar); font-weight: 700;">
                 Run #${j.run_id} ↗
               </a>
             </td>

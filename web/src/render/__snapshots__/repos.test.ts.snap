@@ -1,0 +1,155 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`renderRepos output > renders the empty and no-match states > discovering list 1`] = `"<div class="empty-substate">Discovering active repositories...</div>"`;
+
+exports[`renderRepos output > renders the empty and no-match states > discovering table 1`] = `"<tr><td colspan="5" class="empty-substate">Discovering active repositories...</td></tr>"`;
+
+exports[`renderRepos output > renders the empty and no-match states > no match list 1`] = `"<div class="empty-substate">No repositories matching "&lt;x&gt;"</div>"`;
+
+exports[`renderRepos output > renders the empty and no-match states > no match table 1`] = `"<tr><td colspan="5" class="empty-substate">No repositories matching "&lt;x&gt;"</td></tr>"`;
+
+exports[`renderRepos output > renders the priority list and table > list 1`] = `
+"
+        <div class="repo-row " draggable="true" data-repo="o/c" data-index="0">
+          <div class="repo-prio-left">
+            <span class="drag-handle" title="Drag to reorder priority">⠿</span>
+            <span class="priority-rank-badge font-mono" title="Priority #1">#1</span>
+            <div class="repo-main">
+              <span class="repo-name font-mono">o/c</span>
+            </div>
+          </div>
+          <div class="repo-prio-right">
+            <span class="repo-queue-badge queue-active">1 queued</span>
+            <button class="btn btn-xs btn-pause-repo" data-action="toggle-pause" data-repo="o/c">
+              PAUSE
+            </button>
+            <div class="prio-move-btns">
+              <button class="btn btn-xs btn-move" data-action="move-up" data-repo="o/c" disabled="">▲</button>
+              <button class="btn btn-xs btn-move" data-action="move-down" data-repo="o/c">▼</button>
+            </div>
+          </div>
+        </div>
+      
+        <div class="repo-row " draggable="true" data-repo="o/a" data-index="1">
+          <div class="repo-prio-left">
+            <span class="drag-handle" title="Drag to reorder priority">⠿</span>
+            <span class="priority-rank-badge font-mono" title="Priority #2">#2</span>
+            <div class="repo-main">
+              <span class="repo-name font-mono">o/a</span>
+            </div>
+          </div>
+          <div class="repo-prio-right">
+            <span class="repo-queue-badge queue-active">2 queued</span>
+            <button class="btn btn-xs btn-pause-repo" data-action="toggle-pause" data-repo="o/a">
+              PAUSE
+            </button>
+            <div class="prio-move-btns">
+              <button class="btn btn-xs btn-move" data-action="move-up" data-repo="o/a">▲</button>
+              <button class="btn btn-xs btn-move" data-action="move-down" data-repo="o/a">▼</button>
+            </div>
+          </div>
+        </div>
+      
+        <div class="repo-row repo-row-paused" draggable="true" data-repo="o/b" data-index="2">
+          <div class="repo-prio-left">
+            <span class="drag-handle" title="Drag to reorder priority">⠿</span>
+            <span class="priority-rank-badge font-mono" title="Priority #3">#3</span>
+            <div class="repo-main">
+              <span class="repo-name font-mono">o/b</span>
+            </div>
+          </div>
+          <div class="repo-prio-right">
+            <span class="repo-queue-badge queue-paused">PAUSED</span>
+            <button class="btn btn-xs btn-resume-repo" data-action="toggle-pause" data-repo="o/b">
+              RESUME
+            </button>
+            <div class="prio-move-btns">
+              <button class="btn btn-xs btn-move" data-action="move-up" data-repo="o/b">▲</button>
+              <button class="btn btn-xs btn-move" data-action="move-down" data-repo="o/b" disabled="">▼</button>
+            </div>
+          </div>
+        </div>
+      "
+`;
+
+exports[`renderRepos output > renders the priority list and table > table 1`] = `
+"
+          <tr>
+            <td>
+              <span class="priority-rank-badge font-mono">#1</span>
+            </td>
+            <td>
+              <span class="repo-name font-mono" style="font-weight: 700;">o/c</span>
+            </td>
+            <td>
+              <span class="badge badge-live font-mono" style="font-size: 10px;">
+                ACTIVE
+              </span>
+            </td>
+            <td>
+              <span class="font-mono" style="color: var(--solar);">
+                1 queued
+              </span>
+            </td>
+            <td style="text-align: right; white-space: nowrap;">
+              <button class="btn btn-xs btn-pause-repo" data-action="toggle-pause" data-repo="o/c">
+                PAUSE
+              </button>
+              <button class="btn btn-xs btn-move" data-action="move-up" data-repo="o/c" disabled="">▲</button>
+              <button class="btn btn-xs btn-move" data-action="move-down" data-repo="o/c">▼</button>
+            </td>
+          </tr>
+        
+          <tr>
+            <td>
+              <span class="priority-rank-badge font-mono">#2</span>
+            </td>
+            <td>
+              <span class="repo-name font-mono" style="font-weight: 700;">o/a</span>
+            </td>
+            <td>
+              <span class="badge badge-live font-mono" style="font-size: 10px;">
+                ACTIVE
+              </span>
+            </td>
+            <td>
+              <span class="font-mono" style="color: var(--solar);">
+                2 queued
+              </span>
+            </td>
+            <td style="text-align: right; white-space: nowrap;">
+              <button class="btn btn-xs btn-pause-repo" data-action="toggle-pause" data-repo="o/a">
+                PAUSE
+              </button>
+              <button class="btn btn-xs btn-move" data-action="move-up" data-repo="o/a">▲</button>
+              <button class="btn btn-xs btn-move" data-action="move-down" data-repo="o/a">▼</button>
+            </td>
+          </tr>
+        
+          <tr>
+            <td>
+              <span class="priority-rank-badge font-mono">#3</span>
+            </td>
+            <td>
+              <span class="repo-name font-mono" style="font-weight: 700;">o/b</span>
+            </td>
+            <td>
+              <span class="badge badge-danger font-mono" style="font-size: 10px;">
+                PAUSED
+              </span>
+            </td>
+            <td>
+              <span class="font-mono" style="color: var(--text-muted);">
+                idle
+              </span>
+            </td>
+            <td style="text-align: right; white-space: nowrap;">
+              <button class="btn btn-xs btn-resume-repo" data-action="toggle-pause" data-repo="o/b">
+                RESUME
+              </button>
+              <button class="btn btn-xs btn-move" data-action="move-up" data-repo="o/b">▲</button>
+              <button class="btn btn-xs btn-move" data-action="move-down" data-repo="o/b" disabled="">▼</button>
+            </td>
+          </tr>
+        "
+`;

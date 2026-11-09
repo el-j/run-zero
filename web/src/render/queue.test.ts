@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { queued, removeAllElements } from "../../test/factories";
-import { mountDashboard } from "../../test/helpers";
+import { mountDashboard, pinClockAndLocale } from "../../test/helpers";
 import { dom, initDom } from "../dom";
 import { state } from "../state";
 import { renderQueue } from "./queue";
@@ -112,7 +112,7 @@ describe("renderQueue", () => {
     dom.queueSearchInput!.value = "full";
     renderQueue(varied(), conc);
     expect(dom.queueTableBody!.querySelectorAll("tr")).toHaveLength(1);
-    expect(dom.queueTableEmpty!.textContent).toContain('No queued jobs matching "full"');
+    expect(dom.queueTableEmpty!.classList.contains("hidden")).toBe(true);
   });
 
   it("shows empty states", () => {
@@ -125,11 +125,6 @@ describe("renderQueue", () => {
     renderQueue(varied(), conc);
     expect(dom.queueJobsView!.innerHTML).toContain("NO QUEUED JOBS MATCH");
     expect(dom.queueTableEmpty!.textContent).toContain('No queued jobs matching "zzz"');
-    dom.queueSearchInput!.value = "";
-    state.currentViewMode = "cards";
-    const before = dom.queueTableEmpty!.textContent;
-    renderQueue([], conc);
-    expect(dom.queueTableEmpty!.textContent).toBe(before);
   });
 
   it("keeps the table hint untouched in card mode", () => {
@@ -189,5 +184,152 @@ describe("renderQueue", () => {
         renderQueue(jobs, conc);
       }
     }
+  });
+});
+
+// Jobs whose table order differs for every sort key and direction.
+const trio = () => [
+  queued({
+    id: 2,
+    run_id: 20,
+    name: "bravo",
+    status: "queued",
+    repo: "o/c",
+    queue_position: 2,
+    progress_pct: 10,
+    created_at: "2026-01-05T11:00:00Z",
+  }),
+  queued({
+    id: 3,
+    run_id: 5,
+    name: "charlie",
+    status: "waiting",
+    repo: "o/a",
+    queue_position: undefined,
+    progress_pct: undefined,
+  }),
+  queued({
+    id: 1,
+    run_id: 30,
+    name: "alpha",
+    status: "in_progress",
+    repo: "o/b",
+    queue_position: 1,
+    progress_pct: 50,
+    started_at: "2026-01-05T10:00:00Z",
+    created_at: "2026-01-05T11:30:00Z",
+  }),
+];
+
+const rowNames = () =>
+  [...dom.queueTableBody!.querySelectorAll("tr td:nth-child(3) a")].map((a) =>
+    a.textContent!.replace("↗", "").trim(),
+  );
+
+describe("renderQueue output", () => {
+  beforeEach(() => pinClockAndLocale("2026-01-05T12:00:00Z"));
+
+  it("renders the queue as cards and table rows", () => {
+    state.currentViewMode = "table";
+    renderQueue(varied(), conc);
+    expect(dom.queueJobsView!.innerHTML).toMatchSnapshot("cards");
+    expect(dom.queueTableBody!.innerHTML).toMatchSnapshot("table");
+  });
+
+  it("renders the clear queue and a filter miss", () => {
+    dom.queueTableBody!.innerHTML = "<tr><td>stale</td></tr>";
+    renderQueue([], conc);
+    expect(dom.queueJobsView!.innerHTML).toMatchSnapshot("clear");
+    expect(dom.queueTableBody!.innerHTML).toBe("");
+    expect(dom.queueTableEmpty!.textContent).toBe("Queue is clear — no pending workflow jobs.");
+    dom.queueSearchInput!.value = "<zzz>";
+    renderQueue(varied(), conc);
+    expect(dom.queueJobsView!.innerHTML).toMatchSnapshot("filter miss");
+    expect(dom.queueTableEmpty!.textContent).toBe('No queued jobs matching "<zzz>".');
+    expect(dom.queueTableEmpty!.classList.contains("hidden")).toBe(false);
+  });
+
+  it("searches labels as separate words", () => {
+    dom.queueSearchInput!.value = "linux arm64";
+    renderQueue([queued({ labels: ["linux", "arm64"] })], conc);
+    expect(dom.queueTableBody!.querySelectorAll("tr")).toHaveLength(1);
+  });
+
+  it.each([
+    ["position", ["alpha", "bravo", "charlie"]],
+    ["status", ["alpha", "bravo", "charlie"]],
+    ["name", ["alpha", "bravo", "charlie"]],
+    ["run", ["charlie", "bravo", "alpha"]],
+    ["repo", ["charlie", "alpha", "bravo"]],
+    ["progress", ["charlie", "bravo", "alpha"]],
+    ["wait", ["charlie", "alpha", "bravo"]],
+  ] as const)("sorts the table by %s", (key, asc) => {
+    state.queueSort = { key, dir: "asc" };
+    renderQueue(trio(), conc);
+    expect(rowNames()).toEqual(asc);
+    state.queueSort = { key, dir: "desc" };
+    renderQueue([...trio()].reverse(), conc);
+    expect(rowNames()).toEqual([...asc].reverse());
+  });
+
+  it("breaks name and repo ties by workflow and branch", () => {
+    state.queueSort = { key: "name", dir: "asc" };
+    const byName = [
+      queued({ id: 1, name: "x", workflow_name: "Zeta" }),
+      queued({ id: 2, name: "x", workflow_name: undefined }),
+      queued({ id: 3, name: "x", workflow_name: "Alpha" }),
+    ];
+    renderQueue(byName, conc);
+    expect(
+      [...dom.queueTableBody!.querySelectorAll("tr td:nth-child(3) div")].map((d) => d.textContent),
+    ).toEqual(["Workflow", "Alpha", "Zeta"]);
+    state.queueSort = { key: "repo", dir: "asc" };
+    const byRepo = [
+      queued({ id: 1, head_branch: "zeta" }),
+      queued({ id: 2, head_branch: undefined }),
+      queued({ id: 3, head_branch: "alpha" }),
+    ];
+    renderQueue(byRepo, conc);
+    expect(
+      [...dom.queueTableBody!.querySelectorAll("tr td:nth-child(5)")].map(
+        (td) => td.querySelectorAll("div")[1]?.textContent ?? "",
+      ),
+    ).toEqual(["", "alpha", "zeta"]);
+  });
+
+  it.each([
+    ["name", "workflow_name", "tr td:nth-child(3) div", "Workflow"],
+    ["repo", "head_branch", "tr td:nth-child(5)", "o/r"],
+  ] as const)("breaks %s ties in either input order", (key, field, cell, unset) => {
+    state.queueSort = { key, dir: "asc" };
+    // The name column shows the workflow (or "Workflow"); the repo column shows repo and branch.
+    const shown = () =>
+      [...dom.queueTableBody!.querySelectorAll(cell)].map((d) =>
+        d.textContent!.replace(/\s+/g, ""),
+      );
+    const expected = (v: string | undefined) => (key === "repo" ? `o/r${v ?? ""}` : (v ?? unset));
+    for (const [first, second] of [
+      ["Alpha", "Zeta"],
+      [undefined, "Alpha"],
+    ]) {
+      const want = [expected(first), expected(second)];
+      const pair = [queued({ id: 1, [field]: first }), queued({ id: 2, [field]: second })];
+      renderQueue(pair, conc);
+      expect(shown()).toEqual(want);
+      renderQueue([...pair].reverse(), conc);
+      expect(shown()).toEqual(want);
+    }
+  });
+
+  it("shows progress only when it is known", () => {
+    renderQueue([queued({ progress_pct: undefined, stages_total: 0 })], conc);
+    expect(dom.queueJobsView!.innerHTML).not.toContain("mini-progress-wrap");
+    renderQueue([queued({ progress_pct: 0 })], conc);
+    expect(dom.queueJobsView!.innerHTML).toContain("Stage 0/1 done");
+  });
+
+  it("shows the queue rank only when the job has one", () => {
+    renderQueue([queued({ queue_position: 0 })], conc);
+    expect(dom.queueJobsView!.innerHTML).not.toContain("Rank #");
   });
 });

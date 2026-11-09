@@ -41,15 +41,15 @@ export function renderRepos(
     return;
   }
 
-  const queuedByRepo: Record<string, number> = {};
-  queuedJobs.forEach((j) => {
-    if (j.repo) queuedByRepo[j.repo] = (queuedByRepo[j.repo] || 0) + 1;
-  });
+  const queuedByRepo = new Map<string, number>();
+  for (const j of queuedJobs) queuedByRepo.set(j.repo, (queuedByRepo.get(j.repo) ?? 0) + 1);
+  const queuedOf = (repo: string) => queuedByRepo.get(repo) ?? 0;
+  const rankOf = (repo: string) => ordered.indexOf(repo) + 1;
 
   // 1. Render Cards / List View
   reposList.innerHTML = filtered
     .map((repo, idx) => {
-      const qCount = queuedByRepo[repo] || 0;
+      const qCount = queuedOf(repo);
       const isPaused = pausedRepos.has(repo);
 
       let badge = '<span class="repo-queue-badge queue-idle">idle</span>';
@@ -85,29 +85,24 @@ export function renderRepos(
 
   // 2. Render Table View
   if (reposTableBody) {
-    const sortedReposForTable = [...filtered].sort((aRepo, bRepo) => {
-      const aQueued = queuedByRepo[aRepo] || 0;
-      const bQueued = queuedByRepo[bRepo] || 0;
-      const aPaused = pausedRepos.has(aRepo) ? "PAUSED" : "ACTIVE";
-      const bPaused = pausedRepos.has(bRepo) ? "PAUSED" : "ACTIVE";
-      const aRank = ordered.indexOf(aRepo) + 1;
-      const bRank = ordered.indexOf(bRepo) + 1;
-      const map: Record<typeof state.reposSort.key, [string | number, string | number]> = {
-        rank: [aRank, bRank],
-        repo: [aRepo, bRepo],
-        status: [aPaused, bPaused],
-        queued: [aQueued, bQueued],
+    // Active repos sort before paused ones.
+    const status = (repo: string) => Number(pausedRepos.has(repo));
+    const sortedReposForTable = [...filtered].sort((a, b) => {
+      const keys: Record<typeof state.reposSort.key, [string | number, string | number]> = {
+        rank: [rankOf(a), rankOf(b)],
+        repo: [a, b],
+        status: [status(a), status(b)],
+        queued: [queuedOf(a), queuedOf(b)],
       };
-      const [av, bv] = map[state.reposSort.key];
-      const diff = compareValues(av, bv);
+      const diff = compareValues(...keys[state.reposSort.key]);
       return state.reposSort.dir === "asc" ? diff : -diff;
     });
 
     reposTableBody.innerHTML = sortedReposForTable
       .map((repo) => {
-        const qCount = queuedByRepo[repo] || 0;
+        const qCount = queuedOf(repo);
         const isPaused = pausedRepos.has(repo);
-        const rank = ordered.indexOf(repo) + 1;
+        const rank = rankOf(repo);
 
         return `
           <tr>
@@ -163,7 +158,8 @@ export function renderRepos(
         }
       } else {
         const i = newPrio.indexOf(repo);
-        if (i >= 0 && i < newPrio.length - 1) {
+        if (i < newPrio.length - 1) {
+          // every rendered repo is in the priority list
           const tmp = newPrio[i + 1];
           newPrio[i + 1] = newPrio[i];
           newPrio[i] = tmp;
@@ -172,7 +168,12 @@ export function renderRepos(
 
       state.currentRepoPriority = newPrio;
       state.currentPausedRepos = newPaused;
-      renderRepos(state.currentRepos, state.currentQueuedJobs, state.currentRepoPriority, state.currentPausedRepos);
+      renderRepos(
+        state.currentRepos,
+        state.currentQueuedJobs,
+        state.currentRepoPriority,
+        state.currentPausedRepos,
+      );
       try {
         await client.updateRepoPriority(newPrio, Array.from(newPaused));
         showToast("Priority updated");
@@ -213,7 +214,12 @@ export function renderRepos(
         newPrio.splice(fromIdx, 1);
         newPrio.splice(toIdx, 0, state.draggedRepo);
         state.currentRepoPriority = newPrio;
-        renderRepos(state.currentRepos, state.currentQueuedJobs, state.currentRepoPriority, state.currentPausedRepos);
+        renderRepos(
+          state.currentRepos,
+          state.currentQueuedJobs,
+          state.currentRepoPriority,
+          state.currentPausedRepos,
+        );
         try {
           await client.updateRepoPriority(newPrio, Array.from(state.currentPausedRepos));
           showToast("Priority reordered");
