@@ -21,15 +21,16 @@ func TestWorkflowCache(t *testing.T) {
 	if _, ok := cache.GetJobResult("job-key"); ok {
 		t.Errorf("expected miss on job-key")
 	}
-	tVal := true
-	cache.SetJobResult("job-key", &tVal)
-	res, ok := cache.GetJobResult("job-key")
-	if !ok || res == nil || *res != true {
-		t.Errorf("expected hit true on job-key")
+	cache.SetJobResult("job-key", ReasonSystemd)
+	if res, ok := cache.GetJobResult("job-key"); !ok || res != ReasonSystemd {
+		t.Errorf("expected hit %q on job-key, got %q", ReasonSystemd, res)
 	}
 
 	cache.Clear()
 	if _, ok := cache.GetWorkflow("key-1"); ok {
 		t.Errorf("expected miss after clear")
+	}
+	if _, ok := cache.GetJobResult("job-key"); ok {
+		t.Errorf("expected job result miss after clear")
 	}
 }

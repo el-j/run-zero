@@ -161,11 +161,11 @@ func TestCountStandby(t *testing.T) {
 	}
 }
 
-func TestJobDeclaresServices_CachedResult(t *testing.T) {
+func TestJobVMReason_CachedResult(t *testing.T) {
 	f, gh := newFakeGH(t, workflowRoute(servicesWorkflow))
 	s, _ := newTestScaler(t, baseCfg("o/a"), gh, nil, nil, "o/a")
 	for i := 0; i < 2; i++ {
-		if !s.jobDeclaresServices(context.Background(), "o/a", servicesJob("integration")) {
+		if s.jobVMReason(context.Background(), "o/a", servicesJob("integration")) != "services" {
 			t.Fatalf("call %d: expected services", i)
 		}
 	}

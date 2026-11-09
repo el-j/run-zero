@@ -40,7 +40,7 @@ func TestResolveJobBackend_RoutesServicesJobsToVM(t *testing.T) {
 	if got := s.resolveJobBackend(ctx, "o/a", servicesJob("integration")); got != "orbstack" {
 		t.Fatalf("services job: got %s", got)
 	}
-	if !hasLog(st, "its workflow declares services") {
+	if !hasLog(st, "its workflow gives it services") {
 		t.Fatal("expected a routing log")
 	}
 	if got := s.resolveJobBackend(ctx, "o/a", servicesJob("lint")); got != "docker" {
@@ -78,18 +78,18 @@ func TestResolveJobBackend_SkipsWorkflowLookupWhenNotNeeded(t *testing.T) {
 	}
 }
 
-func TestJobDeclaresServices_ErrorsAndCacheBound(t *testing.T) {
+func TestJobVMReason_ErrorsAndCacheBound(t *testing.T) {
 	f, gh := newFakeGH(t, workflowRoute(servicesWorkflow))
 	s, _ := newTestScaler(t, baseCfg("o/a"), gh, nil, nil, "o/a")
 	ctx := context.Background()
 
 	// A failed fetch counts as "no services" and is not cached.
 	f.codes["/repos/o/a/contents/.github/workflows/ci.yml"] = http.StatusInternalServerError
-	if s.jobDeclaresServices(ctx, "o/a", servicesJob("integration")) {
+	if s.jobVMReason(ctx, "o/a", servicesJob("integration")) != "" {
 		t.Fatal("fetch error must count as no services")
 	}
 	delete(f.codes, "/repos/o/a/contents/.github/workflows/ci.yml")
-	if !s.jobDeclaresServices(ctx, "o/a", servicesJob("integration")) {
+	if s.jobVMReason(ctx, "o/a", servicesJob("integration")) != "services" {
 		t.Fatal("expected services after a successful retry")
 	}
 
@@ -97,13 +97,38 @@ func TestJobDeclaresServices_ErrorsAndCacheBound(t *testing.T) {
 	s.cachedWorkflows = maxCachedWorkflows
 	j := servicesJob("integration")
 	j.HeadSHA = "def"
-	s.jobDeclaresServices(ctx, "o/a", j)
+	s.jobVMReason(ctx, "o/a", j)
 	if s.cachedWorkflows != 1 {
 		t.Fatalf("expected the cache to restart at 1 entry, got %d", s.cachedWorkflows)
 	}
 
 	s.ghClient = nil
-	if s.jobDeclaresServices(ctx, "o/a", servicesJob("integration")) {
+	if s.jobVMReason(ctx, "o/a", servicesJob("integration")) != "" {
 		t.Fatal("no client means no lookup")
+	}
+}
+
+func TestResolveJobBackend_RoutesComposeJobsToVM(t *testing.T) {
+	_, gh := newFakeGH(t, workflowRoute("jobs:\n  stack:\n    steps:\n      - run: docker compose up -d\n"))
+	cfg := baseCfg("o/a")
+	cfg.AutoRouteVM = true
+	s, st := newTestScaler(t, cfg, gh, nil, nil, "o/a")
+	if got := s.resolveJobBackend(context.Background(), "o/a", servicesJob("stack")); got != "orbstack" {
+		t.Fatalf("compose job: got %s", got)
+	}
+	if !hasLog(st, "it starts a docker compose stack") {
+		t.Fatal("expected the routing log to give the reason")
+	}
+}
+
+func TestPolicy_HostArch(t *testing.T) {
+	s, _ := newTestScaler(t, baseCfg("o/a"), nil, nil, nil, "o/a")
+	s.archOverride.HostArch = "arm64"
+	if got := s.resolveJobArch(state.QueuedJob{Labels: []string{"self-hosted"}}, "o/a"); got != "arm64" {
+		t.Fatalf("an unlabelled job runs on the host arch, got %s", got)
+	}
+	s.archOverride = nil
+	if got := s.resolveJobArch(state.QueuedJob{}, "o/a"); got != "amd64" {
+		t.Fatalf("an unknown host arch falls back to amd64, got %s", got)
 	}
 }

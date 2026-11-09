@@ -30,7 +30,7 @@ func TestEvaluateTestCase_MismatchReporting(t *testing.T) {
 		MaxRunners:       1,
 		Expected: Decision{
 			Backend:    "orbstack", // actual will be docker
-			Arch:       "arm64",    // actual will be amd64
+			Arch:       "amd64",    // actual will be arm64 (the host's)
 			RequiresVM: true,       // actual will be false
 			CPUs:       "99",       // actual will be 3
 			MemoryMB:   9999,       // actual will be 2048

@@ -37,13 +37,13 @@ jobs:
 		t.Fatalf("expected 3 jobs, got %d", len(jobs))
 	}
 
-	if jobs[0].JobID != "lint" || jobs[0].JobName != "Code Lint" || jobs[0].HasServices {
+	if jobs[0].JobID != "lint" || jobs[0].JobName != "Code Lint" || jobs[0].VMReason != "" {
 		t.Errorf("unexpected job 0: %+v", jobs[0])
 	}
-	if jobs[1].JobID != "test" || !jobs[1].HasServices {
+	if jobs[1].JobID != "test" || jobs[1].VMReason != ReasonServices {
 		t.Errorf("unexpected job 1: %+v", jobs[1])
 	}
-	if jobs[2].JobID != "container-job" || jobs[2].JobName != "Container Build" || !jobs[2].HasServices {
+	if jobs[2].JobID != "container-job" || jobs[2].JobName != "Container Build" || jobs[2].VMReason != ReasonServices {
 		t.Errorf("unexpected job 2: %+v", jobs[2])
 	}
 }

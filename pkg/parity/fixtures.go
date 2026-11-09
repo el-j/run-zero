@@ -20,11 +20,11 @@ jobs:
 			CapacityCPUs:     10,
 			CapacityMemoryMB: 16384,
 			MaxRunners:       2,
-			// A job without an arch label runs on amd64 (RUNNER_ARCH=both), even
-			// on an arm64 host, unless NATIVE_ARCH_OVERRIDE says otherwise.
+			// A job without an arch label runs natively on the host's arch
+			// (RUNNER_ARCH=both).
 			Expected: Decision{
 				Backend:      "docker",
-				Arch:         "amd64",
+				Arch:         "arm64",
 				RequiresVM:   false,
 				TriggerMatch: "",
 				CPUs:         "4",
@@ -55,6 +55,37 @@ jobs:
 				Arch:         "amd64",
 				RequiresVM:   true,
 				TriggerMatch: "services",
+				CPUs:         "3",
+				MemoryMB:     3072,
+			},
+		},
+		{
+			Name: "compose-stack-routed-to-vm",
+			Repo: "el-j/backend",
+			WorkflowYAML: `name: Stack
+jobs:
+  smoke:
+    runs-on: [self-hosted, x64]
+    steps:
+      - uses: actions/checkout@v4
+      - run: |
+          docker compose up -d
+          curl -f http://localhost:8080/health`,
+			JobName:          "smoke",
+			JobLabels:        []string{"self-hosted", "x64"},
+			HostArch:         "arm64",
+			ArchOverride:     "off",
+			CapacityCPUs:     8,
+			CapacityMemoryMB: 8192,
+			MaxRunners:       2,
+			// Ports a compose stack publishes are on the host, not the
+			// container runner's localhost, so the job needs a VM. Its x64
+			// label keeps it on amd64 on an arm64 host.
+			Expected: Decision{
+				Backend:      "orbstack",
+				Arch:         "amd64",
+				RequiresVM:   true,
+				TriggerMatch: "docker-compose",
 				CPUs:         "3",
 				MemoryMB:     3072,
 			},

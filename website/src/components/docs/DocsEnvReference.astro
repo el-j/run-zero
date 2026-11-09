@@ -61,8 +61,12 @@
         </td>
         <td>
           Route jobs to a VM when a <code>VM_TRIGGER_LABELS</code> word appears
-          in their labels, job name or workflow name, or when their workflow
-          gives them <code>services:</code> or a <code>container:</code>.
+          in their labels, job name or workflow name, or when their steps need
+          more than a container runner: <code>services:</code> or a
+          <code>container:</code>, a <code>docker://</code> action,
+          <code>docker run</code> with mounts or published ports,
+          <code>docker compose up</code>, kind/minikube/k3d, or
+          <code>systemctl</code>.
         </td>
       </tr>
       <tr>
@@ -74,7 +78,9 @@
         </td>
         <td>
           Target architecture: <code>both</code> (ARM64 + AMD64),{" "}
-          <code>arm64</code>, <code>amd64</code>.
+          <code>arm64</code>, <code>amd64</code>. With <code>both</code>, a
+          job's arch label decides, and an unlabelled job runs natively on the
+          host's arch.
         </td>
       </tr>
       <tr>

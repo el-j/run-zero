@@ -29,6 +29,9 @@ type Policy struct {
 	// RunnerArch is RUNNER_ARCH: "arm64", "amd64", or "both"/"" (job decides).
 	RunnerArch   string
 	ArchOverride *arch.NativeArchOverride
+	// HostArch is the host's CPU ("arm64" or "amd64"); a job without an arch
+	// label runs on it natively. Empty means unknown, which falls back to amd64.
+	HostArch     string
 	RunnerCPUs   int
 	RunnerMemory string
 	// Unlimited (RUNNER_SIZING=unlimited) drops CPU/memory limits; sizes a
@@ -45,16 +48,17 @@ type Job struct {
 	Name         string
 	WorkflowName string
 	Labels       []string
-	// DeclaresServices is true when the job's workflow gives it `services:` or
-	// a `container:`, which need a full VM's Docker daemon.
-	DeclaresServices bool
+	// VMReason is why the job's workflow needs a VM rather than a container
+	// runner (an inspector.Reason* value: services, docker-compose, ...), or "".
+	VMReason string
 }
 
 // Decision is where and how a job runs.
 type Decision struct {
 	Backend string
 	Arch    string
-	// Trigger explains a VM routing: "services", "label:<l>", "name:<t>" or
+	// Trigger explains a VM routing: the workflow's VM reason (e.g.
+	// "services", "docker-compose"), "label:<l>", "name:<t>" or
 	// "workflow:<t>"; empty when the job runs in a container.
 	Trigger   string
 	CPUs      int
@@ -72,16 +76,17 @@ func Plan(p Policy, job Job) Decision {
 }
 
 // Backend picks the runner backend. A configured RUNNER_BACKEND wins; with
-// "auto" and AUTO_ROUTE_VM, a job is routed to an OrbStack VM when it declares
-// services or a container, or a VM trigger matches its labels, name or
+// "auto" and AUTO_ROUTE_VM, a job is routed to an OrbStack VM when its
+// workflow needs one (services, docker compose, bind mounts, ...; see
+// inspector.JobVMReason), or a VM trigger matches its labels, name or
 // workflow name. The trigger says which.
 func Backend(p Policy, job Job) (backend, trigger string) {
 	if p.Backend != "" && p.Backend != "auto" {
 		return p.Backend, ""
 	}
 	if p.AutoRouteVM {
-		if job.DeclaresServices {
-			return "orbstack", "services"
+		if job.VMReason != "" {
+			return "orbstack", job.VMReason
 		}
 		if t := vmTrigger(job, p.VMTriggerLabels); t != "" {
 			return "orbstack", t
@@ -126,25 +131,36 @@ func tokenizeLower(input string) []string {
 }
 
 // Arch picks the runner architecture: RUNNER_ARCH when it names one, else
-// arm64 for jobs labelled arm64/aarch64/arm and amd64 otherwise; the native
-// arch override may then run an amd64 job natively on an arm64 host.
+// the job's arch label (arm64/aarch64/arm or amd64/x64/x86_64), else the
+// host's own arch, so unlabelled jobs run natively. The native arch override
+// may then run an amd64 job natively on an arm64 host.
 func Arch(p Policy, job Job) string {
-	jobArch := "amd64"
+	jobArch := p.HostArch
+	if jobArch == "" {
+		jobArch = "amd64"
+	}
 	if p.RunnerArch != "both" && p.RunnerArch != "" {
 		jobArch = p.RunnerArch
-	} else {
-		for _, l := range job.Labels {
-			lower := strings.ToLower(l)
-			if lower == "arm64" || lower == "aarch64" || lower == "arm" {
-				jobArch = "arm64"
-				break
-			}
-		}
+	} else if labelled := labelArch(job.Labels); labelled != "" {
+		jobArch = labelled
 	}
 	if p.ArchOverride != nil {
 		return p.ArchOverride.ArchFor(jobArch, job.Labels, job.Repo)
 	}
 	return jobArch
+}
+
+// labelArch is the architecture a job's labels ask for, or "".
+func labelArch(labels []string) string {
+	for _, l := range labels {
+		switch strings.ToLower(l) {
+		case "arm64", "aarch64", "arm":
+			return "arm64"
+		case "amd64", "x64", "x86_64":
+			return "amd64"
+		}
+	}
+	return ""
 }
 
 // Size returns the runner's CPUs and memory (MiB). Sizes requested through job

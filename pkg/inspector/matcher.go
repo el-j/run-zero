@@ -22,24 +22,17 @@ func jobMatchesTarget(target string, jobID string, jobName string) bool {
 	return false
 }
 
-// JobUsesServicesOrContainer checks whether the specified job declares services: or container:.
-// Returns nil if the job cannot be found in the workflow text.
-func JobUsesServicesOrContainer(workflowText string, targetJobName string) *bool {
-	if strings.TrimSpace(workflowText) == "" || strings.TrimSpace(targetJobName) == "" {
-		return nil
+// JobVMReason says why the job named target needs a VM (one of the Reason
+// constants, "" when a container runner will do) and whether the job was
+// found in the workflow at all.
+func JobVMReason(workflowText string, target string) (reason string, found bool) {
+	if strings.TrimSpace(target) == "" {
+		return "", false
 	}
-
-	jobs := ParseWorkflowJobs(workflowText)
-	if len(jobs) == 0 {
-		return nil
-	}
-
-	for _, j := range jobs {
-		if jobMatchesTarget(targetJobName, j.JobID, j.JobName) {
-			val := j.HasServices
-			return &val
+	for _, j := range ParseWorkflowJobs(workflowText) {
+		if jobMatchesTarget(target, j.JobID, j.JobName) {
+			return j.VMReason, true
 		}
 	}
-
-	return nil
+	return "", false
 }

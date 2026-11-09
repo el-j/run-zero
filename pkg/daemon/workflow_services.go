@@ -14,8 +14,8 @@ const maxCachedWorkflows = 500
 
 // resolveJobBackend picks docker or orbstack for a job of repo. Labels and
 // names decide first; a job they leave in a container is still routed to a VM
-// when its workflow gives it services: or a container:, which need a VM's
-// Docker daemon.
+// when its workflow needs one (services, docker compose, bind mounts, a local
+// Kubernetes cluster, systemd; see inspector.JobVMReason).
 func (s *Scaler) resolveJobBackend(ctx context.Context, repo string, job state.QueuedJob) string {
 	p := s.policy()
 	sj := schedJob(job, repo)
@@ -23,19 +23,19 @@ func (s *Scaler) resolveJobBackend(ctx context.Context, repo string, job state.Q
 	if backend != "docker" || !p.AutoRouteVM || (p.Backend != "" && p.Backend != "auto") || job.ID == 0 {
 		return backend
 	}
-	if sj.DeclaresServices = s.jobDeclaresServices(ctx, repo, job); sj.DeclaresServices {
+	if sj.VMReason = s.jobVMReason(ctx, repo, job); sj.VMReason != "" {
 		backend, _ = scheduling.Backend(p, sj)
-		s.state.AppendLog(fmt.Sprintf("[Autoscaler] 🧭 Routing %s job '%s' to a VM: its workflow declares services or a container", repo, job.Name))
+		s.state.AppendLog(fmt.Sprintf("[Autoscaler] 🧭 Routing %s job '%s' to a VM: %s", repo, job.Name, inspector.DescribeVMReason(sj.VMReason)))
 	}
 	return backend
 }
 
-// jobDeclaresServices reports whether job's workflow file (at the run's
-// commit) gives the job services: or a container:. Each workflow version is
-// fetched once; a fetch error counts as "no" and is retried on the next spawn.
-func (s *Scaler) jobDeclaresServices(ctx context.Context, repo string, job state.QueuedJob) bool {
+// jobVMReason says why job's workflow file (at the run's commit) needs a VM
+// for the job, or "" when a container runner will do. Each workflow version
+// is fetched once; a fetch error counts as "" and is retried on the next spawn.
+func (s *Scaler) jobVMReason(ctx context.Context, repo string, job state.QueuedJob) string {
 	if job.WorkflowPath == "" || job.HeadSHA == "" || s.ghClient == nil {
-		return false
+		return ""
 	}
 	if s.workflows == nil {
 		s.workflows = inspector.NewWorkflowCache()
@@ -43,13 +43,13 @@ func (s *Scaler) jobDeclaresServices(ctx context.Context, repo string, job state
 	key := repo + "@" + job.HeadSHA + ":" + job.WorkflowPath
 	resultKey := key + "#" + job.Name
 	if res, ok := s.workflows.GetJobResult(resultKey); ok {
-		return res != nil && *res
+		return res
 	}
 	text, ok := s.workflows.GetWorkflow(key)
 	if !ok {
 		var err error
 		if text, err = s.ghClient.GetWorkflowFile(ctx, repo, job.WorkflowPath, job.HeadSHA); err != nil {
-			return false
+			return ""
 		}
 		if s.cachedWorkflows >= maxCachedWorkflows {
 			s.workflows.Clear()
@@ -58,7 +58,7 @@ func (s *Scaler) jobDeclaresServices(ctx context.Context, repo string, job state
 		s.workflows.SetWorkflow(key, text)
 		s.cachedWorkflows++
 	}
-	res := inspector.JobUsesServicesOrContainer(text, job.Name)
+	res, _ := inspector.JobVMReason(text, job.Name)
 	s.workflows.SetJobResult(resultKey, res)
-	return res != nil && *res
+	return res
 }

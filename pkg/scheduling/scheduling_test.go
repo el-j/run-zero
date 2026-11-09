@@ -22,9 +22,10 @@ func TestBackend(t *testing.T) {
 		{"label", auto, Job{Name: "unit-tests", Labels: []string{"self-hosted", "vm"}}, "orbstack", "label:vm"},
 		{"job name", auto, Job{Name: "Matrix — E2E (mock auth)", Labels: []string{"self-hosted"}}, "orbstack", "name:e2e"},
 		{"workflow name", auto, Job{Name: "Matrix — CI", WorkflowName: "E2E"}, "orbstack", "workflow:e2e"},
-		{"services", auto, Job{Name: "lint", DeclaresServices: true}, "orbstack", "services"},
+		{"services", auto, Job{Name: "lint", VMReason: "services"}, "orbstack", "services"},
+		{"workflow step", auto, Job{Name: "lint", VMReason: "docker-compose"}, "orbstack", "docker-compose"},
 		{"no match", auto, Job{Name: "lint", WorkflowName: "Lint & Unit Tests", Labels: []string{"amd64"}}, "docker", ""},
-		{"routing off", Policy{VMTriggerLabels: triggers}, Job{Labels: []string{"vm"}, DeclaresServices: true}, "docker", ""},
+		{"routing off", Policy{VMTriggerLabels: triggers}, Job{Labels: []string{"vm"}, VMReason: "services"}, "docker", ""},
 		{"blank triggers", Policy{AutoRouteVM: true, VMTriggerLabels: []string{"", "  "}}, Job{Name: "e2e"}, "docker", ""},
 		{"no triggers", Policy{AutoRouteVM: true}, Job{Name: "e2e"}, "docker", ""},
 	}
@@ -43,7 +44,13 @@ func TestArch(t *testing.T) {
 		labels []string
 		want   string
 	}{
-		{"default amd64", Policy{RunnerArch: "both"}, nil, "amd64"},
+		{"unknown host defaults to amd64", Policy{RunnerArch: "both"}, nil, "amd64"},
+		{"unlabelled job runs on the host arch", Policy{RunnerArch: "both", HostArch: "arm64"}, []string{"self-hosted"}, "arm64"},
+		{"x64 label on an arm64 host", Policy{HostArch: "arm64"}, []string{"self-hosted", "X64"}, "amd64"},
+		{"amd64 label", Policy{HostArch: "arm64"}, []string{"amd64"}, "amd64"},
+		{"x86_64 label", Policy{HostArch: "arm64"}, []string{"x86_64"}, "amd64"},
+		{"aarch64 label on an amd64 host", Policy{HostArch: "amd64"}, []string{"aarch64"}, "arm64"},
+		{"arm label", Policy{HostArch: "amd64"}, []string{"arm"}, "arm64"},
 		{"arm label", Policy{}, []string{"self-hosted", "ARM64"}, "arm64"},
 		{"configured arch", Policy{RunnerArch: "arm64"}, []string{"amd64"}, "arm64"},
 		{"native override", Policy{ArchOverride: override}, []string{"amd64"}, "arm64"},

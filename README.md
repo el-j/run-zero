@@ -104,8 +104,23 @@ jobs:
 ```
 
 A job goes to a VM when a `VM_TRIGGER_LABELS` word appears in its labels, job name or workflow
-name, or when its workflow gives it `services:` or a `container:`. Each workflow file is fetched once
-per commit and cached.
+name, or when its workflow needs something a container runner cannot give it. Container runners
+share the host's Docker daemon through its socket, so Docker resolves bind mounts on the host, not
+in the job's workspace, publishes ports on the host, not on the job's `localhost`, and the
+container has no systemd. RunZero reads the job's steps at the run's commit and sends it to a VM
+when it finds:
+
+| Reason | Detected from |
+|---|---|
+| `services` | `services:` or `container:` on the job |
+| `docker-action` | a `uses: docker://…` step |
+| `docker-run` | `docker run` with `-v`/`--volume`/`--mount`, `-p`/`--publish` or host networking |
+| `docker-compose` | `docker compose up` / `run` (or `docker-compose`) |
+| `kubernetes` | `kind create cluster`, `minikube start`, `k3d cluster create`, or the kind/minikube/k3d setup actions |
+| `systemd` | `systemctl` |
+
+Plain `docker build` and `docker run --rm image cmd` stay in a container. Each workflow file is
+fetched once per commit and cached, and the log says why a job was sent to a VM.
 
 ---
 

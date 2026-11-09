@@ -6,10 +6,12 @@ import (
 
 // JobInfo holds parsed metadata from a workflow job block.
 type JobInfo struct {
-	JobID       string
-	JobName     string
-	HasServices bool
-	RunsOn      []string
+	JobID   string
+	JobName string
+	// VMReason says why the job needs a VM rather than a container runner
+	// (one of the Reason constants), or is empty.
+	VMReason string
+	RunsOn   []string
 }
 
 // MatrixBase strips matrix parameter suffixes like "Test (1, 2)" -> "Test".
@@ -89,6 +91,7 @@ func ParseWorkflowJobs(workflowText string) []JobInfo {
 
 func parseJobBlock(lines []string, startIdx, parentIndent int) (JobInfo, int) {
 	var info JobInfo
+	stepReason := ""
 	j := startIdx
 
 	for j < len(lines) {
@@ -101,10 +104,16 @@ func parseJobBlock(lines []string, startIdx, parentIndent int) (JobInfo, int) {
 			if strings.HasPrefix(trimmed, "name:") {
 				info.JobName = unquote(strings.TrimPrefix(trimmed, "name:"))
 			} else if strings.HasPrefix(trimmed, "services:") || strings.HasPrefix(trimmed, "container:") {
-				info.HasServices = true
+				info.VMReason = ReasonServices
 			}
 		}
+		if stepReason == "" && !strings.HasPrefix(trimmed, "#") {
+			stepReason = stepVMReason(trimmed)
+		}
 		j++
+	}
+	if info.VMReason == "" {
+		info.VMReason = stepReason
 	}
 	return info, j
 }

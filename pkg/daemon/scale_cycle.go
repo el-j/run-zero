@@ -275,8 +275,17 @@ func (s *Scaler) policy() scheduling.Policy {
 		RunnerMemory:    s.cfg.RunnerMemory,
 		Unlimited:       s.cfg.RunnerSizing == "unlimited",
 		MaxRunners:      s.cfg.MaxRunners,
+		HostArch:        s.hostArch(),
 		Host:            s.host,
 	}
+}
+
+// hostArch is the CPU architecture unlabelled jobs run on: the host's.
+func (s *Scaler) hostArch() string {
+	if s.archOverride == nil {
+		return ""
+	}
+	return s.archOverride.HostArch
 }
 
 // schedJob describes a queued job of repo for scheduling.

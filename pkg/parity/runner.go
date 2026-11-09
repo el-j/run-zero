@@ -23,15 +23,16 @@ func EvaluateTestCase(tc TestCase) (Decision, Result) {
 		VMTriggerLabels: cfg.VMTriggerLabels,
 		RunnerArch:      cfg.RunnerArch,
 		ArchOverride:    override,
+		HostArch:        override.HostArch,
 		MaxRunners:      tc.MaxRunners,
 		Host:            sizing.HostCapacity{CPUs: tc.CapacityCPUs, MemoryMiB: tc.CapacityMemoryMB},
 	}
-	declares := inspector.JobUsesServicesOrContainer(tc.WorkflowYAML, tc.JobName)
+	reason, _ := inspector.JobVMReason(tc.WorkflowYAML, tc.JobName)
 	d := scheduling.Plan(policy, scheduling.Job{
-		Repo:             tc.Repo,
-		Name:             tc.JobName,
-		Labels:           tc.JobLabels,
-		DeclaresServices: declares != nil && *declares,
+		Repo:     tc.Repo,
+		Name:     tc.JobName,
+		Labels:   tc.JobLabels,
+		VMReason: reason,
 	})
 
 	actual := Decision{

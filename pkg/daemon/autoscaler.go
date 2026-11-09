@@ -6,6 +6,7 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"runtime"
 	"strings"
 	"sync/atomic"
 	"time"
@@ -134,6 +135,9 @@ func (s *Scaler) noteSpawnFailure(ctx context.Context, key, arch string, err err
 	}
 }
 
+// hostCPU is the host's CPU architecture, which unlabelled jobs run on.
+var hostCPU = runtime.GOARCH
+
 // NewScaler creates an autoscaler engine.
 func NewScaler(
 	cfg *config.Config,
@@ -145,7 +149,7 @@ func NewScaler(
 	poller *github.Poller,
 	rp *reaper.Reaper,
 ) *Scaler {
-	override, _ := arch.NewNativeArchOverride(cfg.NativeArchOverride, "")
+	override, _ := arch.NewNativeArchOverride(cfg.NativeArchOverride, hostCPU)
 	return &Scaler{
 		cfg:            cfg,
 		state:          st,

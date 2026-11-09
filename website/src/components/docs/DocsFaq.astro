@@ -8,7 +8,7 @@
   Set <code>RUNNER_ARCH=both</code> in <code>.env</code> and specify{" "}
   <code>runs-on: [self-hosted, local, arm64]</code> or{" "}
   <code>runs-on: [self-hosted, local, amd64]</code> in your GitHub workflow
-  YAML.
+  YAML. Jobs without an arch label run natively on the host's arch.
 </p>
 
 <h3>How does package caching work across containers and VMs?</h3>

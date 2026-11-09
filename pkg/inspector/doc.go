@@ -1,3 +1,3 @@
-// Package inspector detects the toolchain a repository needs so runners can
-// be sized and provisioned accordingly.
+// Package inspector reads a job's workflow file to tell whether the job can
+// run in a container runner or needs a VM (see JobVMReason).
 package inspector
